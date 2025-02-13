@@ -4,6 +4,9 @@ import { Actor, HttpAgent } from "@dfinity/agent";
 import { idlFactory } from "./rll.did.js";
 export { idlFactory } from "./rll.did.js";
 
+export const canisterId =
+  process.env.CANISTER_ID_RLL;
+  
 export const createActor = (canisterId, options = {}) => {
   const agent = options.agent || new HttpAgent({ ...options.agentOptions });
 

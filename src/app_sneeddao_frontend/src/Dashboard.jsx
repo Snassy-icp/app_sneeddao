@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
-import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { toJsonString, formatAmount } from './utils/StringUtils';
-import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-import { Principal } from '@dfinity/principal';
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
 
 function Dashboard() {
     const { identity } = useAuth();
@@ -58,14 +56,14 @@ function Dashboard() {
     }
 
     const fetchDashboardData = async () => {
-        const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+        const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
         
         // Fetch token locks
-        const allTokenLocks = await backendActor.get_all_token_locks();
+        const allTokenLocks = await sneedLockActor.get_all_token_locks();
         setTokenLocks(allTokenLocks);
     
         // Fetch position locks
-        const allPositionLocks = await backendActor.get_all_position_locks();
+        const allPositionLocks = await sneedLockActor.get_all_position_locks();
         setPositionLocks(allPositionLocks);
     
         // Fetch position details for each locked position

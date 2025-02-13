@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Principal } from "@dfinity/principal";
 import { useLocation, Link } from 'react-router-dom';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo, get_token_conversion_rates } from './utils/TokenUtils';
 import TokenCard from './TokenCard';
@@ -25,7 +26,7 @@ function TokenLock() {
 
     const fetchTokenDetails = async (ledgerCanisterId, lockIds) => {
         try {
-            const backendActor = createBackendActor(backendCanisterId);
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId);
             const ledgerActor = createLedgerActor(ledgerCanisterId);
 
             const [metadata, symbol, decimals] = await Promise.all([
@@ -36,7 +37,7 @@ function TokenLock() {
 
             const logo = getTokenLogo(metadata);
 
-            const tokenLocks = await backendActor.get_ledger_token_locks(Principal.fromText(ledgerCanisterId));
+            const tokenLocks = await sneedLockActor.get_ledger_token_locks(Principal.fromText(ledgerCanisterId));
             const filteredLocks = lockIds
                 ? tokenLocks.filter(lock => lockIds.includes(lock[2].lock_id.toString()))
                 : tokenLocks;

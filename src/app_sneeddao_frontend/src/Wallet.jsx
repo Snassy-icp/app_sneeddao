@@ -5,7 +5,8 @@ import React, { useState, useEffect } from 'react';
 import { app_sneeddao_backend, createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
-import { createActor as createRllActor } from 'external/rll';
+import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import PrincipalBox from './PrincipalBox';
@@ -55,9 +56,12 @@ function Wallet() {
     const [totalDollarValue, setTotalDollarValue] = useState(0.0);
 
     const dex_icpswap = 1;
-    const rll_canister_id = is_prod 
-        ? Principal.fromText("lvc4n-7aaaa-aaaam-adm6a-cai") // Prod
-        : Principal.fromText("twapx-riaaa-aaaak-qlojq-cai"); // Test
+    //const rll_canister_id = is_prod 
+    //    ? Principal.fromText("lvc4n-7aaaa-aaaam-adm6a-cai") // Prod
+    //    : Principal.fromText("twapx-riaaa-aaaak-qlojq-cai"); // Test
+    //const sneed_lock_canister_id = is_prod 
+   //     ? Principal.fromText("pqsms-lqaaa-aaaal-ajjza-cai") // Prod
+   //     : Principal.fromText("25fsc-7yaaa-aaaal-qjt5q-cai"); // Test
  
     useEffect(() => {
         if (!isAuthenticated) {
@@ -138,7 +142,7 @@ function Wallet() {
             setRewardDetailsLoading({});
         }
         // fetch rewards from RLL canister
-        const rllActor = createRllActor(rll_canister_id, { agentOptions: { identity } });
+        const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
         const arr_balances = await rllActor.balances_of_hotkey();
 
         var new_reward_balances = {};
@@ -187,10 +191,11 @@ function Wallet() {
         try {
             // retrieve all the summed locks from the backend first.
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
-            if (await backendActor.has_expired_locks()) {
-                await backendActor.clear_expired_locks();
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            if (await sneedLockActor.has_expired_locks()) {
+                await sneedLockActor.clear_expired_locks();
             }    
-            const summed_locks_list = await backendActor.get_summed_locks();
+            const summed_locks_list = await sneedLockActor.get_summed_locks();
 
             summed_locks = {};
             for (const summed_lock of summed_locks_list) {
@@ -252,12 +257,13 @@ function Wallet() {
         setShowPositionsSpinner(true);
         try {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
             const swap_canisters = await backendActor.get_swap_canister_ids();
 
-            if (await backendActor.has_expired_position_locks()) {
-                await backendActor.clear_expired_position_locks();
+            if (await sneedLockActor.has_expired_position_locks()) {
+                await sneedLockActor.clear_expired_position_locks();
             }
-            const claimed_positions = await backendActor.get_claimed_positions_for_principal(identity.getPrincipal());
+            const claimed_positions = await sneedLockActor.get_claimed_positions_for_principal(identity.getPrincipal());
             const claimed_positions_by_swap = {};
             for (const claimed_position of claimed_positions) {
                 if (!claimed_positions_by_swap[claimed_position.swap_canister_id]) {
@@ -424,11 +430,11 @@ function Wallet() {
         });
         setLockDetailsLoading(prevState => ({...prevState, ...initialLoadingState}))
 
-        const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
-        if (await backendActor.has_expired_locks()) {
-            await backendActor.clear_expired_locks();
+        const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+        if (await sneedLockActor.has_expired_locks()) {
+            await sneedLockActor.clear_expired_locks();
         }
-        const locks_from_backend = await backendActor.get_token_locks();
+        const locks_from_backend = await sneedLockActor.get_token_locks();
 
         // Fetch lock details for each token in parallel
         await Promise.all(currentTokens.map(async (token) => {
@@ -528,10 +534,10 @@ function Wallet() {
 
         if (send_amounts.send_from_backend > 0) {
 
-            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
         
             const recipientPrincipal = Principal.fromText(recipient);
-            const result = await backendActor.transfer_tokens(
+            const result = await sneedLockActor.transfer_tokens(
                 recipientPrincipal,
                 [],
                 token.ledger_canister_id,
@@ -605,8 +611,8 @@ function Wallet() {
 
         } else {
 
-            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
-            const result = await backendActor.transfer_position(Principal.fromText(recipient), liquidityPosition.swapCanisterId, liquidityPosition.id);
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            const result = await sneedLockActor.transfer_position(Principal.fromText(recipient), liquidityPosition.swapCanisterId, liquidityPosition.id);
             const resultJson = toJsonString(result);
             
         }
@@ -641,13 +647,13 @@ function Wallet() {
 
         }
 
-        const backendActor = createBackendActor(backendCanisterId, {
+        const sneedLockActor = createSneedLockActor(sneedLockCanisterId, {
             agentOptions: {
                 identity
             }
         });
 
-        const result = await backendActor.create_lock(
+        const result = await sneedLockActor.create_lock(
             bigIntAmount,
             ledger_canister_id,
             BigInt(expiry) * (10n ** 6n)
@@ -675,10 +681,10 @@ function Wallet() {
         const frontendOwnership = userPositionIds.includes(position.id);
         if (frontendOwnership) {
 
-            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
 
             // Only try to lock if we have been able to claim the position on the backend
-            if (await backendActor.claim_position(position.swapCanisterId, position.id)) {
+            if (await sneedLockActor.claim_position(position.swapCanisterId, position.id)) {
                 result = await swapActor.transferPosition(
                     identity.getPrincipal(), 
                     Principal.fromText(backendCanisterId), 
@@ -686,7 +692,7 @@ function Wallet() {
 
                 if (!result["err"]) {
                     const expiryBig = BigInt(expiry) * (10n ** 6n);
-                    result = await backendActor.create_position_lock(
+                    result = await sneedLockActor.create_position_lock(
                         position.swapCanisterId,
                         dex_icpswap,
                         position.id,
@@ -703,17 +709,17 @@ function Wallet() {
             }
         } else {
 
-            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
 
             const expiryBig = BigInt(expiry) * (10n ** 6n);
 
             result = position.isLocked
-                ? await backendActor.update_position_lock(
+                ? await sneedLockActor.update_position_lock(
                     position.swapCanisterId,
                     position.id,
                     expiryBig
                 )
-                : await backendActor.create_position_lock(
+                : await sneedLockActor.create_position_lock(
                     position.swapCanisterId,
                     dex_icpswap,
                     position.id,
@@ -854,7 +860,7 @@ function Wallet() {
 
     const handleClaimRewards = async (token) => {
         setConfirmAction(() => async () => {
-            const rllActor = createRllActor(rll_canister_id, { agentOptions: { identity } });
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
             const claim_results = await rllActor.claim_full_balance_of_hotkey(
                 token.ledger_canister_id,
                 token.fee);

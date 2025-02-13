@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Principal } from "@dfinity/principal";
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { getTokenLogo, get_token_conversion_rates } from './utils/TokenUtils';
@@ -52,7 +53,8 @@ function TokenLocksOverview() {
                 positionLocks: true
             });
 
-            const backendActor = createBackendActor(backendCanisterId);
+            const backendActor = createBackendActor(backendCanisterId); 
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId);
             const ledgerActor = createLedgerActor(ledgerCanisterId);
             const ledgerPrincipal = Principal.fromText(ledgerCanisterId);
 
@@ -95,7 +97,7 @@ function TokenLocksOverview() {
 
                 // Fetch token locks
                 try {
-                    const tokenLocks = await backendActor.get_ledger_token_locks(ledgerPrincipal);
+                    const tokenLocks = await sneedLockActor.get_ledger_token_locks(ledgerPrincipal);
                     const formattedTokenLocks = tokenLocks.map(lock => ({
                         lock_id: lock[2].lock_id,
                         amount: BigInt(lock[2].amount.toString()),
@@ -134,7 +136,7 @@ function TokenLocksOverview() {
 
                     // Fetch position locks
                     try {
-                        const rawPositionLocks = await backendActor.get_token_position_locks(ledgerPrincipal);
+                        const rawPositionLocks = await sneedLockActor.get_token_position_locks(ledgerPrincipal);
                         const positionLocksWithDetails = await Promise.all(
                             rawPositionLocks.map(async ([principal, swapCanisterId, positionLock]) => {
                                 try {
@@ -172,7 +174,7 @@ function TokenLocksOverview() {
                                     const token1Logo = getTokenLogo(metadata1);
 
                                     // Get position locks for this swap canister
-                                    const position_locks = await backendActor.get_swap_position_locks(swapCanisterId);
+                                    const position_locks = await sneedLockActor.get_swap_position_locks(swapCanisterId);
 
                                     // Get all positions using pagination like PositionLock.jsx
                                     let offset = 0;

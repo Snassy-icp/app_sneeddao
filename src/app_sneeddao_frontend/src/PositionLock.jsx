@@ -33,6 +33,7 @@ function PositionLock() {
         try {
             setShowSpinner(true);
             const backendActor = createBackendActor(backendCanisterId);
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId);
             const swapActor = createIcpSwapActor(swap_canister_id);
 
             const swap_meta = await swapActor.metadata();
@@ -82,7 +83,7 @@ function PositionLock() {
                 hasMorePositions = allPositionsPage.length === limit;
             }
 
-            var position_locks = await backendActor.get_swap_position_locks(Principal.fromText(swap_canister_id));
+            var position_locks = await sneedLockActor.get_swap_position_locks(Principal.fromText(swap_canister_id));
 
             const positions_detailed = positions.map((position) => {
 
