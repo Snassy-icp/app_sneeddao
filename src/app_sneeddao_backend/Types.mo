@@ -85,9 +85,6 @@ module {
     public type State = object {
         principal_swap_canisters: PrincipalSwapCanisterMap;
         principal_ledger_canisters: PrincipalLedgerCanisterMap;
-        principal_token_locks: PrincipalTokenLockMap;
-        principal_position_ownerships: PrincipalSwapPositionsMap;
-        principal_position_locks : PrincipalPositionLocksMap;
     };
 
     // needed for calling other canisters
