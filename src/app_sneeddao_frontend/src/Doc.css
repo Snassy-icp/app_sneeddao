@@ -1,0 +1,15 @@
+.doc-container {
+    flex-grow: 1;
+    padding: 20px;
+    color: white;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.doc-container h1 {
+    margin-bottom: 20px;
+}
+
+.doc-container p {
+    line-height: 1.6;
+}

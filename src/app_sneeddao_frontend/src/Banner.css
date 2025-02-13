@@ -1,0 +1,16 @@
+.banner {
+    width: 100%;
+    margin: 0 auto;
+    background-color: black;
+    padding: 10px 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.banner-logo {
+    width: auto;
+    height: 220px;
+    padding: 0 20px;
+    object-fit: contain;
+}

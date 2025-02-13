@@ -1,0 +1,90 @@
+.principal-box-container {
+  position: static;
+}
+
+.principal-button {
+  background-color: #7c3aed;
+  color: white;
+  border: none;
+  border-radius: 20px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.principal-popup {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background-color: #1e1e2e;
+  border: 1px solid #3f3f5a;
+  border-radius: 8px;
+  padding: 16px;
+  z-index: 1000;
+  max-width: 300px;
+  width: 90%;
+}
+
+.principal-popup h3 {
+  margin-top: 0;
+  color: white;
+  margin-bottom: 16px;
+}
+
+.principal-display {
+  margin-bottom: 8px;
+}
+
+.principal-input {
+  width: 100%;
+  background-color: transparent;
+  color: #a0a0b8;
+  border: none;
+  padding: 6px 0;
+  font-family: monospace;
+  font-size: 12px;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-all;
+  resize: none;
+}
+
+.copy-feedback-container {
+  height: 20px; /* Adjust this value based on your font size */
+  margin-bottom: 16px;
+}
+
+.copy-feedback {
+  color: #4CAF50;
+  font-size: 0.9em;
+  margin: 0;
+  line-height: 20px; /* Should match the container height */
+}
+
+.principal-copy-button-group {
+  display: flex;
+  justify-content: space-between;
+}
+
+.principal-copy-button-group button {
+  background-color: #3f3f5a;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  flex: 1;
+  margin: 0 4px;
+}
+
+.principal-copy-button-group button:hover {
+  background-color: #5a5a7d;
+}
+
+.principal-copy-button-group button:first-child {
+  margin-left: 0;
+}
+
+.principal-copy-button-group button:last-child {
+  margin-right: 0;
+}

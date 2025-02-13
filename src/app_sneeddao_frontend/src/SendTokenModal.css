@@ -1,0 +1,95 @@
+/* SendTokenModal.css */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: black;
+  padding: 20px;
+  border-radius: 8px;
+  width: 400px;
+  max-width: 80%;
+  border: 1px solid #ddd;
+}
+
+.modal-content h2 {
+  margin-top: 0;
+}
+
+.modal-content label {
+  display: block;
+  margin: 10px 0;
+}
+
+.modal-content input {
+  width: 100%;
+  padding: 8px;
+  margin-top: 5px;
+  box-sizing: border-box;
+}
+
+.amount-input-container {
+  display: flex;
+  align-items: center;
+}
+
+.amount-input-container input {
+  flex-grow: 1;
+  margin-right: 10px;
+}
+
+.max-button {
+  padding: 8px 12px !important;
+  background: #007bff !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+}
+
+.max-button:hover {
+  background: #0056b3 !important;
+}
+
+.modal-content .button-group {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+.modal-content button {
+  padding: 10px;
+  border: none;
+  background: #007bff;
+  color: white;
+  cursor: pointer;
+  border-radius: 4px;
+  flex: 1;
+  margin-right: 10px;
+}
+
+.modal-content button:hover {
+  background: #0056b3;
+}
+
+.cancel-button {
+  background: #6c757d;
+  margin-right: 0;
+}
+
+.cancel-button:hover {
+  background: #5a6268;
+}
+
+.error-text {
+  color: #ff0000;
+  margin-top: 10px;
+}
