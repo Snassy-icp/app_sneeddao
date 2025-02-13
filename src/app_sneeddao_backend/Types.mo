@@ -4,8 +4,7 @@ import Nat64 "mo:base/Nat64";
 import Int "mo:base/Int";
 
 module {
-
-    // basic/stable
+    // basic types
     public type TokenType = Principal;
     public type SwapCanisterId = Principal;
     public type Balance = Nat;
@@ -71,10 +70,6 @@ module {
     public type TokenLockMap = HashMap.HashMap<TokenType, Locks>;
     public type PrincipalTokenLockMap = HashMap.HashMap<Principal, TokenLockMap>;
     
-    public type Positions = List.List<PositionId>;
-    public type SwapPositionsMap = HashMap.HashMap<Principal, Positions>;
-    public type PrincipalSwapPositionsMap = HashMap.HashMap<Principal, SwapPositionsMap>;
-    
     public type PrincipalSwapCanisterMap = HashMap.HashMap<Principal, List.List<Principal>>;
     public type PrincipalLedgerCanisterMap = HashMap.HashMap<Principal, List.List<Principal>>;
 
@@ -139,7 +134,6 @@ module {
     };
     
     public type GetUserPositionIdsByPrincipalResult = { #ok : [Nat]; #err : SwapCanisterError };
-    public type TransferPositionResult = { #ok : Bool; #err : TransferPositionError };
 
     type TransferPositionError = {
         #CommonError;
@@ -147,12 +141,4 @@ module {
         #UnsupportedToken: Text;
         #InsufficientFunds;
     };
-
-    public type ClaimedPosition = {
-        owner: Principal;
-        swap_canister_id: SwapCanisterId;
-        position_id: PositionId;
-        position_lock: ?PositionLock;
-    };
-    // TODO: this can give us guid/uuid??: https://github.com/aviate-labs/uuid.mo
 };

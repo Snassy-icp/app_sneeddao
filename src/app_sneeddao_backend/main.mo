@@ -5,43 +5,12 @@ import Iter "mo:base/Iter";
 
 import T "Types";
 
-
-// TODO: figure out when new instances of actors are created, whether or not that depends on the client at all, and how this effects the persistent state of the actor.
-//       https://internetcomputer.org/docs/current/motoko/main/writing-motoko/actor-classes
 shared (deployer) actor class AppSneedDaoBackend() = this {
 
-  ////////////////
-  // locks
-  ////////////////
-
   // aliases
-  type TokenType = T.TokenType;
-  type Balance = T.Balance;
-  type Expiry = T.Expiry;
-  type Lock = T.Lock;
-  type FullyQualifiedLock = T.FullyQualifiedLock;
-  type StableLocks = T.StableLocks;
-  type StablePositionOwnerships = T.StablePositionOwnerships;
-  type Locks = T.Locks;
-  type TokenLockMap = T.TokenLockMap;
-  type PrincipalTokenLockMap = T.PrincipalTokenLockMap;
   type State = T.State;
-  type CreateLockResult = T.CreateLockResult;
-  type CreateLockError = T.CreateLockError;
-  type Subaccount = T.Subaccount;
-  type Account = T.Account;
-  type SetLockFeeResult = T.SetLockFeeResult;
-  type TransferArgs = T.TransferArgs;
-  type TransferResult = T.TransferResult;
-  type TransferError = T.TransferError;
   type StablePrincipalSwapCanisters = T.StablePrincipalSwapCanisters;
   type StablePrincipalLedgerCanisters = T.StablePrincipalLedgerCanisters;
-  type GetUserPositionIdsByPrincipalResult = T.GetUserPositionIdsByPrincipalResult;
-  type FullyQualifiedPositionLock = T.FullyQualifiedPositionLock;
-  type StablePositionLocks = T.StablePositionLocks;
-  type PositionLocks = T.PositionLocks;
-  type PositionLockMap = T.PositionLockMap;
-  type PrincipalPositionLocksMap = T.PrincipalPositionLocksMap;
 
 
   // stable memory
