@@ -18,6 +18,7 @@
       "type": "custom",
       "candid": "src/external/rll/rll.did",
       "wasm": "none",
+      "build": "false",
       "remote": {
         "id": {
           "ic": "lvc4n-7aaaa-aaaam-adm6a-cai"
@@ -28,6 +29,7 @@
       "type": "custom",
       "candid": "src/external/sneed_lock/sneed_lock.did",
       "wasm": "none",
+      "build": "false",
       "remote": {
         "id": {
           "ic": "pqsms-lqaaa-aaaal-ajjza-cai"

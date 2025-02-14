@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Principal } from "@dfinity/principal";
 import { useLocation, Link } from 'react-router-dom';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
+import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo, get_token_conversion_rates } from './utils/TokenUtils';

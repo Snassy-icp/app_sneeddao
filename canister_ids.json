@@ -1,5 +1,8 @@
 {
   "app_sneeddao_frontend": {
     "ic": "2icdp-6qaaa-aaaal-qjt6a-cai"
-  }
+  },
+  "app_sneeddao_backend": {
+    "ic": "7tsda-tiaaa-aaaad-aajxa-cai"
+  }  
 }
