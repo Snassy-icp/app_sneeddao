@@ -173,11 +173,13 @@ function RLL() {
     }, [isAuthenticated, identity]);
 
     const formatBalance = (balance, decimals) => {
+        if (!balance) return '0';
         return (Number(balance) / Math.pow(10, decimals)).toFixed(decimals);
     };
 
-    const formatDistributionValue = (value) => {
-        return Number(value) / Math.pow(10, 8); // Assuming 8 decimals for ICP
+    const getTokenDecimals = (symbol) => {
+        const token = tokens.find(t => t.symbol === symbol);
+        return token ? token.decimals : 8; // fallback to 8 decimals if token not found
     };
 
     return (
@@ -211,7 +213,6 @@ function RLL() {
                             View in Token Scanner
                         </Link>
                     </div>
-
                 </section>
 
                 <section style={styles.section}>
@@ -220,18 +221,18 @@ function RLL() {
                         <div style={styles.spinner} />
                     ) : distributions ? (
                         <>
-                            <div style={styles.distributionItem}>
-                                <span style={styles.distributionLabel}>Total ICP Distributed</span>
-                                <span style={styles.distributionValue}>
-                                    {formatDistributionValue(distributions.total_icp_distributed)} ICP
-                                </span>
-                            </div>
-                            <div style={styles.distributionItem}>
-                                <span style={styles.distributionLabel}>Total SNEED Distributed</span>
-                                <span style={styles.distributionValue}>
-                                    {formatDistributionValue(distributions.total_sneed_distributed)} SNEED
-                                </span>
-                            </div>
+                            {Object.entries(distributions).map(([key, value]) => {
+                                // Convert key from total_X_distributed to token symbol X
+                                const symbol = key.replace('total_', '').replace('_distributed', '').toUpperCase();
+                                return (
+                                    <div key={key} style={styles.distributionItem}>
+                                        <span style={styles.distributionLabel}>Total {symbol} Distributed</span>
+                                        <span style={styles.distributionValue}>
+                                            {formatBalance(value, getTokenDecimals(symbol))} {symbol}
+                                        </span>
+                                    </div>
+                                );
+                            })}
                         </>
                     ) : (
                         <p style={{ color: '#ffffff' }}>Error loading distributions</p>
