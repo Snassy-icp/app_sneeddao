@@ -32,9 +32,11 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_principal_swap_canisters : StablePrincipalSwapCanisters = [];
   stable var stable_principal_ledger_canisters : StablePrincipalLedgerCanisters = [];
   stable var stable_whitelisted_tokens : [WhitelistedToken] = [];
+  stable var stable_admins : [Principal] = [deployer.caller];
 
   var cached_token_meta : HashMap.HashMap<Principal, T.TokenMeta> = HashMap.HashMap<Principal, T.TokenMeta>(100, Principal.equal, Principal.hash);
   var whitelisted_tokens : HashMap.HashMap<Principal, WhitelistedToken> = HashMap.HashMap<Principal, WhitelistedToken>(10, Principal.equal, Principal.hash);
+  var admins : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
 
   // ephemeral state
   let state : State = object { 
@@ -46,6 +48,37 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // SwapRunner actor
   let swaprunner = actor(SWAPRUNNER_CANISTER_ID) : actor {
     get_whitelisted_tokens : shared query () -> async [(Principal, SwapRunnerTokenMetadata)];
+  };
+
+  // Admin management functions
+  public shared ({ caller }) func add_admin(principal: Principal) : async () {
+    assert(is_admin(caller));
+    admins.put(principal, true);
+  };
+
+  public shared ({ caller }) func remove_admin(principal: Principal) : async () {
+    assert(is_admin(caller) and principal != deployer.caller);
+    admins.delete(principal);
+  };
+
+  public query func get_admins() : async [Principal] {
+    Iter.toArray(admins.keys());
+  };
+
+  func is_admin(principal: Principal) : Bool {
+    if (Principal.isAnonymous(principal)) {
+      return false;
+    };
+    if (principal == deployer.caller) {
+      return true;
+    };
+    if (Principal.isController(principal)) {
+      return true;
+    };
+    switch (admins.get(principal)) {
+      case (?_) true;
+      case null false;
+    };
   };
 
   // Whitelist management functions
@@ -212,6 +245,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
 
     // Save whitelisted tokens to stable storage
     stable_whitelisted_tokens := Iter.toArray(whitelisted_tokens.vals());
+
+    // Save admins to stable storage
+    stable_admins := Iter.toArray(admins.keys());
   };
 
   // initialize ephemeral state and empty stable arrays to save memory
@@ -235,6 +271,11 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         whitelisted_tokens.put(token.ledger_id, token);
       };
       stable_whitelisted_tokens := [];
+
+      // Restore admins from stable storage
+      for (admin in stable_admins.vals()) {
+        admins.put(admin, true);
+      };
   };
 
 };
