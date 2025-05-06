@@ -9,10 +9,11 @@ import './Help.css'; // We'll reuse the Help page styling for now
 // Styles
 const styles = {
     tokenBalances: {
-        backgroundColor: '#f5f5f5',
+        backgroundColor: '#2a2a2a',
         borderRadius: '8px',
         padding: '20px',
-        marginTop: '20px'
+        marginTop: '20px',
+        color: '#ffffff'
     },
     tokenList: {
         display: 'flex',
@@ -23,17 +24,24 @@ const styles = {
         display: 'flex',
         alignItems: 'center',
         padding: '15px',
-        backgroundColor: 'white',
+        backgroundColor: '#3a3a3a',
         borderRadius: '6px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+        color: '#ffffff'
     },
     tokenSymbol: {
         fontWeight: 'bold',
-        marginRight: 'auto'
+        marginRight: 'auto',
+        color: '#ffffff'
     },
     tokenBalance: {
         fontFamily: 'monospace',
-        fontSize: '1.1em'
+        fontSize: '1.1em',
+        color: '#ffffff'
+    },
+    heading: {
+        color: '#ffffff',
+        marginBottom: '15px'
     }
 };
 
@@ -113,12 +121,12 @@ function RLL() {
                 </nav>
             </header>
             <main className="help-container">
-                <h1>RLL</h1>
+                <h1 style={{ color: '#ffffff' }}>RLL</h1>
                 
                 <section style={styles.tokenBalances}>
-                    <h2>Token Balances</h2>
+                    <h2 style={styles.heading}>Token Balances</h2>
                     {loading ? (
-                        <p>Loading balances...</p>
+                        <p style={{ color: '#ffffff' }}>Loading balances...</p>
                     ) : (
                         <div style={styles.tokenList}>
                             {Object.values(balances).map((token) => (
