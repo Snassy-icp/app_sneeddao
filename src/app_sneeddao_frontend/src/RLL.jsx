@@ -82,7 +82,7 @@ function RLL() {
             for (const token of TOKENS) {
                 const ledgerActor = createLedgerActor(token.canisterId);
                 const balance = await ledgerActor.icrc1_balance_of({
-                    owner: Principal.fromText('twapx-riaaa-aaaak-qlojq-cai'), // RLL canister ID
+                    owner: Principal.fromText(rllCanisterId),
                     subaccount: []
                 });
                 
