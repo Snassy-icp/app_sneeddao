@@ -1,0 +1,154 @@
+type UserDistributionEvent = 
+ record {
+   amount: nat;
+   proposal_range: record {
+                     first: nat64;
+                     last: nat64;
+                   };
+   timestamp: int;
+   token_id: principal;
+   user: principal;
+ };
+type TxIndex = nat;
+type TransferResult = 
+ variant {
+   Err: TransferError;
+   Ok: TxIndex;
+ };
+type TransferEvent = 
+ record {
+   amount: nat;
+   fee: nat;
+   from: principal;
+   sequence_number: nat;
+   success: bool;
+   timestamp: Timestamp;
+   to: principal;
+   token_id: principal;
+   tx_index: opt nat;
+ };
+type TransferError = 
+ variant {
+   BadBurn: record {min_burn_amount: Balance;};
+   BadFee: record {expected_fee: Balance;};
+   CreatedInFuture: record {ledger_time: Timestamp;};
+   Duplicate: record {duplicate_of: TxIndex;};
+   GenericError: record {
+                   error_code: nat;
+                   message: text;
+                 };
+   InsufficientFunds: record {balance: Balance;};
+   TemporarilyUnavailable;
+   TooOld;
+ };
+type TokenMetadata = 
+ record {
+   decimals: nat8;
+   fee: nat;
+   name: text;
+   symbol: text;
+ };
+type Timestamp = nat64;
+type SneedRLL = 
+ service {
+   add_known_token: (principal) -> ();
+   all_token_balances: () -> (vec record {
+                                    principal;
+                                    nat;
+                                  }) query;
+   balance_of: (principal, principal) -> (nat) query;
+   balance_reconciliation: () ->
+    (vec
+      record {
+        local_total: nat;
+        remaining: nat;
+        server_balance: nat;
+        token_id: principal;
+        underflow: nat;
+      });
+   balances_count: () -> (nat) query;
+   balances_of_hotkey: () -> (vec record {
+                                    principal;
+                                    nat;
+                                  });
+   claim_full_balance_of_hotkey: (principal, nat) -> (TransferResult);
+   clear_balances: () -> ();
+   clear_imported_neurons: () -> ();
+   clear_imported_owners: () -> ();
+   clear_imported_props: () -> ();
+   distribute_amount: (nat, principal, ProposalId, ProposalId) -> ();
+   get_claim_events: () -> (vec ClaimEvent) query;
+   get_claim_events_for_hotkey: (principal) -> (vec ClaimEvent) query;
+   get_distribution_events: () -> (vec DistributionEvent) query;
+   get_import_next_neuron_id: () -> (opt NeuronId) query;
+   get_import_stage: () -> (text) query;
+   get_imported_proposal_max: () -> (nat64) query;
+   get_known_tokens: () -> (vec record {
+                                  principal;
+                                  TokenMetadata;
+                                }) query;
+   get_token_distribution_events: (principal) ->
+    (vec DistributionEvent) query;
+   get_token_metadata: (principal) -> (opt TokenMetadata) query;
+   get_token_total_distribution: (principal) -> (nat) query;
+   get_total_distributions: () -> (vec record {
+                                         principal;
+                                         nat;
+                                       }) query;
+   get_transfer_events: () -> (vec TransferEvent) query;
+   get_user_distribution_events: () -> (vec UserDistributionEvent) query;
+   get_user_distributions: (principal) -> (vec record {
+                                                 principal;
+                                                 nat;
+                                               }) query;
+   get_user_specific_distribution_events: (principal) ->
+    (vec UserDistributionEvent) query;
+   get_user_token_distribution: (principal, principal) -> (nat) query;
+   get_user_token_distribution_events: (principal, principal) ->
+    (vec UserDistributionEvent) query;
+   import_all_neurons: () -> ();
+   import_all_new_neurons: () -> ();
+   import_all_new_proposals: () -> ();
+   import_all_proposals: () -> ();
+   imported_neurons_count: () -> (nat) query;
+   imported_owners_count: () -> (nat) query;
+   imported_props_count: () -> (nat) query;
+   remove_known_token: (principal) -> ();
+   start_import_cycle: () -> ();
+   test_set_balance: (principal, principal, nat) -> ();
+   total_balance: (principal) -> (nat) query;
+   transfer_remaining_balances: (principal) ->
+    (vec
+      record {
+        amount: nat;
+        fee: nat;
+        result: TransferResult;
+        token_id: principal;
+        tx_index: opt nat;
+      });
+ };
+type ProposalId = record {id: nat64;};
+type NeuronId = record {id: blob;};
+type DistributionEvent = 
+ record {
+   amount: nat;
+   proposal_range: record {
+                     first: nat64;
+                     last: nat64;
+                   };
+   timestamp: int;
+   token_id: principal;
+ };
+type ClaimEvent = 
+ record {
+   amount: nat;
+   error_message: opt text;
+   fee: nat;
+   hotkey: principal;
+   sequence_number: nat;
+   success: bool;
+   timestamp: Timestamp;
+   token_id: principal;
+ };
+type Balance = nat;
+service : () -> SneedRLL

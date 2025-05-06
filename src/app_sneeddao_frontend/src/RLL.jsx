@@ -122,7 +122,6 @@ function RLL() {
     const [balances, setBalances] = useState({});
     const [loadingTokens, setLoadingTokens] = useState(true);
     const [loadingBalances, setLoadingBalances] = useState({});
-    const [hideEmptyBalances, setHideEmptyBalances] = useState(false);
     const [distributions, setDistributions] = useState(null);
     const [loadingDistributions, setLoadingDistributions] = useState(true);
 
@@ -148,64 +147,6 @@ function RLL() {
             fetchTokens();
         }
     }, [isAuthenticated, identity]);
-
-    // Fetch balances progressively
-    useEffect(() => {
-        const fetchBalance = async (token) => {
-            // Skip non-ICRC tokens
-            if (!token.standard.toLowerCase().startsWith('icrc')) {
-                setBalances(prev => ({
-                    ...prev,
-                    [token.ledger_id.toText()]: {
-                        ...token,
-                        balance: null,
-                        error: 'Unsupported token standard'
-                    }
-                }));
-                return;
-            }
-
-            setLoadingBalances(prev => ({ ...prev, [token.ledger_id.toText()]: true }));
-            try {
-                const ledgerActor = createLedgerActor(token.ledger_id.toText());
-                const balance = await ledgerActor.icrc1_balance_of({
-                    owner: Principal.fromText(rllCanisterId),
-                    subaccount: []
-                });
-                
-                // Get metadata for logo
-                const metadata = await ledgerActor.icrc1_metadata();
-                const logo = getTokenLogo(metadata);
-
-                setBalances(prev => ({
-                    ...prev,
-                    [token.ledger_id.toText()]: {
-                        ...token,
-                        balance,
-                        logo
-                    }
-                }));
-            } catch (error) {
-                console.error(`Error fetching balance for ${token.symbol}:`, error);
-                setBalances(prev => ({
-                    ...prev,
-                    [token.ledger_id.toText()]: {
-                        ...token,
-                        balance: null,
-                        error: 'Error loading balance'
-                    }
-                }));
-            } finally {
-                setLoadingBalances(prev => ({ ...prev, [token.ledger_id.toText()]: false }));
-            }
-        };
-
-        if (tokens.length > 0) {
-            tokens.forEach((token) => {
-                fetchBalance(token);
-            });
-        }
-    }, [tokens]);
 
     // Fetch total distributions
     useEffect(() => {
@@ -235,23 +176,6 @@ function RLL() {
         return (Number(balance) / Math.pow(10, decimals)).toFixed(decimals);
     };
 
-    const getFilteredTokens = () => {
-        if (!hideEmptyBalances) return tokens;
-        
-        return tokens.filter(token => {
-            const balance = balances[token.ledger_id.toText()];
-            const isLoading = loadingBalances[token.ledger_id.toText()];
-            
-            // Show loading tokens
-            if (isLoading) return true;
-            
-            // Hide error tokens and empty balances
-            if (!balance || balance.balance === undefined || balance.error) return false;
-            
-            return Number(balance.balance) > 0;
-        });
-    };
-
     const formatDistributionValue = (value) => {
         return Number(value) / Math.pow(10, 8); // Assuming 8 decimals for ICP
     };
@@ -275,48 +199,19 @@ function RLL() {
                 <section style={styles.section}>
                     <h2 style={styles.heading}>RLL Canister Token Balances</h2>
                     <div style={styles.controls}>
-                        <input
-                            type="checkbox"
-                            id="hideEmptyBalances"
-                            checked={hideEmptyBalances}
-                            onChange={(e) => setHideEmptyBalances(e.target.checked)}
-                            style={styles.checkbox}
-                        />
-                        <label htmlFor="hideEmptyBalances">Hide empty balances</label>
+                        <Link 
+                            to={`/scan_wallet?principal=${rllCanisterId}`}
+                            style={{
+                                color: '#3498db',
+                                textDecoration: 'none',
+                                marginBottom: '15px',
+                                display: 'inline-block'
+                            }}
+                        >
+                            View in Token Scanner
+                        </Link>
                     </div>
-                    {loadingTokens ? (
-                        <p style={{ color: '#ffffff' }}>Loading tokens...</p>
-                    ) : (
-                        <div style={styles.tokenList}>
-                            {getFilteredTokens().map((token) => {
-                                const balance = balances[token.ledger_id.toText()];
-                                const isLoading = loadingBalances[token.ledger_id.toText()];
-                                
-                                return (
-                                    <div key={token.ledger_id.toText()} style={styles.tokenItem}>
-                                        {balance?.logo && (
-                                            <img 
-                                                src={balance.logo} 
-                                                alt={token.symbol} 
-                                                className="token-logo"
-                                                style={{ width: '24px', height: '24px', marginRight: '8px' }}
-                                            />
-                                        )}
-                                        <span style={styles.tokenSymbol}>{token.symbol}</span>
-                                        <span style={styles.tokenBalance}>
-                                            {isLoading ? (
-                                                <div style={styles.spinner} />
-                                            ) : balance ? (
-                                                formatBalance(balance.balance, token.decimals)
-                                            ) : (
-                                                'Error loading balance'
-                                            )}
-                                        </span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
+
                 </section>
 
                 <section style={styles.section}>
