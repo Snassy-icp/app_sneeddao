@@ -4,7 +4,7 @@ import { Principal } from '@dfinity/principal';
 import { useAuth } from './AuthContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
-import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { getTokenLogo } from './utils/TokenUtils';
 import './Help.css'; // We'll reuse the Help page styling for now
 
@@ -77,7 +77,7 @@ const TOKENS = [
 ];
 
 function RLL() {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, identity } = useAuth();
     const [tokens, setTokens] = useState([]);
     const [balances, setBalances] = useState({});
     const [loadingTokens, setLoadingTokens] = useState(true);
@@ -87,7 +87,11 @@ function RLL() {
     useEffect(() => {
         const fetchTokens = async () => {
             try {
-                const backendActor = createBackendActor();
+                const backendActor = createBackendActor(backendCanisterId, {
+                    agentOptions: {
+                        identity,
+                    },
+                });
                 const whitelistedTokens = await backendActor.get_whitelisted_tokens();
                 setTokens(whitelistedTokens);
             } catch (error) {
@@ -100,7 +104,7 @@ function RLL() {
         if (isAuthenticated) {
             fetchTokens();
         }
-    }, [isAuthenticated]);
+    }, [isAuthenticated, identity]);
 
     // Fetch balances progressively
     useEffect(() => {
