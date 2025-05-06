@@ -4,6 +4,7 @@ import { Principal } from '@dfinity/principal';
 import { useAuth } from './AuthContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
+import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 import { getTokenLogo } from './utils/TokenUtils';
 import './Help.css'; // We'll reuse the Help page styling for now
 
@@ -38,11 +39,22 @@ const styles = {
     tokenBalance: {
         fontFamily: 'monospace',
         fontSize: '1.1em',
-        color: '#ffffff'
+        color: '#ffffff',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
     },
     heading: {
         color: '#ffffff',
         marginBottom: '15px'
+    },
+    spinner: {
+        width: '20px',
+        height: '20px',
+        border: '2px solid #f3f3f3',
+        borderTop: '2px solid #3498db',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite',
     }
 };
 
@@ -65,22 +77,37 @@ const TOKENS = [
 ];
 
 function RLL() {
-    const { isAuthenticated, identity } = useAuth();
+    const { isAuthenticated } = useAuth();
+    const [tokens, setTokens] = useState([]);
     const [balances, setBalances] = useState({});
-    const [loading, setLoading] = useState(true);
+    const [loadingTokens, setLoadingTokens] = useState(true);
+    const [loadingBalances, setLoadingBalances] = useState({});
 
+    // Fetch whitelisted tokens
     useEffect(() => {
+        const fetchTokens = async () => {
+            try {
+                const backendActor = createBackendActor();
+                const whitelistedTokens = await backendActor.get_whitelisted_tokens();
+                setTokens(whitelistedTokens);
+            } catch (error) {
+                console.error('Error fetching whitelisted tokens:', error);
+            } finally {
+                setLoadingTokens(false);
+            }
+        };
+
         if (isAuthenticated) {
-            fetchBalances();
+            fetchTokens();
         }
     }, [isAuthenticated]);
 
-    const fetchBalances = async () => {
-        setLoading(true);
-        try {
-            const newBalances = {};
-            for (const token of TOKENS) {
-                const ledgerActor = createLedgerActor(token.canisterId);
+    // Fetch balances progressively
+    useEffect(() => {
+        const fetchBalance = async (token) => {
+            setLoadingBalances(prev => ({ ...prev, [token.ledger_id.toText()]: true }));
+            try {
+                const ledgerActor = createLedgerActor(token.ledger_id.toText());
                 const balance = await ledgerActor.icrc1_balance_of({
                     owner: Principal.fromText(rllCanisterId),
                     subaccount: []
@@ -90,19 +117,27 @@ function RLL() {
                 const metadata = await ledgerActor.icrc1_metadata();
                 const logo = getTokenLogo(metadata);
 
-                newBalances[token.canisterId] = {
-                    ...token,
-                    balance: balance,
-                    logo
-                };
+                setBalances(prev => ({
+                    ...prev,
+                    [token.ledger_id.toText()]: {
+                        ...token,
+                        balance,
+                        logo
+                    }
+                }));
+            } catch (error) {
+                console.error(`Error fetching balance for ${token.symbol}:`, error);
+            } finally {
+                setLoadingBalances(prev => ({ ...prev, [token.ledger_id.toText()]: false }));
             }
-            setBalances(newBalances);
-        } catch (error) {
-            console.error('Error fetching balances:', error);
-        } finally {
-            setLoading(false);
+        };
+
+        if (tokens.length > 0) {
+            tokens.forEach((token) => {
+                fetchBalance(token);
+            });
         }
-    };
+    }, [tokens]);
 
     const formatBalance = (balance, decimals) => {
         return (Number(balance) / Math.pow(10, decimals)).toFixed(decimals);
@@ -126,28 +161,50 @@ function RLL() {
                 
                 <section style={styles.tokenBalances}>
                     <h2 style={styles.heading}>RLL Canister Token Balances</h2>
-                    {loading ? (
-                        <p style={{ color: '#ffffff' }}>Loading balances...</p>
+                    {loadingTokens ? (
+                        <p style={{ color: '#ffffff' }}>Loading tokens...</p>
                     ) : (
                         <div style={styles.tokenList}>
-                            {Object.values(balances).map((token) => (
-                                <div key={token.canisterId} style={styles.tokenItem}>
-                                    <img 
-                                        src={token.logo} 
-                                        alt={token.symbol} 
-                                        className="token-logo"
-                                        style={{ width: '24px', height: '24px', marginRight: '8px' }}
-                                    />
-                                    <span style={styles.tokenSymbol}>{token.symbol}</span>
-                                    <span style={styles.tokenBalance}>
-                                        {formatBalance(token.balance, token.decimals)}
-                                    </span>
-                                </div>
-                            ))}
+                            {tokens.map((token) => {
+                                const balance = balances[token.ledger_id.toText()];
+                                const isLoading = loadingBalances[token.ledger_id.toText()];
+                                
+                                return (
+                                    <div key={token.ledger_id.toText()} style={styles.tokenItem}>
+                                        {balance?.logo && (
+                                            <img 
+                                                src={balance.logo} 
+                                                alt={token.symbol} 
+                                                className="token-logo"
+                                                style={{ width: '24px', height: '24px', marginRight: '8px' }}
+                                            />
+                                        )}
+                                        <span style={styles.tokenSymbol}>{token.symbol}</span>
+                                        <span style={styles.tokenBalance}>
+                                            {isLoading ? (
+                                                <div style={styles.spinner} />
+                                            ) : balance ? (
+                                                formatBalance(balance.balance, token.decimals)
+                                            ) : (
+                                                'Error loading balance'
+                                            )}
+                                        </span>
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
                 </section>
             </main>
+
+            <style>
+                {`
+                    @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                    }
+                `}
+            </style>
         </div>
     );
 }
