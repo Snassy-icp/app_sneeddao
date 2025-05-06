@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from './AuthContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { getTokenLogo } from './utils/TokenUtils';
 import './Help.css'; // We'll reuse the Help page styling for now
 
@@ -69,10 +70,10 @@ function RLL() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (isAuthenticated && identity) {
+        if (isAuthenticated) {
             fetchBalances();
         }
-    }, [isAuthenticated, identity]);
+    }, [isAuthenticated]);
 
     const fetchBalances = async () => {
         setLoading(true);
@@ -81,7 +82,7 @@ function RLL() {
             for (const token of TOKENS) {
                 const ledgerActor = createLedgerActor(token.canisterId);
                 const balance = await ledgerActor.icrc1_balance_of({
-                    owner: identity.getPrincipal(),
+                    owner: Principal.fromText('twapx-riaaa-aaaak-qlojq-cai'), // RLL canister ID
                     subaccount: []
                 });
                 
@@ -124,7 +125,7 @@ function RLL() {
                 <h1 style={{ color: '#ffffff' }}>RLL</h1>
                 
                 <section style={styles.tokenBalances}>
-                    <h2 style={styles.heading}>Token Balances</h2>
+                    <h2 style={styles.heading}>RLL Canister Token Balances</h2>
                     {loading ? (
                         <p style={{ color: '#ffffff' }}>Loading balances...</p>
                     ) : (
