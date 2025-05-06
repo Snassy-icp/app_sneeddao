@@ -146,6 +146,19 @@ function ScanWallet() {
         const fetchBalance = async (token) => {
             if (!currentPrincipal) return;
             
+            // Skip non-ICRC tokens
+            if (!token.standard.toLowerCase().startsWith('icrc')) {
+                setBalances(prev => ({
+                    ...prev,
+                    [token.ledger_id.toText()]: {
+                        ...token,
+                        balance: null,
+                        error: 'Unsupported token standard'
+                    }
+                }));
+                return;
+            }
+            
             setLoadingBalances(prev => ({ ...prev, [token.ledger_id.toText()]: true }));
             try {
                 const ledgerActor = createLedgerActor(token.ledger_id.toText());
@@ -168,6 +181,14 @@ function ScanWallet() {
                 }));
             } catch (error) {
                 console.error(`Error fetching balance for ${token.symbol}:`, error);
+                setBalances(prev => ({
+                    ...prev,
+                    [token.ledger_id.toText()]: {
+                        ...token,
+                        balance: null,
+                        error: 'Error loading balance'
+                    }
+                }));
             } finally {
                 setLoadingBalances(prev => ({ ...prev, [token.ledger_id.toText()]: false }));
             }
@@ -213,7 +234,7 @@ function ScanWallet() {
             if (isLoading) return true;
             
             // Hide error tokens and empty balances
-            if (!balance || balance.balance === undefined) return false;
+            if (!balance || balance.balance === undefined || balance.error) return false;
             
             return Number(balance.balance) > 0;
         });

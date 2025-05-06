@@ -152,11 +152,24 @@ function RLL() {
     // Fetch balances progressively
     useEffect(() => {
         const fetchBalance = async (token) => {
+            // Skip non-ICRC tokens
+            if (!token.standard.toLowerCase().startsWith('icrc')) {
+                setBalances(prev => ({
+                    ...prev,
+                    [token.ledger_id.toText()]: {
+                        ...token,
+                        balance: null,
+                        error: 'Unsupported token standard'
+                    }
+                }));
+                return;
+            }
+
             setLoadingBalances(prev => ({ ...prev, [token.ledger_id.toText()]: true }));
             try {
                 const ledgerActor = createLedgerActor(token.ledger_id.toText());
                 const balance = await ledgerActor.icrc1_balance_of({
-                    owner: Principal.fromText("lvc4n-7aaaa-aaaam-adm6a-cai" /*rllCanisterId*/),
+                    owner: Principal.fromText(rllCanisterId),
                     subaccount: []
                 });
                 
@@ -174,6 +187,14 @@ function RLL() {
                 }));
             } catch (error) {
                 console.error(`Error fetching balance for ${token.symbol}:`, error);
+                setBalances(prev => ({
+                    ...prev,
+                    [token.ledger_id.toText()]: {
+                        ...token,
+                        balance: null,
+                        error: 'Error loading balance'
+                    }
+                }));
             } finally {
                 setLoadingBalances(prev => ({ ...prev, [token.ledger_id.toText()]: false }));
             }
@@ -225,7 +246,7 @@ function RLL() {
             if (isLoading) return true;
             
             // Hide error tokens and empty balances
-            if (!balance || balance.balance === undefined) return false;
+            if (!balance || balance.balance === undefined || balance.error) return false;
             
             return Number(balance.balance) > 0;
         });
