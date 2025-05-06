@@ -84,12 +84,12 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // Whitelist management functions
   public shared ({ caller }) func add_whitelisted_token(token: WhitelistedToken) : async () {
     // Only allow the deployer to add whitelisted tokens
-    assert(caller == deployer.caller);
+    assert(is_admin(caller));
     whitelisted_tokens.put(token.ledger_id, token);
   };
 
   public shared ({ caller }) func remove_whitelisted_token(ledger_id: Principal) : async () {
-    assert(caller == deployer.caller);
+    assert(is_admin(caller));
     whitelisted_tokens.delete(ledger_id);
   };
 
@@ -194,7 +194,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   };
 
   public shared ({ caller }) func import_whitelist_from_swaprunner() : async () {
-    assert(caller == deployer.caller);
+    assert(is_admin(caller));
     
     let tokens = await swaprunner.get_whitelisted_tokens();
     for ((ledger_id, metadata) in tokens.vals()) {
