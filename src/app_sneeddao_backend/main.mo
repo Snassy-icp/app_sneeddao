@@ -2,6 +2,9 @@ import Principal "mo:base/Principal";
 import HashMap "mo:base/HashMap";
 import List "mo:base/List";
 import Iter "mo:base/Iter";
+import Nat "mo:base/Nat";
+import Nat8 "mo:base/Nat8";
+import Text "mo:base/Text";
 
 import T "Types";
 
@@ -12,18 +15,48 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   type StablePrincipalSwapCanisters = T.StablePrincipalSwapCanisters;
   type StablePrincipalLedgerCanisters = T.StablePrincipalLedgerCanisters;
 
+  // Token whitelist types
+  type WhitelistedToken = {
+    ledger_id: Principal;
+    decimals: Nat8;
+    fee: Nat;
+    name: Text;
+    symbol: Text;
+  };
 
   // stable memory
   stable var stable_principal_swap_canisters : StablePrincipalSwapCanisters = [];
   stable var stable_principal_ledger_canisters : StablePrincipalLedgerCanisters = [];
+  stable var stable_whitelisted_tokens : [WhitelistedToken] = [];
 
   var cached_token_meta : HashMap.HashMap<Principal, T.TokenMeta> = HashMap.HashMap<Principal, T.TokenMeta>(100, Principal.equal, Principal.hash);
+  var whitelisted_tokens : HashMap.HashMap<Principal, WhitelistedToken> = HashMap.HashMap<Principal, WhitelistedToken>(10, Principal.equal, Principal.hash);
 
   // ephemeral state
   let state : State = object { 
     // initialize as empty here, see postupgrade for how to populate from stable memory
     public let principal_swap_canisters: HashMap.HashMap<Principal, List.List<Principal>> = HashMap.HashMap<Principal, List.List<Principal>>(100, Principal.equal, Principal.hash);
     public let principal_ledger_canisters: HashMap.HashMap<Principal, List.List<Principal>> = HashMap.HashMap<Principal, List.List<Principal>>(100, Principal.equal, Principal.hash);
+  };
+
+  // Whitelist management functions
+  public shared ({ caller }) func add_whitelisted_token(token: WhitelistedToken) : async () {
+    // Only allow the deployer to add whitelisted tokens
+    assert(caller == deployer.caller);
+    whitelisted_tokens.put(token.ledger_id, token);
+  };
+
+  public shared ({ caller }) func remove_whitelisted_token(ledger_id: Principal) : async () {
+    assert(caller == deployer.caller);
+    whitelisted_tokens.delete(ledger_id);
+  };
+
+  public query func get_whitelisted_tokens() : async [WhitelistedToken] {
+    Iter.toArray(whitelisted_tokens.vals());
+  };
+
+  public query func is_token_whitelisted(ledger_id: Principal) : async Bool {
+    whitelisted_tokens.get(ledger_id) != null;
   };
 
   public query func get_cached_token_meta(swap_canister_id : Principal) : async ?T.TokenMeta { 
@@ -146,11 +179,12 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     };
     stable_principal_ledger_canisters := List.toArray<(Principal, [Principal])>(list_stable_principal_ledger_canisters);
 
+    // Save whitelisted tokens to stable storage
+    stable_whitelisted_tokens := Iter.toArray(whitelisted_tokens.vals());
   };
 
   // initialize ephemeral state and empty stable arrays to save memory
   system func postupgrade() {
-
       /// stable_principal_swap_canisters
       let stableSwapCanistersIter : Iter.Iter<(Principal, [Principal])> = stable_principal_swap_canisters.vals();
       for (principalSwapCanisters in stableSwapCanistersIter) {
@@ -164,6 +198,12 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         state.principal_ledger_canisters.put(principalLedgerCanisters.0, List.fromArray<Principal>(principalLedgerCanisters.1));
       };
       stable_principal_ledger_canisters := [];
+
+      // Restore whitelisted tokens from stable storage
+      for (token in stable_whitelisted_tokens.vals()) {
+        whitelisted_tokens.put(token.ledger_id, token);
+      };
+      stable_whitelisted_tokens := [];
   };
 
 };
