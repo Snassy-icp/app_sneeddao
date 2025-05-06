@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from './AuthContext';
-import { createLedgerActor } from './utils/actors';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo } from './utils/TokenUtils';
 import './Help.css'; // We'll reuse the Help page styling for now
 
