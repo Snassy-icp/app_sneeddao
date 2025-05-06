@@ -11,6 +11,10 @@ function Help() {
             <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
           </Link>
         </div>
+        <nav className="nav-links">
+          <Link to="/help" className="active">Help</Link>
+          <Link to="/rll">RLL</Link>
+        </nav>
       </header>
       <main className="help-container">
         <h1>Sneedlock Help Guide</h1>

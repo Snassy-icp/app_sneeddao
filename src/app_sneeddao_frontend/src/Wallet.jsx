@@ -25,7 +25,6 @@ import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rates, getTokenTVL } from './utils/TokenUtils';
 import { getPositionTVL } from "./utils/PositionUtils";
 
-const is_prod = false;
 const showDebug = false;
         
 const known_icrc1_ledgers = {};
@@ -56,12 +55,6 @@ function Wallet() {
     const [totalDollarValue, setTotalDollarValue] = useState(0.0);
 
     const dex_icpswap = 1;
-    //const rll_canister_id = is_prod 
-    //    ? Principal.fromText("lvc4n-7aaaa-aaaam-adm6a-cai") // Prod
-    //    : Principal.fromText("twapx-riaaa-aaaak-qlojq-cai"); // Test
-    //const sneed_lock_canister_id = is_prod 
-   //     ? Principal.fromText("pqsms-lqaaa-aaaal-ajjza-cai") // Prod
-   //     : Principal.fromText("25fsc-7yaaa-aaaal-qjt5q-cai"); // Test
  
     useEffect(() => {
         if (!isAuthenticated) {

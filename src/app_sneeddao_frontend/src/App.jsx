@@ -7,6 +7,7 @@ import Dashboard from './Dashboard';
 import TokenLock from './TokenLock';
 import PositionLock from './PositionLock';
 import TokenLocksOverview from './TokenLocksOverview';
+import RLL from './RLL';
 import { AuthProvider } from './AuthContext';
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
           <Route path="/wallet" element={<Wallet />} />
           <Route path="/doc" element={<Doc />} />
           <Route path="/help" element={<Help />} />
+          <Route path="/rll" element={<RLL />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/tokenlock" element={<TokenLock />} />
           <Route path="/positionlock" element={<PositionLock />} />
