@@ -48,6 +48,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // SwapRunner actor
   let swaprunner = actor(SWAPRUNNER_CANISTER_ID) : actor {
     get_whitelisted_tokens : shared query () -> async [(Principal, SwapRunnerTokenMetadata)];
+    get_all_tokens : shared query () -> async [(Principal, SwapRunnerTokenMetadata)];
   };
 
   // Admin management functions
@@ -196,7 +197,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   public shared ({ caller }) func import_whitelist_from_swaprunner() : async () {
     assert(is_admin(caller));
     
-    let tokens = await swaprunner.get_whitelisted_tokens();
+    let tokens = await swaprunner.get_all_tokens();
     for ((ledger_id, metadata) in tokens.vals()) {
       switch (metadata.decimals, metadata.fee, metadata.name, metadata.symbol) {
         case (?decimals, ?fee, ?name, ?symbol) {
