@@ -166,7 +166,14 @@ function RLL() {
         
         return tokens.filter(token => {
             const balance = balances[token.ledger_id.toText()];
-            if (!balance || balance.balance === undefined) return true; // Show loading tokens
+            const isLoading = loadingBalances[token.ledger_id.toText()];
+            
+            // Show loading tokens
+            if (isLoading) return true;
+            
+            // Hide error tokens and empty balances
+            if (!balance || balance.balance === undefined) return false;
+            
             return Number(balance.balance) > 0;
         });
     };
