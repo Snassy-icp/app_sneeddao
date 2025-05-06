@@ -17,7 +17,8 @@
     "rll": {
       "type": "custom",
       "candid": "src/external/rll/rll.did",
-      "wasm": "dummy.wasm",
+      "wasm": "none",
+      "build": "false",
       "remote": {
         "id": {
           "ic": "twapx-riaaa-aaaak-qlojq-cai"
@@ -27,10 +28,22 @@
     "sneed_lock": {
       "type": "custom",
       "candid": "src/external/sneed_lock/sneed_lock.did",
-      "wasm": "dummy.wasm",
+      "wasm": "none",
+      "build": "false",
       "remote": {
         "id": {
           "ic": "25fsc-7yaaa-aaaal-qjt5q-cai"
+        }
+      }
+    },
+    "swaprunner_backend": {
+      "type": "custom",
+      "candid": "src/external/swaprunner/swaprunner.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "rxaqa-eyaaa-aaaao-a356q-cai"
         }
       }
     }

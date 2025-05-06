@@ -35,6 +35,17 @@
           "ic": "pqsms-lqaaa-aaaal-ajjza-cai"
         }
       }
+    },
+    "swaprunner_backend": {
+      "type": "custom",
+      "candid": "src/external/swaprunner_backend/swaprunner_backend.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "tt72q-zqaaa-aaaaj-az4va-cai"
+        }
+      }
     }
   },
   "defaults": {
