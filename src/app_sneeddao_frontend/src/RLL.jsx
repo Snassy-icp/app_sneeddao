@@ -68,6 +68,33 @@ const styles = {
         width: '16px',
         height: '16px',
         accentColor: '#3498db'
+    },
+    section: {
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginTop: '20px',
+        color: '#ffffff'
+    },
+    distributionItem: {
+        display: 'flex',
+        alignItems: 'center',
+        padding: '15px',
+        backgroundColor: '#3a3a3a',
+        borderRadius: '6px',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+        color: '#ffffff',
+        marginBottom: '10px'
+    },
+    distributionLabel: {
+        fontWeight: 'bold',
+        marginRight: 'auto',
+        color: '#ffffff'
+    },
+    distributionValue: {
+        fontFamily: 'monospace',
+        fontSize: '1.1em',
+        color: '#ffffff'
     }
 };
 
@@ -96,6 +123,8 @@ function RLL() {
     const [loadingTokens, setLoadingTokens] = useState(true);
     const [loadingBalances, setLoadingBalances] = useState({});
     const [hideEmptyBalances, setHideEmptyBalances] = useState(false);
+    const [distributions, setDistributions] = useState(null);
+    const [loadingDistributions, setLoadingDistributions] = useState(true);
 
     // Fetch whitelisted tokens
     useEffect(() => {
@@ -127,7 +156,7 @@ function RLL() {
             try {
                 const ledgerActor = createLedgerActor(token.ledger_id.toText());
                 const balance = await ledgerActor.icrc1_balance_of({
-                    owner: Principal.fromText(rllCanisterId),
+                    owner: Principal.fromText("lvc4n-7aaaa-aaaam-adm6a-cai" /*rllCanisterId*/),
                     subaccount: []
                 });
                 
@@ -157,6 +186,30 @@ function RLL() {
         }
     }, [tokens]);
 
+    // Fetch total distributions
+    useEffect(() => {
+        const fetchDistributions = async () => {
+            if (!isAuthenticated) return;
+            
+            setLoadingDistributions(true);
+            try {
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: {
+                        identity,
+                    },
+                });
+                const totalDistributions = await rllActor.get_total_distributions();
+                setDistributions(totalDistributions);
+            } catch (error) {
+                console.error('Error fetching total distributions:', error);
+            } finally {
+                setLoadingDistributions(false);
+            }
+        };
+
+        fetchDistributions();
+    }, [isAuthenticated, identity]);
+
     const formatBalance = (balance, decimals) => {
         return (Number(balance) / Math.pow(10, decimals)).toFixed(decimals);
     };
@@ -178,6 +231,10 @@ function RLL() {
         });
     };
 
+    const formatDistributionValue = (value) => {
+        return Number(value) / Math.pow(10, 8); // Assuming 8 decimals for ICP
+    };
+
     return (
         <div className='page-container'>
             <header className="site-header">
@@ -194,7 +251,7 @@ function RLL() {
             <main className="help-container">
                 <h1 style={{ color: '#ffffff' }}>RLL</h1>
                 
-                <section style={styles.tokenBalances}>
+                <section style={styles.section}>
                     <h2 style={styles.heading}>RLL Canister Token Balances</h2>
                     <div style={styles.controls}>
                         <input
@@ -238,6 +295,30 @@ function RLL() {
                                 );
                             })}
                         </div>
+                    )}
+                </section>
+
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Total Distributions</h2>
+                    {loadingDistributions ? (
+                        <div style={styles.spinner} />
+                    ) : distributions ? (
+                        <>
+                            <div style={styles.distributionItem}>
+                                <span style={styles.distributionLabel}>Total ICP Distributed</span>
+                                <span style={styles.distributionValue}>
+                                    {formatDistributionValue(distributions.total_icp_distributed)} ICP
+                                </span>
+                            </div>
+                            <div style={styles.distributionItem}>
+                                <span style={styles.distributionLabel}>Total SNEED Distributed</span>
+                                <span style={styles.distributionValue}>
+                                    {formatDistributionValue(distributions.total_sneed_distributed)} SNEED
+                                </span>
+                            </div>
+                        </>
+                    ) : (
+                        <p style={{ color: '#ffffff' }}>Error loading distributions</p>
                     )}
                 </section>
             </main>
