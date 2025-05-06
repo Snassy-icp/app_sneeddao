@@ -38,7 +38,7 @@
     },
     "swaprunner_backend": {
       "type": "custom",
-      "candid": "src/external/swaprunner/swaprunner.did",
+      "candid": "src/external/swaprunner_backend/swaprunner_backend.did",
       "wasm": "none",
       "build": "false",
       "remote": {

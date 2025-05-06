@@ -10,10 +10,13 @@ import T "Types";
 
 shared (deployer) actor class AppSneedDaoBackend() = this {
 
+  let SWAPRUNNER_CANISTER_ID : Text = "tt72q-zqaaa-aaaaj-az4va-cai";
+
   // aliases
   type State = T.State;
   type StablePrincipalSwapCanisters = T.StablePrincipalSwapCanisters;
   type StablePrincipalLedgerCanisters = T.StablePrincipalLedgerCanisters;
+  type SwapRunnerTokenMetadata = T.SwapRunnerTokenMetadata;
 
   // Token whitelist types
   type WhitelistedToken = {
@@ -22,6 +25,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     fee: Nat;
     name: Text;
     symbol: Text;
+    standard: Text;
   };
 
   // stable memory
@@ -37,6 +41,11 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     // initialize as empty here, see postupgrade for how to populate from stable memory
     public let principal_swap_canisters: HashMap.HashMap<Principal, List.List<Principal>> = HashMap.HashMap<Principal, List.List<Principal>>(100, Principal.equal, Principal.hash);
     public let principal_ledger_canisters: HashMap.HashMap<Principal, List.List<Principal>> = HashMap.HashMap<Principal, List.List<Principal>>(100, Principal.equal, Principal.hash);
+  };
+
+  // SwapRunner actor
+  let swaprunner = actor(SWAPRUNNER_CANISTER_ID) : actor {
+    get_whitelisted_tokens : shared query () -> async [(Principal, SwapRunnerTokenMetadata)];
   };
 
   // Whitelist management functions
@@ -148,6 +157,28 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     switch (state.principal_ledger_canisters.get(principal)) {
       case (?existingLedgerCanisters) List.toArray<Principal>(existingLedgerCanisters);
       case _ [] : [Principal];
+    };
+  };
+
+  public shared ({ caller }) func import_whitelist_from_swaprunner() : async () {
+    assert(caller == deployer.caller);
+    
+    let tokens = await swaprunner.get_whitelisted_tokens();
+    for ((ledger_id, metadata) in tokens.vals()) {
+      switch (metadata.decimals, metadata.fee, metadata.name, metadata.symbol) {
+        case (?decimals, ?fee, ?name, ?symbol) {
+          let token : WhitelistedToken = {
+            ledger_id = ledger_id;
+            decimals = decimals;
+            fee = fee;
+            name = name;
+            symbol = symbol;
+            standard = metadata.standard;
+          };
+          whitelisted_tokens.put(ledger_id, token);
+        };
+        case _ { /* Skip tokens with missing required metadata */ };
+      };
     };
   };
 

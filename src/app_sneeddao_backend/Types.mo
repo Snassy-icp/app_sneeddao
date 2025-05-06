@@ -20,4 +20,13 @@ module {
         token0 : [(Text, TokenMetaValue)];
         token1 : [(Text, TokenMetaValue)];
     };
+
+    public type SwapRunnerTokenMetadata = {
+        decimals: ?Nat8;
+        fee: ?Nat;
+        hasLogo: Bool;
+        name: ?Text;
+        standard: Text;
+        symbol: ?Text;
+    };    
 };
