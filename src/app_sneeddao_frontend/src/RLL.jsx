@@ -55,6 +55,19 @@ const styles = {
         borderTop: '2px solid #3498db',
         borderRadius: '50%',
         animation: 'spin 1s linear infinite',
+    },
+    controls: {
+        marginBottom: '15px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        color: '#ffffff'
+    },
+    checkbox: {
+        cursor: 'pointer',
+        width: '16px',
+        height: '16px',
+        accentColor: '#3498db'
     }
 };
 
@@ -82,6 +95,7 @@ function RLL() {
     const [balances, setBalances] = useState({});
     const [loadingTokens, setLoadingTokens] = useState(true);
     const [loadingBalances, setLoadingBalances] = useState({});
+    const [hideEmptyBalances, setHideEmptyBalances] = useState(false);
 
     // Fetch whitelisted tokens
     useEffect(() => {
@@ -147,6 +161,16 @@ function RLL() {
         return (Number(balance) / Math.pow(10, decimals)).toFixed(decimals);
     };
 
+    const getFilteredTokens = () => {
+        if (!hideEmptyBalances) return tokens;
+        
+        return tokens.filter(token => {
+            const balance = balances[token.ledger_id.toText()];
+            if (!balance || balance.balance === undefined) return true; // Show loading tokens
+            return Number(balance.balance) > 0;
+        });
+    };
+
     return (
         <div className='page-container'>
             <header className="site-header">
@@ -165,11 +189,21 @@ function RLL() {
                 
                 <section style={styles.tokenBalances}>
                     <h2 style={styles.heading}>RLL Canister Token Balances</h2>
+                    <div style={styles.controls}>
+                        <input
+                            type="checkbox"
+                            id="hideEmptyBalances"
+                            checked={hideEmptyBalances}
+                            onChange={(e) => setHideEmptyBalances(e.target.checked)}
+                            style={styles.checkbox}
+                        />
+                        <label htmlFor="hideEmptyBalances">Hide empty balances</label>
+                    </div>
                     {loadingTokens ? (
                         <p style={{ color: '#ffffff' }}>Loading tokens...</p>
                     ) : (
                         <div style={styles.tokenList}>
-                            {tokens.map((token) => {
+                            {getFilteredTokens().map((token) => {
                                 const balance = balances[token.ledger_id.toText()];
                                 const isLoading = loadingBalances[token.ledger_id.toText()];
                                 
