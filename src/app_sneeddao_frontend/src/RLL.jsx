@@ -154,6 +154,8 @@ function RLL() {
     const [loadingEvents, setLoadingEvents] = useState(true);
     const [userClaimEvents, setUserClaimEvents] = useState([]);
     const [loadingUserEvents, setLoadingUserEvents] = useState(true);
+    const [userBalances, setUserBalances] = useState([]);
+    const [loadingUserBalances, setLoadingUserBalances] = useState(true);
 
     // Fetch whitelisted tokens
     useEffect(() => {
@@ -257,6 +259,30 @@ function RLL() {
         fetchUserEvents();
     }, [isAuthenticated, identity]);
 
+    // Fetch user's balances
+    useEffect(() => {
+        const fetchUserBalances = async () => {
+            if (!isAuthenticated || !identity) return;
+            
+            setLoadingUserBalances(true);
+            try {
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: {
+                        identity,
+                    },
+                });
+                const balances = await rllActor.balances_of_hotkey();
+                setUserBalances(balances);
+            } catch (error) {
+                console.error('Error fetching user balances:', error);
+            } finally {
+                setLoadingUserBalances(false);
+            }
+        };
+
+        fetchUserBalances();
+    }, [isAuthenticated, identity]);
+
     const formatBalance = (balance, decimals) => {
         if (!balance) return '0';
         return (Number(balance) / Math.pow(10, decimals)).toFixed(decimals);
@@ -306,6 +332,33 @@ function RLL() {
                             View in Token Scanner
                         </Link>
                     </div>
+                </section>
+
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Your Token Balances</h2>
+                    {loadingUserBalances ? (
+                        <div style={styles.spinner} />
+                    ) : userBalances.length > 0 ? (
+                        <div style={styles.eventList}>
+                            {userBalances.map(([tokenId, balance], index) => {
+                                const token = tokens.find(t => t.ledger_id.toString() === tokenId.toString());
+                                if (!token) return null;
+                                
+                                return (
+                                    <div key={index} style={styles.eventItem}>
+                                        <div style={styles.eventHeader}>
+                                            <span>{token.symbol}</span>
+                                        </div>
+                                        <div style={styles.eventDetails}>
+                                            <span>Balance: {formatBalance(balance, token.decimals)} {token.symbol}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <p style={{ color: '#ffffff' }}>No token balances found</p>
+                    )}
                 </section>
 
                 <section style={styles.section}>
