@@ -95,6 +95,30 @@ const styles = {
         fontFamily: 'monospace',
         fontSize: '1.1em',
         color: '#ffffff'
+    },
+    eventList: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '15px'
+    },
+    eventItem: {
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '15px',
+        backgroundColor: '#3a3a3a',
+        borderRadius: '6px',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+        color: '#ffffff'
+    },
+    eventHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        marginBottom: '10px'
+    },
+    eventDetails: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '5px'
     }
 };
 
@@ -124,6 +148,10 @@ function RLL() {
     const [loadingBalances, setLoadingBalances] = useState({});
     const [distributions, setDistributions] = useState(null);
     const [loadingDistributions, setLoadingDistributions] = useState(true);
+    const [distributionEvents, setDistributionEvents] = useState([]);
+    const [transferEvents, setTransferEvents] = useState([]);
+    const [claimEvents, setClaimEvents] = useState([]);
+    const [loadingEvents, setLoadingEvents] = useState(true);
 
     // Fetch whitelisted tokens
     useEffect(() => {
@@ -172,6 +200,37 @@ function RLL() {
         fetchDistributions();
     }, [isAuthenticated, identity]);
 
+    // Fetch events
+    useEffect(() => {
+        const fetchEvents = async () => {
+            if (!isAuthenticated) return;
+            
+            setLoadingEvents(true);
+            try {
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: {
+                        identity,
+                    },
+                });
+                const [distributions, transfers, claims] = await Promise.all([
+                    rllActor.get_distribution_events(),
+                    rllActor.get_transfer_events(),
+                    rllActor.get_claim_events()
+                ]);
+                
+                setDistributionEvents(distributions);
+                setTransferEvents(transfers);
+                setClaimEvents(claims);
+            } catch (error) {
+                console.error('Error fetching events:', error);
+            } finally {
+                setLoadingEvents(false);
+            }
+        };
+
+        fetchEvents();
+    }, [isAuthenticated, identity]);
+
     const formatBalance = (balance, decimals) => {
         if (!balance) return '0';
         return (Number(balance) / Math.pow(10, decimals)).toFixed(decimals);
@@ -180,6 +239,14 @@ function RLL() {
     const getTokenDecimals = (symbol) => {
         const token = tokens.find(t => t.symbol === symbol);
         return token ? token.decimals : 8; // fallback to 8 decimals if token not found
+    };
+
+    const formatTimestamp = (timestamp) => {
+        return new Date(Number(timestamp) / 1_000_000).toLocaleString();
+    };
+
+    const formatProposalRange = (range) => {
+        return `${range.first} - ${range.last}`;
     };
 
     return (
@@ -222,7 +289,6 @@ function RLL() {
                     ) : distributions ? (
                         <>
                             {Object.entries(distributions).map(([key, value]) => {
-                                // Convert key from total_X_distributed to token symbol X
                                 const symbol = key.replace('total_', '').replace('_distributed', '').toUpperCase();
                                 return (
                                     <div key={key} style={styles.distributionItem}>
@@ -236,6 +302,75 @@ function RLL() {
                         </>
                     ) : (
                         <p style={{ color: '#ffffff' }}>Error loading distributions</p>
+                    )}
+                </section>
+
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Recent Distribution Events</h2>
+                    {loadingEvents ? (
+                        <div style={styles.spinner} />
+                    ) : (
+                        <div style={styles.eventList}>
+                            {distributionEvents.slice(0, 5).map((event, index) => (
+                                <div key={index} style={styles.eventItem}>
+                                    <div style={styles.eventHeader}>
+                                        <span>Proposals: {formatProposalRange(event.proposal_range)}</span>
+                                        <span>{formatTimestamp(event.timestamp)}</span>
+                                    </div>
+                                    <div style={styles.eventDetails}>
+                                        <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
+
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Recent Transfer Events</h2>
+                    {loadingEvents ? (
+                        <div style={styles.spinner} />
+                    ) : (
+                        <div style={styles.eventList}>
+                            {transferEvents.slice(0, 5).map((event, index) => (
+                                <div key={index} style={styles.eventItem}>
+                                    <div style={styles.eventHeader}>
+                                        <span>{event.success ? 'Success' : 'Failed'}</span>
+                                        <span>{formatTimestamp(event.timestamp)}</span>
+                                    </div>
+                                    <div style={styles.eventDetails}>
+                                        <span>From: {event.from.toString()}</span>
+                                        <span>To: {event.to.toString()}</span>
+                                        <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
+                                        <span>Fee: {formatBalance(event.fee, getTokenDecimals(event.token_id.toString()))} tokens</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
+
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Recent Claim Events</h2>
+                    {loadingEvents ? (
+                        <div style={styles.spinner} />
+                    ) : (
+                        <div style={styles.eventList}>
+                            {claimEvents.slice(0, 5).map((event, index) => (
+                                <div key={index} style={styles.eventItem}>
+                                    <div style={styles.eventHeader}>
+                                        <span>{event.success ? 'Success' : 'Failed'}</span>
+                                        <span>{formatTimestamp(event.timestamp)}</span>
+                                    </div>
+                                    <div style={styles.eventDetails}>
+                                        <span>Hotkey: {event.hotkey.toString()}</span>
+                                        <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
+                                        <span>Fee: {formatBalance(event.fee, getTokenDecimals(event.token_id.toString()))} tokens</span>
+                                        {event.error_message && <span>Error: {event.error_message}</span>}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     )}
                 </section>
             </main>
