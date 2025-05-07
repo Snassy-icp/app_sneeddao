@@ -152,6 +152,8 @@ function RLL() {
     const [transferEvents, setTransferEvents] = useState([]);
     const [claimEvents, setClaimEvents] = useState([]);
     const [loadingEvents, setLoadingEvents] = useState(true);
+    const [userClaimEvents, setUserClaimEvents] = useState([]);
+    const [loadingUserEvents, setLoadingUserEvents] = useState(true);
 
     // Fetch whitelisted tokens
     useEffect(() => {
@@ -231,6 +233,30 @@ function RLL() {
         fetchEvents();
     }, [isAuthenticated, identity]);
 
+    // Fetch user's claim events
+    useEffect(() => {
+        const fetchUserEvents = async () => {
+            if (!isAuthenticated || !identity) return;
+            
+            setLoadingUserEvents(true);
+            try {
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: {
+                        identity,
+                    },
+                });
+                const claims = await rllActor.get_claim_events_for_hotkey(identity.getPrincipal());
+                setUserClaimEvents(claims);
+            } catch (error) {
+                console.error('Error fetching user claim events:', error);
+            } finally {
+                setLoadingUserEvents(false);
+            }
+        };
+
+        fetchUserEvents();
+    }, [isAuthenticated, identity]);
+
     const formatBalance = (balance, decimals) => {
         if (!balance) return '0';
         return (Number(balance) / Math.pow(10, decimals)).toFixed(decimals);
@@ -280,6 +306,31 @@ function RLL() {
                             View in Token Scanner
                         </Link>
                     </div>
+                </section>
+
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Your Claim History</h2>
+                    {loadingUserEvents ? (
+                        <div style={styles.spinner} />
+                    ) : userClaimEvents.length > 0 ? (
+                        <div style={styles.eventList}>
+                            {userClaimEvents.slice(0, 5).map((event, index) => (
+                                <div key={index} style={styles.eventItem}>
+                                    <div style={styles.eventHeader}>
+                                        <span>{event.success ? 'Success' : 'Failed'}</span>
+                                        <span>{formatTimestamp(event.timestamp)}</span>
+                                    </div>
+                                    <div style={styles.eventDetails}>
+                                        <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
+                                        <span>Fee: {formatBalance(event.fee, getTokenDecimals(event.token_id.toString()))} tokens</span>
+                                        {event.error_message && <span>Error: {event.error_message}</span>}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p style={{ color: '#ffffff' }}>No claim history found</p>
+                    )}
                 </section>
 
                 <section style={styles.section}>
