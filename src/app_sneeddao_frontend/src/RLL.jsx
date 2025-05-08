@@ -126,6 +126,55 @@ const styles = {
         alignItems: 'center',
         justifyContent: 'space-between',
         marginBottom: '15px'
+    },
+    statusGrid: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px'
+    },
+    statusItem: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        color: '#ffffff'
+    },
+    cycleInfo: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px'
+    },
+    progressInfo: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px'
+    },
+    proposalInfo: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px'
+    },
+    reconciliationList: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px'
+    },
+    reconciliationItem: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        color: '#ffffff'
+    },
+    adminControls: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px'
+    },
+    adminButton: {
+        backgroundColor: '#3498db',
+        color: '#ffffff',
+        border: 'none',
+        borderRadius: '4px',
+        padding: '8px 16px',
+        cursor: 'pointer',
+        fontSize: '16px'
     }
 };
 
@@ -147,6 +196,13 @@ const TOKENS = [
     }
 ];
 
+// Helper function to format timestamps
+const formatTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(Number(timestamp) / 1_000_000); // Convert nanoseconds to milliseconds
+    return date.toLocaleString();
+};
+
 function RLL() {
     const { isAuthenticated, identity } = useAuth();
     const [tokens, setTokens] = useState([]);
@@ -166,6 +222,25 @@ function RLL() {
     const [confirmMessage, setConfirmMessage] = useState('');
     const [confirmAction, setConfirmAction] = useState(null);
     const [isClaimHistoryExpanded, setIsClaimHistoryExpanded] = useState(true);
+    
+    // New state variables for enhanced features
+    const [importedNeuronsCount, setImportedNeuronsCount] = useState(0);
+    const [importedOwnersCount, setImportedOwnersCount] = useState(0);
+    const [importedPropsCount, setImportedPropsCount] = useState(0);
+    const [importStage, setImportStage] = useState('');
+    const [orchestratorStage, setOrchestratorStage] = useState('');
+    const [mainLoopStatus, setMainLoopStatus] = useState({
+        lastStarted: null,
+        lastEnded: null,
+        nextScheduled: null
+    });
+    const [reconciliation, setReconciliation] = useState([]);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [highestClosedProposalId, setHighestClosedProposalId] = useState(null);
+    const [emptyBallotProposals, setEmptyBallotProposals] = useState({ proposal_ids: [], total_count: 0 });
+    const [processedTokenCount, setProcessedTokenCount] = useState(0);
+    const [totalTokensToProcess, setTotalTokensToProcess] = useState(0);
+    const [currentDistributionToken, setCurrentDistributionToken] = useState(null);
 
     // Fetch whitelisted tokens
     useEffect(() => {
@@ -330,6 +405,95 @@ function RLL() {
         fetchUserBalances();
     }, [isAuthenticated, identity]);
 
+    // Fetch import status
+    useEffect(() => {
+        const fetchImportStatus = async () => {
+            if (!isAuthenticated) {
+                console.log('Skipping import status fetch - not authenticated');
+                return;
+            }
+            
+            console.log('Starting to fetch import status...');
+            try {
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: { identity }
+                });
+                
+                const [
+                    neurons,
+                    owners,
+                    props,
+                    stage,
+                    adminStatus,
+                    proposalId,
+                    emptyProposals
+                ] = await Promise.all([
+                    rllActor.imported_neurons_count(),
+                    rllActor.imported_owners_count(),
+                    rllActor.imported_props_count(),
+                    rllActor.get_import_stage(),
+                    rllActor.caller_is_admin(),
+                    rllActor.get_highest_closed_proposal_id(),
+                    rllActor.get_empty_ballot_proposals()
+                ]);
+
+                console.log('Received import status:', {
+                    neurons,
+                    owners,
+                    props,
+                    stage,
+                    adminStatus,
+                    proposalId,
+                    emptyProposals
+                });
+
+                setImportedNeuronsCount(neurons);
+                setImportedOwnersCount(owners);
+                setImportedPropsCount(props);
+                setImportStage(stage);
+                setIsAdmin(adminStatus);
+                setHighestClosedProposalId(proposalId);
+                setEmptyBallotProposals(emptyProposals);
+
+            } catch (error) {
+                console.error('Error fetching import status:', error);
+            }
+        };
+
+        fetchImportStatus();
+        
+        // Set up periodic refresh
+        const intervalId = setInterval(fetchImportStatus, 10000); // Refresh every 10 seconds
+        
+        return () => clearInterval(intervalId);
+    }, [isAuthenticated, identity]);
+
+    // Fetch balance reconciliation
+    useEffect(() => {
+        const fetchReconciliation = async () => {
+            if (!isAuthenticated) {
+                console.log('Skipping reconciliation fetch - not authenticated');
+                return;
+            }
+            
+            console.log('Starting to fetch balance reconciliation...');
+            try {
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: { identity }
+                });
+                
+                const reconciliationData = await rllActor.balance_reconciliation();
+                console.log('Received reconciliation data:', reconciliationData);
+                setReconciliation(reconciliationData);
+
+            } catch (error) {
+                console.error('Error fetching reconciliation:', error);
+            }
+        };
+
+        fetchReconciliation();
+    }, [isAuthenticated, identity]);
+
     const formatBalance = (balance, decimals) => {
         if (!balance) return '0';
         return (Number(balance) / Math.pow(10, decimals)).toFixed(decimals);
@@ -338,10 +502,6 @@ function RLL() {
     const getTokenDecimals = (symbol) => {
         const token = tokens.find(t => t.symbol === symbol);
         return token ? token.decimals : 8; // fallback to 8 decimals if token not found
-    };
-
-    const formatTimestamp = (timestamp) => {
-        return new Date(Number(timestamp) / 1_000_000).toLocaleString();
     };
 
     const formatProposalRange = (range) => {
@@ -415,6 +575,85 @@ function RLL() {
         return 'Unknown';
     };
 
+    // Admin action handlers
+    const handleStartDistributionCycle = async () => {
+        if (!isAdmin) return;
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            const result = await rllActor.start_distribution_cycle();
+            console.log('Distribution cycle started:', result);
+            // Refresh status
+            await fetchImportStatus();
+        } catch (error) {
+            console.error('Error starting distribution cycle:', error);
+        }
+    };
+
+    const handleStopDistributionCycle = async () => {
+        if (!isAdmin) return;
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            const result = await rllActor.stop_distribution_cycle();
+            console.log('Distribution cycle stopped:', result);
+            // Refresh status
+            await fetchImportStatus();
+        } catch (error) {
+            console.error('Error stopping distribution cycle:', error);
+        }
+    };
+
+    const handleImportAllNeurons = async () => {
+        if (!isAdmin) return;
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            const result = await rllActor.import_all_neurons();
+            console.log('Started importing all neurons:', result);
+            // Refresh status
+            await fetchImportStatus();
+        } catch (error) {
+            console.error('Error importing neurons:', error);
+        }
+    };
+
+    const handleImportAllProposals = async () => {
+        if (!isAdmin) return;
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            const result = await rllActor.import_all_proposals();
+            console.log('Started importing all proposals:', result);
+            // Refresh status
+            await fetchImportStatus();
+        } catch (error) {
+            console.error('Error importing proposals:', error);
+        }
+    };
+
+    const handleStartMainLoop = async () => {
+        if (!isAdmin) return;
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            const result = await rllActor.start_rll_main_loop();
+            console.log('Main loop started:', result);
+            // Refresh status
+            await fetchImportStatus();
+        } catch (error) {
+            console.error('Error starting main loop:', error);
+        }
+    };
+
+    const handleStopMainLoop = async () => {
+        if (!isAdmin) return;
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            const result = await rllActor.stop_rll_main_loop();
+            console.log('Main loop stopped:', result);
+            // Refresh status
+            await fetchImportStatus();
+        } catch (error) {
+            console.error('Error stopping main loop:', error);
+        }
+    };
+
     return (
         <div className='page-container'>
             <header className="site-header">
@@ -447,6 +686,160 @@ function RLL() {
                         </Link>
                     </div>
                 </section>
+
+                {/* Import Status Section */}
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Import Status</h2>
+                    <div style={styles.statusGrid}>
+                        <div style={styles.statusItem}>
+                            <span>Imported Neurons:</span>
+                            <span>{importedNeuronsCount}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Imported Owners:</span>
+                            <span>{importedOwnersCount}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Imported Proposals:</span>
+                            <span>{importedPropsCount}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Current Stage:</span>
+                            <span>{importStage}</span>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Distribution Cycle Status */}
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Distribution Cycle</h2>
+                    <div style={styles.cycleInfo}>
+                        <div style={styles.statusItem}>
+                            <span>Last Started:</span>
+                            <span>{mainLoopStatus.lastStarted ? formatTimestamp(mainLoopStatus.lastStarted) : 'Never'}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Last Ended:</span>
+                            <span>{mainLoopStatus.lastEnded ? formatTimestamp(mainLoopStatus.lastEnded) : 'Never'}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Next Scheduled:</span>
+                            <span>{mainLoopStatus.nextScheduled ? formatTimestamp(mainLoopStatus.nextScheduled) : 'Not scheduled'}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Current Stage:</span>
+                            <span>{orchestratorStage}</span>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Token Distribution Progress */}
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Distribution Progress</h2>
+                    <div style={styles.progressInfo}>
+                        <div style={styles.statusItem}>
+                            <span>Processed Tokens:</span>
+                            <span>{processedTokenCount}/{totalTokensToProcess}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Current Token:</span>
+                            <span>{currentDistributionToken ? getTokenSymbolByPrincipal(currentDistributionToken) : 'None'}</span>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Proposal Information */}
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Proposal Information</h2>
+                    <div style={styles.proposalInfo}>
+                        <div style={styles.statusItem}>
+                            <span>Highest Closed Proposal:</span>
+                            <span>{highestClosedProposalId}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Empty Ballot Proposals:</span>
+                            <span>{emptyBallotProposals.total_count}</span>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Balance Reconciliation */}
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Balance Reconciliation</h2>
+                    <div style={styles.reconciliationList}>
+                        {reconciliation.map(item => (
+                            <div key={item.token_id.toText()} style={styles.reconciliationItem}>
+                                <div style={styles.statusItem}>
+                                    <span>Token:</span>
+                                    <span>{getTokenSymbolByPrincipal(item.token_id)}</span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span>Local Total:</span>
+                                    <span>{formatBalance(item.local_total, getTokenDecimalsByPrincipal(item.token_id))}</span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span>Server Balance:</span>
+                                    <span>{formatBalance(item.server_balance, getTokenDecimalsByPrincipal(item.token_id))}</span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span>Remaining:</span>
+                                    <span>{formatBalance(item.remaining, getTokenDecimalsByPrincipal(item.token_id))}</span>
+                                </div>
+                                {item.underflow > 0 && (
+                                    <div style={{...styles.statusItem, color: '#ff4444'}}>
+                                        <span>Underflow:</span>
+                                        <span>{formatBalance(item.underflow, getTokenDecimalsByPrincipal(item.token_id))}</span>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </section>
+
+                {/* Admin Controls */}
+                {isAdmin && (
+                    <section style={styles.section}>
+                        <h2 style={styles.heading}>Admin Controls</h2>
+                        <div style={styles.adminControls}>
+                            <button 
+                                onClick={handleStartDistributionCycle}
+                                style={styles.adminButton}
+                            >
+                                Start Distribution Cycle
+                            </button>
+                            <button 
+                                onClick={handleStopDistributionCycle}
+                                style={styles.adminButton}
+                            >
+                                Stop Distribution Cycle
+                            </button>
+                            <button 
+                                onClick={handleImportAllNeurons}
+                                style={styles.adminButton}
+                            >
+                                Import All Neurons
+                            </button>
+                            <button 
+                                onClick={handleImportAllProposals}
+                                style={styles.adminButton}
+                            >
+                                Import All Proposals
+                            </button>
+                            <button 
+                                onClick={handleStartMainLoop}
+                                style={styles.adminButton}
+                            >
+                                Start Main Loop
+                            </button>
+                            <button 
+                                onClick={handleStopMainLoop}
+                                style={styles.adminButton}
+                            >
+                                Stop Main Loop
+                            </button>
+                        </div>
+                    </section>
+                )}
 
                 <section style={styles.section}>
                     <h2 style={styles.heading}>Your Token Balances</h2>
