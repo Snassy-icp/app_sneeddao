@@ -416,13 +416,19 @@ function RLL() {
                             {userClaimEvents.slice(0, 5).map((event, index) => (
                                 <div key={index} style={styles.eventItem}>
                                     <div style={styles.eventHeader}>
-                                        <span>{event.success ? 'Success' : 'Failed'}</span>
+                                        <span>{
+                                            'Success' in event.status ? 'Success' :
+                                            'Pending' in event.status ? 'Pending' :
+                                            'Failed' in event.status ? 'Failed' :
+                                            'Unknown'
+                                        }</span>
                                         <span>{formatTimestamp(event.timestamp)}</span>
                                     </div>
                                     <div style={styles.eventDetails}>
                                         <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
                                         <span>Fee: {formatBalance(event.fee, getTokenDecimals(event.token_id.toString()))} tokens</span>
-                                        {event.error_message && <span>Error: {event.error_message}</span>}
+                                        {event.tx_index && event.tx_index.length > 0 && <span>Transaction ID: {event.tx_index[0].toString()}</span>}
+                                        {event.error_message && event.error_message.length > 0 && <span>Message: {event.error_message[0]}</span>}
                                     </div>
                                 </div>
                             ))}
@@ -486,15 +492,20 @@ function RLL() {
                             {claimEvents.slice(0, 5).map((event, index) => (
                                 <div key={index} style={styles.eventItem}>
                                     <div style={styles.eventHeader}>
-                                        <span>{event.success ? 'Success' : 'Pending'}</span>
+                                        <span>{
+                                            'Success' in event.status ? 'Success' :
+                                            'Pending' in event.status ? 'Pending' :
+                                            'Failed' in event.status ? 'Failed' :
+                                            'Unknown'
+                                        }</span>
                                         <span>{formatTimestamp(event.timestamp)}</span>
                                     </div>
                                     <div style={styles.eventDetails}>
                                         <span>Hotkey: {event.hotkey.toString()}</span>
                                         <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
                                         <span>Fee: {formatBalance(event.fee, getTokenDecimals(event.token_id.toString()))} tokens</span>
-                                        {event.tx_index && <span>Transaction ID: {event.tx_index.toString()}</span>}
-                                        {event.error_message && <span>Error: {event.error_message}</span>}
+                                        {event.tx_index && event.tx_index.length > 0 && <span>Transaction ID: {event.tx_index[0].toString()}</span>}
+                                        {event.error_message && event.error_message.length > 0 && <span>Message: {event.error_message[0]}</span>}
                                     </div>
                                 </div>
                             ))}
