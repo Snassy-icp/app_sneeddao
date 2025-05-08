@@ -427,6 +427,7 @@ function RLL() {
                                     <div style={styles.eventDetails}>
                                         <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
                                         <span>Fee: {formatBalance(event.fee, getTokenDecimals(event.token_id.toString()))} tokens</span>
+                                        <span>Sequence: {event.sequence_number.toString()}</span>
                                         {event.tx_index && event.tx_index.length > 0 && <span>Transaction ID: {event.tx_index[0].toString()}</span>}
                                         {event.error_message && event.error_message.length > 0 && <span>Message: {event.error_message[0]}</span>}
                                     </div>
@@ -504,6 +505,7 @@ function RLL() {
                                         <span>Hotkey: {event.hotkey.toString()}</span>
                                         <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
                                         <span>Fee: {formatBalance(event.fee, getTokenDecimals(event.token_id.toString()))} tokens</span>
+                                        <span>Sequence: {event.sequence_number.toString()}</span>
                                         {event.tx_index && event.tx_index.length > 0 && <span>Transaction ID: {event.tx_index[0].toString()}</span>}
                                         {event.error_message && event.error_message.length > 0 && <span>Message: {event.error_message[0]}</span>}
                                     </div>
