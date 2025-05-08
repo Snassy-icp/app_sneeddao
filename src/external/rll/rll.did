@@ -124,6 +124,17 @@ type SneedRLL =
                                   principal;
                                   TokenMetadata;
                                 }) query;
+   get_main_loop_status: () ->
+    (record {
+       current_time: int;
+       frequency_seconds: nat;
+       is_running: bool;
+       last_cycle_ended: opt int;
+       last_cycle_started: opt int;
+       last_started: opt int;
+       last_stopped: opt int;
+       next_scheduled: opt int;
+     }) query;
    get_neuron_import_status: () -> (Result) query;
    get_proposal_import_status: () -> (Result) query;
    get_token_distribution_events: (principal) ->

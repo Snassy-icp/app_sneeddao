@@ -299,6 +299,22 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Tuple(IDL.Principal, TokenMetadata))],
         ['query'],
       ),
+    'get_main_loop_status' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'last_stopped' : IDL.Opt(IDL.Int),
+            'last_cycle_ended' : IDL.Opt(IDL.Int),
+            'last_cycle_started' : IDL.Opt(IDL.Int),
+            'frequency_seconds' : IDL.Nat,
+            'current_time' : IDL.Int,
+            'is_running' : IDL.Bool,
+            'next_scheduled' : IDL.Opt(IDL.Int),
+            'last_started' : IDL.Opt(IDL.Int),
+          }),
+        ],
+        ['query'],
+      ),
     'get_neuron_import_status' : IDL.Func([], [Result], ['query']),
     'get_proposal_import_status' : IDL.Func([], [Result], ['query']),
     'get_token_distribution_events' : IDL.Func(

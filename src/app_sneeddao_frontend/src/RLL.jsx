@@ -426,7 +426,8 @@ function RLL() {
                     stage,
                     adminStatus,
                     proposalId,
-                    emptyProposals
+                    emptyProposals,
+                    loopStatus
                 ] = await Promise.all([
                     rllActor.imported_neurons_count(),
                     rllActor.imported_owners_count(),
@@ -434,7 +435,8 @@ function RLL() {
                     rllActor.get_import_stage(),
                     rllActor.caller_is_admin(),
                     rllActor.get_highest_closed_proposal_id(),
-                    rllActor.get_empty_ballot_proposals()
+                    rllActor.get_empty_ballot_proposals(),
+                    rllActor.get_main_loop_status()
                 ]);
 
                 console.log('Received import status:', {
@@ -444,7 +446,8 @@ function RLL() {
                     stage,
                     adminStatus,
                     proposalId,
-                    emptyProposals
+                    emptyProposals,
+                    loopStatus
                 });
 
                 setImportedNeuronsCount(neurons);
@@ -454,6 +457,14 @@ function RLL() {
                 setIsAdmin(adminStatus);
                 setHighestClosedProposalId(proposalId);
                 setEmptyBallotProposals(emptyProposals);
+                setMainLoopStatus({
+                    isRunning: loopStatus.is_running,
+                    lastStarted: loopStatus.last_started,
+                    lastEnded: loopStatus.last_ended,
+                    nextScheduled: loopStatus.next_scheduled,
+                    frequencySeconds: loopStatus.frequency_seconds,
+                    currentTime: loopStatus.current_time
+                });
 
             } catch (error) {
                 console.error('Error fetching import status:', error);
