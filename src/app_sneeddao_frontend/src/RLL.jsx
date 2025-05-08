@@ -693,19 +693,24 @@ function RLL() {
                     <div style={styles.statusGrid}>
                         <div style={styles.statusItem}>
                             <span>Imported Neurons:</span>
-                            <span>{importedNeuronsCount}</span>
+                            <span>{Number(importedNeuronsCount).toLocaleString()}</span>
                         </div>
                         <div style={styles.statusItem}>
                             <span>Imported Owners:</span>
-                            <span>{importedOwnersCount}</span>
+                            <span>{Number(importedOwnersCount).toLocaleString()}</span>
                         </div>
                         <div style={styles.statusItem}>
                             <span>Imported Proposals:</span>
-                            <span>{importedPropsCount}</span>
+                            <span>{Number(importedPropsCount).toLocaleString()}</span>
                         </div>
                         <div style={styles.statusItem}>
                             <span>Current Stage:</span>
-                            <span>{importStage}</span>
+                            <span style={{
+                                color: importStage.includes('idle') ? '#f1c40f' : '#2ecc71',
+                                fontFamily: 'monospace'
+                            }}>
+                                {importStage}
+                            </span>
                         </div>
                     </div>
                 </section>
@@ -767,32 +772,44 @@ function RLL() {
                 <section style={styles.section}>
                     <h2 style={styles.heading}>Balance Reconciliation</h2>
                     <div style={styles.reconciliationList}>
-                        {reconciliation.map(item => (
-                            <div key={item.token_id.toText()} style={styles.reconciliationItem}>
-                                <div style={styles.statusItem}>
-                                    <span>Token:</span>
-                                    <span>{getTokenSymbolByPrincipal(item.token_id)}</span>
-                                </div>
-                                <div style={styles.statusItem}>
-                                    <span>Local Total:</span>
-                                    <span>{formatBalance(item.local_total, getTokenDecimalsByPrincipal(item.token_id))}</span>
-                                </div>
-                                <div style={styles.statusItem}>
-                                    <span>Server Balance:</span>
-                                    <span>{formatBalance(item.server_balance, getTokenDecimalsByPrincipal(item.token_id))}</span>
-                                </div>
-                                <div style={styles.statusItem}>
-                                    <span>Remaining:</span>
-                                    <span>{formatBalance(item.remaining, getTokenDecimalsByPrincipal(item.token_id))}</span>
-                                </div>
-                                {item.underflow > 0 && (
-                                    <div style={{...styles.statusItem, color: '#ff4444'}}>
-                                        <span>Underflow:</span>
-                                        <span>{formatBalance(item.underflow, getTokenDecimalsByPrincipal(item.token_id))}</span>
+                        {reconciliation.map(item => {
+                            const symbol = getTokenSymbolByPrincipal(item.token_id);
+                            const decimals = getTokenDecimalsByPrincipal(item.token_id);
+                            return (
+                                <div key={item.token_id.toText()} style={{
+                                    backgroundColor: '#3a3a3a',
+                                    borderRadius: '6px',
+                                    padding: '15px',
+                                    marginBottom: '10px'
+                                }}>
+                                    <div style={styles.statusItem}>
+                                        <span>Token:</span>
+                                        <span style={{fontWeight: 'bold'}}>{symbol}</span>
                                     </div>
-                                )}
-                            </div>
-                        ))}
+                                    <div style={styles.statusItem}>
+                                        <span>Local Total:</span>
+                                        <span style={{fontFamily: 'monospace'}}>{formatBalance(item.local_total, decimals)} {symbol}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Server Balance:</span>
+                                        <span style={{fontFamily: 'monospace'}}>{formatBalance(item.server_balance, decimals)} {symbol}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Remaining:</span>
+                                        <span style={{
+                                            fontFamily: 'monospace',
+                                            color: Number(item.remaining) > 0 ? '#2ecc71' : '#ffffff'
+                                        }}>{formatBalance(item.remaining, decimals)} {symbol}</span>
+                                    </div>
+                                    {Number(item.underflow) > 0 && (
+                                        <div style={{...styles.statusItem, color: '#e74c3c'}}>
+                                            <span>Underflow:</span>
+                                            <span style={{fontFamily: 'monospace'}}>{formatBalance(item.underflow, decimals)} {symbol}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </section>
 
