@@ -230,9 +230,14 @@ function RLL() {
     const [importStage, setImportStage] = useState('');
     const [orchestratorStage, setOrchestratorStage] = useState('');
     const [mainLoopStatus, setMainLoopStatus] = useState({
+        isRunning: null,
         lastStarted: null,
-        lastEnded: null,
-        nextScheduled: null
+        lastStopped: null,
+        lastCycleStarted: null,
+        lastCycleEnded: null,
+        nextScheduled: null,
+        frequencySeconds: null,
+        currentTime: null
     });
     const [reconciliation, setReconciliation] = useState([]);
     const [isAdmin, setIsAdmin] = useState(false);
@@ -460,7 +465,9 @@ function RLL() {
                 setMainLoopStatus({
                     isRunning: loopStatus.is_running,
                     lastStarted: loopStatus.last_started,
-                    lastEnded: loopStatus.last_ended,
+                    lastStopped: loopStatus.last_stopped,
+                    lastCycleStarted: loopStatus.last_cycle_started,
+                    lastCycleEnded: loopStatus.last_cycle_ended,
                     nextScheduled: loopStatus.next_scheduled,
                     frequencySeconds: loopStatus.frequency_seconds,
                     currentTime: loopStatus.current_time
@@ -731,20 +738,36 @@ function RLL() {
                     <h2 style={styles.heading}>Distribution Cycle</h2>
                     <div style={styles.cycleInfo}>
                         <div style={styles.statusItem}>
-                            <span>Last Started:</span>
-                            <span>{mainLoopStatus.lastStarted ? formatTimestamp(mainLoopStatus.lastStarted) : 'Never'}</span>
+                            <span>Status:</span>
+                            <span style={{
+                                color: mainLoopStatus?.isRunning ? '#2ecc71' : '#e74c3c'
+                            }}>
+                                {mainLoopStatus?.isRunning ? 'Running' : 'Stopped'}
+                            </span>
                         </div>
                         <div style={styles.statusItem}>
-                            <span>Last Ended:</span>
-                            <span>{mainLoopStatus.lastEnded ? formatTimestamp(mainLoopStatus.lastEnded) : 'Never'}</span>
+                            <span>Last Started:</span>
+                            <span>{mainLoopStatus?.lastStarted ? formatTimestamp(mainLoopStatus.lastStarted) : 'Never'}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Last Stopped:</span>
+                            <span>{mainLoopStatus?.lastStopped ? formatTimestamp(mainLoopStatus.lastStopped) : 'Never'}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Last Cycle Started:</span>
+                            <span>{mainLoopStatus?.lastCycleStarted ? formatTimestamp(mainLoopStatus.lastCycleStarted) : 'Never'}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Last Cycle Ended:</span>
+                            <span>{mainLoopStatus?.lastCycleEnded ? formatTimestamp(mainLoopStatus.lastCycleEnded) : 'Never'}</span>
                         </div>
                         <div style={styles.statusItem}>
                             <span>Next Scheduled:</span>
-                            <span>{mainLoopStatus.nextScheduled ? formatTimestamp(mainLoopStatus.nextScheduled) : 'Not scheduled'}</span>
+                            <span>{mainLoopStatus?.nextScheduled ? formatTimestamp(mainLoopStatus.nextScheduled) : 'Not scheduled'}</span>
                         </div>
                         <div style={styles.statusItem}>
-                            <span>Current Stage:</span>
-                            <span>{orchestratorStage}</span>
+                            <span>Frequency:</span>
+                            <span>{mainLoopStatus?.frequencySeconds ? `${mainLoopStatus.frequencySeconds} seconds` : 'Unknown'}</span>
                         </div>
                     </div>
                 </section>
