@@ -157,6 +157,7 @@ export const idlFactory = ({ IDL }) => {
     'is_eligible_for_rewards' : IDL.Bool,
     'executed_timestamp_seconds' : IDL.Nat64,
   });
+  const Result = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
   const TxIndex = IDL.Nat;
   const Balance = IDL.Nat;
   const Timestamp = IDL.Nat64;
@@ -202,7 +203,6 @@ export const idlFactory = ({ IDL }) => {
     'name' : IDL.Text,
     'symbol' : IDL.Text,
   });
-  const Result = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
   const UserDistributionEvent = IDL.Record({
     'token_id' : IDL.Principal,
     'user' : IDL.Principal,
@@ -212,6 +212,7 @@ export const idlFactory = ({ IDL }) => {
   });
   const SneedRLL = IDL.Service({
     'acceptsVote' : IDL.Func([ProposalData, IDL.Nat64], [IDL.Bool], ['query']),
+    'add_admin' : IDL.Func([IDL.Principal], [Result], []),
     'add_known_token' : IDL.Func([IDL.Principal], [], []),
     'all_token_balances' : IDL.Func(
         [],
@@ -244,6 +245,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
         [],
       ),
+    'caller_is_admin' : IDL.Func([], [IDL.Bool], ['query']),
     'claim_full_balance_of_hotkey' : IDL.Func(
         [IDL.Principal, IDL.Nat],
         [TransferResult],
@@ -353,12 +355,17 @@ export const idlFactory = ({ IDL }) => {
     'imported_owners_count' : IDL.Func([], [IDL.Nat], ['query']),
     'imported_props_count' : IDL.Func([], [IDL.Nat], ['query']),
     'is_import_known_running' : IDL.Func([], [IDL.Bool], ['query']),
+    'list_admins' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+    'principal_is_admin' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
+    'remove_admin' : IDL.Func([IDL.Principal], [Result], []),
     'remove_known_token' : IDL.Func([IDL.Principal], [], []),
     'start_distribution_cycle' : IDL.Func([], [Result], []),
+    'start_rll_main_loop' : IDL.Func([], [Result], []),
     'stop_distribution_cycle' : IDL.Func([], [Result], []),
     'stop_import_known_tokens_from_swaprunner' : IDL.Func([], [], []),
     'stop_neuron_import' : IDL.Func([], [Result], []),
     'stop_proposal_import' : IDL.Func([], [Result], []),
+    'stop_rll_main_loop' : IDL.Func([], [Result], []),
     'test_set_balance' : IDL.Func(
         [IDL.Principal, IDL.Principal, IDL.Nat],
         [],

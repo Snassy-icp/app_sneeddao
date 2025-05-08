@@ -71,6 +71,7 @@ type Subaccount = blob;
 type SneedRLL = 
  service {
    acceptsVote: (ProposalData, nat64) -> (bool) query;
+   add_admin: (principal) -> (Result);
    add_known_token: (principal) -> ();
    all_token_balances: () -> (vec record {
                                     principal;
@@ -91,6 +92,7 @@ type SneedRLL =
                                     principal;
                                     nat;
                                   });
+   caller_is_admin: () -> (bool) query;
    claim_full_balance_of_hotkey: (principal, nat) -> (TransferResult);
    clear_all_balances_and_distributions: () -> ();
    clear_balances: () -> ();
@@ -151,12 +153,17 @@ type SneedRLL =
    imported_owners_count: () -> (nat) query;
    imported_props_count: () -> (nat) query;
    is_import_known_running: () -> (bool) query;
+   list_admins: () -> (vec principal) query;
+   principal_is_admin: (principal) -> (bool) query;
+   remove_admin: (principal) -> (Result);
    remove_known_token: (principal) -> ();
    start_distribution_cycle: () -> (Result);
+   start_rll_main_loop: () -> (Result);
    stop_distribution_cycle: () -> (Result);
    stop_import_known_tokens_from_swaprunner: () -> ();
    stop_neuron_import: () -> (Result);
    stop_proposal_import: () -> (Result);
+   stop_rll_main_loop: () -> (Result);
    test_set_balance: (principal, principal, nat) -> ();
    total_balance: (principal) -> (nat) query;
    transfer_remaining_balances: (principal) ->

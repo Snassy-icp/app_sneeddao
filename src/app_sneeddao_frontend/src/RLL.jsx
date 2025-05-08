@@ -353,13 +353,34 @@ function RLL() {
 
     const handleClaimRewards = async (tokenId, balance, token) => {
         setConfirmAction(() => async () => {
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            const claim_results = await rllActor.claim_full_balance_of_hotkey(
-                tokenId,
-                token.fee);
-            // Refresh balances after claim
-            const balances = await rllActor.balances_of_hotkey();
-            setUserBalances(balances);
+            try {
+                console.log('Starting claim process...');
+                console.log('Token ID:', tokenId.toString());
+                console.log('Balance:', balance.toString());
+                console.log('Fee:', token.fee.toString());
+                
+                const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+                console.log('Created RLL actor, calling claim_full_balance_of_hotkey...');
+                
+                const claim_results = await rllActor.claim_full_balance_of_hotkey(
+                    tokenId,
+                    token.fee
+                );
+                console.log('Claim results:', claim_results);
+
+                // Refresh all relevant data
+                console.log('Refreshing data...');
+                const [balances, claims] = await Promise.all([
+                    rllActor.balances_of_hotkey(),
+                    rllActor.get_claim_events_for_hotkey(identity.getPrincipal())
+                ]);
+                
+                setUserBalances(balances);
+                setUserClaimEvents(claims);
+                console.log('Data refreshed successfully');
+            } catch (error) {
+                console.error('Error during claim process:', error);
+            }
         });
         setConfirmMessage(`Do you want to claim your balance of ${formatBalance(balance, token.decimals)} ${token.symbol}?`);
         setShowConfirmModal(true);
@@ -558,6 +579,7 @@ function RLL() {
                     setShowConfirmModal(false);
                 }}
                 onCancel={() => setShowConfirmModal(false)}
+                onClose={() => setShowConfirmModal(false)}
             />
 
             <style>
