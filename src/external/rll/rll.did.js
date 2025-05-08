@@ -1,4 +1,162 @@
 export const idlFactory = ({ IDL }) => {
+  const ProposalId = IDL.Record({ 'id' : IDL.Nat64 });
+  const GovernanceError = IDL.Record({
+    'error_message' : IDL.Text,
+    'error_type' : IDL.Int32,
+  });
+  const Ballot = IDL.Record({
+    'vote' : IDL.Int32,
+    'cast_timestamp_seconds' : IDL.Nat64,
+    'voting_power' : IDL.Nat64,
+  });
+  const Percentage = IDL.Record({ 'basis_points' : IDL.Opt(IDL.Nat64) });
+  const Tally = IDL.Record({
+    'no' : IDL.Nat64,
+    'yes' : IDL.Nat64,
+    'total' : IDL.Nat64,
+    'timestamp_seconds' : IDL.Nat64,
+  });
+  const NeuronId = IDL.Record({ 'id' : IDL.Vec(IDL.Nat8) });
+  const Followees = IDL.Record({ 'followees' : IDL.Vec(NeuronId) });
+  const DefaultFollowees = IDL.Record({
+    'followees' : IDL.Vec(IDL.Tuple(IDL.Nat64, Followees)),
+  });
+  const NeuronPermissionList = IDL.Record({
+    'permissions' : IDL.Vec(IDL.Int32),
+  });
+  const VotingRewardsParameters = IDL.Record({
+    'final_reward_rate_basis_points' : IDL.Opt(IDL.Nat64),
+    'initial_reward_rate_basis_points' : IDL.Opt(IDL.Nat64),
+    'reward_rate_transition_duration_seconds' : IDL.Opt(IDL.Nat64),
+    'round_duration_seconds' : IDL.Opt(IDL.Nat64),
+  });
+  const NervousSystemParameters = IDL.Record({
+    'default_followees' : IDL.Opt(DefaultFollowees),
+    'max_dissolve_delay_seconds' : IDL.Opt(IDL.Nat64),
+    'max_dissolve_delay_bonus_percentage' : IDL.Opt(IDL.Nat64),
+    'max_followees_per_function' : IDL.Opt(IDL.Nat64),
+    'neuron_claimer_permissions' : IDL.Opt(NeuronPermissionList),
+    'neuron_minimum_stake_e8s' : IDL.Opt(IDL.Nat64),
+    'max_neuron_age_for_age_bonus' : IDL.Opt(IDL.Nat64),
+    'initial_voting_period_seconds' : IDL.Opt(IDL.Nat64),
+    'neuron_minimum_dissolve_delay_to_vote_seconds' : IDL.Opt(IDL.Nat64),
+    'reject_cost_e8s' : IDL.Opt(IDL.Nat64),
+    'max_proposals_to_keep_per_action' : IDL.Opt(IDL.Nat32),
+    'wait_for_quiet_deadline_increase_seconds' : IDL.Opt(IDL.Nat64),
+    'max_number_of_neurons' : IDL.Opt(IDL.Nat64),
+    'transaction_fee_e8s' : IDL.Opt(IDL.Nat64),
+    'max_number_of_proposals_with_ballots' : IDL.Opt(IDL.Nat64),
+    'max_age_bonus_percentage' : IDL.Opt(IDL.Nat64),
+    'neuron_grantable_permissions' : IDL.Opt(NeuronPermissionList),
+    'voting_rewards_parameters' : IDL.Opt(VotingRewardsParameters),
+    'maturity_modulation_disabled' : IDL.Opt(IDL.Bool),
+    'max_number_of_principals_per_neuron' : IDL.Opt(IDL.Nat64),
+  });
+  const GenericNervousSystemFunction = IDL.Record({
+    'validator_canister_id' : IDL.Opt(IDL.Principal),
+    'target_canister_id' : IDL.Opt(IDL.Principal),
+    'validator_method_name' : IDL.Opt(IDL.Text),
+    'target_method_name' : IDL.Opt(IDL.Text),
+  });
+  const FunctionType = IDL.Variant({
+    'NativeNervousSystemFunction' : IDL.Record({}),
+    'GenericNervousSystemFunction' : GenericNervousSystemFunction,
+  });
+  const NervousSystemFunction = IDL.Record({
+    'id' : IDL.Nat64,
+    'name' : IDL.Text,
+    'description' : IDL.Opt(IDL.Text),
+    'function_type' : IDL.Opt(FunctionType),
+  });
+  const RegisterDappCanisters = IDL.Record({
+    'canister_ids' : IDL.Vec(IDL.Principal),
+  });
+  const Subaccount = IDL.Vec(IDL.Nat8);
+  const TransferSnsTreasuryFunds = IDL.Record({
+    'from_treasury' : IDL.Int32,
+    'to_principal' : IDL.Opt(IDL.Principal),
+    'to_subaccount' : IDL.Opt(Subaccount),
+    'memo' : IDL.Opt(IDL.Nat64),
+    'amount_e8s' : IDL.Nat64,
+  });
+  const UpgradeSnsControlledCanister = IDL.Record({
+    'new_canister_wasm' : IDL.Vec(IDL.Nat8),
+    'mode' : IDL.Opt(IDL.Int32),
+    'canister_id' : IDL.Opt(IDL.Principal),
+    'canister_upgrade_arg' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+  });
+  const DeregisterDappCanisters = IDL.Record({
+    'canister_ids' : IDL.Vec(IDL.Principal),
+    'new_controllers' : IDL.Vec(IDL.Principal),
+  });
+  const MintSnsTokens = IDL.Record({
+    'to_principal' : IDL.Opt(IDL.Principal),
+    'to_subaccount' : IDL.Opt(Subaccount),
+    'memo' : IDL.Opt(IDL.Nat64),
+    'amount_e8s' : IDL.Opt(IDL.Nat64),
+  });
+  const ManageSnsMetadata = IDL.Record({
+    'url' : IDL.Opt(IDL.Text),
+    'logo' : IDL.Opt(IDL.Text),
+    'name' : IDL.Opt(IDL.Text),
+    'description' : IDL.Opt(IDL.Text),
+  });
+  const ExecuteGenericNervousSystemFunction = IDL.Record({
+    'function_id' : IDL.Nat64,
+    'payload' : IDL.Vec(IDL.Nat8),
+  });
+  const ManageLedgerParameters = IDL.Record({
+    'transfer_fee' : IDL.Opt(IDL.Nat64),
+  });
+  const Motion = IDL.Record({ 'motion_text' : IDL.Text });
+  const Action = IDL.Variant({
+    'ManageNervousSystemParameters' : NervousSystemParameters,
+    'AddGenericNervousSystemFunction' : NervousSystemFunction,
+    'RemoveGenericNervousSystemFunction' : IDL.Nat64,
+    'UpgradeSnsToNextVersion' : IDL.Record({}),
+    'RegisterDappCanisters' : RegisterDappCanisters,
+    'TransferSnsTreasuryFunds' : TransferSnsTreasuryFunds,
+    'UpgradeSnsControlledCanister' : UpgradeSnsControlledCanister,
+    'DeregisterDappCanisters' : DeregisterDappCanisters,
+    'MintSnsTokens' : MintSnsTokens,
+    'Unspecified' : IDL.Record({}),
+    'ManageSnsMetadata' : ManageSnsMetadata,
+    'ExecuteGenericNervousSystemFunction' : ExecuteGenericNervousSystemFunction,
+    'ManageLedgerParameters' : ManageLedgerParameters,
+    'Motion' : Motion,
+  });
+  const Proposal = IDL.Record({
+    'url' : IDL.Text,
+    'title' : IDL.Text,
+    'action' : IDL.Opt(Action),
+    'summary' : IDL.Text,
+  });
+  const WaitForQuietState = IDL.Record({
+    'current_deadline_timestamp_seconds' : IDL.Nat64,
+  });
+  const ProposalData = IDL.Record({
+    'id' : IDL.Opt(ProposalId),
+    'payload_text_rendering' : IDL.Opt(IDL.Text),
+    'action' : IDL.Nat64,
+    'failure_reason' : IDL.Opt(GovernanceError),
+    'ballots' : IDL.Vec(IDL.Tuple(IDL.Text, Ballot)),
+    'minimum_yes_proportion_of_total' : IDL.Opt(Percentage),
+    'reward_event_round' : IDL.Nat64,
+    'failed_timestamp_seconds' : IDL.Nat64,
+    'reward_event_end_timestamp_seconds' : IDL.Opt(IDL.Nat64),
+    'proposal_creation_timestamp_seconds' : IDL.Nat64,
+    'initial_voting_period_seconds' : IDL.Nat64,
+    'reject_cost_e8s' : IDL.Nat64,
+    'latest_tally' : IDL.Opt(Tally),
+    'wait_for_quiet_deadline_increase_seconds' : IDL.Nat64,
+    'decided_timestamp_seconds' : IDL.Nat64,
+    'proposal' : IDL.Opt(Proposal),
+    'proposer' : IDL.Opt(NeuronId),
+    'wait_for_quiet_state' : IDL.Opt(WaitForQuietState),
+    'minimum_yes_proportion_of_exercised' : IDL.Opt(Percentage),
+    'is_eligible_for_rewards' : IDL.Bool,
+    'executed_timestamp_seconds' : IDL.Nat64,
+  });
   const TxIndex = IDL.Nat;
   const Balance = IDL.Nat;
   const Timestamp = IDL.Nat64;
@@ -16,14 +174,19 @@ export const idlFactory = ({ IDL }) => {
     'InsufficientFunds' : IDL.Record({ 'balance' : Balance }),
   });
   const TransferResult = IDL.Variant({ 'Ok' : TxIndex, 'Err' : TransferError });
-  const ProposalId = IDL.Record({ 'id' : IDL.Nat64 });
+  const ClaimStatus = IDL.Variant({
+    'Failed' : IDL.Null,
+    'Success' : IDL.Null,
+    'Pending' : IDL.Null,
+  });
   const ClaimEvent = IDL.Record({
     'fee' : IDL.Nat,
+    'status' : ClaimStatus,
+    'tx_index' : IDL.Opt(IDL.Nat),
     'token_id' : IDL.Principal,
     'sequence_number' : IDL.Nat,
     'error_message' : IDL.Opt(IDL.Text),
     'timestamp' : Timestamp,
-    'success' : IDL.Bool,
     'hotkey' : IDL.Principal,
     'amount' : IDL.Nat,
   });
@@ -33,24 +196,13 @@ export const idlFactory = ({ IDL }) => {
     'timestamp' : IDL.Int,
     'amount' : IDL.Nat,
   });
-  const NeuronId = IDL.Record({ 'id' : IDL.Vec(IDL.Nat8) });
   const TokenMetadata = IDL.Record({
     'fee' : IDL.Nat,
     'decimals' : IDL.Nat8,
     'name' : IDL.Text,
     'symbol' : IDL.Text,
   });
-  const TransferEvent = IDL.Record({
-    'to' : IDL.Principal,
-    'fee' : IDL.Nat,
-    'tx_index' : IDL.Opt(IDL.Nat),
-    'token_id' : IDL.Principal,
-    'sequence_number' : IDL.Nat,
-    'from' : IDL.Principal,
-    'timestamp' : Timestamp,
-    'success' : IDL.Bool,
-    'amount' : IDL.Nat,
-  });
+  const Result = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
   const UserDistributionEvent = IDL.Record({
     'token_id' : IDL.Principal,
     'user' : IDL.Principal,
@@ -59,6 +211,7 @@ export const idlFactory = ({ IDL }) => {
     'amount' : IDL.Nat,
   });
   const SneedRLL = IDL.Service({
+    'acceptsVote' : IDL.Func([ProposalData, IDL.Nat64], [IDL.Bool], ['query']),
     'add_known_token' : IDL.Func([IDL.Principal], [], []),
     'all_token_balances' : IDL.Func(
         [],
@@ -96,10 +249,19 @@ export const idlFactory = ({ IDL }) => {
         [TransferResult],
         [],
       ),
+    'clear_all_balances_and_distributions' : IDL.Func([], [], []),
     'clear_balances' : IDL.Func([], [], []),
+    'clear_claim_events' : IDL.Func([], [], []),
+    'clear_distribution_events' : IDL.Func([], [], []),
     'clear_imported_neurons' : IDL.Func([], [], []),
     'clear_imported_owners' : IDL.Func([], [], []),
     'clear_imported_props' : IDL.Func([], [], []),
+    'clear_known_tokens' : IDL.Func([], [], []),
+    'clear_total_distributions' : IDL.Func([], [], []),
+    'clear_user_distribution_events' : IDL.Func([], [], []),
+    'clear_user_distributions' : IDL.Func([], [], []),
+    'cnt_imported_tokens' : IDL.Func([], [IDL.Nat], ['query']),
+    'cnt_imported_tokens_with_balance' : IDL.Func([], [IDL.Nat], ['query']),
     'distribute_amount' : IDL.Func(
         [IDL.Nat, IDL.Principal, ProposalId, ProposalId],
         [],
@@ -116,6 +278,17 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(DistributionEvent)],
         ['query'],
       ),
+    'get_empty_ballot_proposals' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'proposal_ids' : IDL.Vec(IDL.Nat64),
+            'total_count' : IDL.Nat,
+          }),
+        ],
+        ['query'],
+      ),
+    'get_highest_closed_proposal_id' : IDL.Func([], [IDL.Nat64], ['query']),
     'get_import_next_neuron_id' : IDL.Func([], [IDL.Opt(NeuronId)], ['query']),
     'get_import_stage' : IDL.Func([], [IDL.Text], ['query']),
     'get_imported_proposal_max' : IDL.Func([], [IDL.Nat64], ['query']),
@@ -124,6 +297,8 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Tuple(IDL.Principal, TokenMetadata))],
         ['query'],
       ),
+    'get_neuron_import_status' : IDL.Func([], [Result], ['query']),
+    'get_proposal_import_status' : IDL.Func([], [Result], ['query']),
     'get_token_distribution_events' : IDL.Func(
         [IDL.Principal],
         [IDL.Vec(DistributionEvent)],
@@ -144,7 +319,6 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
         ['query'],
       ),
-    'get_transfer_events' : IDL.Func([], [IDL.Vec(TransferEvent)], ['query']),
     'get_user_distribution_events' : IDL.Func(
         [],
         [IDL.Vec(UserDistributionEvent)],
@@ -170,15 +344,21 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(UserDistributionEvent)],
         ['query'],
       ),
-    'import_all_neurons' : IDL.Func([], [], []),
-    'import_all_new_neurons' : IDL.Func([], [], []),
-    'import_all_new_proposals' : IDL.Func([], [], []),
-    'import_all_proposals' : IDL.Func([], [], []),
+    'import_all_neurons' : IDL.Func([], [Result], []),
+    'import_all_new_neurons' : IDL.Func([], [Result], []),
+    'import_all_new_proposals' : IDL.Func([], [Result], []),
+    'import_all_proposals' : IDL.Func([], [Result], []),
+    'import_known_tokens_from_swaprunner' : IDL.Func([], [], []),
     'imported_neurons_count' : IDL.Func([], [IDL.Nat], ['query']),
     'imported_owners_count' : IDL.Func([], [IDL.Nat], ['query']),
     'imported_props_count' : IDL.Func([], [IDL.Nat], ['query']),
+    'is_import_known_running' : IDL.Func([], [IDL.Bool], ['query']),
     'remove_known_token' : IDL.Func([IDL.Principal], [], []),
-    'start_import_cycle' : IDL.Func([], [], []),
+    'start_distribution_cycle' : IDL.Func([], [Result], []),
+    'stop_distribution_cycle' : IDL.Func([], [Result], []),
+    'stop_import_known_tokens_from_swaprunner' : IDL.Func([], [], []),
+    'stop_neuron_import' : IDL.Func([], [Result], []),
+    'stop_proposal_import' : IDL.Func([], [Result], []),
     'test_set_balance' : IDL.Func(
         [IDL.Principal, IDL.Principal, IDL.Nat],
         [],
