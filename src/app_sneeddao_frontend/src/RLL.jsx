@@ -6,6 +6,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { getTokenLogo } from './utils/TokenUtils';
+import ConfirmationModal from './ConfirmationModal';
 import './Help.css'; // We'll reuse the Help page styling for now
 
 // Styles
@@ -155,6 +156,9 @@ function RLL() {
     const [loadingUserEvents, setLoadingUserEvents] = useState(true);
     const [userBalances, setUserBalances] = useState([]);
     const [loadingUserBalances, setLoadingUserBalances] = useState(true);
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [confirmMessage, setConfirmMessage] = useState('');
+    const [confirmAction, setConfirmAction] = useState(() => () => {});
 
     // Fetch whitelisted tokens
     useEffect(() => {
@@ -347,6 +351,20 @@ function RLL() {
         return token ? token.decimals : 8; // fallback to 8 decimals
     };
 
+    const handleClaimRewards = async (tokenId, balance, token) => {
+        setConfirmAction(() => async () => {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            const claim_results = await rllActor.claim_full_balance_of_hotkey(
+                tokenId,
+                token.fee);
+            // Refresh balances after claim
+            const balances = await rllActor.balances_of_hotkey();
+            setUserBalances(balances);
+        });
+        setConfirmMessage(`Do you want to claim your balance of ${formatBalance(balance, token.decimals)} ${token.symbol}?`);
+        setShowConfirmModal(true);
+    };
+
     return (
         <div className='page-container'>
             <header className="site-header">
@@ -394,6 +412,22 @@ function RLL() {
                                     <div key={index} style={styles.eventItem}>
                                         <div style={styles.eventHeader}>
                                             <span>{token.symbol}</span>
+                                            {Number(balance) > 0 && (
+                                                <button
+                                                    onClick={() => handleClaimRewards(tokenId, balance, token)}
+                                                    style={{
+                                                        backgroundColor: '#3498db',
+                                                        color: '#ffffff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '4px 8px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '12px'
+                                                    }}
+                                                >
+                                                    Claim
+                                                </button>
+                                            )}
                                         </div>
                                         <div style={styles.eventDetails}>
                                             <span>Balance: {formatBalance(balance, token.decimals)} {token.symbol}</span>
@@ -515,6 +549,16 @@ function RLL() {
                     )}
                 </section>
             </main>
+
+            <ConfirmationModal
+                show={showConfirmModal}
+                message={confirmMessage}
+                onConfirm={async () => {
+                    await confirmAction();
+                    setShowConfirmModal(false);
+                }}
+                onCancel={() => setShowConfirmModal(false)}
+            />
 
             <style>
                 {`
