@@ -772,21 +772,6 @@ function RLL() {
                     </div>
                 </section>
 
-                {/* Token Distribution Progress */}
-                <section style={styles.section}>
-                    <h2 style={styles.heading}>Distribution Progress</h2>
-                    <div style={styles.progressInfo}>
-                        <div style={styles.statusItem}>
-                            <span>Processed Tokens:</span>
-                            <span>{processedTokenCount}/{totalTokensToProcess}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Current Token:</span>
-                            <span>{currentDistributionToken ? getTokenSymbolByPrincipal(currentDistributionToken) : 'None'}</span>
-                        </div>
-                    </div>
-                </section>
-
                 {/* Proposal Information */}
                 <section style={styles.section}>
                     <h2 style={styles.heading}>Proposal Information</h2>
