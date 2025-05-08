@@ -243,9 +243,15 @@ function RLL() {
     const [isAdmin, setIsAdmin] = useState(false);
     const [highestClosedProposalId, setHighestClosedProposalId] = useState(null);
     const [emptyBallotProposals, setEmptyBallotProposals] = useState({ proposal_ids: [], total_count: 0 });
-    const [processedTokenCount, setProcessedTokenCount] = useState(0);
-    const [totalTokensToProcess, setTotalTokensToProcess] = useState(0);
-    const [currentDistributionToken, setCurrentDistributionToken] = useState(null);
+
+
+    // New state for hotkey neurons
+    const [hotkeyNeurons, setHotkeyNeurons] = useState({
+        neurons_by_owner: [],
+        total_voting_power: BigInt(0),
+        distribution_voting_power: BigInt(0)
+    });
+    const [loadingHotkeyNeurons, setLoadingHotkeyNeurons] = useState(true);
 
     // Fetch whitelisted tokens
     useEffect(() => {
@@ -512,6 +518,37 @@ function RLL() {
         fetchReconciliation();
     }, [isAuthenticated, identity]);
 
+    // Fetch hotkey neurons
+    useEffect(() => {
+        const fetchHotkeyNeurons = async () => {
+            if (!isAuthenticated || !identity) {
+                console.log('Skipping hotkey neurons fetch - not authenticated or no identity');
+                return;
+            }
+            
+            console.log('Starting to fetch hotkey neurons...');
+            setLoadingHotkeyNeurons(true);
+            try {
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: { identity }
+                });
+                const data = await rllActor.get_hotkey_neurons_by_owner(identity.getPrincipal());
+                console.log('Received hotkey neurons:', data);
+                setHotkeyNeurons(data);
+            } catch (error) {
+                console.error('Error fetching hotkey neurons:', error);
+            } finally {
+                setLoadingHotkeyNeurons(false);
+            }
+        };
+
+        fetchHotkeyNeurons();
+        
+        // Refresh every 30 seconds
+        const intervalId = setInterval(fetchHotkeyNeurons, 30000);
+        return () => clearInterval(intervalId);
+    }, [isAuthenticated, identity]);
+
     const formatBalance = (balance, decimals) => {
         if (!balance) return '0';
         return (Number(balance) / Math.pow(10, decimals)).toFixed(decimals);
@@ -688,6 +725,80 @@ function RLL() {
             <main className="help-container">
                 <h1 style={{ color: '#ffffff' }}>RLL</h1>
                 
+                {/* Hotkey Neurons Section */}
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Your Hotkey Neurons</h2>
+                    {loadingHotkeyNeurons ? (
+                        <div style={styles.spinner} />
+                    ) : (
+                        <div>
+                            <div style={styles.statusGrid}>
+                                <div style={styles.statusItem}>
+                                    <span>Total Voting Power:</span>
+                                    <span>{Number(hotkeyNeurons.total_voting_power).toLocaleString()}</span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span>Distribution Voting Power:</span>
+                                    <span>{Number(hotkeyNeurons.distribution_voting_power).toLocaleString()}</span>
+                                </div>
+                            </div>
+                            
+                            <div style={{marginTop: '20px'}}>
+                                {hotkeyNeurons.neurons_by_owner.map((record, index) => (
+                                    <div key={record[0].toText()} style={{
+                                        backgroundColor: '#3a3a3a',
+                                        borderRadius: '6px',
+                                        padding: '15px',
+                                        marginBottom: '15px'
+                                    }}>
+                                        <div style={{
+                                            ...styles.statusItem,
+                                            borderBottom: '1px solid #4a4a4a',
+                                            paddingBottom: '10px',
+                                            marginBottom: '10px'
+                                        }}>
+                                            <span>Owner:</span>
+                                            <span style={{fontFamily: 'monospace'}}>{record[0].toText()}</span>
+                                        </div>
+                                        <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                                            {record[1].map((neuron, neuronIndex) => (
+                                                <div key={neuronIndex} style={{
+                                                    backgroundColor: '#2a2a2a',
+                                                    borderRadius: '4px',
+                                                    padding: '10px'
+                                                }}>
+                                                    <div style={styles.statusItem}>
+                                                        <span>Neuron ID:</span>
+                                                        <span style={{fontFamily: 'monospace'}}>
+                                                            {neuron.id ? neuron.id.id.toString() : 'Unknown'}
+                                                        </span>
+                                                    </div>
+                                                    <div style={styles.statusItem}>
+                                                        <span>Stake:</span>
+                                                        <span>{Number(neuron.cached_neuron_stake_e8s).toLocaleString()} e8s</span>
+                                                    </div>
+                                                    <div style={styles.statusItem}>
+                                                        <span>Dissolve State:</span>
+                                                        <span>{neuron.dissolve_state ? 
+                                                            ('DissolveDelaySeconds' in neuron.dissolve_state ? 
+                                                                `Dissolving: ${Number(neuron.dissolve_state.DissolveDelaySeconds).toLocaleString()} seconds` : 
+                                                                `Dissolved at: ${formatTimestamp(neuron.dissolve_state.WhenDissolvedTimestampSeconds)}`) 
+                                                            : 'Not dissolving'}</span>
+                                                    </div>
+                                                    <div style={styles.statusItem}>
+                                                        <span>Age:</span>
+                                                        <span>{formatTimestamp(neuron.aging_since_timestamp_seconds)}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </section>
+
                 <section style={styles.section}>
                     <h2 style={styles.heading}>RLL Canister Token Balances</h2>
                     <div style={styles.controls}>

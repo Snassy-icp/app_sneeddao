@@ -197,6 +197,41 @@ export const idlFactory = ({ IDL }) => {
     'timestamp' : IDL.Int,
     'amount' : IDL.Nat,
   });
+  const NeuronPermission = IDL.Record({
+    'principal' : IDL.Opt(IDL.Principal),
+    'permission_type' : IDL.Vec(IDL.Int32),
+  });
+  const DissolveState = IDL.Variant({
+    'DissolveDelaySeconds' : IDL.Nat64,
+    'WhenDissolvedTimestampSeconds' : IDL.Nat64,
+  });
+  const Account = IDL.Record({
+    'owner' : IDL.Principal,
+    'subaccount' : IDL.Opt(Subaccount),
+  });
+  const DisburseMaturityInProgress = IDL.Record({
+    'timestamp_of_disbursement_seconds' : IDL.Nat64,
+    'amount_e8s' : IDL.Nat64,
+    'account_to_disburse_to' : IDL.Opt(Account),
+    'finalize_disbursement_timestamp_seconds' : IDL.Opt(IDL.Nat64),
+  });
+  const Neuron = IDL.Record({
+    'id' : IDL.Opt(NeuronId),
+    'staked_maturity_e8s_equivalent' : IDL.Opt(IDL.Nat64),
+    'permissions' : IDL.Vec(NeuronPermission),
+    'maturity_e8s_equivalent' : IDL.Nat64,
+    'cached_neuron_stake_e8s' : IDL.Nat64,
+    'created_timestamp_seconds' : IDL.Nat64,
+    'source_nns_neuron_id' : IDL.Opt(IDL.Nat64),
+    'auto_stake_maturity' : IDL.Opt(IDL.Bool),
+    'aging_since_timestamp_seconds' : IDL.Nat64,
+    'dissolve_state' : IDL.Opt(DissolveState),
+    'voting_power_percentage_multiplier' : IDL.Nat64,
+    'vesting_period_seconds' : IDL.Opt(IDL.Nat64),
+    'disburse_maturity_in_progress' : IDL.Vec(DisburseMaturityInProgress),
+    'followees' : IDL.Vec(IDL.Tuple(IDL.Nat64, Followees)),
+    'neuron_fees_e8s' : IDL.Nat64,
+  });
   const TokenMetadata = IDL.Record({
     'fee' : IDL.Nat,
     'decimals' : IDL.Nat8,
@@ -291,6 +326,19 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_highest_closed_proposal_id' : IDL.Func([], [IDL.Nat64], ['query']),
+    'get_hotkey_neurons_by_owner' : IDL.Func(
+        [IDL.Principal],
+        [
+          IDL.Record({
+            'distribution_voting_power' : IDL.Nat64,
+            'neurons_by_owner' : IDL.Vec(
+              IDL.Tuple(IDL.Principal, IDL.Vec(Neuron))
+            ),
+            'total_voting_power' : IDL.Nat64,
+          }),
+        ],
+        [],
+      ),
     'get_import_next_neuron_id' : IDL.Func([], [IDL.Opt(NeuronId)], ['query']),
     'get_import_stage' : IDL.Func([], [IDL.Text], ['query']),
     'get_imported_proposal_max' : IDL.Func([], [IDL.Nat64], ['query']),
