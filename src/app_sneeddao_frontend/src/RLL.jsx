@@ -160,13 +160,16 @@ function RLL() {
     // Fetch whitelisted tokens
     useEffect(() => {
         const fetchTokens = async () => {
+            console.log('Starting to fetch whitelisted tokens...');
             try {
                 const backendActor = createBackendActor(backendCanisterId, {
                     agentOptions: {
                         identity,
                     },
                 });
+                console.log('Created backend actor, fetching tokens...');
                 const whitelistedTokens = await backendActor.get_whitelisted_tokens();
+                console.log('Received whitelisted tokens:', whitelistedTokens);
                 setTokens(whitelistedTokens);
             } catch (error) {
                 console.error('Error fetching whitelisted tokens:', error);
@@ -176,15 +179,22 @@ function RLL() {
         };
 
         if (isAuthenticated) {
+            console.log('User is authenticated, fetching tokens...');
             fetchTokens();
+        } else {
+            console.log('User is not authenticated, skipping token fetch');
         }
     }, [isAuthenticated, identity]);
 
     // Fetch total distributions
     useEffect(() => {
         const fetchDistributions = async () => {
-            if (!isAuthenticated) return;
+            if (!isAuthenticated) {
+                console.log('Skipping distributions fetch - not authenticated');
+                return;
+            }
             
+            console.log('Starting to fetch total distributions...');
             setLoadingDistributions(true);
             try {
                 const rllActor = createRllActor(rllCanisterId, {
@@ -192,7 +202,9 @@ function RLL() {
                         identity,
                     },
                 });
+                console.log('Created RLL actor, fetching distributions...');
                 const totalDistributions = await rllActor.get_total_distributions();
+                console.log('Received total distributions:', totalDistributions);
                 setDistributions(totalDistributions);
             } catch (error) {
                 console.error('Error fetching total distributions:', error);
@@ -207,8 +219,12 @@ function RLL() {
     // Fetch events
     useEffect(() => {
         const fetchEvents = async () => {
-            if (!isAuthenticated) return;
+            if (!isAuthenticated) {
+                console.log('Skipping events fetch - not authenticated');
+                return;
+            }
             
+            console.log('Starting to fetch events...');
             setLoadingEvents(true);
             try {
                 const rllActor = createRllActor(rllCanisterId, {
@@ -216,11 +232,16 @@ function RLL() {
                         identity,
                     },
                 });
+                console.log('Created RLL actor, fetching events...');
                 const [distributions, transfers, claims] = await Promise.all([
                     rllActor.get_distribution_events(),
                     rllActor.get_transfer_events(),
                     rllActor.get_claim_events()
                 ]);
+                
+                console.log('Received distribution events:', distributions);
+                console.log('Received transfer events:', transfers);
+                console.log('Received claim events:', claims);
                 
                 setDistributionEvents(distributions);
                 setTransferEvents(transfers);
@@ -238,8 +259,12 @@ function RLL() {
     // Fetch user's claim events
     useEffect(() => {
         const fetchUserEvents = async () => {
-            if (!isAuthenticated || !identity) return;
+            if (!isAuthenticated || !identity) {
+                console.log('Skipping user events fetch - not authenticated or no identity');
+                return;
+            }
             
+            console.log('Starting to fetch user claim events...');
             setLoadingUserEvents(true);
             try {
                 const rllActor = createRllActor(rllCanisterId, {
@@ -247,7 +272,9 @@ function RLL() {
                         identity,
                     },
                 });
+                console.log('Created RLL actor, fetching user claims...');
                 const claims = await rllActor.get_claim_events_for_hotkey(identity.getPrincipal());
+                console.log('Received user claim events:', claims);
                 setUserClaimEvents(claims);
             } catch (error) {
                 console.error('Error fetching user claim events:', error);
@@ -262,8 +289,12 @@ function RLL() {
     // Fetch user's balances
     useEffect(() => {
         const fetchUserBalances = async () => {
-            if (!isAuthenticated || !identity) return;
+            if (!isAuthenticated || !identity) {
+                console.log('Skipping user balances fetch - not authenticated or no identity');
+                return;
+            }
             
+            console.log('Starting to fetch user balances...');
             setLoadingUserBalances(true);
             try {
                 const rllActor = createRllActor(rllCanisterId, {
@@ -271,7 +302,9 @@ function RLL() {
                         identity,
                     },
                 });
+                console.log('Created RLL actor, fetching user balances...');
                 const balances = await rllActor.balances_of_hotkey();
+                console.log('Received user balances:', balances);
                 setUserBalances(balances);
             } catch (error) {
                 console.error('Error fetching user balances:', error);
