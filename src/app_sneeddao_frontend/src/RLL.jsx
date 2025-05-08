@@ -120,6 +120,12 @@ const styles = {
         display: 'flex',
         flexDirection: 'column',
         gap: '5px'
+    },
+    sectionHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '15px'
     }
 };
 
@@ -159,6 +165,7 @@ function RLL() {
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [confirmMessage, setConfirmMessage] = useState('');
     const [confirmAction, setConfirmAction] = useState(null);
+    const [isClaimHistoryExpanded, setIsClaimHistoryExpanded] = useState(true);
 
     // Fetch whitelisted tokens
     useEffect(() => {
@@ -464,34 +471,51 @@ function RLL() {
                 </section>
 
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>Your Claim History</h2>
-                    {loadingUserEvents ? (
-                        <div style={styles.spinner} />
-                    ) : userClaimEvents.length > 0 ? (
-                        <div style={styles.eventList}>
-                            {userClaimEvents.slice(0, 5).map((event, index) => (
-                                <div key={index} style={styles.eventItem}>
-                                    <div style={styles.eventHeader}>
-                                        <span>{
-                                            'Success' in event.status ? 'Success' :
-                                            'Pending' in event.status ? 'Pending' :
-                                            'Failed' in event.status ? 'Failed' :
-                                            'Unknown'
-                                        }</span>
-                                        <span>{formatTimestamp(event.timestamp)}</span>
+                    <div style={styles.sectionHeader}>
+                        <h2 style={styles.heading}>Your Claim History</h2>
+                        <button 
+                            onClick={() => setIsClaimHistoryExpanded(!isClaimHistoryExpanded)}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#3498db',
+                                cursor: 'pointer',
+                                fontSize: '20px',
+                                padding: '0 10px'
+                            }}
+                        >
+                            {isClaimHistoryExpanded ? '▼' : '▶'}
+                        </button>
+                    </div>
+                    {isClaimHistoryExpanded && (
+                        loadingUserEvents ? (
+                            <div style={styles.spinner} />
+                        ) : userClaimEvents.length > 0 ? (
+                            <div style={styles.eventList}>
+                                {userClaimEvents.slice(0, 5).map((event, index) => (
+                                    <div key={index} style={styles.eventItem}>
+                                        <div style={styles.eventHeader}>
+                                            <span>{
+                                                'Success' in event.status ? 'Success' :
+                                                'Pending' in event.status ? 'Pending' :
+                                                'Failed' in event.status ? 'Failed' :
+                                                'Unknown'
+                                            }</span>
+                                            <span>{formatTimestamp(event.timestamp)}</span>
+                                        </div>
+                                        <div style={styles.eventDetails}>
+                                            <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
+                                            <span>Fee: {formatBalance(event.fee, getTokenDecimals(event.token_id.toString()))} tokens</span>
+                                            <span>Sequence: {event.sequence_number.toString()}</span>
+                                            {event.tx_index && event.tx_index.length > 0 && <span>Transaction ID: {event.tx_index[0].toString()}</span>}
+                                            {event.error_message && event.error_message.length > 0 && <span>Message: {event.error_message[0]}</span>}
+                                        </div>
                                     </div>
-                                    <div style={styles.eventDetails}>
-                                        <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
-                                        <span>Fee: {formatBalance(event.fee, getTokenDecimals(event.token_id.toString()))} tokens</span>
-                                        <span>Sequence: {event.sequence_number.toString()}</span>
-                                        {event.tx_index && event.tx_index.length > 0 && <span>Transaction ID: {event.tx_index[0].toString()}</span>}
-                                        {event.error_message && event.error_message.length > 0 && <span>Message: {event.error_message[0]}</span>}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p style={{ color: '#ffffff' }}>No claim history found</p>
+                                ))}
+                            </div>
+                        ) : (
+                            <p style={{ color: '#ffffff' }}>No claim history found</p>
+                        )
                     )}
                 </section>
 
