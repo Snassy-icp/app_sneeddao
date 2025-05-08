@@ -205,7 +205,14 @@ function RLL() {
                 console.log('Created RLL actor, fetching distributions...');
                 const totalDistributions = await rllActor.get_total_distributions();
                 console.log('Received total distributions:', totalDistributions);
-                setDistributions(totalDistributions);
+                
+                // Transform the data into a more usable format
+                const formattedDistributions = totalDistributions.reduce((acc, [principal, amount]) => {
+                    acc[principal.toText()] = amount;
+                    return acc;
+                }, {});
+                
+                setDistributions(formattedDistributions);
             } catch (error) {
                 console.error('Error fetching total distributions:', error);
             } finally {
@@ -334,6 +341,16 @@ function RLL() {
         return `${range.first} - ${range.last}`;
     };
 
+    const getTokenSymbolByPrincipal = (principalId) => {
+        const token = tokens.find(t => t.ledger_id.toText() === principalId);
+        return token ? token.symbol : 'Unknown';
+    };
+
+    const getTokenDecimalsByPrincipal = (principalId) => {
+        const token = tokens.find(t => t.ledger_id.toText() === principalId);
+        return token ? token.decimals : 8; // fallback to 8 decimals
+    };
+
     return (
         <div className='page-container'>
             <header className="site-header">
@@ -424,21 +441,22 @@ function RLL() {
                     {loadingDistributions ? (
                         <div style={styles.spinner} />
                     ) : distributions ? (
-                        <>
-                            {Object.entries(distributions).map(([key, value]) => {
-                                const symbol = key.replace('total_', '').replace('_distributed', '').toUpperCase();
+                        <div style={styles.tokenList}>
+                            {Object.entries(distributions).map(([principalId, amount]) => {
+                                const symbol = getTokenSymbolByPrincipal(principalId);
+                                const decimals = getTokenDecimalsByPrincipal(principalId);
                                 return (
-                                    <div key={key} style={styles.distributionItem}>
+                                    <div key={principalId} style={styles.distributionItem}>
                                         <span style={styles.distributionLabel}>Total {symbol} Distributed</span>
                                         <span style={styles.distributionValue}>
-                                            {formatBalance(value, getTokenDecimals(symbol))} {symbol}
+                                            {formatBalance(amount, decimals)} {symbol}
                                         </span>
                                     </div>
                                 );
                             })}
-                        </>
+                        </div>
                     ) : (
-                        <p style={{ color: '#ffffff' }}>Error loading distributions</p>
+                        <p style={{ color: '#ffffff' }}>No distributions found</p>
                     )}
                 </section>
 
