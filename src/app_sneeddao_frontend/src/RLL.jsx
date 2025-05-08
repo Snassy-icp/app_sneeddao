@@ -792,8 +792,9 @@ function RLL() {
                     <h2 style={styles.heading}>Balance Reconciliation</h2>
                     <div style={styles.reconciliationList}>
                         {reconciliation.map(item => {
-                            const symbol = getTokenSymbolByPrincipal(item.token_id);
-                            const decimals = getTokenDecimalsByPrincipal(item.token_id);
+                            const token = tokens.find(t => t.ledger_id.toString() === item.token_id.toString());
+                            const symbol = token ? token.symbol : 'Unknown';
+                            const decimals = token ? token.decimals : 8;
                             return (
                                 <div key={item.token_id.toText()} style={{
                                     backgroundColor: '#3a3a3a',
@@ -806,7 +807,7 @@ function RLL() {
                                         <span style={{fontWeight: 'bold'}}>{symbol}</span>
                                     </div>
                                     <div style={styles.statusItem}>
-                                        <span>Local Total:</span>
+                                        <span>Currently Distributed:</span>
                                         <span style={{fontFamily: 'monospace'}}>{formatBalance(item.local_total, decimals)} {symbol}</span>
                                     </div>
                                     <div style={styles.statusItem}>
