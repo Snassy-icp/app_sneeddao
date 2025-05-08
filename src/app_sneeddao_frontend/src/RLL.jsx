@@ -149,7 +149,6 @@ function RLL() {
     const [distributions, setDistributions] = useState(null);
     const [loadingDistributions, setLoadingDistributions] = useState(true);
     const [distributionEvents, setDistributionEvents] = useState([]);
-    const [transferEvents, setTransferEvents] = useState([]);
     const [claimEvents, setClaimEvents] = useState([]);
     const [loadingEvents, setLoadingEvents] = useState(true);
     const [userClaimEvents, setUserClaimEvents] = useState([]);
@@ -240,18 +239,15 @@ function RLL() {
                     },
                 });
                 console.log('Created RLL actor, fetching events...');
-                const [distributions, transfers, claims] = await Promise.all([
+                const [distributions, claims] = await Promise.all([
                     rllActor.get_distribution_events(),
-                    rllActor.get_transfer_events(),
                     rllActor.get_claim_events()
                 ]);
                 
                 console.log('Received distribution events:', distributions);
-                console.log('Received transfer events:', transfers);
                 console.log('Received claim events:', claims);
                 
                 setDistributionEvents(distributions);
-                setTransferEvents(transfers);
                 setClaimEvents(claims);
             } catch (error) {
                 console.error('Error fetching events:', error);
@@ -482,30 +478,6 @@ function RLL() {
                 </section>
 
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>Recent Transfer Events</h2>
-                    {loadingEvents ? (
-                        <div style={styles.spinner} />
-                    ) : (
-                        <div style={styles.eventList}>
-                            {transferEvents.slice(0, 5).map((event, index) => (
-                                <div key={index} style={styles.eventItem}>
-                                    <div style={styles.eventHeader}>
-                                        <span>{event.success ? 'Success' : 'Failed'}</span>
-                                        <span>{formatTimestamp(event.timestamp)}</span>
-                                    </div>
-                                    <div style={styles.eventDetails}>
-                                        <span>From: {event.from.toString()}</span>
-                                        <span>To: {event.to.toString()}</span>
-                                        <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
-                                        <span>Fee: {formatBalance(event.fee, getTokenDecimals(event.token_id.toString()))} tokens</span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </section>
-
-                <section style={styles.section}>
                     <h2 style={styles.heading}>Recent Claim Events</h2>
                     {loadingEvents ? (
                         <div style={styles.spinner} />
@@ -514,13 +486,14 @@ function RLL() {
                             {claimEvents.slice(0, 5).map((event, index) => (
                                 <div key={index} style={styles.eventItem}>
                                     <div style={styles.eventHeader}>
-                                        <span>{event.success ? 'Success' : 'Failed'}</span>
+                                        <span>{event.success ? 'Success' : 'Pending'}</span>
                                         <span>{formatTimestamp(event.timestamp)}</span>
                                     </div>
                                     <div style={styles.eventDetails}>
                                         <span>Hotkey: {event.hotkey.toString()}</span>
                                         <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
                                         <span>Fee: {formatBalance(event.fee, getTokenDecimals(event.token_id.toString()))} tokens</span>
+                                        {event.tx_index && <span>Transaction ID: {event.tx_index.toString()}</span>}
                                         {event.error_message && <span>Error: {event.error_message}</span>}
                                     </div>
                                 </div>
