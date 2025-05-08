@@ -158,7 +158,7 @@ function RLL() {
     const [loadingUserBalances, setLoadingUserBalances] = useState(true);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [confirmMessage, setConfirmMessage] = useState('');
-    const [confirmAction, setConfirmAction] = useState(() => () => {});
+    const [confirmAction, setConfirmAction] = useState(null);
 
     // Fetch whitelisted tokens
     useEffect(() => {
@@ -352,13 +352,13 @@ function RLL() {
     };
 
     const handleClaimRewards = async (tokenId, balance, token) => {
-        setConfirmAction(() => async () => {
+        console.log('Setting up claim action...');
+        console.log('Current auth state:', { isAuthenticated, hasIdentity: !!identity });
+        
+        // Store a direct function that will be executed when confirmed
+        setConfirmAction(async () => {
+            console.log('Executing claim action...');
             try {
-                console.log('Starting claim process...');
-                console.log('Token ID:', tokenId.toString());
-                console.log('Balance:', balance.toString());
-                console.log('Fee:', token.fee.toString());
-                
                 const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
                 console.log('Created RLL actor, calling claim_full_balance_of_hotkey...');
                 
@@ -382,6 +382,7 @@ function RLL() {
                 console.error('Error during claim process:', error);
             }
         });
+        
         setConfirmMessage(`Do you want to claim your balance of ${formatBalance(balance, token.decimals)} ${token.symbol}?`);
         setShowConfirmModal(true);
     };
@@ -575,8 +576,16 @@ function RLL() {
                 show={showConfirmModal}
                 message={confirmMessage}
                 onConfirm={async () => {
-                    await confirmAction();
-                    setShowConfirmModal(false);
+                    console.log('Confirmation dialog OK clicked');
+                    try {
+                        if (confirmAction) {
+                            await confirmAction();
+                        }
+                    } catch (error) {
+                        console.error('Error executing confirm action:', error);
+                    } finally {
+                        setShowConfirmModal(false);
+                    }
                 }}
                 onCancel={() => setShowConfirmModal(false)}
                 onClose={() => setShowConfirmModal(false)}

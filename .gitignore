@@ -26,3 +26,5 @@ dist/
 
 # ignore package-lock.json in any folder
 **/package-lock.json
+
+ref/
