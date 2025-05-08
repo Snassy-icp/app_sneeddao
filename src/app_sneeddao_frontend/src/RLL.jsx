@@ -394,6 +394,27 @@ function RLL() {
         setShowConfirmModal(true);
     };
 
+    // Add this function to group events by sequence number
+    const groupEventsBySequence = (events) => {
+        const grouped = {};
+        events.forEach(event => {
+            const seqNum = event.sequence_number.toString();
+            if (!grouped[seqNum]) {
+                grouped[seqNum] = [];
+            }
+            grouped[seqNum].push(event);
+        });
+        return grouped;
+    };
+
+    // Add this function to get the latest status from a group of events
+    const getGroupStatus = (events) => {
+        if (events.some(e => 'Success' in e.status)) return 'Success';
+        if (events.some(e => 'Pending' in e.status)) return 'Pending';
+        if (events.some(e => 'Failed' in e.status)) return 'Failed';
+        return 'Unknown';
+    };
+
     return (
         <div className='page-container'>
             <header className="site-header">
@@ -492,26 +513,45 @@ function RLL() {
                             <div style={styles.spinner} />
                         ) : userClaimEvents.length > 0 ? (
                             <div style={styles.eventList}>
-                                {userClaimEvents.slice(0, 5).map((event, index) => (
-                                    <div key={index} style={styles.eventItem}>
-                                        <div style={styles.eventHeader}>
-                                            <span>{
-                                                'Success' in event.status ? 'Success' :
-                                                'Pending' in event.status ? 'Pending' :
-                                                'Failed' in event.status ? 'Failed' :
-                                                'Unknown'
-                                            }</span>
-                                            <span>{formatTimestamp(event.timestamp)}</span>
-                                        </div>
-                                        <div style={styles.eventDetails}>
-                                            <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
-                                            <span>Fee: {formatBalance(event.fee, getTokenDecimals(event.token_id.toString()))} tokens</span>
-                                            <span>Sequence: {event.sequence_number.toString()}</span>
-                                            {event.tx_index && event.tx_index.length > 0 && <span>Transaction ID: {event.tx_index[0].toString()}</span>}
-                                            {event.error_message && event.error_message.length > 0 && <span>Message: {event.error_message[0]}</span>}
-                                        </div>
-                                    </div>
-                                ))}
+                                {Object.entries(groupEventsBySequence(userClaimEvents))
+                                    .sort((a, b) => Number(b[0]) - Number(a[0])) // Sort by sequence number descending
+                                    .slice(0, 5) // Take only the 5 most recent sequence groups
+                                    .map(([seqNum, events]) => {
+                                        const status = getGroupStatus(events);
+                                        const latestEvent = events[events.length - 1];
+                                        const token = tokens.find(t => t.ledger_id.toString() === latestEvent.token_id.toString());
+                                        const symbol = token ? token.symbol : 'Unknown';
+
+                                        return (
+                                            <div key={seqNum} style={styles.eventItem}>
+                                                <div style={styles.eventHeader}>
+                                                    <span style={{
+                                                        color: status === 'Success' ? '#2ecc71' : 
+                                                               status === 'Pending' ? '#f1c40f' : 
+                                                               status === 'Failed' ? '#e74c3c' : '#ffffff'
+                                                    }}>
+                                                        {status}
+                                                    </span>
+                                                    <span>{formatTimestamp(latestEvent.timestamp)}</span>
+                                                </div>
+                                                <div style={styles.eventDetails}>
+                                                    <span>Sequence: {seqNum}</span>
+                                                    <span>Amount: {formatBalance(latestEvent.amount, getTokenDecimals(latestEvent.token_id.toString()))} {symbol}</span>
+                                                    <span>Fee: {formatBalance(latestEvent.fee, getTokenDecimals(latestEvent.token_id.toString()))} {symbol}</span>
+                                                    {events.some(e => e.tx_index && e.tx_index.length > 0) && (
+                                                        <span>Transaction ID: {events.find(e => e.tx_index && e.tx_index.length > 0).tx_index[0].toString()}</span>
+                                                    )}
+                                                    {events.map((event, idx) => (
+                                                        event.error_message && event.error_message.length > 0 && (
+                                                            <span key={idx} style={{ color: '#e74c3c' }}>
+                                                                Message: {event.error_message[0]}
+                                                            </span>
+                                                        )
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                             </div>
                         ) : (
                             <p style={{ color: '#ffffff' }}>No claim history found</p>
