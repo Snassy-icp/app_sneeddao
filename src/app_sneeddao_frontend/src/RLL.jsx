@@ -1099,7 +1099,7 @@ function RLL() {
                         </div>
                         <div style={styles.statusItem}>
                             <span>Frequency:</span>
-                            <span>{mainLoopStatus?.frequencySeconds ? formatDuration(mainLoopStatus.frequencySeconds) : 'Unknown'}</span>
+                            <span>{mainLoopStatus?.frequencySeconds ? formatDuration(Number(mainLoopStatus.frequencySeconds)) : 'Unknown'}</span>
                         </div>
                     </div>
                 </section>
