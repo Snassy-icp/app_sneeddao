@@ -1053,7 +1053,7 @@ function RLL() {
                         </div>
                         <div style={styles.statusItem}>
                             <span>Highest Closed Proposal:</span>
-                            <span>{highestClosedProposalId}</span>
+                            <span>{Number(highestClosedProposalId).toLocaleString()}</span>
                         </div>
                         <div style={styles.statusItem}>
                             <span>Current Stage:</span>
@@ -1081,23 +1081,23 @@ function RLL() {
                         </div>
                         <div style={styles.statusItem}>
                             <span>Last Started:</span>
-                            <span>{mainLoopStatus?.lastStarted ? formatTimestamp(mainLoopStatus.lastStarted) : 'Never'}</span>
+                            <span>{mainLoopStatus?.lastStarted ? formatNanoTimestamp(mainLoopStatus.lastStarted) : 'Never'}</span>
                         </div>
                         <div style={styles.statusItem}>
                             <span>Last Stopped:</span>
-                            <span>{mainLoopStatus?.lastStopped ? formatTimestamp(mainLoopStatus.lastStopped) : 'Never'}</span>
+                            <span>{mainLoopStatus?.lastStopped ? formatNanoTimestamp(mainLoopStatus.lastStopped) : 'Never'}</span>
                         </div>
                         <div style={styles.statusItem}>
                             <span>Last Cycle Started:</span>
-                            <span>{mainLoopStatus?.lastCycleStarted ? formatTimestamp(mainLoopStatus.lastCycleStarted) : 'Never'}</span>
+                            <span>{mainLoopStatus?.lastCycleStarted ? formatNanoTimestamp(mainLoopStatus.lastCycleStarted) : 'Never'}</span>
                         </div>
                         <div style={styles.statusItem}>
                             <span>Last Cycle Ended:</span>
-                            <span>{mainLoopStatus?.lastCycleEnded ? formatTimestamp(mainLoopStatus.lastCycleEnded) : 'Never'}</span>
+                            <span>{mainLoopStatus?.lastCycleEnded ? formatNanoTimestamp(mainLoopStatus.lastCycleEnded) : 'Never'}</span>
                         </div>
                         <div style={styles.statusItem}>
                             <span>Next Scheduled:</span>
-                            <span>{mainLoopStatus?.nextScheduled ? formatTimestamp(mainLoopStatus.nextScheduled) : 'Not scheduled'}</span>
+                            <span>{mainLoopStatus?.nextScheduled ? formatNanoTimestamp(mainLoopStatus.nextScheduled) : 'Not scheduled'}</span>
                         </div>
                         <div style={styles.statusItem}>
                             <span>Frequency:</span>
@@ -1231,7 +1231,7 @@ function RLL() {
                                 <div key={index} style={styles.eventItem}>
                                     <div style={styles.eventHeader}>
                                         <span>Proposals: {formatProposalRange(event.proposal_range)}</span>
-                                        <span>{formatTimestamp(event.timestamp)}</span>
+                                        <span>{formatNanoTimestamp(event.timestamp)}</span>
                                     </div>
                                     <div style={styles.eventDetails}>
                                         <span>Amount: {formatBalance(event.amount, getTokenDecimals(event.token_id.toString()))} tokens</span>
