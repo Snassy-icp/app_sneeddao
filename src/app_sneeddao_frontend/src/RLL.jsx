@@ -236,6 +236,15 @@ const calculateAge = (timestamp) => {
     return parts.join(' ') || 'Less than an hour';
 };
 
+// Helper function to format e8s to token amount
+const formatE8s = (e8s) => {
+    if (!e8s) return '0';
+    return (Number(e8s) / 1e8).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+};
+
 function RLL() {
     const { isAuthenticated, identity } = useAuth();
     const [tokens, setTokens] = useState([]);
@@ -817,7 +826,9 @@ function RLL() {
                                                     </div>
                                                     <div style={styles.statusItem}>
                                                         <span>Stake:</span>
-                                                        <span>{Number(neuron.cached_neuron_stake_e8s).toLocaleString()} e8s</span>
+                                                        <span title={`${Number(neuron.cached_neuron_stake_e8s).toLocaleString()} e8s`}>
+                                                            {formatE8s(neuron.cached_neuron_stake_e8s)} SNEED
+                                                        </span>
                                                     </div>
                                                     <div style={styles.statusItem}>
                                                         <span>Dissolve State:</span>
