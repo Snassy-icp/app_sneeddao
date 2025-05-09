@@ -8,6 +8,8 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { getTokenLogo } from './utils/TokenUtils';
 import ConfirmationModal from './ConfirmationModal';
 import './Help.css'; // We'll reuse the Help page styling for now
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { idlFactory as snsGovIdlFactory } from 'external/sns_governance/sns_governance.did.js';
 
 // Styles
 const styles = {
@@ -196,6 +198,19 @@ const TOKENS = [
     }
 ];
 
+const SNEED_GOVERNANCE_CANISTER_ID = 'fi3zi-fyaaa-aaaaq-aachq-cai';
+
+// Create SNS governance actor
+const createSnsGovernanceActor = (identity) => {
+    return Actor.createActor(snsGovIdlFactory, {
+        agent: new HttpAgent({
+            identity,
+            host: process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943',
+        }),
+        canisterId: SNEED_GOVERNANCE_CANISTER_ID,
+    });
+};
+
 // Helper function to format timestamps (for seconds)
 const formatTimestamp = (timestamp) => {
     if (!timestamp) return '';
@@ -278,7 +293,8 @@ function RLL() {
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [confirmMessage, setConfirmMessage] = useState('');
     const [confirmAction, setConfirmAction] = useState(null);
-    const [isClaimHistoryExpanded, setIsClaimHistoryExpanded] = useState(true);
+    const [isClaimHistoryExpanded, setIsClaimHistoryExpanded] = useState(false);
+    const [isHotkeyNeuronsExpanded, setIsHotkeyNeuronsExpanded] = useState(false);
     
     // New state variables for enhanced features
     const [importedNeuronsCount, setImportedNeuronsCount] = useState(0);
@@ -570,40 +586,51 @@ function RLL() {
         fetchReconciliation();
     }, [isAuthenticated, identity]);
 
-    // Fetch hotkey neurons
-    useEffect(() => {
-        const fetchHotkeyNeurons = async () => {
-            if (!isAuthenticated || !identity) {
-                console.log('Skipping hotkey neurons fetch - not authenticated or no identity');
-                return;
-            }
+    // Function to fetch neurons directly from SNS
+    const fetchNeuronsFromSns = async () => {
+        if (!identity) return [];
+        
+        try {
+            const snsGovActor = createSnsGovernanceActor(identity);
+            const result = await snsGovActor.list_neurons({
+                of_principal: [identity.getPrincipal()],
+                limit: 100,
+                start_page_at: []
+            });
+            return result.neurons;
+        } catch (error) {
+            console.error('Error fetching neurons from SNS:', error);
+            return [];
+        }
+    };
+
+    // Updated function to fetch hotkey neurons data
+    const fetchHotkeyNeuronsData = async () => {
+        if (!identity) return;
+        setLoadingHotkeyNeurons(true);
+        
+        try {
+            // First get neurons from SNS
+            const neurons = await fetchNeuronsFromSns();
             
-            console.log('Starting to fetch hotkey neurons...');
-            setLoadingHotkeyNeurons(true);
-            try {
-                const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: { identity }
-                });
-                console.log('Calling get_hotkey_neurons_by_owner...');
-                const response = await rllActor.get_hotkey_neurons_by_owner(identity.getPrincipal());
-                console.log('Raw response:', response);
+            // Then get voting power data from RLL
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            const result = await rllActor.get_hotkey_voting_power(neurons);
+            
+            setHotkeyNeurons(result);
+        } catch (error) {
+            console.error('Error fetching hotkey neurons:', error);
+        } finally {
+            setLoadingHotkeyNeurons(false);
+        }
+    };
 
-                setHotkeyNeurons(response);
-            } catch (error) {
-                console.error('Error fetching hotkey neurons:', error);
-                // Reset to initial state on error
-                setHotkeyNeurons({
-                    neurons_by_owner: [],
-                    total_voting_power: 0,
-                    distribution_voting_power: 0
-                });
-            } finally {
-                setLoadingHotkeyNeurons(false);
-            }
-        };
-
-        fetchHotkeyNeurons();
-    }, [isAuthenticated, identity]);
+    // Update useEffect to use new function
+    useEffect(() => {
+        if (isAuthenticated) {
+            fetchHotkeyNeuronsData();
+        }
+    }, [isAuthenticated]);
 
     const formatBalance = (balance, decimals) => {
         if (!balance) return '0';
@@ -896,91 +923,108 @@ function RLL() {
 
                 {/* Hotkey Neurons Section */}
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>Your Hotkey Neurons</h2>
-                    {loadingHotkeyNeurons ? (
-                        <div style={styles.spinner} />
-                    ) : (
-                        <div>
-                            <div style={styles.statusGrid}>
-                                <div style={styles.statusItem}>
-                                    <span title="The sum of all voting power you have cast across all Sneed proposals through your hotkey neurons">Total Voting Power:</span>
-                                    <span title="Your total voting power used across all Sneed proposals">{Number(hotkeyNeurons.total_voting_power).toLocaleString()}</span>
-                                </div>
-                                <div style={styles.statusItem}>
-                                    <span title="The sum of all voting power cast by all users across all Sneed proposals">Distribution Voting Power:</span>
-                                    <span title="Total voting power from all users participating in Sneed proposals">{Number(hotkeyNeurons.distribution_voting_power).toLocaleString()}</span>
-                                </div>
-                                <div style={styles.statusItem}>
-                                    <span title="Your percentage share of the total distribution voting power, which determines your share of distributed rewards">Your Voting Share:</span>
-                                    <span title="This percentage represents your share of distributed rewards based on your voting participation">{((Number(hotkeyNeurons.total_voting_power) / Number(hotkeyNeurons.distribution_voting_power)) * 100).toFixed(2)}%</span>
-                                </div>
-                            </div>
-                            
-                            <div style={{marginTop: '20px'}}>
-                                {hotkeyNeurons.neurons_by_owner.map(([owner, neurons], index) => (
-                                    <div key={owner.toText()} style={{
-                                        backgroundColor: '#3a3a3a',
-                                        borderRadius: '6px',
-                                        padding: '15px',
-                                        marginBottom: '15px'
-                                    }}>
-                                        <div style={{
-                                            ...styles.statusItem,
-                                            borderBottom: '1px solid #4a4a4a',
-                                            paddingBottom: '10px',
-                                            marginBottom: '10px'
-                                        }}>
-                                            <span>Owner:</span>
-                                            <span style={{fontFamily: 'monospace'}}>{owner.toText()}</span>
-                                        </div>
-                                        <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                                            {neurons.map((neuron, neuronIndex) => (
-                                                <div key={neuronIndex} style={{
-                                                    backgroundColor: '#2a2a2a',
-                                                    borderRadius: '4px',
-                                                    padding: '10px'
-                                                }}>
-                                                    <div style={styles.statusItem}>
-                                                        <span>Neuron ID:</span>
-                                                        <span style={{
-                                                            fontFamily: 'monospace',
-                                                            wordBreak: 'break-all',
-                                                            maxWidth: '100%'
-                                                        }}>
-                                                            {neuron.id && neuron.id[0] && neuron.id[0].id ? 
-                                                                uint8ArrayToHex(neuron.id[0].id)
-                                                                : 'Unknown'}
-                                                        </span>
-                                                    </div>
-                                                    <div style={styles.statusItem}>
-                                                        <span>Stake:</span>
-                                                        <span title={`${Number(neuron.cached_neuron_stake_e8s).toLocaleString()} e8s`}>
-                                                            {formatE8s(neuron.cached_neuron_stake_e8s)} SNEED
-                                                        </span>
-                                                    </div>
-                                                    <div style={styles.statusItem}>
-                                                        <span>Dissolve State:</span>
-                                                        <span>{neuron.dissolve_state ? 
-                                                            (neuron.dissolve_state[0].WhenDissolvedTimestampSeconds ? 
-                                                                `Dissolving until: ${formatTimestamp(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds)}` : 
-                                                                neuron.dissolve_state[0].DissolveDelaySeconds ? 
-                                                                    `Not dissolving (delay: ${formatDuration(Number(neuron.dissolve_state[0].DissolveDelaySeconds))})` :
-                                                                    'Not dissolving') 
-                                                            : 'Not dissolving'}</span>
-                                                    </div>
-                                                    <div style={styles.statusItem}>
-                                                        <span>Age:</span>
-                                                        <span title={`Aging since: ${formatTimestamp(neuron.aging_since_timestamp_seconds)}`}>
-                                                            {calculateAge(neuron.aging_since_timestamp_seconds)}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
+                    <div style={styles.sectionHeader}>
+                        <h2 style={styles.heading}>Your Hotkey Neurons</h2>
+                        <button 
+                            onClick={() => setIsHotkeyNeuronsExpanded(!isHotkeyNeuronsExpanded)}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#3498db',
+                                cursor: 'pointer',
+                                fontSize: '20px',
+                                padding: '0 10px'
+                            }}
+                        >
+                            {isHotkeyNeuronsExpanded ? '▼' : '▶'}
+                        </button>
+                    </div>
+                    {isHotkeyNeuronsExpanded && (
+                        loadingHotkeyNeurons ? (
+                            <div style={styles.spinner} />
+                        ) : (
+                            <div>
+                                <div style={styles.statusGrid}>
+                                    <div style={styles.statusItem}>
+                                        <span title="The sum of all voting power you have cast across all Sneed proposals through your hotkey neurons">Total Voting Power:</span>
+                                        <span title="Your total voting power used across all Sneed proposals">{Number(hotkeyNeurons.total_voting_power).toLocaleString()}</span>
                                     </div>
-                                ))}
+                                    <div style={styles.statusItem}>
+                                        <span title="The sum of all voting power cast by all users across all Sneed proposals">Distribution Voting Power:</span>
+                                        <span title="Total voting power from all users participating in Sneed proposals">{Number(hotkeyNeurons.distribution_voting_power).toLocaleString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span title="Your percentage share of the total distribution voting power, which determines your share of distributed rewards">Your Voting Share:</span>
+                                        <span title="This percentage represents your share of distributed rewards based on your voting participation">{((Number(hotkeyNeurons.total_voting_power) / Number(hotkeyNeurons.distribution_voting_power)) * 100).toFixed(2)}%</span>
+                                    </div>
+                                </div>
+                                
+                                <div style={{marginTop: '20px'}}>
+                                    {hotkeyNeurons.neurons_by_owner.map(([owner, neurons], index) => (
+                                        <div key={owner.toText()} style={{
+                                            backgroundColor: '#3a3a3a',
+                                            borderRadius: '6px',
+                                            padding: '15px',
+                                            marginBottom: '15px'
+                                        }}>
+                                            <div style={{
+                                                ...styles.statusItem,
+                                                borderBottom: '1px solid #4a4a4a',
+                                                paddingBottom: '10px',
+                                                marginBottom: '10px'
+                                            }}>
+                                                <span>Owner:</span>
+                                                <span style={{fontFamily: 'monospace'}}>{owner.toText()}</span>
+                                            </div>
+                                            <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                                                {neurons.map((neuron, neuronIndex) => (
+                                                    <div key={neuronIndex} style={{
+                                                        backgroundColor: '#2a2a2a',
+                                                        borderRadius: '4px',
+                                                        padding: '10px'
+                                                    }}>
+                                                        <div style={styles.statusItem}>
+                                                            <span>Neuron ID:</span>
+                                                            <span style={{
+                                                                fontFamily: 'monospace',
+                                                                wordBreak: 'break-all',
+                                                                maxWidth: '100%'
+                                                            }}>
+                                                                {neuron.id && neuron.id[0] && neuron.id[0].id ? 
+                                                                    uint8ArrayToHex(neuron.id[0].id)
+                                                                    : 'Unknown'}
+                                                            </span>
+                                                        </div>
+                                                        <div style={styles.statusItem}>
+                                                            <span>Stake:</span>
+                                                            <span title={`${Number(neuron.cached_neuron_stake_e8s).toLocaleString()} e8s`}>
+                                                                {formatE8s(neuron.cached_neuron_stake_e8s)} SNEED
+                                                            </span>
+                                                        </div>
+                                                        <div style={styles.statusItem}>
+                                                            <span>Dissolve State:</span>
+                                                            <span>{neuron.dissolve_state ? 
+                                                                (neuron.dissolve_state[0].WhenDissolvedTimestampSeconds ? 
+                                                                    `Dissolving until: ${formatTimestamp(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds)}` : 
+                                                                    neuron.dissolve_state[0].DissolveDelaySeconds ? 
+                                                                        `Not dissolving (delay: ${formatDuration(Number(neuron.dissolve_state[0].DissolveDelaySeconds))})` :
+                                                                        'Not dissolving') 
+                                                                : 'Not dissolving'}</span>
+                                                        </div>
+                                                        <div style={styles.statusItem}>
+                                                            <span>Age:</span>
+                                                            <span title={`Aging since: ${formatTimestamp(neuron.aging_since_timestamp_seconds)}`}>
+                                                                {calculateAge(neuron.aging_since_timestamp_seconds)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
+                        )
                     )}
                 </section>
 

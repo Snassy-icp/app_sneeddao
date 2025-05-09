@@ -126,6 +126,15 @@ type SneedRLL =
                              };
        total_voting_power: nat64;
      });
+   get_hotkey_voting_power: (vec Neuron) ->
+    (record {
+       distribution_voting_power: nat64;
+       neurons_by_owner: vec record {
+                               principal;
+                               vec Neuron;
+                             };
+       total_voting_power: nat64;
+     }) query;
    get_import_next_neuron_id: () -> (opt NeuronId) query;
    get_import_stage: () -> (text) query;
    get_imported_proposal_max: () -> (nat64) query;

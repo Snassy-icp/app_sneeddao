@@ -339,6 +339,19 @@ export const idlFactory = ({ IDL }) => {
         ],
         [],
       ),
+    'get_hotkey_voting_power' : IDL.Func(
+        [IDL.Vec(Neuron)],
+        [
+          IDL.Record({
+            'distribution_voting_power' : IDL.Nat64,
+            'neurons_by_owner' : IDL.Vec(
+              IDL.Tuple(IDL.Principal, IDL.Vec(Neuron))
+            ),
+            'total_voting_power' : IDL.Nat64,
+          }),
+        ],
+        ['query'],
+      ),
     'get_import_next_neuron_id' : IDL.Func([], [IDL.Opt(NeuronId)], ['query']),
     'get_import_stage' : IDL.Func([], [IDL.Text], ['query']),
     'get_imported_proposal_max' : IDL.Func([], [IDL.Nat64], ['query']),
