@@ -1052,7 +1052,7 @@ function RLL() {
                             <ol style={styles.instructionsList}>
                                 <li>First, you need to have a Sneed neuron</li>
                                 <li>Add this principal as a hotkey to your neuron</li>
-                                <li>Your current principal is: <code style={styles.principalCode}>{identity?.getPrincipal().toString()}</code></li>
+                                <li>Your current principal is: <code style={styles.principalCode}>{identity && identity.getPrincipal ? identity.getPrincipal().toText() : 'Not connected'}</code></li>
                                 <li>Once added as a hotkey, you'll be able to see your balances, claim history, and neurons here</li>
                             </ol>
                         </div>
