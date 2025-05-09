@@ -248,8 +248,8 @@ function RLL() {
     // New state for hotkey neurons
     const [hotkeyNeurons, setHotkeyNeurons] = useState({
         neurons_by_owner: [],
-        total_voting_power: BigInt(0),
-        distribution_voting_power: BigInt(0)
+        total_voting_power: 0,
+        distribution_voting_power: 0
     });
     const [loadingHotkeyNeurons, setLoadingHotkeyNeurons] = useState(true);
 
@@ -532,11 +532,19 @@ function RLL() {
                 const rllActor = createRllActor(rllCanisterId, {
                     agentOptions: { identity }
                 });
-                const data = await rllActor.get_hotkey_neurons_by_owner(identity.getPrincipal());
-                console.log('Received hotkey neurons:', data);
-                setHotkeyNeurons(data);
+                console.log('Calling get_hotkey_neurons_by_owner...');
+                const response = await rllActor.get_hotkey_neurons_by_owner(identity.getPrincipal());
+                console.log('Raw response:', response);
+
+                setHotkeyNeurons(response);
             } catch (error) {
                 console.error('Error fetching hotkey neurons:', error);
+                // Reset to initial state on error
+                setHotkeyNeurons({
+                    neurons_by_owner: [],
+                    total_voting_power: 0,
+                    distribution_voting_power: 0
+                });
             } finally {
                 setLoadingHotkeyNeurons(false);
             }
@@ -744,8 +752,8 @@ function RLL() {
                             </div>
                             
                             <div style={{marginTop: '20px'}}>
-                                {hotkeyNeurons.neurons_by_owner.map((record, index) => (
-                                    <div key={record[0].toText()} style={{
+                                {hotkeyNeurons.neurons_by_owner.map(([owner, neurons], index) => (
+                                    <div key={owner.toText()} style={{
                                         backgroundColor: '#3a3a3a',
                                         borderRadius: '6px',
                                         padding: '15px',
@@ -758,10 +766,10 @@ function RLL() {
                                             marginBottom: '10px'
                                         }}>
                                             <span>Owner:</span>
-                                            <span style={{fontFamily: 'monospace'}}>{record[0].toText()}</span>
+                                            <span style={{fontFamily: 'monospace'}}>{owner.toText()}</span>
                                         </div>
                                         <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                                            {record[1].map((neuron, neuronIndex) => (
+                                            {neurons.map((neuron, neuronIndex) => (
                                                 <div key={neuronIndex} style={{
                                                     backgroundColor: '#2a2a2a',
                                                     borderRadius: '4px',
