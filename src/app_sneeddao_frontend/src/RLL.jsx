@@ -798,7 +798,10 @@ function RLL() {
                                                         <span>{neuron.dissolve_state ? 
                                                             ('DissolveDelaySeconds' in neuron.dissolve_state ? 
                                                                 `Dissolving: ${Number(neuron.dissolve_state.DissolveDelaySeconds).toLocaleString()} seconds` : 
-                                                                `Dissolved at: ${formatTimestamp(neuron.dissolve_state.WhenDissolvedTimestampSeconds)}`) 
+                                                                (neuron.dissolve_state.WhenDissolvedTimestampSeconds && 
+                                                                 Number(neuron.dissolve_state.WhenDissolvedTimestampSeconds) > 0 ? 
+                                                                    `Dissolved at: ${formatTimestamp(neuron.dissolve_state.WhenDissolvedTimestampSeconds)}` :
+                                                                    'Not dissolving')) 
                                                             : 'Not dissolving'}</span>
                                                     </div>
                                                     <div style={styles.statusItem}>
