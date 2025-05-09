@@ -203,6 +203,13 @@ const formatTimestamp = (timestamp) => {
     return date.toLocaleString();
 };
 
+// Add utility function for hex conversion
+function uint8ArrayToHex(array) {
+    return Array.from(array)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+}
+
 function RLL() {
     const { isAuthenticated, identity } = useAuth();
     const [tokens, setTokens] = useState([]);
@@ -774,9 +781,7 @@ function RLL() {
                                                             maxWidth: '100%'
                                                         }}>
                                                             {neuron.id && neuron.id[0] && neuron.id[0].id ? 
-                                                                Array.from(new Uint8Array(neuron.id[0].id.toUint8Array()))
-                                                                    .map(b => b.toString(16).padStart(2, '0'))
-                                                                    .join('') 
+                                                                uint8ArrayToHex(neuron.id[0].id)
                                                                 : 'Unknown'}
                                                         </span>
                                                     </div>
