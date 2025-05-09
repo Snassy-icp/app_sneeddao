@@ -498,7 +498,6 @@ function RLL() {
                     stage,
                     adminStatus,
                     proposalId,
-                    emptyProposals,
                     loopStatus
                 ] = await Promise.all([
                     rllActor.imported_neurons_count(),
@@ -517,7 +516,6 @@ function RLL() {
                     stage,
                     adminStatus,
                     proposalId,
-                    emptyProposals,
                     loopStatus
                 });
 
