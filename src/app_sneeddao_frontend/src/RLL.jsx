@@ -1059,92 +1059,29 @@ function RLL() {
                     </section>
                 )}
 
-                <section style={styles.section}>
-                    <h2 style={styles.heading}>RLL Canister Token Balances</h2>
-                    <div style={styles.controls}>
-                        <Link 
-                            to={`/scan_wallet?principal=${rllCanisterId}`}
-                            style={{
-                                color: '#3498db',
-                                textDecoration: 'none',
-                                marginBottom: '15px',
-                                display: 'inline-block'
-                            }}
-                        >
-                            View in Token Scanner
-                        </Link>
-                    </div>
-                </section>
 
-                {/* Import Status Section */}
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>Import Status</h2>
-                    <div style={styles.statusGrid}>
-                        <div style={styles.statusItem}>
-                            <span>Imported Neurons:</span>
-                            <span>{Number(importedNeuronsCount).toLocaleString()}</span>
+                    <h2 style={styles.heading}>Total Distributions</h2>
+                    {loadingDistributions ? (
+                        <div style={styles.spinner} />
+                    ) : distributions ? (
+                        <div style={styles.tokenList}>
+                            {Object.entries(distributions).map(([principalId, amount]) => {
+                                const symbol = getTokenSymbolByPrincipal(principalId);
+                                const decimals = getTokenDecimalsByPrincipal(principalId);
+                                return (
+                                    <div key={principalId} style={styles.distributionItem}>
+                                        <span style={styles.distributionLabel}>Total {symbol} Distributed</span>
+                                        <span style={styles.distributionValue}>
+                                            {formatBalance(amount, decimals)} {symbol}
+                                        </span>
+                                    </div>
+                                );
+                            })}
                         </div>
-                        <div style={styles.statusItem}>
-                            <span>Imported Owners:</span>
-                            <span>{Number(importedOwnersCount).toLocaleString()}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Imported Proposals:</span>
-                            <span>{Number(importedPropsCount).toLocaleString()}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Highest Closed Proposal:</span>
-                            <span>{Number(highestClosedProposalId).toLocaleString()}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Current Stage:</span>
-                            <span style={{
-                                color: importStage.includes('idle') ? '#f1c40f' : '#2ecc71',
-                                fontFamily: 'monospace'
-                            }}>
-                                {importStage}
-                            </span>
-                        </div>
-                    </div>
-                </section>
-
-                {/* Distribution Cycle Status */}
-                <section style={styles.section}>
-                    <h2 style={styles.heading}>Distribution Cycle</h2>
-                    <div style={styles.cycleInfo}>
-                        <div style={styles.statusItem}>
-                            <span>Status:</span>
-                            <span style={{
-                                color: mainLoopStatus?.isRunning ? '#2ecc71' : '#e74c3c'
-                            }}>
-                                {mainLoopStatus?.isRunning ? 'Running' : 'Stopped'}
-                            </span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Last Started:</span>
-                            <span>{mainLoopStatus?.lastStarted ? formatNanoTimestamp(mainLoopStatus.lastStarted) : 'Never'}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Last Stopped:</span>
-                            <span>{mainLoopStatus?.lastStopped ? formatNanoTimestamp(mainLoopStatus.lastStopped) : 'Never'}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Last Cycle Started:</span>
-                            <span>{mainLoopStatus?.lastCycleStarted ? formatNanoTimestamp(mainLoopStatus.lastCycleStarted) : 'Never'}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Last Cycle Ended:</span>
-                            <span>{mainLoopStatus?.lastCycleEnded ? formatNanoTimestamp(mainLoopStatus.lastCycleEnded) : 'Never'}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Next Scheduled:</span>
-                            <span>{mainLoopStatus?.nextScheduled ? formatNanoTimestamp(mainLoopStatus.nextScheduled) : 'Not scheduled'}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Frequency:</span>
-                            <span>{mainLoopStatus?.frequencySeconds ? formatDuration(Number(mainLoopStatus.frequencySeconds)) : 'Unknown'}</span>
-                        </div>
-                    </div>
+                    ) : (
+                        <p style={{ color: '#ffffff' }}>No distributions found</p>
+                    )}
                 </section>
 
                 {/* Balance Reconciliation */}
@@ -1193,6 +1130,78 @@ function RLL() {
                     </div>
                 </section>
 
+
+                {/* Distribution Cycle Status */}
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Distribution Cycle</h2>
+                    <div style={styles.cycleInfo}>
+                        <div style={styles.statusItem}>
+                            <span>Status:</span>
+                            <span style={{
+                                color: mainLoopStatus?.isRunning ? '#2ecc71' : '#e74c3c'
+                            }}>
+                                {mainLoopStatus?.isRunning ? 'Running' : 'Stopped'}
+                            </span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Last Started:</span>
+                            <span>{mainLoopStatus?.lastStarted ? formatNanoTimestamp(mainLoopStatus.lastStarted) : 'Never'}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Last Stopped:</span>
+                            <span>{mainLoopStatus?.lastStopped ? formatNanoTimestamp(mainLoopStatus.lastStopped) : 'Never'}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Last Cycle Started:</span>
+                            <span>{mainLoopStatus?.lastCycleStarted ? formatNanoTimestamp(mainLoopStatus.lastCycleStarted) : 'Never'}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Last Cycle Ended:</span>
+                            <span>{mainLoopStatus?.lastCycleEnded ? formatNanoTimestamp(mainLoopStatus.lastCycleEnded) : 'Never'}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Next Scheduled:</span>
+                            <span>{mainLoopStatus?.nextScheduled ? formatNanoTimestamp(mainLoopStatus.nextScheduled) : 'Not scheduled'}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Frequency:</span>
+                            <span>{mainLoopStatus?.frequencySeconds ? formatDuration(Number(mainLoopStatus.frequencySeconds)) : 'Unknown'}</span>
+                        </div>
+                    </div>
+                </section>
+
+
+                {/* Import Status Section */}
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Import Status</h2>
+                    <div style={styles.statusGrid}>
+                        <div style={styles.statusItem}>
+                            <span>Imported Neurons:</span>
+                            <span>{Number(importedNeuronsCount).toLocaleString()}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Imported Owners:</span>
+                            <span>{Number(importedOwnersCount).toLocaleString()}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Imported Proposals:</span>
+                            <span>{Number(importedPropsCount).toLocaleString()}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Highest Closed Proposal:</span>
+                            <span>{Number(highestClosedProposalId).toLocaleString()}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Current Stage:</span>
+                            <span style={{
+                                color: importStage.includes('idle') ? '#f1c40f' : '#2ecc71',
+                                fontFamily: 'monospace'
+                            }}>
+                                {importStage}
+                            </span>
+                        </div>
+                    </div>
+                </section>
                 {/* Admin Controls */}
                 {isAdmin && (
                     <section style={styles.section}>
@@ -1237,30 +1246,6 @@ function RLL() {
                         </div>
                     </section>
                 )}
-
-                <section style={styles.section}>
-                    <h2 style={styles.heading}>Total Distributions</h2>
-                    {loadingDistributions ? (
-                        <div style={styles.spinner} />
-                    ) : distributions ? (
-                        <div style={styles.tokenList}>
-                            {Object.entries(distributions).map(([principalId, amount]) => {
-                                const symbol = getTokenSymbolByPrincipal(principalId);
-                                const decimals = getTokenDecimalsByPrincipal(principalId);
-                                return (
-                                    <div key={principalId} style={styles.distributionItem}>
-                                        <span style={styles.distributionLabel}>Total {symbol} Distributed</span>
-                                        <span style={styles.distributionValue}>
-                                            {formatBalance(amount, decimals)} {symbol}
-                                        </span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    ) : (
-                        <p style={{ color: '#ffffff' }}>No distributions found</p>
-                    )}
-                </section>
 
                 <section style={styles.section}>
                     <h2 style={styles.heading}>Recent Distribution Events</h2>
