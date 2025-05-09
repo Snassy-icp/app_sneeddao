@@ -9,7 +9,7 @@ import { getTokenLogo } from './utils/TokenUtils';
 import ConfirmationModal from './ConfirmationModal';
 import './Help.css'; // We'll reuse the Help page styling for now
 import { Actor, HttpAgent } from '@dfinity/agent';
-import { idlFactory as snsGovIdlFactory } from 'external/sns_governance/sns_governance.did.js';
+import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 
 // Styles
 const styles = {
@@ -199,17 +199,6 @@ const TOKENS = [
 ];
 
 const SNEED_GOVERNANCE_CANISTER_ID = 'fi3zi-fyaaa-aaaaq-aachq-cai';
-
-// Create SNS governance actor
-const createSnsGovernanceActor = (identity) => {
-    return Actor.createActor(snsGovIdlFactory, {
-        agent: new HttpAgent({
-            identity,
-            host: process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943',
-        }),
-        canisterId: SNEED_GOVERNANCE_CANISTER_ID,
-    });
-};
 
 // Helper function to format timestamps (for seconds)
 const formatTimestamp = (timestamp) => {
