@@ -849,7 +849,7 @@ function RLL() {
                                                         <span>Dissolve State:</span>
                                                         <span>{neuron.dissolve_state ? 
                                                             (neuron.dissolve_state[0].WhenDissolvedTimestampSeconds ? 
-                                                                `Dissolving until: ${formatNanoTimestamp(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds)}` : 
+                                                                `Dissolving until: ${formatTimestamp(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds)}` : 
                                                                 neuron.dissolve_state[0].DissolveDelaySeconds ? 
                                                                     `Not dissolving (delay: ${formatDuration(Number(neuron.dissolve_state[0].DissolveDelaySeconds))})` :
                                                                     'Not dissolving') 
