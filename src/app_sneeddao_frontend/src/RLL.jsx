@@ -9,7 +9,7 @@ import { getTokenLogo } from './utils/TokenUtils';
 import ConfirmationModal from './ConfirmationModal';
 import './Help.css'; // We'll reuse the Help page styling for now
 import { Actor, HttpAgent } from '@dfinity/agent';
-import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 
 // Styles
 const styles = {
@@ -304,7 +304,6 @@ function RLL() {
     const [reconciliation, setReconciliation] = useState([]);
     const [isAdmin, setIsAdmin] = useState(false);
     const [highestClosedProposalId, setHighestClosedProposalId] = useState(null);
-    const [emptyBallotProposals, setEmptyBallotProposals] = useState({ proposal_ids: [], total_count: 0 });
 
 
     // New state for hotkey neurons
@@ -508,7 +507,6 @@ function RLL() {
                     rllActor.get_import_stage(),
                     rllActor.caller_is_admin(),
                     rllActor.get_highest_closed_proposal_id(),
-                    rllActor.get_empty_ballot_proposals(),
                     rllActor.get_main_loop_status()
                 ]);
 
@@ -529,7 +527,6 @@ function RLL() {
                 setImportStage(stage);
                 setIsAdmin(adminStatus);
                 setHighestClosedProposalId(proposalId);
-                setEmptyBallotProposals(emptyProposals);
                 setMainLoopStatus({
                     isRunning: loopStatus.is_running,
                     lastStarted: loopStatus.last_started,
@@ -580,7 +577,11 @@ function RLL() {
         if (!identity) return [];
         
         try {
-            const snsGovActor = createSnsGovernanceActor(identity);
+            const snsGovActor = createSnsGovernanceActor(snsGovernanceCanisterId, {
+              agentOptions: {
+                  identity,
+              },
+          });
             const result = await snsGovActor.list_neurons({
                 of_principal: [identity.getPrincipal()],
                 limit: 100,
@@ -1051,6 +1052,10 @@ function RLL() {
                             <span>{Number(importedPropsCount).toLocaleString()}</span>
                         </div>
                         <div style={styles.statusItem}>
+                            <span>Highest Closed Proposal:</span>
+                            <span>{highestClosedProposalId}</span>
+                        </div>
+                        <div style={styles.statusItem}>
                             <span>Current Stage:</span>
                             <span style={{
                                 color: importStage.includes('idle') ? '#f1c40f' : '#2ecc71',
@@ -1097,21 +1102,6 @@ function RLL() {
                         <div style={styles.statusItem}>
                             <span>Frequency:</span>
                             <span>{mainLoopStatus?.frequencySeconds ? `${mainLoopStatus.frequencySeconds} seconds` : 'Unknown'}</span>
-                        </div>
-                    </div>
-                </section>
-
-                {/* Proposal Information */}
-                <section style={styles.section}>
-                    <h2 style={styles.heading}>Proposal Information</h2>
-                    <div style={styles.proposalInfo}>
-                        <div style={styles.statusItem}>
-                            <span>Highest Closed Proposal:</span>
-                            <span>{highestClosedProposalId}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Empty Ballot Proposals:</span>
-                            <span>{emptyBallotProposals.total_count}</span>
                         </div>
                     </div>
                 </section>
