@@ -781,6 +781,119 @@ function RLL() {
             <main className="help-container">
                 <h1 style={{ color: '#ffffff' }}>RLL</h1>
                 
+
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Your Token Balances</h2>
+                    {loadingUserBalances ? (
+                        <div style={styles.spinner} />
+                    ) : userBalances.length > 0 ? (
+                        <div style={styles.eventList}>
+                            {userBalances.map(([tokenId, balance], index) => {
+                                const token = tokens.find(t => t.ledger_id.toString() === tokenId.toString());
+                                if (!token) return null;
+                                
+                                return (
+                                    <div key={index} style={styles.eventItem}>
+                                        <div style={styles.eventHeader}>
+                                            <span>{token.symbol}</span>
+                                            {Number(balance) > 0 && (
+                                                <button
+                                                    onClick={() => handleClaimRewards(tokenId, balance, token)}
+                                                    style={{
+                                                        backgroundColor: '#3498db',
+                                                        color: '#ffffff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '4px 8px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '12px'
+                                                    }}
+                                                >
+                                                    Claim
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div style={styles.eventDetails}>
+                                            <span>Balance: {formatBalance(balance, token.decimals)} {token.symbol}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <p style={{ color: '#ffffff' }}>No token balances found</p>
+                    )}
+                </section>
+
+                <section style={styles.section}>
+                    <div style={styles.sectionHeader}>
+                        <h2 style={styles.heading}>Your Claim History</h2>
+                        <button 
+                            onClick={() => setIsClaimHistoryExpanded(!isClaimHistoryExpanded)}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#3498db',
+                                cursor: 'pointer',
+                                fontSize: '20px',
+                                padding: '0 10px'
+                            }}
+                        >
+                            {isClaimHistoryExpanded ? '▼' : '▶'}
+                        </button>
+                    </div>
+                    {isClaimHistoryExpanded && (
+                        loadingUserEvents ? (
+                            <div style={styles.spinner} />
+                        ) : userClaimEvents.length > 0 ? (
+                            <div style={styles.eventList}>
+                                {Object.entries(groupEventsBySequence(userClaimEvents))
+                                    .sort((a, b) => Number(b[0]) - Number(a[0])) // Sort by sequence number descending
+                                    .slice(0, 5) // Take only the 5 most recent sequence groups
+                                    .map(([seqNum, events]) => {
+                                        const status = getGroupStatus(events);
+                                        const latestEvent = events[events.length - 1];
+                                        const token = tokens.find(t => t.ledger_id.toString() === latestEvent.token_id.toString());
+                                        const symbol = token ? token.symbol : 'Unknown';
+
+                                        return (
+                                            <div key={seqNum} style={styles.eventItem}>
+                                                <div style={styles.eventHeader}>
+                                                    <span style={{
+                                                        color: status === 'Success' ? '#2ecc71' : 
+                                                               status === 'Pending' ? '#f1c40f' : 
+                                                               status === 'Failed' ? '#e74c3c' : '#ffffff'
+                                                    }}>
+                                                        {status}
+                                                    </span>
+                                                    <span>{formatTimestamp(latestEvent.timestamp)}</span>
+                                                </div>
+                                                <div style={styles.eventDetails}>
+                                                    <span>Sequence: {seqNum}</span>
+                                                    <span>Amount: {formatBalance(latestEvent.amount, getTokenDecimals(latestEvent.token_id.toString()))} {symbol}</span>
+                                                    <span>Fee: {formatBalance(latestEvent.fee, getTokenDecimals(latestEvent.token_id.toString()))} {symbol}</span>
+                                                    {events.some(e => e.tx_index && e.tx_index.length > 0) && (
+                                                        <span>Transaction ID: {events.find(e => e.tx_index && e.tx_index.length > 0).tx_index[0].toString()}</span>
+                                                    )}
+                                                    {events.map((event, idx) => (
+                                                        event.error_message && event.error_message.length > 0 && (
+                                                            <span key={idx} style={{ color: '#e74c3c' }}>
+                                                                Message: {event.error_message[0]}
+                                                            </span>
+                                                        )
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                        ) : (
+                            <p style={{ color: '#ffffff' }}>No claim history found</p>
+                        )
+                    )}
+                </section>
+
+
                 {/* Hotkey Neurons Section */}
                 <section style={styles.section}>
                     <h2 style={styles.heading}>Your Hotkey Neurons</h2>
@@ -1060,117 +1173,6 @@ function RLL() {
                         </div>
                     </section>
                 )}
-
-                <section style={styles.section}>
-                    <h2 style={styles.heading}>Your Token Balances</h2>
-                    {loadingUserBalances ? (
-                        <div style={styles.spinner} />
-                    ) : userBalances.length > 0 ? (
-                        <div style={styles.eventList}>
-                            {userBalances.map(([tokenId, balance], index) => {
-                                const token = tokens.find(t => t.ledger_id.toString() === tokenId.toString());
-                                if (!token) return null;
-                                
-                                return (
-                                    <div key={index} style={styles.eventItem}>
-                                        <div style={styles.eventHeader}>
-                                            <span>{token.symbol}</span>
-                                            {Number(balance) > 0 && (
-                                                <button
-                                                    onClick={() => handleClaimRewards(tokenId, balance, token)}
-                                                    style={{
-                                                        backgroundColor: '#3498db',
-                                                        color: '#ffffff',
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '4px 8px',
-                                                        cursor: 'pointer',
-                                                        fontSize: '12px'
-                                                    }}
-                                                >
-                                                    Claim
-                                                </button>
-                                            )}
-                                        </div>
-                                        <div style={styles.eventDetails}>
-                                            <span>Balance: {formatBalance(balance, token.decimals)} {token.symbol}</span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    ) : (
-                        <p style={{ color: '#ffffff' }}>No token balances found</p>
-                    )}
-                </section>
-
-                <section style={styles.section}>
-                    <div style={styles.sectionHeader}>
-                        <h2 style={styles.heading}>Your Claim History</h2>
-                        <button 
-                            onClick={() => setIsClaimHistoryExpanded(!isClaimHistoryExpanded)}
-                            style={{
-                                background: 'none',
-                                border: 'none',
-                                color: '#3498db',
-                                cursor: 'pointer',
-                                fontSize: '20px',
-                                padding: '0 10px'
-                            }}
-                        >
-                            {isClaimHistoryExpanded ? '▼' : '▶'}
-                        </button>
-                    </div>
-                    {isClaimHistoryExpanded && (
-                        loadingUserEvents ? (
-                            <div style={styles.spinner} />
-                        ) : userClaimEvents.length > 0 ? (
-                            <div style={styles.eventList}>
-                                {Object.entries(groupEventsBySequence(userClaimEvents))
-                                    .sort((a, b) => Number(b[0]) - Number(a[0])) // Sort by sequence number descending
-                                    .slice(0, 5) // Take only the 5 most recent sequence groups
-                                    .map(([seqNum, events]) => {
-                                        const status = getGroupStatus(events);
-                                        const latestEvent = events[events.length - 1];
-                                        const token = tokens.find(t => t.ledger_id.toString() === latestEvent.token_id.toString());
-                                        const symbol = token ? token.symbol : 'Unknown';
-
-                                        return (
-                                            <div key={seqNum} style={styles.eventItem}>
-                                                <div style={styles.eventHeader}>
-                                                    <span style={{
-                                                        color: status === 'Success' ? '#2ecc71' : 
-                                                               status === 'Pending' ? '#f1c40f' : 
-                                                               status === 'Failed' ? '#e74c3c' : '#ffffff'
-                                                    }}>
-                                                        {status}
-                                                    </span>
-                                                    <span>{formatTimestamp(latestEvent.timestamp)}</span>
-                                                </div>
-                                                <div style={styles.eventDetails}>
-                                                    <span>Sequence: {seqNum}</span>
-                                                    <span>Amount: {formatBalance(latestEvent.amount, getTokenDecimals(latestEvent.token_id.toString()))} {symbol}</span>
-                                                    <span>Fee: {formatBalance(latestEvent.fee, getTokenDecimals(latestEvent.token_id.toString()))} {symbol}</span>
-                                                    {events.some(e => e.tx_index && e.tx_index.length > 0) && (
-                                                        <span>Transaction ID: {events.find(e => e.tx_index && e.tx_index.length > 0).tx_index[0].toString()}</span>
-                                                    )}
-                                                    {events.map((event, idx) => (
-                                                        event.error_message && event.error_message.length > 0 && (
-                                                            <span key={idx} style={{ color: '#e74c3c' }}>
-                                                                Message: {event.error_message[0]}
-                                                            </span>
-                                                        )
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                            </div>
-                        ) : (
-                            <p style={{ color: '#ffffff' }}>No claim history found</p>
-                        )
-                    )}
-                </section>
 
                 <section style={styles.section}>
                     <h2 style={styles.heading}>Total Distributions</h2>
