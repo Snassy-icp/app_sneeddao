@@ -196,8 +196,15 @@ const TOKENS = [
     }
 ];
 
-// Helper function to format timestamps
+// Helper function to format timestamps (for seconds)
 const formatTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(Number(timestamp) * 1000); // Convert seconds to milliseconds
+    return date.toLocaleString();
+};
+
+// Helper function for nanosecond timestamps
+const formatNanoTimestamp = (timestamp) => {
     if (!timestamp) return '';
     const date = new Date(Number(timestamp) / 1_000_000); // Convert nanoseconds to milliseconds
     return date.toLocaleString();
@@ -209,6 +216,25 @@ function uint8ArrayToHex(array) {
         .map(b => b.toString(16).padStart(2, '0'))
         .join('');
 }
+
+// Helper function to calculate age from timestamp
+const calculateAge = (timestamp) => {
+    if (!timestamp) return '';
+    const ageInSeconds = Math.floor(Date.now() / 1000) - Number(timestamp);
+    
+    const years = Math.floor(ageInSeconds / (365 * 24 * 60 * 60));
+    const months = Math.floor((ageInSeconds % (365 * 24 * 60 * 60)) / (30 * 24 * 60 * 60));
+    const days = Math.floor((ageInSeconds % (30 * 24 * 60 * 60)) / (24 * 60 * 60));
+    const hours = Math.floor((ageInSeconds % (24 * 60 * 60)) / (60 * 60));
+    
+    const parts = [];
+    if (years > 0) parts.push(`${years}y`);
+    if (months > 0) parts.push(`${months}m`);
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0 && years === 0) parts.push(`${hours}h`); // Only show hours if less than a year old
+    
+    return parts.join(' ') || 'Less than an hour';
+};
 
 function RLL() {
     const { isAuthenticated, identity } = useAuth();
@@ -800,13 +826,15 @@ function RLL() {
                                                                 `Dissolving: ${Number(neuron.dissolve_state.DissolveDelaySeconds).toLocaleString()} seconds` : 
                                                                 (neuron.dissolve_state.WhenDissolvedTimestampSeconds && 
                                                                  Number(neuron.dissolve_state.WhenDissolvedTimestampSeconds) > 0 ? 
-                                                                    `Dissolved at: ${formatTimestamp(neuron.dissolve_state.WhenDissolvedTimestampSeconds)}` :
+                                                                    `Dissolved at: ${formatNanoTimestamp(neuron.dissolve_state.WhenDissolvedTimestampSeconds)}` :
                                                                     'Not dissolving')) 
                                                             : 'Not dissolving'}</span>
                                                     </div>
                                                     <div style={styles.statusItem}>
                                                         <span>Age:</span>
-                                                        <span>{formatTimestamp(neuron.aging_since_timestamp_seconds)}</span>
+                                                        <span title={`Aging since: ${formatTimestamp(neuron.aging_since_timestamp_seconds)}`}>
+                                                            {calculateAge(neuron.aging_since_timestamp_seconds)}
+                                                        </span>
                                                     </div>
                                                 </div>
                                             ))}
