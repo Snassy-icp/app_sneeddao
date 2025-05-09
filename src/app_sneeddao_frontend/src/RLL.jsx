@@ -883,7 +883,7 @@ function RLL() {
                                                     }}>
                                                         {status}
                                                     </span>
-                                                    <span>{formatTimestamp(latestEvent.timestamp)}</span>
+                                                    <span>{formatNanoTimestamp(latestEvent.timestamp)}</span>
                                                 </div>
                                                 <div style={styles.eventDetails}>
                                                     <span>Sequence: {seqNum}</span>
@@ -1257,7 +1257,7 @@ function RLL() {
                                             'Failed' in event.status ? 'Failed' :
                                             'Unknown'
                                         }</span>
-                                        <span>{formatTimestamp(event.timestamp)}</span>
+                                        <span>{formatNanoTimestamp(event.timestamp)}</span>
                                     </div>
                                     <div style={styles.eventDetails}>
                                         <span>Hotkey: {event.hotkey.toString()}</span>
