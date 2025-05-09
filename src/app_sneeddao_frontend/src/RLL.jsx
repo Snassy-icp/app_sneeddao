@@ -740,12 +740,16 @@ function RLL() {
                         <div>
                             <div style={styles.statusGrid}>
                                 <div style={styles.statusItem}>
-                                    <span>Total Voting Power:</span>
-                                    <span>{Number(hotkeyNeurons.total_voting_power).toLocaleString()}</span>
+                                    <span title="The sum of all voting power you have cast across all Sneed proposals through your hotkey neurons">Total Voting Power:</span>
+                                    <span title="Your total voting power used across all Sneed proposals">{Number(hotkeyNeurons.total_voting_power).toLocaleString()}</span>
                                 </div>
                                 <div style={styles.statusItem}>
-                                    <span>Distribution Voting Power:</span>
-                                    <span>{Number(hotkeyNeurons.distribution_voting_power).toLocaleString()}</span>
+                                    <span title="The sum of all voting power cast by all users across all Sneed proposals">Distribution Voting Power:</span>
+                                    <span title="Total voting power from all users participating in Sneed proposals">{Number(hotkeyNeurons.distribution_voting_power).toLocaleString()}</span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span title="Your percentage share of the total distribution voting power, which determines your share of distributed rewards">Your Voting Share:</span>
+                                    <span title="This percentage represents your share of distributed rewards based on your voting participation">{((Number(hotkeyNeurons.total_voting_power) / Number(hotkeyNeurons.distribution_voting_power)) * 100).toFixed(2)}%</span>
                                 </div>
                             </div>
                             
