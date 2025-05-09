@@ -46,6 +46,17 @@
           "ic": "rxaqa-eyaaa-aaaao-a356q-cai"
         }
       }
+    },
+    "sns_governance": {
+      "type": "custom",
+      "candid": "src/external/sns_governance/sns_governance.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "fi3zi-fyaaa-aaaaq-aachq-cai"
+        }
+      }
     }
   },
   "defaults": {
