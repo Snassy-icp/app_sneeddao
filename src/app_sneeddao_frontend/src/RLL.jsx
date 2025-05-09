@@ -778,7 +778,8 @@ function RLL() {
                                                     <div style={styles.statusItem}>
                                                         <span>Neuron ID:</span>
                                                         <span style={{fontFamily: 'monospace'}}>
-                                                            {neuron.id ? neuron.id.id.toString() : 'Unknown'}
+                                                            {neuron.id && neuron.id[0] && neuron.id[0].id ? 
+                                                                neuron.id[0].id.toString() : 'Unknown'}
                                                         </span>
                                                     </div>
                                                     <div style={styles.statusItem}>
