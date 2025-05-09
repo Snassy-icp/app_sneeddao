@@ -485,11 +485,6 @@ function RLL() {
         };
 
         fetchImportStatus();
-        
-        // Set up periodic refresh
-        const intervalId = setInterval(fetchImportStatus, 10000); // Refresh every 10 seconds
-        
-        return () => clearInterval(intervalId);
     }, [isAuthenticated, identity]);
 
     // Fetch balance reconciliation
@@ -551,10 +546,6 @@ function RLL() {
         };
 
         fetchHotkeyNeurons();
-        
-        // Refresh every 30 seconds
-        const intervalId = setInterval(fetchHotkeyNeurons, 30000);
-        return () => clearInterval(intervalId);
     }, [isAuthenticated, identity]);
 
     const formatBalance = (balance, decimals) => {
@@ -777,9 +768,16 @@ function RLL() {
                                                 }}>
                                                     <div style={styles.statusItem}>
                                                         <span>Neuron ID:</span>
-                                                        <span style={{fontFamily: 'monospace'}}>
+                                                        <span style={{
+                                                            fontFamily: 'monospace',
+                                                            wordBreak: 'break-all',
+                                                            maxWidth: '100%'
+                                                        }}>
                                                             {neuron.id && neuron.id[0] && neuron.id[0].id ? 
-                                                                neuron.id[0].id.toString() : 'Unknown'}
+                                                                Array.from(new Uint8Array(neuron.id[0].id.toUint8Array()))
+                                                                    .map(b => b.toString(16).padStart(2, '0'))
+                                                                    .join('') 
+                                                                : 'Unknown'}
                                                         </span>
                                                     </div>
                                                     <div style={styles.statusItem}>
