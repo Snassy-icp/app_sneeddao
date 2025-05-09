@@ -245,6 +245,21 @@ const formatE8s = (e8s) => {
     });
 };
 
+// Helper function to format duration in seconds to human readable format
+const formatDuration = (seconds) => {
+    if (!seconds) return '0 seconds';
+    const years = Math.floor(seconds / (365 * 24 * 60 * 60));
+    const months = Math.floor((seconds % (365 * 24 * 60 * 60)) / (30 * 24 * 60 * 60));
+    const days = Math.floor((seconds % (30 * 24 * 60 * 60)) / (24 * 60 * 60));
+    
+    const parts = [];
+    if (years > 0) parts.push(`${years} year${years > 1 ? 's' : ''}`);
+    if (months > 0) parts.push(`${months} month${months > 1 ? 's' : ''}`);
+    if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
+    
+    return parts.join(', ') || '< 1 day';
+};
+
 function RLL() {
     const { isAuthenticated, identity } = useAuth();
     const [tokens, setTokens] = useState([]);
@@ -833,12 +848,11 @@ function RLL() {
                                                     <div style={styles.statusItem}>
                                                         <span>Dissolve State:</span>
                                                         <span>{neuron.dissolve_state ? 
-                                                            ('DissolveDelaySeconds' in neuron.dissolve_state ? 
-                                                                `Dissolving: ${Number(neuron.dissolve_state.DissolveDelaySeconds).toLocaleString()} seconds` : 
-                                                                (neuron.dissolve_state.WhenDissolvedTimestampSeconds && 
-                                                                 Number(neuron.dissolve_state.WhenDissolvedTimestampSeconds) > 0 ? 
-                                                                    `Dissolved at: ${formatNanoTimestamp(neuron.dissolve_state.WhenDissolvedTimestampSeconds)}` :
-                                                                    'Not dissolving')) 
+                                                            (neuron.dissolve_state[0].WhenDissolvedTimestampSeconds ? 
+                                                                `Dissolving until: ${formatNanoTimestamp(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds)}` : 
+                                                                neuron.dissolve_state[0].DissolveDelaySeconds ? 
+                                                                    `Not dissolving (delay: ${formatDuration(Number(neuron.dissolve_state[0].DissolveDelaySeconds))})` :
+                                                                    'Not dissolving') 
                                                             : 'Not dissolving'}</span>
                                                     </div>
                                                     <div style={styles.statusItem}>
