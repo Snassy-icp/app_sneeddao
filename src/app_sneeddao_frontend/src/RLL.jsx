@@ -177,6 +177,32 @@ const styles = {
         padding: '8px 16px',
         cursor: 'pointer',
         fontSize: '16px'
+    },
+    noNeuronsMessage: {
+        backgroundColor: '#2a2a2a',
+        padding: '20px',
+        borderRadius: '8px',
+        color: '#ffffff'
+    },
+    instructionsList: {
+        marginTop: '15px',
+        paddingLeft: '20px',
+        lineHeight: '1.6'
+    },
+    principalCode: {
+        backgroundColor: '#3a3a3a',
+        padding: '4px 8px',
+        borderRadius: '4px',
+        fontFamily: 'monospace',
+        wordBreak: 'break-all'
+    },
+    expandButton: {
+        background: 'none',
+        border: 'none',
+        color: '#3498db',
+        cursor: 'pointer',
+        fontSize: '20px',
+        padding: '0 10px'
     }
 };
 
@@ -796,225 +822,242 @@ function RLL() {
             <main className="help-container">
                 <h1 style={{ color: '#ffffff' }}>RLL</h1>
                 
-
-                <section style={styles.section}>
-                    <h2 style={styles.heading}>Your Token Balances</h2>
-                    {loadingUserBalances ? (
-                        <div style={styles.spinner} />
-                    ) : userBalances.length > 0 ? (
-                        <div style={styles.eventList}>
-                            {userBalances.map(([tokenId, balance], index) => {
-                                const token = tokens.find(t => t.ledger_id.toString() === tokenId.toString());
-                                if (!token) return null;
-                                
-                                return (
-                                    <div key={index} style={styles.eventItem}>
-                                        <div style={styles.eventHeader}>
-                                            <span>{token.symbol}</span>
-                                            {Number(balance) > 0 && (
-                                                <button
-                                                    onClick={() => handleClaimRewards(tokenId, balance, token)}
-                                                    style={{
-                                                        backgroundColor: '#3498db',
-                                                        color: '#ffffff',
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '4px 8px',
-                                                        cursor: 'pointer',
-                                                        fontSize: '12px'
-                                                    }}
-                                                >
-                                                    Claim
-                                                </button>
-                                            )}
-                                        </div>
-                                        <div style={styles.eventDetails}>
-                                            <span>Balance: {formatBalance(balance, token.decimals)} {token.symbol}</span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    ) : (
-                        <p style={{ color: '#ffffff' }}>No token balances found</p>
-                    )}
-                </section>
-
-                <section style={styles.section}>
-                    <div style={styles.sectionHeader}>
-                        <h2 style={styles.heading}>Your Claim History</h2>
-                        <button 
-                            onClick={() => setIsClaimHistoryExpanded(!isClaimHistoryExpanded)}
-                            style={{
-                                background: 'none',
-                                border: 'none',
-                                color: '#3498db',
-                                cursor: 'pointer',
-                                fontSize: '20px',
-                                padding: '0 10px'
-                            }}
-                        >
-                            {isClaimHistoryExpanded ? '▼' : '▶'}
-                        </button>
-                    </div>
-                    {isClaimHistoryExpanded && (
-                        loadingUserEvents ? (
-                            <div style={styles.spinner} />
-                        ) : userClaimEvents.length > 0 ? (
-                            <div style={styles.eventList}>
-                                {Object.entries(groupEventsBySequence(userClaimEvents))
-                                    .sort((a, b) => Number(b[0]) - Number(a[0])) // Sort by sequence number descending
-                                    .slice(0, 5) // Take only the 5 most recent sequence groups
-                                    .map(([seqNum, events]) => {
-                                        const status = getGroupStatus(events);
-                                        const latestEvent = events[events.length - 1];
-                                        const token = tokens.find(t => t.ledger_id.toString() === latestEvent.token_id.toString());
-                                        const symbol = token ? token.symbol : 'Unknown';
-
+                {hotkeyNeurons.neurons_by_owner.length > 0 ? (
+                    <>
+                        {/* Your Token Balances */}
+                        <section style={styles.section}>
+                            <h2 style={styles.heading}>Your Token Balances</h2>
+                            {loadingUserBalances ? (
+                                <div style={styles.spinner} />
+                            ) : userBalances.length > 0 ? (
+                                <div style={styles.eventList}>
+                                    {userBalances.map(([tokenId, balance], index) => {
+                                        const token = tokens.find(t => t.ledger_id.toString() === tokenId.toString());
+                                        if (!token) return null;
+                                        
                                         return (
-                                            <div key={seqNum} style={styles.eventItem}>
+                                            <div key={index} style={styles.eventItem}>
                                                 <div style={styles.eventHeader}>
-                                                    <span style={{
-                                                        color: status === 'Success' ? '#2ecc71' : 
-                                                               status === 'Pending' ? '#f1c40f' : 
-                                                               status === 'Failed' ? '#e74c3c' : '#ffffff'
-                                                    }}>
-                                                        {status}
-                                                    </span>
-                                                    <span>{formatNanoTimestamp(latestEvent.timestamp)}</span>
+                                                    <span>{token.symbol}</span>
+                                                    {Number(balance) > 0 && (
+                                                        <button
+                                                            onClick={() => handleClaimRewards(tokenId, balance, token)}
+                                                            style={{
+                                                                backgroundColor: '#3498db',
+                                                                color: '#ffffff',
+                                                                border: 'none',
+                                                                borderRadius: '4px',
+                                                                padding: '4px 8px',
+                                                                cursor: 'pointer',
+                                                                fontSize: '12px'
+                                                            }}
+                                                        >
+                                                            Claim
+                                                        </button>
+                                                    )}
                                                 </div>
                                                 <div style={styles.eventDetails}>
-                                                    <span>Sequence: {seqNum}</span>
-                                                    <span>Amount: {formatBalance(latestEvent.amount, getTokenDecimals(latestEvent.token_id.toString()))} {symbol}</span>
-                                                    <span>Fee: {formatBalance(latestEvent.fee, getTokenDecimals(latestEvent.token_id.toString()))} {symbol}</span>
-                                                    {events.some(e => e.tx_index && e.tx_index.length > 0) && (
-                                                        <span>Transaction ID: {events.find(e => e.tx_index && e.tx_index.length > 0).tx_index[0].toString()}</span>
-                                                    )}
-                                                    {events.map((event, idx) => (
-                                                        event.error_message && event.error_message.length > 0 && (
-                                                            <span key={idx} style={{ color: '#e74c3c' }}>
-                                                                Message: {event.error_message[0]}
-                                                            </span>
-                                                        )
-                                                    ))}
+                                                    <span>Balance: {formatBalance(balance, token.decimals)} {token.symbol}</span>
                                                 </div>
                                             </div>
                                         );
                                     })}
-                            </div>
-                        ) : (
-                            <p style={{ color: '#ffffff' }}>No claim history found</p>
-                        )
-                    )}
-                </section>
-
-
-                {/* Hotkey Neurons Section */}
-                <section style={styles.section}>
-                    <div style={styles.sectionHeader}>
-                        <h2 style={styles.heading}>Your Hotkey Neurons</h2>
-                        <button 
-                            onClick={() => setIsHotkeyNeuronsExpanded(!isHotkeyNeuronsExpanded)}
-                            style={{
-                                background: 'none',
-                                border: 'none',
-                                color: '#3498db',
-                                cursor: 'pointer',
-                                fontSize: '20px',
-                                padding: '0 10px'
-                            }}
-                        >
-                            {isHotkeyNeuronsExpanded ? '▼' : '▶'}
-                        </button>
-                    </div>
-                    {isHotkeyNeuronsExpanded && (
-                        loadingHotkeyNeurons ? (
-                            <div style={styles.spinner} />
-                        ) : (
-                            <div>
-                                <div style={styles.statusGrid}>
-                                    <div style={styles.statusItem}>
-                                        <span title="The sum of all voting power you have cast across all Sneed proposals through your hotkey neurons">Total Voting Power:</span>
-                                        <span title="Your total voting power used across all Sneed proposals">{Number(hotkeyNeurons.total_voting_power).toLocaleString()}</span>
-                                    </div>
-                                    <div style={styles.statusItem}>
-                                        <span title="The sum of all voting power cast by all users across all Sneed proposals">Distribution Voting Power:</span>
-                                        <span title="Total voting power from all users participating in Sneed proposals">{Number(hotkeyNeurons.distribution_voting_power).toLocaleString()}</span>
-                                    </div>
-                                    <div style={styles.statusItem}>
-                                        <span title="Your percentage share of the total distribution voting power, which determines your share of distributed rewards">Your Voting Share:</span>
-                                        <span title="This percentage represents your share of distributed rewards based on your voting participation">{((Number(hotkeyNeurons.total_voting_power) / Number(hotkeyNeurons.distribution_voting_power)) * 100).toFixed(2)}%</span>
-                                    </div>
                                 </div>
-                                
-                                <div style={{marginTop: '20px'}}>
-                                    {hotkeyNeurons.neurons_by_owner.map(([owner, neurons], index) => (
-                                        <div key={owner.toText()} style={{
-                                            backgroundColor: '#3a3a3a',
-                                            borderRadius: '6px',
-                                            padding: '15px',
-                                            marginBottom: '15px'
-                                        }}>
-                                            <div style={{
-                                                ...styles.statusItem,
-                                                borderBottom: '1px solid #4a4a4a',
-                                                paddingBottom: '10px',
-                                                marginBottom: '10px'
-                                            }}>
-                                                <span>Owner:</span>
-                                                <span style={{fontFamily: 'monospace'}}>{owner.toText()}</span>
-                                            </div>
-                                            <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                                                {neurons.map((neuron, neuronIndex) => (
-                                                    <div key={neuronIndex} style={{
-                                                        backgroundColor: '#2a2a2a',
-                                                        borderRadius: '4px',
-                                                        padding: '10px'
-                                                    }}>
-                                                        <div style={styles.statusItem}>
-                                                            <span>Neuron ID:</span>
+                            ) : (
+                                <p style={{ color: '#ffffff' }}>No token balances found</p>
+                            )}
+                        </section>
+
+                        {/* Your Claim History */}
+                        <section style={styles.section}>
+                            <div style={styles.sectionHeader}>
+                                <h2 style={styles.heading}>Your Claim History</h2>
+                                <button 
+                                    onClick={() => setIsClaimHistoryExpanded(!isClaimHistoryExpanded)}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: '#3498db',
+                                        cursor: 'pointer',
+                                        fontSize: '20px',
+                                        padding: '0 10px'
+                                    }}
+                                >
+                                    {isClaimHistoryExpanded ? '▼' : '▶'}
+                                </button>
+                            </div>
+                            {isClaimHistoryExpanded && (
+                                loadingUserEvents ? (
+                                    <div style={styles.spinner} />
+                                ) : userClaimEvents.length > 0 ? (
+                                    <div style={styles.claimHistory}>
+                                        {Object.entries(groupEventsBySequence(userClaimEvents))
+                                            .sort((a, b) => Number(b[0]) - Number(a[0])) // Sort by sequence number descending
+                                            .slice(0, 5) // Take only the 5 most recent sequence groups
+                                            .map(([seqNum, events]) => {
+                                                const status = getGroupStatus(events);
+                                                const latestEvent = events[events.length - 1];
+                                                const token = tokens.find(t => t.ledger_id.toString() === latestEvent.token_id.toString());
+                                                const symbol = token ? token.symbol : 'Unknown';
+
+                                                return (
+                                                    <div key={seqNum} style={styles.eventItem}>
+                                                        <div style={styles.eventHeader}>
                                                             <span style={{
-                                                                fontFamily: 'monospace',
-                                                                wordBreak: 'break-all',
-                                                                maxWidth: '100%'
+                                                                color: status === 'Success' ? '#2ecc71' : 
+                                                                       status === 'Pending' ? '#f1c40f' : 
+                                                                       status === 'Failed' ? '#e74c3c' : '#ffffff'
                                                             }}>
-                                                                {neuron.id && neuron.id[0] && neuron.id[0].id ? 
-                                                                    uint8ArrayToHex(neuron.id[0].id)
-                                                                    : 'Unknown'}
+                                                                {status}
                                                             </span>
+                                                            <span>{formatNanoTimestamp(latestEvent.timestamp)}</span>
                                                         </div>
-                                                        <div style={styles.statusItem}>
-                                                            <span>Stake:</span>
-                                                            <span title={`${Number(neuron.cached_neuron_stake_e8s).toLocaleString()} e8s`}>
-                                                                {formatE8s(neuron.cached_neuron_stake_e8s)} SNEED
-                                                            </span>
-                                                        </div>
-                                                        <div style={styles.statusItem}>
-                                                            <span>Dissolve State:</span>
-                                                            <span>{neuron.dissolve_state ? 
-                                                                (neuron.dissolve_state[0].WhenDissolvedTimestampSeconds ? 
-                                                                    `Dissolving until: ${formatTimestamp(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds)}` : 
-                                                                    neuron.dissolve_state[0].DissolveDelaySeconds ? 
-                                                                        `Not dissolving (delay: ${formatDuration(Number(neuron.dissolve_state[0].DissolveDelaySeconds))})` :
-                                                                        'Not dissolving') 
-                                                                : 'Not dissolving'}</span>
-                                                        </div>
-                                                        <div style={styles.statusItem}>
-                                                            <span>Age:</span>
-                                                            <span title={`Aging since: ${formatTimestamp(neuron.aging_since_timestamp_seconds)}`}>
-                                                                {calculateAge(neuron.aging_since_timestamp_seconds)}
-                                                            </span>
+                                                        <div style={styles.eventDetails}>
+                                                            <span>Sequence: {seqNum}</span>
+                                                            <span>Amount: {formatBalance(latestEvent.amount, getTokenDecimals(latestEvent.token_id.toString()))} {symbol}</span>
+                                                            <span>Fee: {formatBalance(latestEvent.fee, getTokenDecimals(latestEvent.token_id.toString()))} {symbol}</span>
+                                                            {events.some(e => e.tx_index && e.tx_index.length > 0) && (
+                                                                <span>Transaction ID: {events.find(e => e.tx_index && e.tx_index.length > 0).tx_index[0].toString()}</span>
+                                                            )}
+                                                            {events.map((event, idx) => (
+                                                                event.error_message && event.error_message.length > 0 && (
+                                                                    <span key={idx} style={{ color: '#e74c3c' }}>
+                                                                        Message: {event.error_message[0]}
+                                                                    </span>
+                                                                )
+                                                            ))}
                                                         </div>
                                                     </div>
-                                                ))}
+                                                );
+                                            })}
+                                    </div>
+                                ) : (
+                                    <p style={{ color: '#ffffff' }}>No claim history found</p>
+                                )
+                            )}
+                        </section>
+
+                        {/* Your Hotkey Neurons */}
+                        <section style={styles.section}>
+                            <div style={styles.sectionHeader}>
+                                <h2 style={styles.heading}>Your Hotkey Neurons</h2>
+                                <button 
+                                    onClick={() => setIsHotkeyNeuronsExpanded(!isHotkeyNeuronsExpanded)}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: '#3498db',
+                                        cursor: 'pointer',
+                                        fontSize: '20px',
+                                        padding: '0 10px'
+                                    }}
+                                >
+                                    {isHotkeyNeuronsExpanded ? '▼' : '▶'}
+                                </button>
+                            </div>
+                            {isHotkeyNeuronsExpanded && (
+                                loadingHotkeyNeurons ? (
+                                    <div style={styles.spinner} />
+                                ) : (
+                                    <div>
+                                        <div style={styles.statusGrid}>
+                                            <div style={styles.statusItem}>
+                                                <span title="The sum of all voting power you have cast across all Sneed proposals through your hotkey neurons">Total Voting Power:</span>
+                                                <span title="Your total voting power used across all Sneed proposals">{Number(hotkeyNeurons.total_voting_power).toLocaleString()}</span>
+                                            </div>
+                                            <div style={styles.statusItem}>
+                                                <span title="The sum of all voting power cast by all users across all Sneed proposals">Distribution Voting Power:</span>
+                                                <span title="Total voting power from all users participating in Sneed proposals">{Number(hotkeyNeurons.distribution_voting_power).toLocaleString()}</span>
+                                            </div>
+                                            <div style={styles.statusItem}>
+                                                <span title="Your percentage share of the total distribution voting power, which determines your share of distributed rewards">Your Voting Share:</span>
+                                                <span title="This percentage represents your share of distributed rewards based on your voting participation">{((Number(hotkeyNeurons.total_voting_power) / Number(hotkeyNeurons.distribution_voting_power)) * 100).toFixed(2)}%</span>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )
-                    )}
-                </section>
+                                        
+                                        <div style={{marginTop: '20px'}}>
+                                            {hotkeyNeurons.neurons_by_owner.map(([owner, neurons], index) => (
+                                                <div key={owner.toText()} style={{
+                                                    backgroundColor: '#3a3a3a',
+                                                    borderRadius: '6px',
+                                                    padding: '15px',
+                                                    marginBottom: '15px'
+                                                }}>
+                                                    <div style={{
+                                                        ...styles.statusItem,
+                                                        borderBottom: '1px solid #4a4a4a',
+                                                        paddingBottom: '10px',
+                                                        marginBottom: '10px'
+                                                    }}>
+                                                        <span>Owner:</span>
+                                                        <span style={{fontFamily: 'monospace'}}>{owner.toText()}</span>
+                                                    </div>
+                                                    <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                                                        {neurons.map((neuron, neuronIndex) => (
+                                                            <div key={neuronIndex} style={{
+                                                                backgroundColor: '#2a2a2a',
+                                                                borderRadius: '4px',
+                                                                padding: '10px'
+                                                            }}>
+                                                                <div style={styles.statusItem}>
+                                                                    <span>Neuron ID:</span>
+                                                                    <span style={{
+                                                                        fontFamily: 'monospace',
+                                                                        wordBreak: 'break-all',
+                                                                        maxWidth: '100%'
+                                                                    }}>
+                                                                        {neuron.id && neuron.id[0] && neuron.id[0].id ? 
+                                                                            uint8ArrayToHex(neuron.id[0].id)
+                                                                            : 'Unknown'}
+                                                                    </span>
+                                                                </div>
+                                                                <div style={styles.statusItem}>
+                                                                    <span>Stake:</span>
+                                                                    <span title={`${Number(neuron.cached_neuron_stake_e8s).toLocaleString()} e8s`}>
+                                                                        {formatE8s(neuron.cached_neuron_stake_e8s)} SNEED
+                                                                    </span>
+                                                                </div>
+                                                                <div style={styles.statusItem}>
+                                                                    <span>Dissolve State:</span>
+                                                                    <span>{neuron.dissolve_state ? 
+                                                                        (neuron.dissolve_state[0].WhenDissolvedTimestampSeconds ? 
+                                                                            `Dissolving until: ${formatTimestamp(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds)}` : 
+                                                                            neuron.dissolve_state[0].DissolveDelaySeconds ? 
+                                                                                `Not dissolving (delay: ${formatDuration(Number(neuron.dissolve_state[0].DissolveDelaySeconds))})` :
+                                                                                'Not dissolving') 
+                                                                        : 'Not dissolving'}</span>
+                                                                </div>
+                                                                <div style={styles.statusItem}>
+                                                                    <span>Age:</span>
+                                                                    <span title={`Aging since: ${formatTimestamp(neuron.aging_since_timestamp_seconds)}`}>
+                                                                        {calculateAge(neuron.aging_since_timestamp_seconds)}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )
+                            )}
+                        </section>
+                    </>
+                ) : (
+                    <section style={styles.section}>
+                        <h2 style={styles.heading}>Add Your Principal as a Hotkey</h2>
+                        <div style={styles.noNeuronsMessage}>
+                            <p>To participate in Sneed DAO and earn rewards:</p>
+                            <ol style={styles.instructionsList}>
+                                <li>First, you need to have a Sneed neuron</li>
+                                <li>Add this principal as a hotkey to your neuron</li>
+                                <li>Your current principal is: <code style={styles.principalCode}>{identity?.getPrincipal().toString()}</code></li>
+                                <li>Once added as a hotkey, you'll be able to see your balances, claim history, and neurons here</li>
+                            </ol>
+                        </div>
+                    </section>
+                )}
 
                 <section style={styles.section}>
                     <h2 style={styles.heading}>RLL Canister Token Balances</h2>
