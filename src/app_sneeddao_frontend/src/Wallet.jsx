@@ -24,6 +24,7 @@ import TokenCard from './TokenCard';
 import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rates, getTokenTVL } from './utils/TokenUtils';
 import { getPositionTVL } from "./utils/PositionUtils";
+import { headerStyles } from './styles/HeaderStyles';
 
 const showDebug = false;
         
@@ -866,9 +867,14 @@ function Wallet() {
     return (
         <div className='page-container'>
         <header className="site-header">
-            <div className="logo">
-                <Link to="/wallet">
-                    <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
+            <div style={headerStyles.logoContainer}>
+                <div className="logo">
+                    <Link to="/wallet">
+                        <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
+                    </Link>
+                </div>
+                <Link to="/rll" style={headerStyles.rllLogo}>
+                    RLL
                 </Link>
             </div>
             <h4>Total Value: ${totalDollarValue}</h4>

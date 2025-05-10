@@ -11,6 +11,7 @@ import './Help.css'; // We'll reuse the Help page styling for now
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 import PrincipalBox from './PrincipalBox';
+import { headerStyles } from './styles/HeaderStyles';
 
 // Styles
 const styles = {
@@ -823,17 +824,16 @@ function RLL() {
     return (
         <div className='page-container'>
             <header className="site-header">
-                <div style={styles.logoContainer}>
+                <div style={headerStyles.logoContainer}>
                     <div className="logo">
                         <Link to="/wallet">
                             <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
                         </Link>
                     </div>
-                    <Link to="/rll" style={styles.rllLogo}>
+                    <Link to="/rll" style={headerStyles.rllLogo}>
                         RLL
                     </Link>
                 </div>
-                <h4>RLL Distribution Server</h4>
                 <div className="header-right">
                     <Link to="/help" className="help-link">Help</Link>
                     <PrincipalBox 
