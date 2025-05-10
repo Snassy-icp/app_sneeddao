@@ -1060,33 +1060,9 @@ function RLL() {
                 )}
 
 
-                <section style={styles.section}>
-                    <h2 style={styles.heading}>Total Distributions</h2>
-                    {loadingDistributions ? (
-                        <div style={styles.spinner} />
-                    ) : distributions ? (
-                        <div style={styles.tokenList}>
-                            {Object.entries(distributions).map(([principalId, amount]) => {
-                                const symbol = getTokenSymbolByPrincipal(principalId);
-                                const decimals = getTokenDecimalsByPrincipal(principalId);
-                                return (
-                                    <div key={principalId} style={styles.distributionItem}>
-                                        <span style={styles.distributionLabel}>Total {symbol} Distributed</span>
-                                        <span style={styles.distributionValue}>
-                                            {formatBalance(amount, decimals)} {symbol}
-                                        </span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    ) : (
-                        <p style={{ color: '#ffffff' }}>No distributions found</p>
-                    )}
-                </section>
-
                 {/* Balance Reconciliation */}
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>Balance Reconciliation</h2>
+                    <h2 style={styles.heading}>RLL Server Balances</h2>
                     <div style={styles.reconciliationList}>
                         {reconciliation.map(item => {
                             const token = tokens.find(t => t.ledger_id.toString() === item.token_id.toString());
