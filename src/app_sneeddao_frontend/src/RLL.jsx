@@ -850,7 +850,22 @@ function RLL() {
                         {/* Your Token Balances */}
                         <section style={styles.section}>
                             <h2 style={styles.heading}>Your Rewards</h2>
-                            Claimed rewards are available in your SneedLock wallet <Link to="/wallet">here</Link>.
+                            <p style={{ 
+                                color: '#ffffff', 
+                                marginBottom: '20px',
+                                fontSize: '1.1em'
+                            }}>
+                                Claimed rewards are available in your SneedLock wallet <Link 
+                                    to="/wallet" 
+                                    style={{ 
+                                        color: '#3498db',
+                                        textDecoration: 'none',
+                                        fontWeight: 'bold'
+                                    }}
+                                >
+                                    here
+                                </Link>.
+                            </p>
                             {loadingUserBalances ? (
                                 <div style={styles.spinner} />
                             ) : userBalances.length > 0 ? (
