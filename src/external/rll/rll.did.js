@@ -158,6 +158,41 @@ export const idlFactory = ({ IDL }) => {
     'executed_timestamp_seconds' : IDL.Nat64,
   });
   const Result = IDL.Variant({ 'ok' : IDL.Text, 'err' : IDL.Text });
+  const NeuronPermission = IDL.Record({
+    'principal' : IDL.Opt(IDL.Principal),
+    'permission_type' : IDL.Vec(IDL.Int32),
+  });
+  const DissolveState = IDL.Variant({
+    'DissolveDelaySeconds' : IDL.Nat64,
+    'WhenDissolvedTimestampSeconds' : IDL.Nat64,
+  });
+  const Account = IDL.Record({
+    'owner' : IDL.Principal,
+    'subaccount' : IDL.Opt(Subaccount),
+  });
+  const DisburseMaturityInProgress = IDL.Record({
+    'timestamp_of_disbursement_seconds' : IDL.Nat64,
+    'amount_e8s' : IDL.Nat64,
+    'account_to_disburse_to' : IDL.Opt(Account),
+    'finalize_disbursement_timestamp_seconds' : IDL.Opt(IDL.Nat64),
+  });
+  const Neuron = IDL.Record({
+    'id' : IDL.Opt(NeuronId),
+    'staked_maturity_e8s_equivalent' : IDL.Opt(IDL.Nat64),
+    'permissions' : IDL.Vec(NeuronPermission),
+    'maturity_e8s_equivalent' : IDL.Nat64,
+    'cached_neuron_stake_e8s' : IDL.Nat64,
+    'created_timestamp_seconds' : IDL.Nat64,
+    'source_nns_neuron_id' : IDL.Opt(IDL.Nat64),
+    'auto_stake_maturity' : IDL.Opt(IDL.Bool),
+    'aging_since_timestamp_seconds' : IDL.Nat64,
+    'dissolve_state' : IDL.Opt(DissolveState),
+    'voting_power_percentage_multiplier' : IDL.Nat64,
+    'vesting_period_seconds' : IDL.Opt(IDL.Nat64),
+    'disburse_maturity_in_progress' : IDL.Vec(DisburseMaturityInProgress),
+    'followees' : IDL.Vec(IDL.Tuple(IDL.Nat64, Followees)),
+    'neuron_fees_e8s' : IDL.Nat64,
+  });
   const TxIndex = IDL.Nat;
   const Balance = IDL.Nat;
   const Timestamp = IDL.Nat64;
@@ -196,41 +231,6 @@ export const idlFactory = ({ IDL }) => {
     'proposal_range' : IDL.Record({ 'first' : IDL.Nat64, 'last' : IDL.Nat64 }),
     'timestamp' : IDL.Int,
     'amount' : IDL.Nat,
-  });
-  const NeuronPermission = IDL.Record({
-    'principal' : IDL.Opt(IDL.Principal),
-    'permission_type' : IDL.Vec(IDL.Int32),
-  });
-  const DissolveState = IDL.Variant({
-    'DissolveDelaySeconds' : IDL.Nat64,
-    'WhenDissolvedTimestampSeconds' : IDL.Nat64,
-  });
-  const Account = IDL.Record({
-    'owner' : IDL.Principal,
-    'subaccount' : IDL.Opt(Subaccount),
-  });
-  const DisburseMaturityInProgress = IDL.Record({
-    'timestamp_of_disbursement_seconds' : IDL.Nat64,
-    'amount_e8s' : IDL.Nat64,
-    'account_to_disburse_to' : IDL.Opt(Account),
-    'finalize_disbursement_timestamp_seconds' : IDL.Opt(IDL.Nat64),
-  });
-  const Neuron = IDL.Record({
-    'id' : IDL.Opt(NeuronId),
-    'staked_maturity_e8s_equivalent' : IDL.Opt(IDL.Nat64),
-    'permissions' : IDL.Vec(NeuronPermission),
-    'maturity_e8s_equivalent' : IDL.Nat64,
-    'cached_neuron_stake_e8s' : IDL.Nat64,
-    'created_timestamp_seconds' : IDL.Nat64,
-    'source_nns_neuron_id' : IDL.Opt(IDL.Nat64),
-    'auto_stake_maturity' : IDL.Opt(IDL.Bool),
-    'aging_since_timestamp_seconds' : IDL.Nat64,
-    'dissolve_state' : IDL.Opt(DissolveState),
-    'voting_power_percentage_multiplier' : IDL.Nat64,
-    'vesting_period_seconds' : IDL.Opt(IDL.Nat64),
-    'disburse_maturity_in_progress' : IDL.Vec(DisburseMaturityInProgress),
-    'followees' : IDL.Vec(IDL.Tuple(IDL.Nat64, Followees)),
-    'neuron_fees_e8s' : IDL.Nat64,
   });
   const TokenMetadata = IDL.Record({
     'fee' : IDL.Nat,
@@ -279,6 +279,11 @@ export const idlFactory = ({ IDL }) => {
         [],
         [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
         [],
+      ),
+    'balances_of_hotkey_neurons' : IDL.Func(
+        [IDL.Vec(Neuron)],
+        [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
+        ['query'],
       ),
     'caller_is_admin' : IDL.Func([], [IDL.Bool], ['query']),
     'check_whitelisted_token_balances' : IDL.Func([], [Result], []),
@@ -415,6 +420,11 @@ export const idlFactory = ({ IDL }) => {
     'get_user_token_distribution_events' : IDL.Func(
         [IDL.Principal, IDL.Principal],
         [IDL.Vec(UserDistributionEvent)],
+        ['query'],
+      ),
+    'get_whitelisted_tokens' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Tuple(IDL.Principal, TokenMetadata))],
         ['query'],
       ),
     'import_all_neurons' : IDL.Func([], [Result], []),

@@ -92,6 +92,11 @@ type SneedRLL =
                                     principal;
                                     nat;
                                   });
+   balances_of_hotkey_neurons: (vec Neuron) ->
+    (vec record {
+           principal;
+           nat;
+         }) query;
    caller_is_admin: () -> (bool) query;
    check_whitelisted_token_balances: () -> (Result);
    claim_full_balance_of_hotkey: (principal, nat) -> (TransferResult);
@@ -170,6 +175,11 @@ type SneedRLL =
    get_user_token_distribution: (principal, principal) -> (nat) query;
    get_user_token_distribution_events: (principal, principal) ->
     (vec UserDistributionEvent) query;
+   get_whitelisted_tokens: () ->
+    (vec record {
+           principal;
+           TokenMetadata;
+         }) query;
    import_all_neurons: () -> (Result);
    import_all_new_neurons: () -> (Result);
    import_all_new_proposals: () -> (Result);
