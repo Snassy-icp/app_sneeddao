@@ -1144,6 +1144,15 @@ function RLL() {
                             </span>
                         </div>
                         <div style={styles.statusItem}>
+                            <span>Current Stage:</span>
+                            <span style={{
+                                color: importStage.includes('idle') ? '#f1c40f' : '#2ecc71',
+                                fontFamily: 'monospace'
+                            }}>
+                                {importStage}
+                            </span>
+                        </div>
+                        <div style={styles.statusItem}>
                             <span>Last Started:</span>
                             <span>{mainLoopStatus?.lastStarted ? formatNanoTimestamp(mainLoopStatus.lastStarted) : 'Never'}</span>
                         </div>
@@ -1190,15 +1199,6 @@ function RLL() {
                         <div style={styles.statusItem}>
                             <span>Highest Closed Proposal:</span>
                             <span>{Number(highestClosedProposalId).toLocaleString()}</span>
-                        </div>
-                        <div style={styles.statusItem}>
-                            <span>Current Stage:</span>
-                            <span style={{
-                                color: importStage.includes('idle') ? '#f1c40f' : '#2ecc71',
-                                fontFamily: 'monospace'
-                            }}>
-                                {importStage}
-                            </span>
                         </div>
                     </div>
                 </section>

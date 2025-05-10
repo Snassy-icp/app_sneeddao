@@ -281,6 +281,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'caller_is_admin' : IDL.Func([], [IDL.Bool], ['query']),
+    'check_whitelisted_token_balances' : IDL.Func([], [Result], []),
     'claim_full_balance_of_hotkey' : IDL.Func(
         [IDL.Principal, IDL.Nat],
         [TransferResult],
@@ -297,13 +298,7 @@ export const idlFactory = ({ IDL }) => {
     'clear_total_distributions' : IDL.Func([], [], []),
     'clear_user_distribution_events' : IDL.Func([], [], []),
     'clear_user_distributions' : IDL.Func([], [], []),
-    'cnt_imported_tokens' : IDL.Func([], [IDL.Nat], ['query']),
-    'cnt_imported_tokens_with_balance' : IDL.Func([], [IDL.Nat], ['query']),
-    'distribute_amount' : IDL.Func(
-        [IDL.Nat, IDL.Principal, ProposalId, ProposalId],
-        [],
-        [],
-      ),
+    'clear_whitelisted_tokens' : IDL.Func([], [], []),
     'get_claim_events' : IDL.Func([], [IDL.Vec(ClaimEvent)], ['query']),
     'get_claim_events_for_hotkey' : IDL.Func(
         [IDL.Principal],
@@ -326,19 +321,6 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_highest_closed_proposal_id' : IDL.Func([], [IDL.Nat64], ['query']),
-    'get_hotkey_neurons_by_owner' : IDL.Func(
-        [IDL.Principal],
-        [
-          IDL.Record({
-            'distribution_voting_power' : IDL.Nat64,
-            'neurons_by_owner' : IDL.Vec(
-              IDL.Tuple(IDL.Principal, IDL.Vec(Neuron))
-            ),
-            'total_voting_power' : IDL.Nat64,
-          }),
-        ],
-        [],
-      ),
     'get_hotkey_voting_power' : IDL.Func(
         [IDL.Vec(Neuron)],
         [
@@ -378,6 +360,18 @@ export const idlFactory = ({ IDL }) => {
       ),
     'get_neuron_import_status' : IDL.Func([], [Result], ['query']),
     'get_proposal_import_status' : IDL.Func([], [Result], ['query']),
+    'get_token_balance_check_status' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'ticks' : IDL.Nat,
+            'total' : IDL.Nat,
+            'is_running' : IDL.Bool,
+            'processed' : IDL.Nat,
+          }),
+        ],
+        ['query'],
+      ),
     'get_token_distribution_events' : IDL.Func(
         [IDL.Principal],
         [IDL.Vec(DistributionEvent)],
@@ -427,11 +421,10 @@ export const idlFactory = ({ IDL }) => {
     'import_all_new_neurons' : IDL.Func([], [Result], []),
     'import_all_new_proposals' : IDL.Func([], [Result], []),
     'import_all_proposals' : IDL.Func([], [Result], []),
-    'import_known_tokens_from_swaprunner' : IDL.Func([], [], []),
+    'import_whitelisted_tokens_from_swaprunner' : IDL.Func([], [], []),
     'imported_neurons_count' : IDL.Func([], [IDL.Nat], ['query']),
     'imported_owners_count' : IDL.Func([], [IDL.Nat], ['query']),
     'imported_props_count' : IDL.Func([], [IDL.Nat], ['query']),
-    'is_import_known_running' : IDL.Func([], [IDL.Bool], ['query']),
     'list_admins' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
     'principal_is_admin' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
     'remove_admin' : IDL.Func([IDL.Principal], [Result], []),
@@ -439,31 +432,11 @@ export const idlFactory = ({ IDL }) => {
     'start_distribution_cycle' : IDL.Func([], [Result], []),
     'start_rll_main_loop' : IDL.Func([], [Result], []),
     'stop_distribution_cycle' : IDL.Func([], [Result], []),
-    'stop_import_known_tokens_from_swaprunner' : IDL.Func([], [], []),
     'stop_neuron_import' : IDL.Func([], [Result], []),
     'stop_proposal_import' : IDL.Func([], [Result], []),
     'stop_rll_main_loop' : IDL.Func([], [Result], []),
-    'test_set_balance' : IDL.Func(
-        [IDL.Principal, IDL.Principal, IDL.Nat],
-        [],
-        [],
-      ),
+    'stop_token_balance_check' : IDL.Func([], [Result], []),
     'total_balance' : IDL.Func([IDL.Principal], [IDL.Nat], ['query']),
-    'transfer_remaining_balances' : IDL.Func(
-        [IDL.Principal],
-        [
-          IDL.Vec(
-            IDL.Record({
-              'fee' : IDL.Nat,
-              'result' : TransferResult,
-              'tx_index' : IDL.Opt(IDL.Nat),
-              'token_id' : IDL.Principal,
-              'amount' : IDL.Nat,
-            })
-          ),
-        ],
-        [],
-      ),
   });
   return SneedRLL;
 };

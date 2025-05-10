@@ -93,6 +93,7 @@ type SneedRLL =
                                     nat;
                                   });
    caller_is_admin: () -> (bool) query;
+   check_whitelisted_token_balances: () -> (Result);
    claim_full_balance_of_hotkey: (principal, nat) -> (TransferResult);
    clear_all_balances_and_distributions: () -> ();
    clear_balances: () -> ();
@@ -105,9 +106,7 @@ type SneedRLL =
    clear_total_distributions: () -> ();
    clear_user_distribution_events: () -> ();
    clear_user_distributions: () -> ();
-   cnt_imported_tokens: () -> (nat) query;
-   cnt_imported_tokens_with_balance: () -> (nat) query;
-   distribute_amount: (nat, principal, ProposalId, ProposalId) -> ();
+   clear_whitelisted_tokens: () -> ();
    get_claim_events: () -> (vec ClaimEvent) query;
    get_claim_events_for_hotkey: (principal) -> (vec ClaimEvent) query;
    get_distribution_events: () -> (vec DistributionEvent) query;
@@ -117,15 +116,6 @@ type SneedRLL =
        total_count: nat;
      }) query;
    get_highest_closed_proposal_id: () -> (nat64) query;
-   get_hotkey_neurons_by_owner: (principal) ->
-    (record {
-       distribution_voting_power: nat64;
-       neurons_by_owner: vec record {
-                               principal;
-                               vec Neuron;
-                             };
-       total_voting_power: nat64;
-     });
    get_hotkey_voting_power: (vec Neuron) ->
     (record {
        distribution_voting_power: nat64;
@@ -155,6 +145,13 @@ type SneedRLL =
      }) query;
    get_neuron_import_status: () -> (Result) query;
    get_proposal_import_status: () -> (Result) query;
+   get_token_balance_check_status: () ->
+    (record {
+       is_running: bool;
+       processed: nat;
+       ticks: nat;
+       total: nat;
+     }) query;
    get_token_distribution_events: (principal) ->
     (vec DistributionEvent) query;
    get_token_metadata: (principal) -> (opt TokenMetadata) query;
@@ -177,11 +174,10 @@ type SneedRLL =
    import_all_new_neurons: () -> (Result);
    import_all_new_proposals: () -> (Result);
    import_all_proposals: () -> (Result);
-   import_known_tokens_from_swaprunner: () -> ();
+   import_whitelisted_tokens_from_swaprunner: () -> ();
    imported_neurons_count: () -> (nat) query;
    imported_owners_count: () -> (nat) query;
    imported_props_count: () -> (nat) query;
-   is_import_known_running: () -> (bool) query;
    list_admins: () -> (vec principal) query;
    principal_is_admin: (principal) -> (bool) query;
    remove_admin: (principal) -> (Result);
@@ -189,21 +185,11 @@ type SneedRLL =
    start_distribution_cycle: () -> (Result);
    start_rll_main_loop: () -> (Result);
    stop_distribution_cycle: () -> (Result);
-   stop_import_known_tokens_from_swaprunner: () -> ();
    stop_neuron_import: () -> (Result);
    stop_proposal_import: () -> (Result);
    stop_rll_main_loop: () -> (Result);
-   test_set_balance: (principal, principal, nat) -> ();
+   stop_token_balance_check: () -> (Result);
    total_balance: (principal) -> (nat) query;
-   transfer_remaining_balances: (principal) ->
-    (vec
-      record {
-        amount: nat;
-        fee: nat;
-        result: TransferResult;
-        token_id: principal;
-        tx_index: opt nat;
-      });
  };
 type Result = 
  variant {
