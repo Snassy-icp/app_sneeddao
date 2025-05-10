@@ -2,8 +2,12 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import './Help.css';
 import { headerStyles } from './styles/HeaderStyles';
+import { useAuth } from './AuthContext';
+import PrincipalBox from './PrincipalBox';
 
 function Help() {
+  const { identity, logout } = useAuth();
+
   return (
     <div className='page-container'>
       <header className="site-header">
@@ -17,10 +21,13 @@ function Help() {
             RLL
           </Link>
         </div>
-        <nav className="nav-links">
-          <Link to="/help" className="active">Help</Link>
-          <Link to="/rll">RLL</Link>
-        </nav>
+        <div className="header-right">
+          <Link to="/help" className="help-link">Help</Link>
+          <PrincipalBox 
+            principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
+            onLogout={logout}
+          />
+        </div>
       </header>
       <main className="help-container">
         <h1>Sneedlock Help Guide</h1>
