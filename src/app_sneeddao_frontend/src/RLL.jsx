@@ -204,6 +204,19 @@ const styles = {
         cursor: 'pointer',
         fontSize: '20px',
         padding: '0 10px'
+    },
+    rllLogo: {
+        fontSize: '2.5em',
+        fontWeight: 'bold',
+        color: '#ffffff',
+        textDecoration: 'none',
+        marginLeft: '20px',
+        display: 'flex',
+        alignItems: 'center'
+    },
+    logoContainer: {
+        display: 'flex',
+        alignItems: 'center'
     }
 };
 
@@ -810,9 +823,14 @@ function RLL() {
     return (
         <div className='page-container'>
             <header className="site-header">
-                <div className="logo">
-                    <Link to="/wallet">
-                        <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
+                <div style={styles.logoContainer}>
+                    <div className="logo">
+                        <Link to="/wallet">
+                            <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
+                        </Link>
+                    </div>
+                    <Link to="/rll" style={styles.rllLogo}>
+                        RLL
                     </Link>
                 </div>
                 <h4>RLL Distribution Server</h4>
