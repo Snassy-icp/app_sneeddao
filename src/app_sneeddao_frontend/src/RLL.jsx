@@ -1092,6 +1092,7 @@ function RLL() {
                             const token = tokens.find(t => t.ledger_id.toString() === item.token_id.toString());
                             const symbol = token ? token.symbol : 'Unknown';
                             const decimals = token ? token.decimals : 8;
+                            const totalDistributed = distributions && distributions[item.token_id.toString()];
                             return (
                                 <div key={item.token_id.toText()} style={{
                                     backgroundColor: '#3a3a3a',
@@ -1103,6 +1104,12 @@ function RLL() {
                                         <span>Token:</span>
                                         <span style={{fontWeight: 'bold'}}>{symbol}</span>
                                     </div>
+                                    {totalDistributed !== undefined && (
+                                        <div style={styles.statusItem}>
+                                            <span>All-Time Distributed:</span>
+                                            <span style={{fontFamily: 'monospace'}}>{formatBalance(totalDistributed, decimals)} {symbol}</span>
+                                        </div>
+                                    )}
                                     <div style={styles.statusItem}>
                                         <span>Currently Distributed:</span>
                                         <span style={{fontFamily: 'monospace'}}>{formatBalance(item.local_total, decimals)} {symbol}</span>
