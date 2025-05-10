@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from './AuthContext';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -10,6 +10,7 @@ import ConfirmationModal from './ConfirmationModal';
 import './Help.css'; // We'll reuse the Help page styling for now
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
+import PrincipalBox from './PrincipalBox';
 
 // Styles
 const styles = {
@@ -291,7 +292,7 @@ const formatDuration = (seconds) => {
 };
 
 function RLL() {
-    const { isAuthenticated, identity } = useAuth();
+    const { identity, isAuthenticated, logout } = useAuth();
     const [tokens, setTokens] = useState([]);
     const [balances, setBalances] = useState({});
     const [loadingTokens, setLoadingTokens] = useState(true);
@@ -814,10 +815,14 @@ function RLL() {
                         <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
                     </Link>
                 </div>
-                <nav className="nav-links">
-                    <Link to="/help">Help</Link>
-                    <Link to="/rll" className="active">RLL</Link>
-                </nav>
+                <h4>RLL Distribution Server</h4>
+                <div className="header-right">
+                    <Link to="/help" className="help-link">Help</Link>
+                    <PrincipalBox 
+                        principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
+                        onLogout={logout}
+                    />
+                </div>
             </header>
             <main className="help-container">
                 <h1 style={{ color: '#ffffff' }}>RLL Distribution Server</h1>
