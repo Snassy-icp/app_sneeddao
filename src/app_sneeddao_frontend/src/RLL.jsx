@@ -820,13 +820,13 @@ function RLL() {
                 </nav>
             </header>
             <main className="help-container">
-                <h1 style={{ color: '#ffffff' }}>RLL</h1>
+                <h1 style={{ color: '#ffffff' }}>RLL Distribution Server</h1>
                 
                 {hotkeyNeurons.neurons_by_owner.length > 0 ? (
                     <>
                         {/* Your Token Balances */}
                         <section style={styles.section}>
-                            <h2 style={styles.heading}>Your Token Balances</h2>
+                            <h2 style={styles.heading}>Your Rewards</h2>
                             {loadingUserBalances ? (
                                 <div style={styles.spinner} />
                             ) : userBalances.length > 0 ? (
