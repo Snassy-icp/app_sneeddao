@@ -765,21 +765,6 @@ function RLLInfo() {
                         >
                             <Background color="#444" gap={16} />
                             <Controls />
-                            <MiniMap 
-                                nodeColor={(node) => {
-                                    switch (node.style?.border) {
-                                        case nodeStyles.infrastructure.border:
-                                            return '#0984e3';
-                                        case nodeStyles.tokenManagement.border:
-                                            return '#00b894';
-                                        case nodeStyles.revenue.border:
-                                            return '#fdcb6e';
-                                        default:
-                                            return '#fff';
-                                    }
-                                }}
-                                maskColor="rgba(0, 0, 0, 0.2)"
-                            />
                         </ReactFlow>
                     </div>
                 </section>
