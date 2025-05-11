@@ -1483,8 +1483,40 @@ function RLLInfo() {
                 {item.canisterId && (
                     <p>Canister ID: <span style={styles.canisterId}>{item.canisterId}</span></p>
                 )}
-                {item.details && <p>{item.details}</p>}
-                {item.link && (
+                {item.details && (
+                    <div style={{ marginTop: '10px' }}>
+                        {item.details.split('\n').map((line, i) => (
+                            <div key={i} style={{ marginBottom: '10px' }}>
+                                {line}
+                                {line.includes('ICP Treasury:') && (
+                                    <div style={{ marginTop: '4px' }}>
+                                        <a 
+                                            href="https://dashboard.internetcomputer.org/account/580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9" 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            style={styles.link}
+                                        >
+                                            View on Platform →
+                                        </a>
+                                    </div>
+                                )}
+                                {line.includes('SNEED Treasury:') && (
+                                    <div style={{ marginTop: '4px' }}>
+                                        <a 
+                                            href="https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai/account/fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de" 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            style={styles.link}
+                                        >
+                                            View on Platform →
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {item.link && !item.details && (
                     <p>
                         <a 
                             href={item.link} 
