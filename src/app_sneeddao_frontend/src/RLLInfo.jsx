@@ -360,22 +360,22 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                         const outgoingEdges = edges.filter(e => e.source === '3');
                         outgoingEdges.forEach(outEdge => {
                             const percentage = parseFloat(outEdge.label) / 100 || 1;
-                            // Scale new tokens based on both the incoming token's scale and the split percentage
-                            const newToken = createToken(outEdge, token.scale * percentage, token.type);
+                            // Double the scale after splitting
+                            const newToken = createToken(outEdge, token.scale * percentage * 2, token.type);
                             if (newToken) updatedTokens.push(newToken);
                         });
                     } else if (edge.target === '4') {
                         // When ICP reaches Buyback Vector, convert to SNEED and send to SNEED Splitter
                         const nextEdge = edges.find(e => e.source === '4' && e.target === '5');
                         if (nextEdge) {
-                            const newToken = createToken(nextEdge, 1, 'sneed'); // Force token type to SNEED
+                            const newToken = createToken(nextEdge, token.scale, 'sneed'); // Force token type to SNEED
                             if (newToken) updatedTokens.push(newToken);
                         }
                     } else if (edge.target === '12') {
                         // When reaching Products, forward to Revenue Collector
                         const nextEdge = edges.find(e => e.source === '12' && e.target === '10');
                         if (nextEdge) {
-                            const newToken = createToken(nextEdge, 1, token.type);
+                            const newToken = createToken(nextEdge, token.scale, token.type);
                             if (newToken) updatedTokens.push(newToken);
                         }
                     } else if (edge.target === '10') {
@@ -384,7 +384,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                             edges.find(e => e.id === 'e12') :  // To ICP Splitter
                             edges.find(e => e.id === 'e12b');  // To SNEED Splitter
                         if (nextEdge) {
-                            const newToken = createToken(nextEdge, 1, token.type);
+                            const newToken = createToken(nextEdge, token.scale, token.type);
                             if (newToken) updatedTokens.push(newToken);
                         }
                     } else if (edge.target === '7') {
@@ -395,19 +395,19 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                             if (newToken) updatedTokens.push(newToken);
                         }
                     } else if (edge.target === '5') {
-                        // Handle splitter nodes
+                        // Handle SNEED splitter nodes
                         const outgoingEdges = edges.filter(e => e.source === edge.target);
                         outgoingEdges.forEach(outEdge => {
                             const percentage = parseFloat(outEdge.label) / 100 || 1;
-                            // Scale new tokens based on both the incoming token's scale and the split percentage
-                            const newToken = createToken(outEdge, token.scale * percentage, token.type);
+                            // Double the scale after splitting
+                            const newToken = createToken(outEdge, token.scale * percentage * 2, token.type);
                             if (newToken) updatedTokens.push(newToken);
                         });
                     }
                 }
             });
 
-            // Then spawn new tokens at source nodes
+            // Then spawn new tokens at source nodes (keeping original size)
             edges.forEach(edge => {
                 // For 8y neuron, spawn tokens to ICP Neuron Vector
                 if (edge.source === '1' && edge.target === '2') {
