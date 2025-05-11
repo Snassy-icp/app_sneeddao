@@ -15,6 +15,8 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useCallback as useTooltipCallback } from 'react';
+import { Principal } from '@dfinity/principal';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 
 // Styles for the expandable sections
 const styles = {
@@ -1334,11 +1336,64 @@ const initialEdges = [
 ];
 
 function RLLInfo() {
-    const { identity, logout } = useAuth();
+    const { identity, isAuthenticated, logout } = useAuth();
     const [expandedSections, setExpandedSections] = useState({});
     const [expandedItems, setExpandedItems] = useState({});
     const [tooltip, setTooltip] = useState(null);
+    const [treasuryBalances, setTreasuryBalances] = useState({
+        icp: null,
+        sneed: null
+    });
 
+    // Add effect to fetch Treasury balances
+    useEffect(() => {
+        const fetchTreasuryBalances = async () => {
+            if (!identity) return;
+            
+            try {
+                // ICP Treasury balance
+                const icpLedgerActor = createLedgerActor('ryjl3-tyaaa-aaaaa-aaaba-cai', {
+                    agentOptions: { identity }
+                });
+                const icpBalance = await icpLedgerActor.icrc1_balance_of({
+                    owner: Principal.fromText('fi3zi-fyaaa-aaaaq-aachq-cai'),
+                    subaccount: []  // Main account
+                });
+
+                // SNEED Treasury balance
+                const sneedLedgerActor = createLedgerActor('hvgxa-wqaaa-aaaaq-aacia-cai', {
+                    agentOptions: { identity }
+                });
+                const sneedBalance = await sneedLedgerActor.icrc1_balance_of({
+                    owner: Principal.fromText('fi3zi-fyaaa-aaaaq-aachq-cai'),
+                    subaccount: [
+                        hexToUint8Array('8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de')
+                    ]
+                });
+
+                setTreasuryBalances({
+                    icp: icpBalance,
+                    sneed: sneedBalance
+                });
+            } catch (error) {
+                console.error('Error fetching treasury balances:', error);
+            }
+        };
+
+        fetchTreasuryBalances();
+        // Set up periodic refresh every 30 seconds
+        const interval = setInterval(fetchTreasuryBalances, 30000);
+        return () => clearInterval(interval);
+    }, [identity]);
+
+    // Add helper function to convert hex to Uint8Array
+    const hexToUint8Array = (hex) => {
+        const pairs = hex.match(/[\dA-F]{2}/gi);
+        const integers = pairs.map(s => parseInt(s, 16));
+        return new Uint8Array(integers);
+    };
+
+    // Update handleNodeMouseEnter to include balance information for Treasury
     const handleNodeMouseEnter = useCallback((event, node) => {
         const content = (
             <div>
@@ -1372,6 +1427,18 @@ function RLLInfo() {
                         marginTop: '8px'
                     }}>
                         Canister ID: {node.data.canisterId}
+                    </div>
+                )}
+                {node.data.label === 'Sneed DAO Treasury' && treasuryBalances.icp !== null && treasuryBalances.sneed !== null && (
+                    <div style={{
+                        marginTop: '8px',
+                        padding: '8px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                        borderRadius: '4px'
+                    }}>
+                        <div style={{ marginBottom: '4px' }}>Current Balances:</div>
+                        <div>ICP: {(Number(treasuryBalances.icp) / 1e8).toFixed(2)} ICP</div>
+                        <div>SNEED: {(Number(treasuryBalances.sneed) / 1e8).toFixed(2)} SNEED</div>
                     </div>
                 )}
                 {node.data.details && (
@@ -1422,7 +1489,7 @@ function RLLInfo() {
             x: event.clientX,
             y: event.clientY
         });
-    }, []);
+    }, [treasuryBalances]);
 
     const handleEdgeMouseEnter = useCallback((event, edge) => {
         const content = (
