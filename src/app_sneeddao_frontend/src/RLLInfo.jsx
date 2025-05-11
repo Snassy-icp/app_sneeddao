@@ -45,9 +45,38 @@ const AnimatedToken = ({ type, x, y, scale = 1 }) => {
     );
 };
 
+// Custom burn effect component
+const BurnEffect = ({ x, y, scale = 1 }) => {
+    const reactFlowInstance = useReactFlow();
+    const viewport = reactFlowInstance.getViewport();
+    const size = 32 * scale; // Slightly larger than tokens
+    
+    // Transform the coordinates based on viewport zoom and pan
+    const transformedX = x * viewport.zoom + viewport.x;
+    const transformedY = y * viewport.zoom + viewport.y;
+
+    return (
+        <div
+            style={{
+                position: 'absolute',
+                left: transformedX,
+                top: transformedY,
+                width: size,
+                height: size,
+                background: 'radial-gradient(circle, rgba(255,165,0,0.8) 0%, rgba(255,69,0,0.6) 50%, rgba(255,0,0,0) 100%)',
+                animation: 'burn-effect 0.5s ease-out forwards',
+                zIndex: 999,
+                transform: `translate(-50%, -50%) scale(${viewport.zoom})`,
+                pointerEvents: 'none'
+            }}
+        />
+    );
+};
+
 // Token animation manager component
 const TokenAnimationManager = ({ edges, nodes }) => {
     const [tokens, setTokens] = useState([]);
+    const [burnEffects, setBurnEffects] = useState([]);
     const reactFlowInstance = useReactFlow();
 
     const createToken = useCallback((edge, percentage = 1) => {
@@ -57,26 +86,11 @@ const TokenAnimationManager = ({ edges, nodes }) => {
         if (!sourceNode || !targetNode) return null;
 
         // Determine token type based on edge style
-        const tokenType = edge.style === edgeStyles.icp ? 'icp' : 
-                         edge.style === edgeStyles.sneed ? 'sneed' : 'sneed';
+        const tokenType = edge.style === edgeStyles.icp ? 'icp' : 'sneed';
         const scale = percentage;
 
-        // Get the actual node dimensions from ReactFlow
-        const sourceWidth = sourceNode.width || 180;
-        const sourceHeight = sourceNode.height || 40;
-        const targetWidth = targetNode.width || 180;
-        const targetHeight = targetNode.height || 40;
-
-        // Calculate center positions of nodes
-        const sourceX = sourceNode.position.x + sourceWidth / 2;
-        const sourceY = sourceNode.position.y + sourceHeight / 2;
-        const targetX = targetNode.position.x + targetWidth / 2;
-        const targetY = targetNode.position.y + targetHeight / 2;
-
-        // Calculate control points for the edge path
-        const dx = targetX - sourceX;
-        const dy = targetY - sourceY;
-        const controlOffset = Math.min(Math.abs(dx), Math.abs(dy)) * 0.5;
+        // Check if target is burn address
+        const isBurnDestination = targetNode.id === '8'; // ID of the SNEED Burn Address node
 
         return {
             id: `token-${edge.id}-${Date.now()}`,
@@ -84,34 +98,38 @@ const TokenAnimationManager = ({ edges, nodes }) => {
             edge: edge.id,
             scale,
             progress: 0,
-            sourceX,
-            sourceY,
-            targetX,
-            targetY,
-            controlPoint1: {
-                x: sourceX + dx * 0.25,
-                y: sourceY + controlOffset
-            },
-            controlPoint2: {
-                x: sourceX + dx * 0.75,
-                y: targetY - controlOffset
-            }
+            sourceX: sourceNode.position.x + (sourceNode.width || 180) / 2,
+            sourceY: sourceNode.position.y + (sourceNode.height || 40) / 2,
+            targetX: targetNode.position.x + (targetNode.width || 180) / 2,
+            targetY: targetNode.position.y + (targetNode.height || 40) / 2,
+            isBurnDestination
         };
     }, [nodes]);
 
     const animateTokens = useCallback(() => {
         setTokens(prevTokens => {
-            // Move existing tokens
             const updatedTokens = prevTokens
                 .map(token => ({
                     ...token,
-                    progress: token.progress + 0.01 // Slowed down the animation
+                    progress: token.progress + 0.01
                 }))
-                .filter(token => token.progress <= 1);
+                .filter(token => {
+                    // If token reaches burn address, create burn effect
+                    if (token.isBurnDestination && token.progress >= 1) {
+                        setBurnEffects(prev => [...prev, {
+                            id: `burn-${Date.now()}`,
+                            x: token.targetX,
+                            y: token.targetY,
+                            scale: token.scale,
+                            createdAt: Date.now()
+                        }]);
+                    }
+                    return token.progress <= 1;
+                });
 
             // Create new tokens at source nodes
             edges.forEach(edge => {
-                if (Math.random() < 0.005) { // Reduced token creation frequency
+                if (Math.random() < 0.005) {
                     const newToken = createToken(edge);
                     if (newToken) {
                         updatedTokens.push(newToken);
@@ -123,7 +141,6 @@ const TokenAnimationManager = ({ edges, nodes }) => {
             updatedTokens.forEach(token => {
                 const edge = edges.find(e => e.id === token.edge);
                 if (edge && token.progress >= 1) {
-                    // Check if this edge ends at a splitter
                     const outgoingEdges = edges.filter(e => e.source === edge.target);
                     if (outgoingEdges.length > 1) {
                         outgoingEdges.forEach(outEdge => {
@@ -132,7 +149,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                             if (newToken) {
                                 updatedTokens.push({
                                     ...newToken,
-                                    progress: 0 // Start from the beginning of the new path
+                                    progress: 0
                                 });
                             }
                         });
@@ -142,6 +159,9 @@ const TokenAnimationManager = ({ edges, nodes }) => {
 
             return updatedTokens;
         });
+
+        // Clean up old burn effects
+        setBurnEffects(prev => prev.filter(effect => Date.now() - effect.createdAt < 500)); // Match animation duration
     }, [edges, createToken]);
 
     useEffect(() => {
@@ -151,33 +171,23 @@ const TokenAnimationManager = ({ edges, nodes }) => {
 
     return (
         <>
-            {tokens.map(token => {
-                // Calculate current position using cubic bezier curve for smoother animation
-                const progress = token.progress;
-                const t = progress;
-                const mt = 1 - t;
-                
-                // Cubic bezier curve calculation
-                const x = Math.pow(mt, 3) * token.sourceX + 
-                         3 * Math.pow(mt, 2) * t * token.controlPoint1.x +
-                         3 * mt * Math.pow(t, 2) * token.controlPoint2.x +
-                         Math.pow(t, 3) * token.targetX;
-                         
-                const y = Math.pow(mt, 3) * token.sourceY + 
-                         3 * Math.pow(mt, 2) * t * token.controlPoint1.y +
-                         3 * mt * Math.pow(t, 2) * token.controlPoint2.y +
-                         Math.pow(t, 3) * token.targetY;
-                
-                return (
-                    <AnimatedToken
-                        key={token.id}
-                        type={token.type}
-                        x={x}
-                        y={y}
-                        scale={token.scale}
-                    />
-                );
-            })}
+            {tokens.map(token => (
+                <AnimatedToken
+                    key={token.id}
+                    type={token.type}
+                    x={token.sourceX + (token.targetX - token.sourceX) * token.progress}
+                    y={token.sourceY + (token.targetY - token.sourceY) * token.progress}
+                    scale={token.scale}
+                />
+            ))}
+            {burnEffects.map(effect => (
+                <BurnEffect
+                    key={effect.id}
+                    x={effect.x}
+                    y={effect.y}
+                    scale={effect.scale}
+                />
+            ))}
         </>
     );
 };
@@ -1040,6 +1050,20 @@ export default RLLInfo;
             100% {
                 transform: scale(1);
                 opacity: 1;
+            }
+        }
+        @keyframes burn-effect {
+            0% {
+                transform: translate(-50%, -50%) scale(0.5);
+                opacity: 1;
+            }
+            50% {
+                transform: translate(-50%, -60%) scale(2);
+                opacity: 0.8;
+            }
+            100% {
+                transform: translate(-50%, -70%) scale(0.1);
+                opacity: 0;
             }
         }
     `}
