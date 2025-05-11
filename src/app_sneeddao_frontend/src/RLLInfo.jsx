@@ -73,10 +73,70 @@ const BurnEffect = ({ x, y, scale = 1 }) => {
     );
 };
 
+// Custom distribution effect component
+const DistributionEffect = ({ x, y, type, scale = 1 }) => {
+    const reactFlowInstance = useReactFlow();
+    const viewport = reactFlowInstance.getViewport();
+    const size = 16 * scale; // Smaller than regular tokens
+    
+    // Create 8 mini tokens for the distribution effect
+    const tokens = Array.from({ length: 8 }, (_, i) => {
+        const angle = (i * Math.PI * 2) / 8; // Evenly space around circle
+        
+        // Transform coordinates based on viewport
+        const transformedX = x * viewport.zoom + viewport.x;
+        const transformedY = y * viewport.zoom + viewport.y;
+
+        // Create unique animation name for this token
+        const animationName = `distribute-token-${i}`;
+
+        return (
+            <div
+                key={i}
+                style={{
+                    position: 'absolute',
+                    left: `${transformedX}px`,
+                    top: `${transformedY}px`,
+                    width: size,
+                    height: size,
+                    borderRadius: '50%',
+                    background: `url(${type === 'icp' ? 'icp_symbol.svg' : 'sneed_logo.png'})`,
+                    backgroundSize: 'cover',
+                    animation: `${animationName} 1s ease-out forwards`,
+                    zIndex: 999,
+                    transform: `translate(-50%, -50%) scale(${viewport.zoom})`,
+                    pointerEvents: 'none'
+                }}
+            >
+                <style>
+                    {`
+                        @keyframes ${animationName} {
+                            0% {
+                                transform: translate(-50%, -50%) scale(${viewport.zoom});
+                                opacity: 1;
+                            }
+                            100% {
+                                transform: translate(
+                                    calc(-50% + ${Math.cos(angle) * (100 / viewport.zoom)}px),
+                                    calc(-50% + ${Math.sin(angle) * (100 / viewport.zoom)}px)
+                                ) scale(${viewport.zoom * 0.3});
+                                opacity: 0;
+                            }
+                        }
+                    `}
+                </style>
+            </div>
+        );
+    });
+
+    return <>{tokens}</>;
+};
+
 // Token animation manager component
 const TokenAnimationManager = ({ edges, nodes }) => {
     const [tokens, setTokens] = useState([]);
     const [burnEffects, setBurnEffects] = useState([]);
+    const [distributionEffects, setDistributionEffects] = useState([]);
     const reactFlowInstance = useReactFlow();
 
     const createToken = useCallback((edge, percentage = 1) => {
@@ -89,8 +149,9 @@ const TokenAnimationManager = ({ edges, nodes }) => {
         const tokenType = edge.style === edgeStyles.icp ? 'icp' : 'sneed';
         const scale = percentage;
 
-        // Check if target is burn address
-        const isBurnDestination = targetNode.id === '8'; // ID of the SNEED Burn Address node
+        // Check destinations
+        const isBurnDestination = targetNode.id === '8'; // SNEED Burn Address
+        const isDistributionDestination = targetNode.id === '9'; // RLL Distribution
 
         return {
             id: `token-${edge.id}-${Date.now()}`,
@@ -102,7 +163,8 @@ const TokenAnimationManager = ({ edges, nodes }) => {
             sourceY: sourceNode.position.y + (sourceNode.height || 40) / 2,
             targetX: targetNode.position.x + (targetNode.width || 180) / 2,
             targetY: targetNode.position.y + (targetNode.height || 40) / 2,
-            isBurnDestination
+            isBurnDestination,
+            isDistributionDestination
         };
     }, [nodes]);
 
@@ -114,20 +176,33 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                     progress: token.progress + 0.01
                 }))
                 .filter(token => {
-                    // If token reaches burn address, create burn effect
-                    if (token.isBurnDestination && token.progress >= 1) {
-                        setBurnEffects(prev => [...prev, {
-                            id: `burn-${Date.now()}`,
-                            x: token.targetX,
-                            y: token.targetY,
-                            scale: token.scale,
-                            createdAt: Date.now()
-                        }]);
+                    if (token.progress >= 1) {
+                        // Create burn effect
+                        if (token.isBurnDestination) {
+                            setBurnEffects(prev => [...prev, {
+                                id: `burn-${Date.now()}`,
+                                x: token.targetX,
+                                y: token.targetY,
+                                scale: token.scale,
+                                createdAt: Date.now()
+                            }]);
+                        }
+                        // Create distribution effect
+                        else if (token.isDistributionDestination) {
+                            setDistributionEffects(prev => [...prev, {
+                                id: `distribute-${Date.now()}`,
+                                x: token.targetX,
+                                y: token.targetY,
+                                type: token.type,
+                                scale: token.scale,
+                                createdAt: Date.now()
+                            }]);
+                        }
                     }
                     return token.progress <= 1;
                 });
 
-            // Create new tokens at source nodes
+            // Rest of the token creation and splitting logic...
             edges.forEach(edge => {
                 if (Math.random() < 0.005) {
                     const newToken = createToken(edge);
@@ -160,8 +235,9 @@ const TokenAnimationManager = ({ edges, nodes }) => {
             return updatedTokens;
         });
 
-        // Clean up old burn effects
-        setBurnEffects(prev => prev.filter(effect => Date.now() - effect.createdAt < 500)); // Match animation duration
+        // Clean up old effects
+        setBurnEffects(prev => prev.filter(effect => Date.now() - effect.createdAt < 500));
+        setDistributionEffects(prev => prev.filter(effect => Date.now() - effect.createdAt < 800));
     }, [edges, createToken]);
 
     useEffect(() => {
@@ -185,6 +261,15 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                     key={effect.id}
                     x={effect.x}
                     y={effect.y}
+                    scale={effect.scale}
+                />
+            ))}
+            {distributionEffects.map(effect => (
+                <DistributionEffect
+                    key={effect.id}
+                    x={effect.x}
+                    y={effect.y}
+                    type={effect.type}
                     scale={effect.scale}
                 />
             ))}
