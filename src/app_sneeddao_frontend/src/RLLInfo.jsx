@@ -161,6 +161,9 @@ const TokenAnimationManager = ({ edges, nodes }) => {
         } else if (['11', '13', '14'].includes(sourceNode.id)) {
             // For revenue sources that can generate both types, randomly choose
             type = Math.random() < 0.5 ? 'icp' : 'sneed';
+        } else if (sourceNode.id === '1') {
+            // 8y neuron always generates ICP
+            type = 'icp';
         } else {
             type = 'sneed'; // default fallback
         }
@@ -182,7 +185,8 @@ const TokenAnimationManager = ({ edges, nodes }) => {
             targetX: targetNode.position.x + (targetNode.width || 180) / 2,
             targetY: targetNode.position.y + (targetNode.height || 40) / 2,
             isBurnDestination,
-            isDistributionDestination
+            isDistributionDestination,
+            previousNode: sourceNode.id // Track the source node
         };
     }, [nodes]);
 
@@ -269,9 +273,19 @@ const TokenAnimationManager = ({ edges, nodes }) => {
 
             // Then spawn new tokens at source nodes
             edges.forEach(edge => {
-                if (isSourceNode(edge.source) && Math.random() < 0.005 && !updatedTokens.some(t => t.edge === edge.id)) {
-                    const newToken = createToken(edge);
-                    if (newToken) updatedTokens.push(newToken);
+                // For 8y neuron, we want to spawn tokens that go to the ICP Neuron Vector
+                if (edge.id === 'e1') { // Use the specific edge ID for 8y neuron to Neuron Vector
+                    if (Math.random() < 0.02) {
+                        const newToken = createToken(edge, 1, 'icp');
+                        if (newToken) updatedTokens.push(newToken);
+                    }
+                }
+                // For other source nodes
+                else if (isSourceNode(edge.source) && edge.source !== '1') {
+                    if (Math.random() < 0.005 && !updatedTokens.some(t => t.edge === edge.id)) {
+                        const newToken = createToken(edge);
+                        if (newToken) updatedTokens.push(newToken);
+                    }
                 }
             });
 
@@ -994,6 +1008,20 @@ const initialEdges = [
     // ICP Flows
     {
         id: 'e1',
+        source: '1',
+        target: '2',
+        label: 'Maturity',
+        type: 'smoothstep',
+        style: edgeStyles.icp,
+        markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "ICP flow from 8y neuron to Neuron Vector",
+            token: "ICP",
+            percentage: "100%"
+        }
+    },
+    {
+        id: 'e1b',
         source: '2',
         target: '1',
         label: 'Maturity',
