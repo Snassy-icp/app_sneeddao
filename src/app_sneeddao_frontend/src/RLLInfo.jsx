@@ -222,6 +222,13 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                             scale: token.scale,
                             createdAt: Date.now()
                         }]);
+                    } else if (edge.target === '4') {
+                        // When ICP reaches Buyback Vector, convert to SNEED and send to SNEED Splitter
+                        const nextEdge = edges.find(e => e.source === '4' && e.target === '5');
+                        if (nextEdge) {
+                            const newToken = createToken(nextEdge, 1, 'sneed'); // Force token type to SNEED
+                            if (newToken) updatedTokens.push(newToken);
+                        }
                     } else if (edge.target === '12') {
                         // When reaching Products, forward to Revenue Collector
                         const nextEdge = edges.find(e => e.source === '12' && e.target === '10');
