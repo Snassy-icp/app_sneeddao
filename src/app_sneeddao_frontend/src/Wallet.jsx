@@ -25,6 +25,7 @@ import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rates, getTokenTVL } from './utils/TokenUtils';
 import { getPositionTVL } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
+import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 
 const showDebug = false;
         
@@ -137,7 +138,20 @@ function Wallet() {
         }
         // fetch rewards from RLL canister
         const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-        const arr_balances = await rllActor.balances_of_hotkey();
+        
+        // First get neurons from SNS
+        const snsGovActor = createSnsGovernanceActor(snsGovernanceCanisterId, {
+            agentOptions: { identity }
+        });
+        const result = await snsGovActor.list_neurons({
+            of_principal: [identity.getPrincipal()],
+            limit: 100,
+            start_page_at: []
+        });
+        const neurons = result.neurons;
+        
+        // Then get rewards using the new query method
+        const arr_balances = await rllActor.balances_of_hotkey_neurons(neurons);
 
         var new_reward_balances = {};
         var new_icrc1_ledgers = [];
@@ -147,7 +161,7 @@ function Wallet() {
             new_reward_balances[ledger_id] = BigInt(balance[1]);
             if (!known_icrc1_ledgers[ledger_id]) {
                 known_icrc1_ledgers[ledger_id] = true;
-                new_icrc1_ledgers[new_icrc1_ledgers.length] = balance[0]; //ledger_id;
+                new_icrc1_ledgers[new_icrc1_ledgers.length] = balance[0];
             }
         };
 
@@ -165,7 +179,6 @@ function Wallet() {
         }
 
         if (new_icrc1_ledgers.length > 0) {
-
             const allUpdatedTokens = await Promise.all(new_icrc1_ledgers.map(async (icrc1_ledger) => {
                 const updatedToken = await fetchTokenDetails(icrc1_ledger, summed_locks);
                 setTokens(prevTokens => [...prevTokens, updatedToken]);
@@ -173,8 +186,6 @@ function Wallet() {
             }));
 
             fetchLockDetails(allUpdatedTokens);
-        } else {
-
         }
     }
 
