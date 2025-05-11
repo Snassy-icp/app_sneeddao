@@ -19,14 +19,18 @@ import 'reactflow/dist/style.css';
 const AnimatedToken = ({ type, x, y, scale = 1 }) => {
     const size = 24 * scale;
     const reactFlowInstance = useReactFlow();
-    const position = reactFlowInstance.screenToFlowPosition({ x, y });
+    const viewport = reactFlowInstance.getViewport();
+    
+    // Transform the coordinates based on viewport zoom and pan
+    const transformedX = x * viewport.zoom + viewport.x;
+    const transformedY = y * viewport.zoom + viewport.y;
 
     return (
         <div
             style={{
                 position: 'absolute',
-                left: x,
-                top: y,
+                left: transformedX,
+                top: transformedY,
                 width: size,
                 height: size,
                 borderRadius: '50%',
@@ -34,7 +38,7 @@ const AnimatedToken = ({ type, x, y, scale = 1 }) => {
                 backgroundSize: 'cover',
                 animation: 'pop-in 0.3s ease-out',
                 zIndex: 1000,
-                transform: `translate(-50%, -50%)`,
+                transform: `translate(-50%, -50%) scale(${1/viewport.zoom})`, // Scale inversely to zoom to maintain size
                 pointerEvents: 'none'
             }}
         />
@@ -57,11 +61,22 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                          edge.style === edgeStyles.sneed ? 'sneed' : 'sneed';
         const scale = percentage;
 
+        // Get the actual node dimensions from ReactFlow
+        const sourceWidth = sourceNode.width || 180;
+        const sourceHeight = sourceNode.height || 40;
+        const targetWidth = targetNode.width || 180;
+        const targetHeight = targetNode.height || 40;
+
         // Calculate center positions of nodes
-        const sourceX = sourceNode.position.x + (sourceNode.width || 180) / 2;
-        const sourceY = sourceNode.position.y + (sourceNode.height || 40) / 2;
-        const targetX = targetNode.position.x + (targetNode.width || 180) / 2;
-        const targetY = targetNode.position.y + (targetNode.height || 40) / 2;
+        const sourceX = sourceNode.position.x + sourceWidth / 2;
+        const sourceY = sourceNode.position.y + sourceHeight / 2;
+        const targetX = targetNode.position.x + targetWidth / 2;
+        const targetY = targetNode.position.y + targetHeight / 2;
+
+        // Calculate control points for the edge path
+        const dx = targetX - sourceX;
+        const dy = targetY - sourceY;
+        const controlOffset = Math.min(Math.abs(dx), Math.abs(dy)) * 0.5;
 
         return {
             id: `token-${edge.id}-${Date.now()}`,
@@ -72,7 +87,15 @@ const TokenAnimationManager = ({ edges, nodes }) => {
             sourceX,
             sourceY,
             targetX,
-            targetY
+            targetY,
+            controlPoint1: {
+                x: sourceX + dx * 0.25,
+                y: sourceY + controlOffset
+            },
+            controlPoint2: {
+                x: sourceX + dx * 0.75,
+                y: targetY - controlOffset
+            }
         };
     }, [nodes]);
 
@@ -129,19 +152,21 @@ const TokenAnimationManager = ({ edges, nodes }) => {
     return (
         <>
             {tokens.map(token => {
-                // Calculate current position using quadratic bezier curve for smoother animation
+                // Calculate current position using cubic bezier curve for smoother animation
                 const progress = token.progress;
-                const midX = (token.sourceX + token.targetX) / 2;
-                const midY = (token.sourceY + token.targetY) / 2 - 50; // Control point above the path
+                const t = progress;
+                const mt = 1 - t;
                 
-                // Quadratic bezier curve calculation
-                const x = Math.pow(1 - progress, 2) * token.sourceX + 
-                         2 * (1 - progress) * progress * midX + 
-                         Math.pow(progress, 2) * token.targetX;
+                // Cubic bezier curve calculation
+                const x = Math.pow(mt, 3) * token.sourceX + 
+                         3 * Math.pow(mt, 2) * t * token.controlPoint1.x +
+                         3 * mt * Math.pow(t, 2) * token.controlPoint2.x +
+                         Math.pow(t, 3) * token.targetX;
                          
-                const y = Math.pow(1 - progress, 2) * token.sourceY + 
-                         2 * (1 - progress) * progress * midY + 
-                         Math.pow(progress, 2) * token.targetY;
+                const y = Math.pow(mt, 3) * token.sourceY + 
+                         3 * Math.pow(mt, 2) * t * token.controlPoint1.y +
+                         3 * mt * Math.pow(t, 2) * token.controlPoint2.y +
+                         Math.pow(t, 3) * token.targetY;
                 
                 return (
                     <AnimatedToken
