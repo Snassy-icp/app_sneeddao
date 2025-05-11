@@ -580,7 +580,7 @@ const nodes = {
                 outputs: ["Any via DAO proposal"],
                 canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai",
                 details: "ICP Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai, ICP Account 580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9\n\nSNEED Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de",
-                link: "https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai"
+                link: "https://dashboard.internetcomputer.org/account/580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9"
             },
             {
                 id: "7",
@@ -870,7 +870,9 @@ const initialNodes = [
             description: "Controls NNS Neuron and manages maturity collection",
             inputs: ["ICP from Splitter (25%)", "Maturity from NNS Neuron"],
             outputs: ["ICP to NNS Neuron"],
-            canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-wu6phoy.100000000010000000000000000000000000000000000000000000000000000"
+            canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-wu6phoy.100000000010000000000000000000000000000000000000000000000000000",
+            details: "Vector ID: 1 on Neuronpool",
+            link: "https://vectors.neuronpool.com/vectors/fi3zi-fyaaa-aaaaq-aachq-cai/1"
         },
         position: { x: 300, y: 150 },
         style: nodeStyles.infrastructure,
@@ -892,7 +894,9 @@ const initialNodes = [
                 "25% ICP to Neuron Vector (for compounding)",
                 "50% ICP to Sneed Buyback Vector"
             ],
-            canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-m7u3kpi.100000000060000000000000000000000000000000000000000000000000000"
+            canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-m7u3kpi.100000000060000000000000000000000000000000000000000000000000000",
+            details: "Vector ID: 6 on Neuronpool",
+            link: "https://vectors.neuronpool.com/vectors/fi3zi-fyaaa-aaaaq-aachq-cai/6"
         },
         position: { x: 300, y: 250 },
         style: nodeStyles.infrastructure,
@@ -909,7 +913,9 @@ const initialNodes = [
             description: "Purchases SNEED from market using ICP",
             inputs: ["ICP from Splitter (50%)"],
             outputs: ["100% SNEED to SNEED Splitter"],
-            canisterId: "togwv-zqaaa-aaaal-qr7aa-cai-ihr3xbq.100000000120000000000000000000000000000000000000000000000000000"
+            canisterId: "togwv-zqaaa-aaaal-qr7aa-cai-ihr3xbq.100000000120000000000000000000000000000000000000000000000000000",
+            details: "Vector ID: 18 on ICPCoins",
+            link: "https://beta.icpcoins.com/#/vector/modify/togwv-zqaaa-aaaal-qr7aa-cai/exchange/18"
         },
         position: { x: 100, y: 350 },
         style: nodeStyles.tokenManagement,
@@ -928,7 +934,9 @@ const initialNodes = [
                 "34% SNEED to DeFi Canister",
                 "33% SNEED to Burn Address"
             ],
-            canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-vilbrxq.1000000002d0000000000000000000000000000000000000000000000000000"
+            canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-vilbrxq.1000000002d0000000000000000000000000000000000000000000000000000",
+            details: "Vector ID: 45 on Neuronpool",
+            link: "https://vectors.neuronpool.com/vectors/fi3zi-fyaaa-aaaaq-aachq-cai/45"
         },
         position: { x: 300, y: 350 },
         style: nodeStyles.tokenManagement,
@@ -948,7 +956,7 @@ const initialNodes = [
             outputs: ["Any via DAO proposal"],
             canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai",
             details: "ICP Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai, ICP Account 580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9\n\nSNEED Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de",
-            link: "https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai"
+            link: "https://dashboard.internetcomputer.org/account/580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9"
         },
         position: { x: 500, y: 350 },
         style: nodeStyles.tokenManagement,
