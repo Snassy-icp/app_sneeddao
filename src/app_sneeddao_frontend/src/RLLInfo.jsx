@@ -361,7 +361,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                         outgoingEdges.forEach(outEdge => {
                             const percentage = parseFloat(outEdge.label) / 100 || 1;
                             // Double the scale after splitting
-                            const newToken = createToken(outEdge, token.scale * percentage * 2, token.type);
+                            const newToken = createToken(outEdge, token.scale * percentage * 1.75, token.type);
                             if (newToken) updatedTokens.push(newToken);
                         });
                     } else if (edge.target === '4') {
@@ -400,7 +400,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                         outgoingEdges.forEach(outEdge => {
                             const percentage = parseFloat(outEdge.label) / 100 || 1;
                             // Double the scale after splitting
-                            const newToken = createToken(outEdge, token.scale * percentage * 2, token.type);
+                            const newToken = createToken(outEdge, token.scale * percentage * 1.75, token.type);
                             if (newToken) updatedTokens.push(newToken);
                         });
                     }
