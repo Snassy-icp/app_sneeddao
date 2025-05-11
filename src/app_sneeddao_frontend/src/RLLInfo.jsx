@@ -84,6 +84,14 @@ const styles = {
         padding: '4px 8px',
         borderRadius: '4px',
         fontSize: '0.9em'
+    },
+    spinner: {
+        border: '4px solid rgba(255, 255, 255, 0.3)',
+        borderTop: '4px solid #3498db',
+        borderRadius: '50%',
+        width: '20px',
+        height: '20px',
+        animation: 'spin 1s linear infinite'
     }
 };
 
@@ -1344,12 +1352,14 @@ function RLLInfo() {
         icp: null,
         sneed: null
     });
+    const [isLoadingBalances, setIsLoadingBalances] = useState(false);
 
-    // Add effect to fetch Treasury balances
+    // Update effect to show loading state
     useEffect(() => {
         const fetchTreasuryBalances = async () => {
             if (!identity) return;
             
+            setIsLoadingBalances(true);
             try {
                 // ICP Treasury balance
                 const icpLedgerActor = createLedgerActor('ryjl3-tyaaa-aaaaa-aaaba-cai', {
@@ -1377,11 +1387,12 @@ function RLLInfo() {
                 });
             } catch (error) {
                 console.error('Error fetching treasury balances:', error);
+            } finally {
+                setIsLoadingBalances(false);
             }
         };
 
         fetchTreasuryBalances();
-        // Set up periodic refresh every 30 seconds
         const interval = setInterval(fetchTreasuryBalances, 30000);
         return () => clearInterval(interval);
     }, [identity]);
@@ -1393,7 +1404,29 @@ function RLLInfo() {
         return new Uint8Array(integers);
     };
 
-    // Update handleNodeMouseEnter to include balance information for Treasury
+    // Update tooltip content to show loading state
+    const renderTreasuryBalances = () => (
+        <div style={{
+            marginTop: '8px',
+            padding: '8px',
+            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+            borderRadius: '4px'
+        }}>
+            <div style={{ marginBottom: '4px' }}>Current Balances:</div>
+            {isLoadingBalances ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                    <div style={styles.spinner} />
+                </div>
+            ) : (
+                <>
+                    <div>ICP: {(Number(treasuryBalances.icp) / 1e8).toFixed(2)} ICP</div>
+                    <div>SNEED: {(Number(treasuryBalances.sneed) / 1e8).toFixed(2)} SNEED</div>
+                </>
+            )}
+        </div>
+    );
+
+    // Update handleNodeMouseEnter to use the new balance renderer
     const handleNodeMouseEnter = useCallback((event, node) => {
         const content = (
             <div>
@@ -1429,18 +1462,7 @@ function RLLInfo() {
                         Canister ID: {node.data.canisterId}
                     </div>
                 )}
-                {node.data.label === 'Sneed DAO Treasury' && treasuryBalances.icp !== null && treasuryBalances.sneed !== null && (
-                    <div style={{
-                        marginTop: '8px',
-                        padding: '8px',
-                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                        borderRadius: '4px'
-                    }}>
-                        <div style={{ marginBottom: '4px' }}>Current Balances:</div>
-                        <div>ICP: {(Number(treasuryBalances.icp) / 1e8).toFixed(2)} ICP</div>
-                        <div>SNEED: {(Number(treasuryBalances.sneed) / 1e8).toFixed(2)} SNEED</div>
-                    </div>
-                )}
+                {node.data.label === 'Sneed DAO Treasury' && renderTreasuryBalances()}
                 {node.data.details && (
                     <div style={{ 
                         marginTop: '8px',
@@ -1489,7 +1511,7 @@ function RLLInfo() {
             x: event.clientX,
             y: event.clientY
         });
-    }, [treasuryBalances]);
+    }, [treasuryBalances, isLoadingBalances]);
 
     const handleEdgeMouseEnter = useCallback((event, edge) => {
         const content = (
@@ -1564,6 +1586,26 @@ function RLLInfo() {
                 {item.canisterId && (
                     <p>Canister ID: <span style={styles.canisterId}>{item.canisterId}</span></p>
                 )}
+                {item.title === "Sneed DAO Treasury" && (
+                    <div style={{
+                        marginTop: '10px',
+                        padding: '10px',
+                        backgroundColor: '#3a3a3a',
+                        borderRadius: '4px'
+                    }}>
+                        <h4 style={{ margin: '0 0 10px 0' }}>Current Balances:</h4>
+                        {isLoadingBalances ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : (
+                            <>
+                                <div style={{ marginBottom: '5px' }}>ICP: {(Number(treasuryBalances.icp) / 1e8).toFixed(2)} ICP</div>
+                                <div>SNEED: {(Number(treasuryBalances.sneed) / 1e8).toFixed(2)} SNEED</div>
+                            </>
+                        )}
+                    </div>
+                )}
                 {item.details && (
                     <div style={{ marginTop: '10px' }}>
                         {item.details.split('\n').map((line, i) => (
@@ -1573,7 +1615,7 @@ function RLLInfo() {
                                     <div style={{ marginTop: '4px' }}>
                                         <a 
                                             href="https://dashboard.internetcomputer.org/account/580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9" 
-                                            target="_blank" 
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             style={styles.link}
                                         >
@@ -1585,7 +1627,7 @@ function RLLInfo() {
                                     <div style={{ marginTop: '4px' }}>
                                         <a 
                                             href="https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai/account/fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de" 
-                                            target="_blank" 
+                                            target="_blank"
                                             rel="noopener noreferrer"
                                             style={styles.link}
                                         >
@@ -1596,18 +1638,6 @@ function RLLInfo() {
                             </div>
                         ))}
                     </div>
-                )}
-                {item.link && !item.details && (
-                    <p>
-                        <a 
-                            href={item.link} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            style={styles.link}
-                        >
-                            View on Platform →
-                        </a>
-                    </p>
                 )}
             </div>
         </div>
