@@ -20,21 +20,30 @@ const nodes = {
                 title: "8 Year ICP NNS Neuron",
                 description: "Long-term ICP staking neuron with 8-year dissolve delay",
                 inputs: ["ICP from Neuron Vector"],
-                outputs: ["Maturity to Neuron Vector"]
+                outputs: ["Maturity to Neuron Vector"],
+                details: "Controlled by ICP Neuron Vector for maturity collection and compounding"
             },
             {
                 id: "2",
                 title: "ICP Neuron Vector",
                 description: "Controls NNS Neuron and manages maturity collection",
-                inputs: ["ICP from Splitter", "Maturity from NNS Neuron"],
-                outputs: ["ICP to NNS Neuron"]
+                inputs: ["ICP from Splitter (25%)", "Maturity from NNS Neuron"],
+                outputs: ["ICP to NNS Neuron"],
+                canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-wu6phoy.100000000010000000000000000000000000000000000000000000000000000",
+                details: "Vector ID: 1 on Neuronpool"
             },
             {
                 id: "3",
                 title: "ICP Splitter Vector",
-                description: "Distributes ICP to multiple destinations",
-                inputs: ["ICP"],
-                outputs: ["ICP to Neuron Vector", "ICP to Buyback", "ICP to Treasury"]
+                description: "Distributes ICP to multiple destinations with fixed proportions",
+                inputs: ["ICP from DeFi Canister"],
+                outputs: [
+                    "25% ICP to Treasury",
+                    "25% ICP to Neuron Vector (for compounding)",
+                    "50% ICP to Sneed Buyback Vector"
+                ],
+                canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-m7u3kpi.100000000060000000000000000000000000000000000000000000000000000",
+                details: "Vector ID: 6 on Neuronpool"
             }
         ]
     },
@@ -45,43 +54,64 @@ const nodes = {
                 id: "4",
                 title: "SNEED Buyback Vector",
                 description: "Purchases SNEED from market using ICP",
-                inputs: ["ICP from Splitter"],
-                outputs: ["SNEED to SNEED Splitter"]
+                inputs: ["ICP from Splitter (50%)"],
+                outputs: ["100% SNEED to SNEED Splitter"],
+                canisterId: "togwv-zqaaa-aaaal-qr7aa-cai-ihr3xbq.100000000120000000000000000000000000000000000000000000000000000",
+                details: "Vector ID: 18 on ICPCoins"
             },
             {
                 id: "5",
                 title: "SNEED Splitter Vector",
-                description: "Distributes SNEED to multiple destinations",
+                description: "Distributes SNEED to multiple destinations with fixed proportions",
                 inputs: ["SNEED from Buyback"],
-                outputs: ["SNEED to Treasury", "SNEED to DeFi", "SNEED to Burn", "SNEED to RLL"]
+                outputs: [
+                    "33% SNEED to Treasury",
+                    "34% SNEED to DeFi Canister",
+                    "33% SNEED to Burn Address"
+                ],
+                canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-vilbrxq.1000000002d0000000000000000000000000000000000000000000000000000",
+                details: "Vector ID: 45 on Neuronpool"
             },
             {
                 id: "6",
                 title: "Sneed DAO Treasury",
                 description: "Main DAO treasury for ICP and SNEED",
-                inputs: ["ICP from Splitter", "SNEED from Splitter"],
-                outputs: ["Any via DAO proposal"]
+                inputs: [
+                    "ICP from Splitter (25%)", 
+                    "SNEED from Splitter (33%)"
+                ],
+                outputs: ["Any via DAO proposal"],
+                canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai"
             },
             {
                 id: "7",
                 title: "Sneed DeFi Canister",
                 description: "Treasury extension for ICRC1 tokens",
-                inputs: ["SNEED from Splitter", "Tokens from Revenue"],
-                outputs: ["Any via DAO proposal", "Tokens to RLL"]
+                inputs: [
+                    "SNEED from Splitter (34%)", 
+                    "Tokens from Revenue"
+                ],
+                outputs: [
+                    "ICP to ICP Splitter Vector",
+                    "Tokens to RLL Distribution"
+                ],
+                canisterId: "ok64y-uiaaa-aaaag-qdcbq-cai"
             },
             {
                 id: "8",
                 title: "SNEED Burn Address",
                 description: "Permanent SNEED removal from circulation",
-                inputs: ["SNEED from Splitter"],
-                outputs: []
+                inputs: ["SNEED from Splitter (33%)"],
+                outputs: [],
+                canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai"
             },
             {
                 id: "9",
                 title: "RLL Distribution Canister",
                 description: "Distributes tokens to DAO voting members",
-                inputs: ["SNEED from Splitter", "Tokens from DeFi"],
-                outputs: ["Tokens to DAO members"]
+                inputs: ["Tokens from DeFi Canister"],
+                outputs: ["100% to Sneed Members (Rewards claimable on app.sneeddao.com)"],
+                canisterId: "lvc4n-7aaaa-aaaam-adm6a-cai"
             }
         ]
     },
@@ -98,7 +128,7 @@ const nodes = {
             {
                 id: "11",
                 title: "SNEED/ICP LP Rewards",
-                description: "Liquidity provision rewards",
+                description: "Liquidity provision rewards from ICPSwap",
                 inputs: ["LP rewards"],
                 outputs: ["Rewards to Revenue Collector"]
             },
@@ -127,7 +157,7 @@ const nodes = {
     }
 };
 
-// Edge definitions
+// Edge definitions with percentages and additional details
 const edges = {
     icpFlows: {
         title: "ICP Flows",
@@ -137,28 +167,32 @@ const edges = {
                 source: "2",
                 target: "1",
                 description: "Maturity collection from NNS Neuron",
-                token: "ICP"
+                token: "ICP",
+                percentage: "100%"
             },
             {
                 id: "e2",
                 source: "3",
                 target: "2",
                 description: "ICP compounding to Neuron",
-                token: "ICP"
+                token: "ICP",
+                percentage: "25%"
             },
             {
                 id: "e3",
                 source: "3",
                 target: "4",
                 description: "ICP for SNEED buyback",
-                token: "ICP"
+                token: "ICP",
+                percentage: "50%"
             },
             {
                 id: "e4",
                 source: "3",
                 target: "6",
                 description: "ICP to Treasury reserves",
-                token: "ICP"
+                token: "ICP",
+                percentage: "25%"
             }
         ]
     },
@@ -170,35 +204,32 @@ const edges = {
                 source: "4",
                 target: "5",
                 description: "Bought SNEED to Splitter",
-                token: "SNEED"
+                token: "SNEED",
+                percentage: "100%"
             },
             {
                 id: "e6",
                 source: "5",
                 target: "6",
                 description: "SNEED to Treasury",
-                token: "SNEED"
+                token: "SNEED",
+                percentage: "33%"
             },
             {
                 id: "e7",
                 source: "5",
                 target: "7",
                 description: "SNEED to DeFi Canister",
-                token: "SNEED"
+                token: "SNEED",
+                percentage: "34%"
             },
             {
                 id: "e8",
                 source: "5",
                 target: "8",
                 description: "SNEED to Burn Address",
-                token: "SNEED"
-            },
-            {
-                id: "e9",
-                source: "5",
-                target: "9",
-                description: "SNEED to RLL Distribution",
-                token: "SNEED"
+                token: "SNEED",
+                percentage: "33%"
             }
         ]
     },
@@ -210,42 +241,48 @@ const edges = {
                 source: "11",
                 target: "10",
                 description: "LP Rewards to Revenue Collector",
-                token: "Various"
+                token: "Various",
+                percentage: "100%"
             },
             {
                 id: "e11",
                 source: "12",
                 target: "10",
                 description: "Product Revenue to Collector",
-                token: "Various"
+                token: "Various",
+                percentage: "100%"
             },
             {
                 id: "e12",
                 source: "10",
                 target: "7",
                 description: "Revenue to DeFi Canister",
-                token: "Various"
+                token: "Various",
+                percentage: "100%"
             },
             {
                 id: "e13",
                 source: "7",
                 target: "9",
                 description: "Tokens to RLL Distribution",
-                token: "Various"
+                token: "Various",
+                percentage: "100%"
             },
             {
                 id: "e14",
                 source: "13",
                 target: "12",
                 description: "SneedLock Revenue",
-                token: "Various"
+                token: "Various",
+                percentage: "100%"
             },
             {
                 id: "e15",
                 source: "14",
                 target: "12",
                 description: "Swaprunner Revenue",
-                token: "Various"
+                token: "Various",
+                percentage: "100%"
             }
         ]
     }
@@ -406,6 +443,7 @@ function RLLInfo() {
                                                             <li key={i}>{output}</li>
                                                         ))}
                                                     </ul>
+                                                    <p>{item.details}</p>
                                                 </div>
                                             )}
                                         </div>
@@ -449,6 +487,7 @@ function RLLInfo() {
                                                         nodes.tokenManagement.items,
                                                         nodes.revenue.items
                                                     ).find(n => n.id === item.target)?.title}</p>
+                                                    <p>Percentage: {item.percentage}</p>
                                                 </div>
                                             )}
                                         </div>
