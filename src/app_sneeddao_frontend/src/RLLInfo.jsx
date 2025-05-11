@@ -526,7 +526,10 @@ const nodes = {
                 id: "3",
                 title: "ICP Splitter Vector",
                 description: "Distributes ICP to multiple destinations with fixed proportions",
-                inputs: ["ICP from DeFi Canister"],
+                inputs: [
+                    "ICP from Neuron Vector",
+                    "ICP from Other Revenue Sources"
+                ],
                 outputs: [
                     "25% ICP to Treasury",
                     "25% ICP to Neuron Vector (for compounding)",
@@ -871,7 +874,10 @@ const initialNodes = [
         data: { 
             label: 'ICP Splitter Vector',
             description: "Distributes ICP to multiple destinations with fixed proportions",
-            inputs: ["ICP from DeFi Canister"],
+            inputs: [
+                "ICP from Neuron Vector",
+                "ICP from Other Revenue Sources"
+            ],
             outputs: [
                 "25% ICP to Treasury",
                 "25% ICP to Neuron Vector (for compounding)",
