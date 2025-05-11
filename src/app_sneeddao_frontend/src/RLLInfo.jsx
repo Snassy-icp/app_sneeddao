@@ -14,6 +14,7 @@ import ReactFlow, {
     useReactFlow
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { useCallback as useTooltipCallback } from 'react';
 
 // Custom animated token component
 const AnimatedToken = ({ type, x, y, scale = 1 }) => {
@@ -275,6 +276,32 @@ const TokenAnimationManager = ({ edges, nodes }) => {
             ))}
         </>
     );
+};
+
+// Update the TooltipOverlay to accept tooltip as a prop
+const TooltipOverlay = ({ tooltip }) => {
+    return tooltip ? (
+        <div
+            style={{
+                position: 'fixed',
+                left: `${tooltip.x + 10}px`,
+                top: `${tooltip.y + 10}px`,
+                zIndex: 1000,
+                maxWidth: '300px',
+                backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                color: 'white',
+                padding: '12px 16px',
+                borderRadius: '6px',
+                fontSize: '13px',
+                lineHeight: '1.4',
+                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                pointerEvents: 'none',
+                border: '1px solid rgba(255, 255, 255, 0.1)'
+            }}
+        >
+            {tooltip.content}
+        </div>
+    ) : null;
 };
 
 // Node definitions with their metadata
@@ -662,7 +689,13 @@ const initialNodes = [
     {
         id: '1',
         type: 'default',
-        data: { label: '8 Year ICP NNS Neuron' },
+        data: { 
+            label: '8 Year ICP NNS Neuron',
+            description: "Long-term ICP staking neuron with 8-year dissolve delay",
+            inputs: ["ICP from Neuron Vector"],
+            outputs: ["Maturity to Neuron Vector"],
+            details: "Controlled by ICP Neuron Vector for maturity collection and compounding"
+        },
         position: { x: 300, y: 50 },
         style: nodeStyles.infrastructure,
         sourcePosition: Position.Bottom,
@@ -671,7 +704,13 @@ const initialNodes = [
     {
         id: '2',
         type: 'default',
-        data: { label: 'ICP Neuron Vector' },
+        data: { 
+            label: 'ICP Neuron Vector',
+            description: "Controls NNS Neuron and manages maturity collection",
+            inputs: ["ICP from Splitter (25%)", "Maturity from NNS Neuron"],
+            outputs: ["ICP to NNS Neuron"],
+            canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-wu6phoy.100000000010000000000000000000000000000000000000000000000000000"
+        },
         position: { x: 300, y: 150 },
         style: nodeStyles.infrastructure,
         sourcePosition: Position.Bottom,
@@ -680,7 +719,17 @@ const initialNodes = [
     {
         id: '3',
         type: 'default',
-        data: { label: 'ICP Splitter Vector' },
+        data: { 
+            label: 'ICP Splitter Vector',
+            description: "Distributes ICP to multiple destinations with fixed proportions",
+            inputs: ["ICP from DeFi Canister"],
+            outputs: [
+                "25% ICP to Treasury",
+                "25% ICP to Neuron Vector (for compounding)",
+                "50% ICP to Sneed Buyback Vector"
+            ],
+            canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-m7u3kpi.100000000060000000000000000000000000000000000000000000000000000"
+        },
         position: { x: 300, y: 250 },
         style: nodeStyles.infrastructure,
         sourcePosition: Position.Bottom,
@@ -691,7 +740,13 @@ const initialNodes = [
     {
         id: '4',
         type: 'default',
-        data: { label: 'SNEED Buyback Vector' },
+        data: { 
+            label: 'SNEED Buyback Vector',
+            description: "Purchases SNEED from market using ICP",
+            inputs: ["ICP from Splitter (50%)"],
+            outputs: ["100% SNEED to SNEED Splitter"],
+            canisterId: "togwv-zqaaa-aaaal-qr7aa-cai-ihr3xbq.100000000120000000000000000000000000000000000000000000000000000"
+        },
         position: { x: 100, y: 350 },
         style: nodeStyles.tokenManagement,
         sourcePosition: Position.Bottom,
@@ -700,7 +755,17 @@ const initialNodes = [
     {
         id: '5',
         type: 'default',
-        data: { label: 'SNEED Splitter Vector' },
+        data: { 
+            label: 'SNEED Splitter Vector',
+            description: "Distributes SNEED to multiple destinations with fixed proportions",
+            inputs: ["SNEED from Buyback"],
+            outputs: [
+                "33% SNEED to Treasury",
+                "34% SNEED to DeFi Canister",
+                "33% SNEED to Burn Address"
+            ],
+            canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-vilbrxq.1000000002d0000000000000000000000000000000000000000000000000000"
+        },
         position: { x: 300, y: 350 },
         style: nodeStyles.tokenManagement,
         sourcePosition: Position.Bottom,
@@ -709,7 +774,16 @@ const initialNodes = [
     {
         id: '6',
         type: 'default',
-        data: { label: 'Sneed DAO Treasury' },
+        data: { 
+            label: 'Sneed DAO Treasury',
+            description: "Main DAO treasury for ICP and SNEED",
+            inputs: [
+                "ICP from Splitter (25%)", 
+                "SNEED from Splitter (33%)"
+            ],
+            outputs: ["Any via DAO proposal"],
+            canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai"
+        },
         position: { x: 500, y: 350 },
         style: nodeStyles.tokenManagement,
         sourcePosition: Position.Bottom,
@@ -718,7 +792,19 @@ const initialNodes = [
     {
         id: '7',
         type: 'default',
-        data: { label: 'Sneed DeFi Canister' },
+        data: { 
+            label: 'Sneed DeFi Canister',
+            description: "Treasury extension for ICRC1 tokens",
+            inputs: [
+                "SNEED from Splitter (34%)", 
+                "Tokens from Revenue"
+            ],
+            outputs: [
+                "ICP to ICP Splitter Vector",
+                "Tokens to RLL Distribution"
+            ],
+            canisterId: "ok64y-uiaaa-aaaag-qdcbq-cai"
+        },
         position: { x: 300, y: 450 },
         style: nodeStyles.tokenManagement,
         sourcePosition: Position.Bottom,
@@ -727,7 +813,13 @@ const initialNodes = [
     {
         id: '8',
         type: 'default',
-        data: { label: 'SNEED Burn Address' },
+        data: { 
+            label: 'SNEED Burn Address',
+            description: "Permanent SNEED removal from circulation",
+            inputs: ["SNEED from Splitter (33%)"],
+            outputs: [],
+            canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai"
+        },
         position: { x: 500, y: 450 },
         style: nodeStyles.tokenManagement,
         sourcePosition: Position.Bottom,
@@ -736,7 +828,13 @@ const initialNodes = [
     {
         id: '9',
         type: 'default',
-        data: { label: 'RLL Distribution' },
+        data: { 
+            label: 'RLL Distribution',
+            description: "Distributes tokens to DAO voting members",
+            inputs: ["Tokens from DeFi Canister"],
+            outputs: ["100% to Sneed Members (Rewards claimable on app.sneeddao.com)"],
+            canisterId: "lvc4n-7aaaa-aaaam-adm6a-cai"
+        },
         position: { x: 300, y: 550 },
         style: nodeStyles.tokenManagement,
         sourcePosition: Position.Bottom,
@@ -747,7 +845,12 @@ const initialNodes = [
     {
         id: '10',
         type: 'default',
-        data: { label: 'Other Revenue Sources' },
+        data: { 
+            label: 'Other Revenue Sources',
+            description: "Virtual collector for various revenue streams",
+            inputs: ["Various token streams"],
+            outputs: ["Tokens to DeFi Canister"]
+        },
         position: { x: 100, y: 650 },
         style: nodeStyles.revenue,
         sourcePosition: Position.Bottom,
@@ -756,7 +859,12 @@ const initialNodes = [
     {
         id: '11',
         type: 'default',
-        data: { label: 'SNEED/ICP LP Rewards' },
+        data: { 
+            label: 'SNEED/ICP LP Rewards',
+            description: "Liquidity provision rewards from ICPSwap",
+            inputs: ["LP rewards"],
+            outputs: ["Rewards to Revenue Collector"]
+        },
         position: { x: 300, y: 650 },
         style: nodeStyles.revenue,
         sourcePosition: Position.Bottom,
@@ -765,7 +873,12 @@ const initialNodes = [
     {
         id: '12',
         type: 'default',
-        data: { label: 'Products' },
+        data: { 
+            label: 'Products',
+            description: "Virtual collector for product revenue",
+            inputs: ["Revenue from products"],
+            outputs: ["Revenue to Revenue Collector"]
+        },
         position: { x: 500, y: 650 },
         style: nodeStyles.revenue,
         sourcePosition: Position.Bottom,
@@ -774,7 +887,12 @@ const initialNodes = [
     {
         id: '13',
         type: 'default',
-        data: { label: 'SneedLock' },
+        data: { 
+            label: 'SneedLock',
+            description: "Token and LP position locking product",
+            inputs: ["User interactions"],
+            outputs: ["Revenue to Products"]
+        },
         position: { x: 400, y: 750 },
         style: nodeStyles.revenue,
         sourcePosition: Position.Bottom,
@@ -783,7 +901,12 @@ const initialNodes = [
     {
         id: '14',
         type: 'default',
-        data: { label: 'Swaprunner' },
+        data: { 
+            label: 'Swaprunner',
+            description: "DEX aggregator product",
+            inputs: ["User interactions"],
+            outputs: ["Revenue to Products"]
+        },
         position: { x: 600, y: 750 },
         style: nodeStyles.revenue,
         sourcePosition: Position.Bottom,
@@ -821,6 +944,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "Maturity collection from NNS Neuron",
+            token: "ICP",
+            percentage: "100%"
+        }
     },
     {
         id: 'e2',
@@ -830,6 +958,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "ICP compounding to Neuron",
+            token: "ICP",
+            percentage: "25%"
+        }
     },
     {
         id: 'e3',
@@ -839,6 +972,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "ICP for SNEED buyback",
+            token: "ICP",
+            percentage: "50%"
+        }
     },
     {
         id: 'e4',
@@ -848,6 +986,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "ICP to Treasury reserves",
+            token: "ICP",
+            percentage: "25%"
+        }
     },
 
     // SNEED Flows
@@ -859,6 +1002,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.sneed,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "Bought SNEED to Splitter",
+            token: "SNEED",
+            percentage: "100%"
+        }
     },
     {
         id: 'e6',
@@ -868,6 +1016,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.sneed,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "SNEED to Treasury",
+            token: "SNEED",
+            percentage: "33%"
+        }
     },
     {
         id: 'e7',
@@ -877,6 +1030,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.sneed,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "SNEED to DeFi Canister",
+            token: "SNEED",
+            percentage: "34%"
+        }
     },
     {
         id: 'e8',
@@ -886,6 +1044,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.sneed,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "SNEED to Burn Address",
+            token: "SNEED",
+            percentage: "33%"
+        }
     },
 
     // Revenue Flows
@@ -896,6 +1059,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "LP Rewards to Revenue Collector",
+            token: "Various",
+            percentage: "100%"
+        }
     },
     {
         id: 'e11',
@@ -904,6 +1072,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "Product Revenue to Collector",
+            token: "Various",
+            percentage: "100%"
+        }
     },
     {
         id: 'e12',
@@ -912,6 +1085,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "Revenue to DeFi Canister",
+            token: "Various",
+            percentage: "100%"
+        }
     },
     {
         id: 'e13',
@@ -920,6 +1098,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "Tokens to RLL Distribution",
+            token: "Various",
+            percentage: "100%"
+        }
     },
     {
         id: 'e14',
@@ -928,6 +1111,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "SneedLock Revenue",
+            token: "Various",
+            percentage: "100%"
+        }
     },
     {
         id: 'e15',
@@ -936,6 +1124,11 @@ const initialEdges = [
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "Swaprunner Revenue",
+            token: "Various",
+            percentage: "100%"
+        }
     },
 ];
 
@@ -943,6 +1136,81 @@ function RLLInfo() {
     const { identity, logout } = useAuth();
     const [expandedSections, setExpandedSections] = useState({});
     const [expandedItems, setExpandedItems] = useState({});
+    const [tooltip, setTooltip] = useState(null);
+
+    const handleNodeMouseEnter = useCallback((event, node) => {
+        const content = (
+            <div>
+                <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#3498db' }}>{node.data.label}</div>
+                <div style={{ marginBottom: '8px' }}>{node.data.description}</div>
+                {node.data.inputs && (
+                    <div>
+                        <div style={{ color: '#2ecc71', marginBottom: '4px' }}>Inputs:</div>
+                        <ul style={{ margin: '0 0 8px 16px', padding: 0 }}>
+                            {node.data.inputs.map((input, i) => (
+                                <li key={i}>{input}</li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+                {node.data.outputs && (
+                    <div>
+                        <div style={{ color: '#e74c3c', marginBottom: '4px' }}>Outputs:</div>
+                        <ul style={{ margin: '0 0 8px 16px', padding: 0 }}>
+                            {node.data.outputs.map((output, i) => (
+                                <li key={i}>{output}</li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+                {node.data.canisterId && (
+                    <div style={{ fontFamily: 'monospace', fontSize: '12px', color: '#95a5a6' }}>
+                        Canister ID: {node.data.canisterId}
+                    </div>
+                )}
+            </div>
+        );
+        
+        setTooltip({
+            content,
+            x: event.clientX,
+            y: event.clientY
+        });
+    }, []);
+
+    const handleEdgeMouseEnter = useCallback((event, edge) => {
+        const content = (
+            <div>
+                <div style={{ marginBottom: '8px' }}>{edge.data?.description}</div>
+                {edge.data?.token && (
+                    <div style={{ color: '#f1c40f' }}>Token: {edge.data.token}</div>
+                )}
+                {edge.data?.percentage && (
+                    <div style={{ color: '#3498db' }}>Percentage: {edge.data.percentage}</div>
+                )}
+            </div>
+        );
+        
+        setTooltip({
+            content,
+            x: event.clientX,
+            y: event.clientY
+        });
+    }, []);
+
+    const handleMouseLeave = useCallback(() => {
+        setTooltip(null);
+    }, []);
+
+    const handleMouseMove = useCallback((event) => {
+        if (tooltip) {
+            setTooltip(prev => ({
+                ...prev,
+                x: event.clientX,
+                y: event.clientY
+            }));
+        }
+    }, [tooltip]);
 
     const toggleSection = (section) => {
         setExpandedSections(prev => ({
@@ -1027,10 +1295,16 @@ function RLLInfo() {
                             edges={initialEdges}
                             fitView
                             defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+                            onNodeMouseEnter={handleNodeMouseEnter}
+                            onNodeMouseLeave={handleMouseLeave}
+                            onEdgeMouseEnter={handleEdgeMouseEnter}
+                            onEdgeMouseLeave={handleMouseLeave}
+                            onMouseMove={handleMouseMove}
                         >
                             <Background color="#444" gap={16} />
                             <Controls />
                             <TokenAnimationManager edges={initialEdges} nodes={initialNodes} />
+                            <TooltipOverlay tooltip={tooltip} />
                         </ReactFlow>
                     </div>
                 </section>
