@@ -510,7 +510,8 @@ const nodes = {
                 description: "Long-term ICP staking neuron with 8-year dissolve delay",
                 inputs: ["ICP from Neuron Vector"],
                 outputs: ["Maturity to Neuron Vector"],
-                details: "Controlled by ICP Neuron Vector for maturity collection and compounding"
+                details: "Controlled by ICP Neuron Vector for maturity collection and compounding",
+                link: "https://dashboard.internetcomputer.org/neuron/4000934039483276792"
             },
             {
                 id: "2",
@@ -577,7 +578,9 @@ const nodes = {
                     "SNEED from Splitter (33%)"
                 ],
                 outputs: ["Any via DAO proposal"],
-                canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai"
+                canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai",
+                details: "ICP Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai, ICP Account 580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9\nSNEED Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de",
+                link: "https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai"
             },
             {
                 id: "7",
@@ -607,7 +610,8 @@ const nodes = {
                 description: "Distributes tokens to DAO voting members",
                 inputs: ["Tokens from DeFi Canister"],
                 outputs: ["100% to Sneed Members (Rewards claimable on app.sneeddao.com)"],
-                canisterId: "lvc4n-7aaaa-aaaam-adm6a-cai"
+                canisterId: "lvc4n-7aaaa-aaaam-adm6a-cai",
+                link: "https://app.sneeddao.com/rll"
             }
         ]
     },
@@ -629,7 +633,9 @@ const nodes = {
                 title: "SNEED/ICP LP Rewards",
                 description: "Liquidity provision rewards from ICPSwap",
                 inputs: ["LP rewards"],
-                outputs: ["ICP and SNEED rewards to Revenue Collector"]
+                outputs: ["ICP and SNEED rewards to Revenue Collector"],
+                details: "Positions 24, 25 and 26",
+                link: "https://info.icpswap.com/swap-scan/positions?pair=osyzs-xiaaa-aaaag-qc76q-cai"
             },
             {
                 id: "12",
@@ -643,14 +649,16 @@ const nodes = {
                 title: "SneedLock",
                 description: "Token and LP position locking product",
                 inputs: ["User interactions"],
-                outputs: ["ICP and SNEED revenue to Products"]
+                outputs: ["ICP and SNEED revenue to Products"],
+                link: "https://app.sneeddao.com/wallet"
             },
             {
                 id: "14",
                 title: "Swaprunner",
                 description: "Automated trading product",
                 inputs: ["User interactions"],
-                outputs: ["ICP and SNEED revenue to Products"]
+                outputs: ["ICP and SNEED revenue to Products"],
+                link: "https://swaprunner.com"
             }
         ]
     }
@@ -846,7 +854,8 @@ const initialNodes = [
             description: "Long-term ICP staking neuron with 8-year dissolve delay",
             inputs: ["ICP from Neuron Vector"],
             outputs: ["Maturity to Neuron Vector"],
-            details: "Controlled by ICP Neuron Vector for maturity collection and compounding"
+            details: "Controlled by ICP Neuron Vector for maturity collection and compounding",
+            link: "https://dashboard.internetcomputer.org/neuron/4000934039483276792"
         },
         position: { x: 300, y: 50 },
         style: nodeStyles.infrastructure,
@@ -937,7 +946,9 @@ const initialNodes = [
                 "SNEED from Splitter (33%)"
             ],
             outputs: ["Any via DAO proposal"],
-            canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai"
+            canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai",
+            details: "ICP Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai, ICP Account 580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9\nSNEED Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de",
+            link: "https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai"
         },
         position: { x: 500, y: 350 },
         style: nodeStyles.tokenManagement,
@@ -988,7 +999,8 @@ const initialNodes = [
             description: "Distributes tokens to DAO voting members",
             inputs: ["Tokens from DeFi Canister"],
             outputs: ["100% to Sneed Members (Rewards claimable on app.sneeddao.com)"],
-            canisterId: "lvc4n-7aaaa-aaaam-adm6a-cai"
+            canisterId: "lvc4n-7aaaa-aaaam-adm6a-cai",
+            link: "https://app.sneeddao.com/rll"
         },
         position: { x: 300, y: 550 },
         style: nodeStyles.tokenManagement,
@@ -1018,7 +1030,9 @@ const initialNodes = [
             label: 'SNEED/ICP LP Rewards',
             description: "Liquidity provision rewards from ICPSwap",
             inputs: ["LP rewards"],
-            outputs: ["ICP and SNEED rewards to Revenue Collector"]
+            outputs: ["ICP and SNEED rewards to Revenue Collector"],
+            details: "Positions 24, 25 and 26",
+            link: "https://info.icpswap.com/swap-scan/positions?pair=osyzs-xiaaa-aaaag-qc76q-cai"
         },
         position: { x: 300, y: 650 },
         style: nodeStyles.revenue,
@@ -1046,7 +1060,8 @@ const initialNodes = [
             label: 'SneedLock',
             description: "Token and LP position locking product",
             inputs: ["User interactions"],
-            outputs: ["ICP and SNEED revenue to Products"]
+            outputs: ["ICP and SNEED revenue to Products"],
+            link: "https://app.sneeddao.com/wallet"
         },
         position: { x: 400, y: 750 },
         style: nodeStyles.revenue,
@@ -1060,7 +1075,8 @@ const initialNodes = [
             label: 'Swaprunner',
             description: "Automated trading product",
             inputs: ["User interactions"],
-            outputs: ["ICP and SNEED revenue to Products"]
+            outputs: ["ICP and SNEED revenue to Products"],
+            link: "https://swaprunner.com"
         },
         position: { x: 600, y: 750 },
         style: nodeStyles.revenue,
