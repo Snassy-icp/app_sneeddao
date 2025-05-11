@@ -249,14 +249,22 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                             const newToken = createToken(nextEdge, 1, token.type);
                             if (newToken) updatedTokens.push(newToken);
                         }
+                    } else if (edge.target === '7') {
+                        // When tokens reach DeFi Canister, forward to RLL Distribution
+                        const nextEdge = edges.find(e => e.source === '7' && e.target === '9');
+                        if (nextEdge) {
+                            const newToken = createToken(nextEdge, token.scale, token.type);
+                            if (newToken) updatedTokens.push(newToken);
+                        }
                     } else if (edge.target === '2') {
                         // Special handling for ICP Neuron Vector
                         const nextEdge = token.previousNode === '1' 
-                            ? edges.find(e => e.source === '2' && e.target === '3')  // From 8y neuron, go to Splitter
-                            : edges.find(e => e.source === '2' && e.target === '1'); // From Splitter, go to 8y neuron
+                            ? edges.find(e => e.source === '2' && e.target === '3')  // From 8y neuron, forward to ICP Splitter
+                            : edges.find(e => e.source === '2' && e.target === '1'); // From Splitter, go back to 8y neuron
                         
                         if (nextEdge) {
-                            const newToken = createToken(nextEdge, 1, token.type);
+                            // Preserve token scale when forwarding
+                            const newToken = createToken(nextEdge, token.scale, token.type);
                             if (newToken) updatedTokens.push(newToken);
                         }
                     } else if (edge.target === '3' || edge.target === '5') {
@@ -264,7 +272,8 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                         const outgoingEdges = edges.filter(e => e.source === edge.target);
                         outgoingEdges.forEach(outEdge => {
                             const percentage = parseFloat(outEdge.label) / 100 || 1;
-                            const newToken = createToken(outEdge, percentage, token.type);
+                            // Scale new tokens based on both the incoming token's scale and the split percentage
+                            const newToken = createToken(outEdge, token.scale * percentage, token.type);
                             if (newToken) updatedTokens.push(newToken);
                         });
                     }
@@ -273,8 +282,8 @@ const TokenAnimationManager = ({ edges, nodes }) => {
 
             // Then spawn new tokens at source nodes
             edges.forEach(edge => {
-                // For 8y neuron, we want to spawn tokens that go to the ICP Neuron Vector
-                if (edge.id === 'e1') { // Use the specific edge ID for 8y neuron to Neuron Vector
+                // For 8y neuron, spawn tokens to ICP Neuron Vector
+                if (edge.source === '1' && edge.target === '2') {
                     if (Math.random() < 0.02) {
                         const newToken = createToken(edge, 1, 'icp');
                         if (newToken) updatedTokens.push(newToken);
@@ -1008,8 +1017,8 @@ const initialEdges = [
     // ICP Flows
     {
         id: 'e1',
-        source: '1',
-        target: '2',
+        source: '2',
+        target: '1',
         label: 'Maturity',
         type: 'smoothstep',
         style: edgeStyles.icp,
