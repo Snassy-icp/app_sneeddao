@@ -425,7 +425,10 @@ const nodes = {
                 title: "Other Revenue Sources",
                 description: "Virtual collector for various revenue streams",
                 inputs: ["Various token streams"],
-                outputs: ["Tokens to DeFi Canister"]
+                outputs: [
+                    "ICP to ICP Splitter Vector",
+                    "SNEED to SNEED Splitter Vector"
+                ]
             },
             {
                 id: "11",
@@ -557,9 +560,17 @@ const edges = {
             {
                 id: "e12",
                 source: "10",
-                target: "7",
-                description: "Revenue to DeFi Canister",
-                token: "Various",
+                target: "3",
+                description: "ICP Revenue to ICP Splitter",
+                token: "ICP",
+                percentage: "100%"
+            },
+            {
+                id: "e12b",
+                source: "10",
+                target: "5",
+                description: "SNEED Revenue to SNEED Splitter",
+                token: "SNEED",
                 percentage: "100%"
             },
             {
@@ -853,7 +864,7 @@ const initialNodes = [
             label: 'Other Revenue Sources',
             description: "Virtual collector for various revenue streams",
             inputs: ["Various token streams"],
-            outputs: ["Tokens to DeFi Canister"]
+            outputs: ["ICP to ICP Splitter Vector", "SNEED to SNEED Splitter Vector"]
         },
         position: { x: 100, y: 650 },
         style: nodeStyles.revenue,
@@ -1099,13 +1110,26 @@ const initialEdges = [
     {
         id: 'e12',
         source: '10',
-        target: '7',
+        target: '3',
         type: 'smoothstep',
-        style: edgeStyles.various,
+        style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
-            description: "Revenue to DeFi Canister",
-            token: "Various",
+            description: "ICP Revenue to ICP Splitter",
+            token: "ICP",
+            percentage: "100%"
+        }
+    },
+    {
+        id: 'e12b',
+        source: '10',
+        target: '5',
+        type: 'smoothstep',
+        style: edgeStyles.sneed,
+        markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "SNEED Revenue to SNEED Splitter",
+            token: "SNEED",
             percentage: "100%"
         }
     },
