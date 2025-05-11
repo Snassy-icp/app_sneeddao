@@ -219,7 +219,7 @@ const DistributionEffect = ({ x, y, type, scale = 1 }) => {
                     borderRadius: '50%',
                     background: `url(${type === 'icp' ? 'icp_symbol.svg' : 'sneed_logo.png'})`,
                     backgroundSize: 'cover',
-                    animation: `${animationName} 1s ease-out forwards`,
+                    animation: `${animationName} 2s cubic-bezier(0.4, 0, 0.2, 1) forwards`,
                     zIndex: 999,
                     transform: `translate(-50%, -50%) scale(${viewport.zoom})`,
                     pointerEvents: 'none'
@@ -411,7 +411,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
             edges.forEach(edge => {
                 // For 8y neuron, spawn tokens to ICP Neuron Vector
                 if (edge.source === '1' && edge.target === '2') {
-                    if (Math.random() < 0.02) {
+                    if (Math.random() < 0.005) {
                         const newToken = createToken(edge, 1, 'icp');
                         if (newToken) updatedTokens.push(newToken);
                     }
