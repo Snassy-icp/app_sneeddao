@@ -18,19 +18,24 @@ import 'reactflow/dist/style.css';
 // Custom animated token component
 const AnimatedToken = ({ type, x, y, scale = 1 }) => {
     const size = 24 * scale;
+    const reactFlowInstance = useReactFlow();
+    const position = reactFlowInstance.screenToFlowPosition({ x, y });
+
     return (
         <div
             style={{
                 position: 'absolute',
-                left: x - size/2,
-                top: y - size/2,
+                left: x,
+                top: y,
                 width: size,
                 height: size,
                 borderRadius: '50%',
                 background: `url(${type === 'icp' ? 'icp_symbol.svg' : 'sneed_logo.png'})`,
                 backgroundSize: 'cover',
                 animation: 'pop-in 0.3s ease-out',
-                zIndex: 1000
+                zIndex: 1000,
+                transform: `translate(-50%, -50%)`,
+                pointerEvents: 'none'
             }}
         />
     );
@@ -47,8 +52,16 @@ const TokenAnimationManager = ({ edges, nodes }) => {
         
         if (!sourceNode || !targetNode) return null;
 
-        const tokenType = edge.style === edgeStyles.icp ? 'icp' : 'sneed';
+        // Determine token type based on edge style
+        const tokenType = edge.style === edgeStyles.icp ? 'icp' : 
+                         edge.style === edgeStyles.sneed ? 'sneed' : 'sneed';
         const scale = percentage;
+
+        // Calculate center positions of nodes
+        const sourceX = sourceNode.position.x + (sourceNode.width || 180) / 2;
+        const sourceY = sourceNode.position.y + (sourceNode.height || 40) / 2;
+        const targetX = targetNode.position.x + (targetNode.width || 180) / 2;
+        const targetY = targetNode.position.y + (targetNode.height || 40) / 2;
 
         return {
             id: `token-${edge.id}-${Date.now()}`,
@@ -56,10 +69,10 @@ const TokenAnimationManager = ({ edges, nodes }) => {
             edge: edge.id,
             scale,
             progress: 0,
-            sourceX: sourceNode.position.x + sourceNode.width / 2,
-            sourceY: sourceNode.position.y + sourceNode.height / 2,
-            targetX: targetNode.position.x + targetNode.width / 2,
-            targetY: targetNode.position.y + targetNode.height / 2
+            sourceX,
+            sourceY,
+            targetX,
+            targetY
         };
     }, [nodes]);
 
@@ -69,13 +82,13 @@ const TokenAnimationManager = ({ edges, nodes }) => {
             const updatedTokens = prevTokens
                 .map(token => ({
                     ...token,
-                    progress: token.progress + 0.02
+                    progress: token.progress + 0.01 // Slowed down the animation
                 }))
                 .filter(token => token.progress <= 1);
 
             // Create new tokens at source nodes
             edges.forEach(edge => {
-                if (Math.random() < 0.01) { // Randomly create new tokens
+                if (Math.random() < 0.005) { // Reduced token creation frequency
                     const newToken = createToken(edge);
                     if (newToken) {
                         updatedTokens.push(newToken);
@@ -91,10 +104,13 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                     const outgoingEdges = edges.filter(e => e.source === edge.target);
                     if (outgoingEdges.length > 1) {
                         outgoingEdges.forEach(outEdge => {
-                            const percentage = parseFloat(outEdge.label) / 100;
+                            const percentage = parseFloat(outEdge.label) / 100 || 1;
                             const newToken = createToken(outEdge, percentage);
                             if (newToken) {
-                                updatedTokens.push(newToken);
+                                updatedTokens.push({
+                                    ...newToken,
+                                    progress: 0 // Start from the beginning of the new path
+                                });
                             }
                         });
                     }
@@ -113,8 +129,19 @@ const TokenAnimationManager = ({ edges, nodes }) => {
     return (
         <>
             {tokens.map(token => {
-                const x = token.sourceX + (token.targetX - token.sourceX) * token.progress;
-                const y = token.sourceY + (token.targetY - token.sourceY) * token.progress;
+                // Calculate current position using quadratic bezier curve for smoother animation
+                const progress = token.progress;
+                const midX = (token.sourceX + token.targetX) / 2;
+                const midY = (token.sourceY + token.targetY) / 2 - 50; // Control point above the path
+                
+                // Quadratic bezier curve calculation
+                const x = Math.pow(1 - progress, 2) * token.sourceX + 
+                         2 * (1 - progress) * progress * midX + 
+                         Math.pow(progress, 2) * token.targetX;
+                         
+                const y = Math.pow(1 - progress, 2) * token.sourceY + 
+                         2 * (1 - progress) * progress * midY + 
+                         Math.pow(progress, 2) * token.targetY;
                 
                 return (
                     <AnimatedToken
