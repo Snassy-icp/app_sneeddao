@@ -345,7 +345,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                     } else if (edge.target === '2') {
                         // When tokens reach ICP Neuron Vector (node 2)
                         // Check where the token came from to determine where it should go
-                        const nextEdge = token.previousNode === '1' ?
+                        const nextEdge = edge.source === '1' ?
                             // If from 8y neuron (maturity), send to ICP Splitter
                             edges.find(e => e.id === 'e2') :
                             // If from ICP Splitter (compounding), send to 8y neuron
@@ -355,6 +355,15 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                             const newToken = createToken(nextEdge, token.scale, token.type);
                             if (newToken) updatedTokens.push(newToken);
                         }
+                    } else if (edge.target === '3') {
+                        // Handle ICP Splitter node
+                        const outgoingEdges = edges.filter(e => e.source === '3');
+                        outgoingEdges.forEach(outEdge => {
+                            const percentage = parseFloat(outEdge.label) / 100 || 1;
+                            // Scale new tokens based on both the incoming token's scale and the split percentage
+                            const newToken = createToken(outEdge, token.scale * percentage, token.type);
+                            if (newToken) updatedTokens.push(newToken);
+                        });
                     } else if (edge.target === '4') {
                         // When ICP reaches Buyback Vector, convert to SNEED and send to SNEED Splitter
                         const nextEdge = edges.find(e => e.source === '4' && e.target === '5');
@@ -385,7 +394,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                             const newToken = createToken(nextEdge, token.scale, token.type);
                             if (newToken) updatedTokens.push(newToken);
                         }
-                    } else if (edge.target === '3' || edge.target === '5') {
+                    } else if (edge.target === '5') {
                         // Handle splitter nodes
                         const outgoingEdges = edges.filter(e => e.source === edge.target);
                         outgoingEdges.forEach(outEdge => {
@@ -689,6 +698,20 @@ const edges = {
                     description: "Maturity to ICP Splitter",
                     token: "ICP",
                     percentage: "100%"
+                }
+            },
+            {
+                id: "e2b",
+                source: "3",
+                target: "2",
+                label: "25%",
+                type: "smoothstep",
+                style: edgeStyles.icp,
+                markerEnd: { type: MarkerType.ArrowClosed },
+                data: {
+                    description: "ICP for compounding",
+                    token: "ICP",
+                    percentage: "25%"
                 }
             },
             {
@@ -1083,6 +1106,20 @@ const initialEdges = [
             description: "Maturity to ICP Splitter",
             token: "ICP",
             percentage: "100%"
+        }
+    },
+    {
+        id: 'e2b',
+        source: '3',
+        target: '2',
+        label: '25%',
+        type: 'smoothstep',
+        style: edgeStyles.icp,
+        markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "ICP for compounding",
+            token: "ICP",
+            percentage: "25%"
         }
     },
     {
