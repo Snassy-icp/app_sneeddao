@@ -16,6 +16,122 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { useCallback as useTooltipCallback } from 'react';
 
+// Styles for the expandable sections
+const styles = {
+    section: {
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginTop: '20px',
+        color: '#ffffff'
+    },
+    expandableHeader: {
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '10px',
+        backgroundColor: '#3a3a3a',
+        borderRadius: '4px',
+        marginBottom: '10px'
+    },
+    content: {
+        padding: '10px'
+    },
+    item: {
+        backgroundColor: '#3a3a3a',
+        borderRadius: '4px',
+        padding: '15px',
+        marginBottom: '10px'
+    },
+    itemHeader: {
+        cursor: 'pointer',
+        fontWeight: 'bold',
+        marginBottom: '10px'
+    },
+    itemContent: {
+        marginLeft: '20px'
+    },
+    list: {
+        listStyle: 'none',
+        padding: 0,
+        margin: '10px 0'
+    },
+    flowContainer: {
+        width: '100%',
+        height: '600px',
+        backgroundColor: '#1a1a1a',
+        borderRadius: '8px'
+    },
+    link: {
+        color: '#3498db',
+        textDecoration: 'none',
+        '&:hover': {
+            textDecoration: 'underline'
+        }
+    },
+    detailsSection: {
+        marginTop: '10px',
+        padding: '10px',
+        backgroundColor: '#2a2a2a',
+        borderRadius: '4px'
+    },
+    canisterId: {
+        fontFamily: 'monospace',
+        backgroundColor: '#1a1a1a',
+        padding: '4px 8px',
+        borderRadius: '4px',
+        fontSize: '0.9em'
+    }
+};
+
+// Node styles
+const nodeStyles = {
+    infrastructure: {
+        background: '#2d3436',
+        color: '#fff',
+        border: '1px solid #0984e3',
+        borderRadius: '8px',
+        padding: '10px',
+        width: 180,
+    },
+    tokenManagement: {
+        background: '#2d3436',
+        color: '#fff',
+        border: '1px solid #00b894',
+        borderRadius: '8px',
+        padding: '10px',
+        width: 180,
+    },
+    revenue: {
+        background: '#2d3436',
+        color: '#fff',
+        border: '1px solid #fdcb6e',
+        borderRadius: '8px',
+        padding: '10px',
+        width: 180,
+    }
+};
+
+// Edge styles
+const edgeStyles = {
+    icp: {
+        stroke: '#0984e3',
+        strokeWidth: 2,
+        animated: true,
+    },
+    sneed: {
+        stroke: '#00b894',
+        strokeWidth: 2,
+        animated: true,
+    },
+    various: {
+        stroke: '#fdcb6e',
+        strokeWidth: 2,
+        animated: true,
+    },
+};
+
 // Custom animated token component
 const AnimatedToken = ({ type, x, y, scale = 1 }) => {
     const size = 24 * scale;
@@ -533,11 +649,31 @@ const edges = {
         items: [
             {
                 id: "e1",
+                source: "1",
+                target: "2",
+                label: "Maturity",
+                type: "smoothstep",
+                style: edgeStyles.icp,
+                markerEnd: { type: MarkerType.ArrowClosed },
+                data: {
+                    description: "Maturity from 8y neuron to Neuron Vector",
+                    token: "ICP",
+                    percentage: "100%"
+                }
+            },
+            {
+                id: "e1b",
                 source: "2",
                 target: "1",
-                description: "Maturity collection from NNS Neuron",
-                token: "ICP",
-                percentage: "100%"
+                label: "Compound",
+                type: "smoothstep",
+                style: edgeStyles.icp,
+                markerEnd: { type: MarkerType.ArrowClosed },
+                data: {
+                    description: "ICP compounding back to 8y neuron",
+                    token: "ICP",
+                    percentage: "100%"
+                }
             },
             {
                 id: "e2",
@@ -662,103 +798,6 @@ const edges = {
                 percentage: "100%"
             }
         ]
-    }
-};
-
-// Styles for the expandable sections
-const styles = {
-    section: {
-        backgroundColor: '#2a2a2a',
-        borderRadius: '8px',
-        padding: '20px',
-        marginTop: '20px',
-        color: '#ffffff'
-    },
-    expandableHeader: {
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '10px',
-        backgroundColor: '#3a3a3a',
-        borderRadius: '4px',
-        marginBottom: '10px'
-    },
-    content: {
-        padding: '10px'
-    },
-    item: {
-        backgroundColor: '#3a3a3a',
-        borderRadius: '4px',
-        padding: '15px',
-        marginBottom: '10px'
-    },
-    itemHeader: {
-        cursor: 'pointer',
-        fontWeight: 'bold',
-        marginBottom: '10px'
-    },
-    itemContent: {
-        marginLeft: '20px'
-    },
-    list: {
-        listStyle: 'none',
-        padding: 0,
-        margin: '10px 0'
-    },
-    flowContainer: {
-        width: '100%',
-        height: '600px',
-        backgroundColor: '#1a1a1a',
-        borderRadius: '8px'
-    },
-    link: {
-        color: '#3498db',
-        textDecoration: 'none',
-        '&:hover': {
-            textDecoration: 'underline'
-        }
-    },
-    detailsSection: {
-        marginTop: '10px',
-        padding: '10px',
-        backgroundColor: '#2a2a2a',
-        borderRadius: '4px'
-    },
-    canisterId: {
-        fontFamily: 'monospace',
-        backgroundColor: '#1a1a1a',
-        padding: '4px 8px',
-        borderRadius: '4px',
-        fontSize: '0.9em'
-    }
-};
-
-// Add node styles after the existing styles object
-const nodeStyles = {
-    infrastructure: {
-        background: '#2d3436',
-        color: '#fff',
-        border: '1px solid #0984e3',
-        borderRadius: '8px',
-        padding: '10px',
-        width: 180,
-    },
-    tokenManagement: {
-        background: '#2d3436',
-        color: '#fff',
-        border: '1px solid #00b894',
-        borderRadius: '8px',
-        padding: '10px',
-        width: 180,
-    },
-    revenue: {
-        background: '#2d3436',
-        color: '#fff',
-        border: '1px solid #fdcb6e',
-        borderRadius: '8px',
-        padding: '10px',
-        width: 180,
     }
 };
 
@@ -993,38 +1032,19 @@ const initialNodes = [
     },
 ];
 
-// Define edge styles
-const edgeStyles = {
-    icp: {
-        stroke: '#0984e3',
-        strokeWidth: 2,
-        animated: true,
-    },
-    sneed: {
-        stroke: '#00b894',
-        strokeWidth: 2,
-        animated: true,
-    },
-    various: {
-        stroke: '#fdcb6e',
-        strokeWidth: 2,
-        animated: true,
-    },
-};
-
 // Define the initial edges with styles
 const initialEdges = [
     // ICP Flows
     {
         id: 'e1',
-        source: '2',
-        target: '1',
+        source: '1',
+        target: '2',
         label: 'Maturity',
         type: 'smoothstep',
         style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
-            description: "ICP flow from 8y neuron to Neuron Vector",
+            description: "Maturity from 8y neuron to Neuron Vector",
             token: "ICP",
             percentage: "100%"
         }
@@ -1033,12 +1053,12 @@ const initialEdges = [
         id: 'e1b',
         source: '2',
         target: '1',
-        label: 'Maturity',
+        label: 'Compound',
         type: 'smoothstep',
         style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
-            description: "Maturity collection from NNS Neuron",
+            description: "ICP compounding back to 8y neuron",
             token: "ICP",
             percentage: "100%"
         }
