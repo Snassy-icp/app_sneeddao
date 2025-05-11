@@ -852,7 +852,20 @@ function RLL() {
             <main className="help-container">
                 <h1 style={{ color: '#ffffff' }}>RLL Distribution Server</h1>
                 
-                {hotkeyNeurons.neurons_by_owner.length > 0 ? (
+                {loadingHotkeyNeurons ? (
+                    <section style={styles.section}>
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={styles.spinner} />
+                            <p style={{ 
+                                color: '#ffffff', 
+                                marginTop: '20px',
+                                fontSize: '1.1em' 
+                            }}>
+                                Checking Hotkey Status...
+                            </p>
+                        </div>
+                    </section>
+                ) : hotkeyNeurons.neurons_by_owner.length > 0 ? (
                     <>
                         {/* Your Token Balances */}
                         <section style={styles.section}>
