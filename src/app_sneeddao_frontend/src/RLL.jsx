@@ -343,6 +343,7 @@ function RLL() {
         currentTime: null
     });
     const [reconciliation, setReconciliation] = useState([]);
+    const [loadingReconciliation, setLoadingReconciliation] = useState(true);
     const [isAdmin, setIsAdmin] = useState(false);
     const [highestClosedProposalId, setHighestClosedProposalId] = useState(null);
 
@@ -597,6 +598,7 @@ function RLL() {
             }
             
             console.log('Starting to fetch balance reconciliation...');
+            setLoadingReconciliation(true);
             try {
                 const rllActor = createRllActor(rllCanisterId, {
                     agentOptions: { identity }
@@ -608,6 +610,8 @@ function RLL() {
 
             } catch (error) {
                 console.error('Error fetching reconciliation:', error);
+            } finally {
+                setLoadingReconciliation(false);
             }
         };
 
@@ -1105,6 +1109,9 @@ function RLL() {
                 {/* Balance Reconciliation */}
                 <section style={styles.section}>
                     <h2 style={styles.heading}>RLL Server Balances</h2>
+                    {loadingReconciliation ? (
+                        <div style={styles.spinner} />
+                    ) : (
                     <div style={styles.reconciliationList}>
                         {reconciliation.map(item => {
                             const token = tokens.find(t => t.ledger_id.toString() === item.token_id.toString());
@@ -1129,7 +1136,7 @@ function RLL() {
                                         </div>
                                     )}
                                     <div style={styles.statusItem}>
-                                        <span>Currently Distributed:</span>
+                                        <span>Currently Claimable:</span>
                                         <span style={{fontFamily: 'monospace'}}>{formatBalance(item.local_total, decimals)} {symbol}</span>
                                     </div>
                                     <div style={styles.statusItem}>
@@ -1153,6 +1160,7 @@ function RLL() {
                             );
                         })}
                     </div>
+                    )}
                 </section>
 
 
