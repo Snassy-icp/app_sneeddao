@@ -8,6 +8,7 @@ import TokenLock from './TokenLock';
 import PositionLock from './PositionLock';
 import TokenLocksOverview from './TokenLocksOverview';
 import RLL from './RLL';
+import RLLInfo from './RLLInfo';
 import ScanWallet from './ScanWallet';
 import { AuthProvider } from './AuthContext';
 
@@ -21,6 +22,7 @@ function App() {
           <Route path="/doc" element={<Doc />} />
           <Route path="/help" element={<Help />} />
           <Route path="/rll" element={<RLL />} />
+          <Route path="/rll_info" element={<RLLInfo />} />
           <Route path="/scan_wallet" element={<ScanWallet />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/tokenlock" element={<TokenLock />} />

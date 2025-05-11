@@ -842,6 +842,7 @@ function RLL() {
                     </Link>
                 </div>
                 <div className="header-right">
+                    <Link to="/rll_info" className="help-link" style={{ marginRight: '10px' }}>Info</Link>
                     <Link to="/help" className="help-link">Help</Link>
                     <PrincipalBox 
                         principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
