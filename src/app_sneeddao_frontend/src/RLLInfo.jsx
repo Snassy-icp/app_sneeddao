@@ -6,7 +6,9 @@ import { headerStyles } from './styles/HeaderStyles';
 import ReactFlow, { 
     Background, 
     Controls,
-    MiniMap
+    MiniMap,
+    MarkerType,
+    Position
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -361,14 +363,315 @@ const styles = {
     }
 };
 
-// Initial nodes for React Flow
+// Add node styles after the existing styles object
+const nodeStyles = {
+    infrastructure: {
+        background: '#2d3436',
+        color: '#fff',
+        border: '1px solid #0984e3',
+        borderRadius: '8px',
+        padding: '10px',
+        width: 180,
+    },
+    tokenManagement: {
+        background: '#2d3436',
+        color: '#fff',
+        border: '1px solid #00b894',
+        borderRadius: '8px',
+        padding: '10px',
+        width: 180,
+    },
+    revenue: {
+        background: '#2d3436',
+        color: '#fff',
+        border: '1px solid #fdcb6e',
+        borderRadius: '8px',
+        padding: '10px',
+        width: 180,
+    }
+};
+
+// Define the initial nodes with positions
 const initialNodes = [
-    // We'll add the node positions in the next step
+    // Infrastructure nodes (top row)
+    {
+        id: '1',
+        type: 'default',
+        data: { label: '8 Year ICP NNS Neuron' },
+        position: { x: 300, y: 50 },
+        style: nodeStyles.infrastructure,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
+    {
+        id: '2',
+        type: 'default',
+        data: { label: 'ICP Neuron Vector' },
+        position: { x: 300, y: 150 },
+        style: nodeStyles.infrastructure,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
+    {
+        id: '3',
+        type: 'default',
+        data: { label: 'ICP Splitter Vector' },
+        position: { x: 300, y: 250 },
+        style: nodeStyles.infrastructure,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
+
+    // Token Management nodes (middle row)
+    {
+        id: '4',
+        type: 'default',
+        data: { label: 'SNEED Buyback Vector' },
+        position: { x: 100, y: 350 },
+        style: nodeStyles.tokenManagement,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
+    {
+        id: '5',
+        type: 'default',
+        data: { label: 'SNEED Splitter Vector' },
+        position: { x: 300, y: 350 },
+        style: nodeStyles.tokenManagement,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
+    {
+        id: '6',
+        type: 'default',
+        data: { label: 'Sneed DAO Treasury' },
+        position: { x: 500, y: 350 },
+        style: nodeStyles.tokenManagement,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
+    {
+        id: '7',
+        type: 'default',
+        data: { label: 'Sneed DeFi Canister' },
+        position: { x: 300, y: 450 },
+        style: nodeStyles.tokenManagement,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
+    {
+        id: '8',
+        type: 'default',
+        data: { label: 'SNEED Burn Address' },
+        position: { x: 500, y: 450 },
+        style: nodeStyles.tokenManagement,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
+    {
+        id: '9',
+        type: 'default',
+        data: { label: 'RLL Distribution' },
+        position: { x: 300, y: 550 },
+        style: nodeStyles.tokenManagement,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
+
+    // Revenue nodes (bottom row)
+    {
+        id: '10',
+        type: 'default',
+        data: { label: 'Other Revenue Sources' },
+        position: { x: 100, y: 650 },
+        style: nodeStyles.revenue,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
+    {
+        id: '11',
+        type: 'default',
+        data: { label: 'SNEED/ICP LP Rewards' },
+        position: { x: 300, y: 650 },
+        style: nodeStyles.revenue,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
+    {
+        id: '12',
+        type: 'default',
+        data: { label: 'Products' },
+        position: { x: 500, y: 650 },
+        style: nodeStyles.revenue,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
+    {
+        id: '13',
+        type: 'default',
+        data: { label: 'SneedLock' },
+        position: { x: 400, y: 750 },
+        style: nodeStyles.revenue,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
+    {
+        id: '14',
+        type: 'default',
+        data: { label: 'Swaprunner' },
+        position: { x: 600, y: 750 },
+        style: nodeStyles.revenue,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+    },
 ];
 
-// Initial edges for React Flow
+// Define edge styles
+const edgeStyles = {
+    icp: {
+        stroke: '#0984e3',
+        strokeWidth: 2,
+        animated: true,
+    },
+    sneed: {
+        stroke: '#00b894',
+        strokeWidth: 2,
+        animated: true,
+    },
+    various: {
+        stroke: '#fdcb6e',
+        strokeWidth: 2,
+        animated: true,
+    },
+};
+
+// Define the initial edges with styles
 const initialEdges = [
-    // We'll add the edge configurations in the next step
+    // ICP Flows
+    {
+        id: 'e1',
+        source: '2',
+        target: '1',
+        label: '100%',
+        type: 'smoothstep',
+        style: edgeStyles.icp,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
+    {
+        id: 'e2',
+        source: '3',
+        target: '2',
+        label: '25%',
+        type: 'smoothstep',
+        style: edgeStyles.icp,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
+    {
+        id: 'e3',
+        source: '3',
+        target: '4',
+        label: '50%',
+        type: 'smoothstep',
+        style: edgeStyles.icp,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
+    {
+        id: 'e4',
+        source: '3',
+        target: '6',
+        label: '25%',
+        type: 'smoothstep',
+        style: edgeStyles.icp,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
+
+    // SNEED Flows
+    {
+        id: 'e5',
+        source: '4',
+        target: '5',
+        label: '100%',
+        type: 'smoothstep',
+        style: edgeStyles.sneed,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
+    {
+        id: 'e6',
+        source: '5',
+        target: '6',
+        label: '33%',
+        type: 'smoothstep',
+        style: edgeStyles.sneed,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
+    {
+        id: 'e7',
+        source: '5',
+        target: '7',
+        label: '34%',
+        type: 'smoothstep',
+        style: edgeStyles.sneed,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
+    {
+        id: 'e8',
+        source: '5',
+        target: '8',
+        label: '33%',
+        type: 'smoothstep',
+        style: edgeStyles.sneed,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
+
+    // Revenue Flows
+    {
+        id: 'e10',
+        source: '11',
+        target: '10',
+        type: 'smoothstep',
+        style: edgeStyles.various,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
+    {
+        id: 'e11',
+        source: '12',
+        target: '10',
+        type: 'smoothstep',
+        style: edgeStyles.various,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
+    {
+        id: 'e12',
+        source: '10',
+        target: '7',
+        type: 'smoothstep',
+        style: edgeStyles.various,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
+    {
+        id: 'e13',
+        source: '7',
+        target: '9',
+        type: 'smoothstep',
+        style: edgeStyles.various,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
+    {
+        id: 'e14',
+        source: '13',
+        target: '12',
+        type: 'smoothstep',
+        style: edgeStyles.various,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
+    {
+        id: 'e15',
+        source: '14',
+        target: '12',
+        type: 'smoothstep',
+        style: edgeStyles.various,
+        markerEnd: { type: MarkerType.ArrowClosed },
+    },
 ];
 
 function RLLInfo() {
@@ -458,10 +761,25 @@ function RLLInfo() {
                             nodes={initialNodes}
                             edges={initialEdges}
                             fitView
+                            defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
                         >
-                            <Background />
+                            <Background color="#444" gap={16} />
                             <Controls />
-                            <MiniMap />
+                            <MiniMap 
+                                nodeColor={(node) => {
+                                    switch (node.style?.border) {
+                                        case nodeStyles.infrastructure.border:
+                                            return '#0984e3';
+                                        case nodeStyles.tokenManagement.border:
+                                            return '#00b894';
+                                        case nodeStyles.revenue.border:
+                                            return '#fdcb6e';
+                                        default:
+                                            return '#fff';
+                                    }
+                                }}
+                                maskColor="rgba(0, 0, 0, 0.2)"
+                            />
                         </ReactFlow>
                     </div>
                 </section>
