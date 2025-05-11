@@ -222,6 +222,13 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                             scale: token.scale,
                             createdAt: Date.now()
                         }]);
+                    } else if (edge.target === '12') {
+                        // When reaching Products, forward to Revenue Collector
+                        const nextEdge = edges.find(e => e.source === '12' && e.target === '10');
+                        if (nextEdge) {
+                            const newToken = createToken(nextEdge, 1, token.type);
+                            if (newToken) updatedTokens.push(newToken);
+                        }
                     } else if (edge.target === '10') {
                         // When reaching the Revenue Collector, route to appropriate splitter based on token type
                         const nextEdge = token.type === 'icp' ? 
