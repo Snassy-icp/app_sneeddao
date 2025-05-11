@@ -38,7 +38,7 @@ const AnimatedToken = ({ type, x, y, scale = 1 }) => {
                 backgroundSize: 'cover',
                 animation: 'pop-in 0.3s ease-out',
                 zIndex: 1000,
-                transform: `translate(-50%, -50%) scale(${1/viewport.zoom})`, // Scale inversely to zoom to maintain size
+                transform: `translate(-50%, -50%) scale(${viewport.zoom})`, // Scale with zoom to maintain relative size
                 pointerEvents: 'none'
             }}
         />
