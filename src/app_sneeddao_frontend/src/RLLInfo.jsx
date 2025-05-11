@@ -579,7 +579,7 @@ const nodes = {
                 ],
                 outputs: ["Any via DAO proposal"],
                 canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai",
-                details: "ICP Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai, ICP Account 580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9\nSNEED Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de",
+                details: "ICP Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai, ICP Account 580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9\n\nSNEED Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de",
                 link: "https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai"
             },
             {
@@ -947,7 +947,7 @@ const initialNodes = [
             ],
             outputs: ["Any via DAO proposal"],
             canisterId: "fi3zi-fyaaa-aaaaq-aachq-cai",
-            details: "ICP Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai, ICP Account 580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9\nSNEED Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de",
+            details: "ICP Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai, ICP Account 580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9\n\nSNEED Treasury: ICRC1 Account fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de",
             link: "https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai"
         },
         position: { x: 500, y: 350 },
@@ -1361,10 +1361,49 @@ function RLLInfo() {
                         fontFamily: 'monospace', 
                         fontSize: '11px', 
                         color: '#95a5a6',
-                        wordBreak: 'break-all',
                         marginTop: '8px'
                     }}>
                         Canister ID: {node.data.canisterId}
+                    </div>
+                )}
+                {node.data.details && (
+                    <div style={{ 
+                        marginTop: '8px',
+                        padding: '8px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                        borderRadius: '4px'
+                    }}>
+                        {node.data.details.split('\n').map((line, i) => (
+                            <div key={i} style={{ marginBottom: i < node.data.details.split('\n').length - 1 ? '8px' : 0 }}>
+                                {line}
+                                {line.includes('ICP Treasury:') && (
+                                    <div style={{ marginTop: '4px' }}>
+                                        <a 
+                                            href="https://dashboard.internetcomputer.org/account/580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9" 
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ color: '#3498db', textDecoration: 'none' }}
+                                            onClick={e => e.stopPropagation()}
+                                        >
+                                            View on Platform →
+                                        </a>
+                                    </div>
+                                )}
+                                {line.includes('SNEED Treasury:') && (
+                                    <div style={{ marginTop: '4px' }}>
+                                        <a 
+                                            href="https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai/account/fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de" 
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ color: '#3498db', textDecoration: 'none' }}
+                                            onClick={e => e.stopPropagation()}
+                                        >
+                                            View on Platform →
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
                     </div>
                 )}
             </div>
