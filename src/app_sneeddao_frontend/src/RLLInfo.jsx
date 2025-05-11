@@ -941,6 +941,20 @@ const edgeStyles = {
 const initialEdges = [
     // ICP Flows
     {
+        id: 'e0',
+        source: '1',
+        target: '2',
+        label: 'Maturity',
+        type: 'smoothstep',
+        style: edgeStyles.icp,
+        markerEnd: { type: MarkerType.ArrowClosed },
+        data: {
+            description: "Maturity collection from NNS Neuron",
+            token: "ICP",
+            percentage: "100%"
+        }
+    },
+    {
         id: 'e1',
         source: '2',
         target: '1',
