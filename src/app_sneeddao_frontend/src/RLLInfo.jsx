@@ -30,7 +30,8 @@ const nodes = {
                 inputs: ["ICP from Splitter (25%)", "Maturity from NNS Neuron"],
                 outputs: ["ICP to NNS Neuron"],
                 canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-wu6phoy.100000000010000000000000000000000000000000000000000000000000000",
-                details: "Vector ID: 1 on Neuronpool"
+                details: "Vector ID: 1 on Neuronpool",
+                link: "https://vectors.neuronpool.com/vectors/fi3zi-fyaaa-aaaaq-aachq-cai/1"
             },
             {
                 id: "3",
@@ -43,7 +44,8 @@ const nodes = {
                     "50% ICP to Sneed Buyback Vector"
                 ],
                 canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-m7u3kpi.100000000060000000000000000000000000000000000000000000000000000",
-                details: "Vector ID: 6 on Neuronpool"
+                details: "Vector ID: 6 on Neuronpool",
+                link: "https://vectors.neuronpool.com/vectors/fi3zi-fyaaa-aaaaq-aachq-cai/6"
             }
         ]
     },
@@ -57,7 +59,8 @@ const nodes = {
                 inputs: ["ICP from Splitter (50%)"],
                 outputs: ["100% SNEED to SNEED Splitter"],
                 canisterId: "togwv-zqaaa-aaaal-qr7aa-cai-ihr3xbq.100000000120000000000000000000000000000000000000000000000000000",
-                details: "Vector ID: 18 on ICPCoins"
+                details: "Vector ID: 18 on ICPCoins",
+                link: "https://beta.icpcoins.com/#/vector/modify/togwv-zqaaa-aaaal-qr7aa-cai/exchange/18"
             },
             {
                 id: "5",
@@ -70,7 +73,8 @@ const nodes = {
                     "33% SNEED to Burn Address"
                 ],
                 canisterId: "6jvpj-sqaaa-aaaaj-azwnq-cai-vilbrxq.1000000002d0000000000000000000000000000000000000000000000000000",
-                details: "Vector ID: 45 on Neuronpool"
+                details: "Vector ID: 45 on Neuronpool",
+                link: "https://vectors.neuronpool.com/vectors/fi3zi-fyaaa-aaaaq-aachq-cai/45"
             },
             {
                 id: "6",
@@ -334,6 +338,26 @@ const styles = {
         height: '600px',
         backgroundColor: '#1a1a1a',
         borderRadius: '8px'
+    },
+    link: {
+        color: '#3498db',
+        textDecoration: 'none',
+        '&:hover': {
+            textDecoration: 'underline'
+        }
+    },
+    detailsSection: {
+        marginTop: '10px',
+        padding: '10px',
+        backgroundColor: '#2a2a2a',
+        borderRadius: '4px'
+    },
+    canisterId: {
+        fontFamily: 'monospace',
+        backgroundColor: '#1a1a1a',
+        padding: '4px 8px',
+        borderRadius: '4px',
+        fontSize: '0.9em'
     }
 };
 
@@ -365,6 +389,42 @@ function RLLInfo() {
             [id]: !prev[id]
         }));
     };
+
+    const renderItemDetails = (item) => (
+        <div style={styles.itemContent}>
+            <p>{item.description}</p>
+            <h4>Inputs:</h4>
+            <ul style={styles.list}>
+                {item.inputs.map((input, i) => (
+                    <li key={i}>{input}</li>
+                ))}
+            </ul>
+            <h4>Outputs:</h4>
+            <ul style={styles.list}>
+                {item.outputs.map((output, i) => (
+                    <li key={i}>{output}</li>
+                ))}
+            </ul>
+            <div style={styles.detailsSection}>
+                {item.canisterId && (
+                    <p>Canister ID: <span style={styles.canisterId}>{item.canisterId}</span></p>
+                )}
+                {item.details && <p>{item.details}</p>}
+                {item.link && (
+                    <p>
+                        <a 
+                            href={item.link} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            style={styles.link}
+                        >
+                            View on Platform →
+                        </a>
+                    </p>
+                )}
+            </div>
+        </div>
+    );
 
     return (
         <div className='page-container'>
@@ -428,24 +488,7 @@ function RLLInfo() {
                                             >
                                                 {item.title} {expandedItems[item.id] ? '▼' : '▶'}
                                             </div>
-                                            {expandedItems[item.id] && (
-                                                <div style={styles.itemContent}>
-                                                    <p>{item.description}</p>
-                                                    <h4>Inputs:</h4>
-                                                    <ul style={styles.list}>
-                                                        {item.inputs.map((input, i) => (
-                                                            <li key={i}>{input}</li>
-                                                        ))}
-                                                    </ul>
-                                                    <h4>Outputs:</h4>
-                                                    <ul style={styles.list}>
-                                                        {item.outputs.map((output, i) => (
-                                                            <li key={i}>{output}</li>
-                                                        ))}
-                                                    </ul>
-                                                    <p>{item.details}</p>
-                                                </div>
-                                            )}
+                                            {expandedItems[item.id] && renderItemDetails(item)}
                                         </div>
                                     ))}
                                 </div>
