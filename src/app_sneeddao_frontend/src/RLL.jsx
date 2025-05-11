@@ -499,13 +499,16 @@ function RLL() {
             console.log('Starting to fetch user balances...');
             setLoadingUserBalances(true);
             try {
+                // First get neurons from SNS
+                const neurons = await fetchNeuronsFromSns();
+                
                 const rllActor = createRllActor(rllCanisterId, {
                     agentOptions: {
                         identity,
                     },
                 });
                 console.log('Created RLL actor, fetching user balances...');
-                const balances = await rllActor.balances_of_hotkey();
+                const balances = await rllActor.balances_of_hotkey_neurons(neurons);
                 console.log('Received user balances:', balances);
                 setUserBalances(balances);
             } catch (error) {
