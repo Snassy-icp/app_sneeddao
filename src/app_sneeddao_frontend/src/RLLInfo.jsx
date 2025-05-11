@@ -297,7 +297,10 @@ const TooltipOverlay = ({ tooltip }) => {
                 lineHeight: '1.4',
                 boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
                 pointerEvents: 'none',
-                border: '1px solid rgba(255, 255, 255, 0.1)'
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word',
+                whiteSpace: 'normal'
             }}
         >
             {tooltip.content}
@@ -1165,7 +1168,13 @@ function RLLInfo() {
                     </div>
                 )}
                 {node.data.canisterId && (
-                    <div style={{ fontFamily: 'monospace', fontSize: '12px', color: '#95a5a6' }}>
+                    <div style={{ 
+                        fontFamily: 'monospace', 
+                        fontSize: '11px', 
+                        color: '#95a5a6',
+                        wordBreak: 'break-all',
+                        marginTop: '8px'
+                    }}>
                         Canister ID: {node.data.canisterId}
                     </div>
                 )}
