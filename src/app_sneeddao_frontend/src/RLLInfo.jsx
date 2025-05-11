@@ -1458,6 +1458,12 @@ function RLLInfo() {
         }
     }, [tooltip]);
 
+    const handleNodeClick = useCallback((event, node) => {
+        if (node.data.link) {
+            window.open(node.data.link, '_blank');
+        }
+    }, []);
+
     const toggleSection = (section) => {
         setExpandedSections(prev => ({
             ...prev,
@@ -1578,6 +1584,7 @@ function RLLInfo() {
                             onEdgeMouseEnter={handleEdgeMouseEnter}
                             onEdgeMouseLeave={handleMouseLeave}
                             onMouseMove={handleMouseMove}
+                            onNodeClick={handleNodeClick}
                         >
                             <Background color="#444" gap={16} />
                             <Controls />
