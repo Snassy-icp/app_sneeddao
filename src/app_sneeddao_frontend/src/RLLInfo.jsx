@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import PrincipalBox from './PrincipalBox';
@@ -8,9 +8,127 @@ import ReactFlow, {
     Controls,
     MiniMap,
     MarkerType,
-    Position
+    Position,
+    useNodes,
+    useEdges,
+    useReactFlow
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+
+// Custom animated token component
+const AnimatedToken = ({ type, x, y, scale = 1 }) => {
+    const size = 24 * scale;
+    return (
+        <div
+            style={{
+                position: 'absolute',
+                left: x - size/2,
+                top: y - size/2,
+                width: size,
+                height: size,
+                borderRadius: '50%',
+                background: `url(${type === 'icp' ? 'icp_symbol.svg' : 'sneed_logo.png'})`,
+                backgroundSize: 'cover',
+                animation: 'pop-in 0.3s ease-out',
+                zIndex: 1000
+            }}
+        />
+    );
+};
+
+// Token animation manager component
+const TokenAnimationManager = ({ edges, nodes }) => {
+    const [tokens, setTokens] = useState([]);
+    const reactFlowInstance = useReactFlow();
+
+    const createToken = useCallback((edge, percentage = 1) => {
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        const targetNode = nodes.find(n => n.id === edge.target);
+        
+        if (!sourceNode || !targetNode) return null;
+
+        const tokenType = edge.style === edgeStyles.icp ? 'icp' : 'sneed';
+        const scale = percentage;
+
+        return {
+            id: `token-${edge.id}-${Date.now()}`,
+            type: tokenType,
+            edge: edge.id,
+            scale,
+            progress: 0,
+            sourceX: sourceNode.position.x + sourceNode.width / 2,
+            sourceY: sourceNode.position.y + sourceNode.height / 2,
+            targetX: targetNode.position.x + targetNode.width / 2,
+            targetY: targetNode.position.y + targetNode.height / 2
+        };
+    }, [nodes]);
+
+    const animateTokens = useCallback(() => {
+        setTokens(prevTokens => {
+            // Move existing tokens
+            const updatedTokens = prevTokens
+                .map(token => ({
+                    ...token,
+                    progress: token.progress + 0.02
+                }))
+                .filter(token => token.progress <= 1);
+
+            // Create new tokens at source nodes
+            edges.forEach(edge => {
+                if (Math.random() < 0.01) { // Randomly create new tokens
+                    const newToken = createToken(edge);
+                    if (newToken) {
+                        updatedTokens.push(newToken);
+                    }
+                }
+            });
+
+            // Handle token splitting at splitter nodes
+            updatedTokens.forEach(token => {
+                const edge = edges.find(e => e.id === token.edge);
+                if (edge && token.progress >= 1) {
+                    // Check if this edge ends at a splitter
+                    const outgoingEdges = edges.filter(e => e.source === edge.target);
+                    if (outgoingEdges.length > 1) {
+                        outgoingEdges.forEach(outEdge => {
+                            const percentage = parseFloat(outEdge.label) / 100;
+                            const newToken = createToken(outEdge, percentage);
+                            if (newToken) {
+                                updatedTokens.push(newToken);
+                            }
+                        });
+                    }
+                }
+            });
+
+            return updatedTokens;
+        });
+    }, [edges, createToken]);
+
+    useEffect(() => {
+        const interval = setInterval(animateTokens, 50);
+        return () => clearInterval(interval);
+    }, [animateTokens]);
+
+    return (
+        <>
+            {tokens.map(token => {
+                const x = token.sourceX + (token.targetX - token.sourceX) * token.progress;
+                const y = token.sourceY + (token.targetY - token.sourceY) * token.progress;
+                
+                return (
+                    <AnimatedToken
+                        key={token.id}
+                        type={token.type}
+                        x={x}
+                        y={y}
+                        scale={token.scale}
+                    />
+                );
+            })}
+        </>
+    );
+};
 
 // Node definitions with their metadata
 const nodes = {
@@ -765,6 +883,7 @@ function RLLInfo() {
                         >
                             <Background color="#444" gap={16} />
                             <Controls />
+                            <TokenAnimationManager edges={initialEdges} nodes={initialNodes} />
                         </ReactFlow>
                     </div>
                 </section>
@@ -849,3 +968,27 @@ function RLLInfo() {
 }
 
 export default RLLInfo; 
+
+// Add this to the style tag at the bottom
+<style>
+    {`
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes pop-in {
+            0% {
+                transform: scale(0);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.2);
+                opacity: 0.7;
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+    `}
+</style> 
