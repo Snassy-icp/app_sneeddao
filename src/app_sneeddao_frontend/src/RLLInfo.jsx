@@ -140,14 +140,31 @@ const TokenAnimationManager = ({ edges, nodes }) => {
     const [distributionEffects, setDistributionEffects] = useState([]);
     const reactFlowInstance = useReactFlow();
 
-    const createToken = useCallback((edge, percentage = 1) => {
+    const isSourceNode = useCallback((nodeId) => {
+        return ['1', '11', '13', '14'].includes(nodeId); // 8y neuron, LP Rewards, SneedLock, Swaprunner
+    }, []);
+
+    const createToken = useCallback((edge, percentage = 1, tokenType = null) => {
         const sourceNode = nodes.find(n => n.id === edge.source);
         const targetNode = nodes.find(n => n.id === edge.target);
         
         if (!sourceNode || !targetNode) return null;
 
-        // Determine token type based on edge style
-        const tokenType = edge.style === edgeStyles.icp ? 'icp' : 'sneed';
+        // Determine token type
+        let type;
+        if (tokenType) {
+            type = tokenType;
+        } else if (edge.style === edgeStyles.icp) {
+            type = 'icp';
+        } else if (edge.style === edgeStyles.sneed) {
+            type = 'sneed';
+        } else if (['11', '13', '14'].includes(sourceNode.id)) {
+            // For revenue sources that can generate both types, randomly choose
+            type = Math.random() < 0.5 ? 'icp' : 'sneed';
+        } else {
+            type = 'sneed'; // default fallback
+        }
+
         const scale = percentage;
 
         // Check destinations
@@ -156,7 +173,7 @@ const TokenAnimationManager = ({ edges, nodes }) => {
 
         return {
             id: `token-${edge.id}-${Date.now()}`,
-            type: tokenType,
+            type,
             edge: edge.id,
             scale,
             progress: 0,
@@ -171,75 +188,85 @@ const TokenAnimationManager = ({ edges, nodes }) => {
 
     const animateTokens = useCallback(() => {
         setTokens(prevTokens => {
-            const updatedTokens = prevTokens
-                .map(token => ({
-                    ...token,
-                    progress: token.progress + 0.01
-                }))
-                .filter(token => {
-                    if (token.progress >= 1) {
-                        // Create burn effect
-                        if (token.isBurnDestination) {
-                            setBurnEffects(prev => [...prev, {
-                                id: `burn-${Date.now()}`,
-                                x: token.targetX,
-                                y: token.targetY,
-                                scale: token.scale,
-                                createdAt: Date.now()
-                            }]);
-                        }
-                        // Create distribution effect
-                        else if (token.isDistributionDestination) {
-                            setDistributionEffects(prev => [...prev, {
-                                id: `distribute-${Date.now()}`,
-                                x: token.targetX,
-                                y: token.targetY,
-                                type: token.type,
-                                scale: token.scale,
-                                createdAt: Date.now()
-                            }]);
-                        }
-                    }
-                    return token.progress <= 1;
-                });
+            let updatedTokens = [];
+            
+            // First, process existing tokens
+            prevTokens.forEach(token => {
+                const newProgress = token.progress + 0.01;
+                
+                if (newProgress < 1) {
+                    // Keep moving tokens that haven't reached their destination
+                    updatedTokens.push({
+                        ...token,
+                        progress: newProgress
+                    });
+                } else {
+                    // Handle tokens that have reached their destination
+                    const edge = edges.find(e => e.id === token.edge);
+                    if (!edge) return;
 
-            // Rest of the token creation and splitting logic...
-            edges.forEach(edge => {
-                if (Math.random() < 0.005) {
-                    const newToken = createToken(edge);
-                    if (newToken) {
-                        updatedTokens.push(newToken);
+                    if (token.isBurnDestination) {
+                        setBurnEffects(prev => [...prev, {
+                            id: `burn-${Date.now()}`,
+                            x: token.targetX,
+                            y: token.targetY,
+                            scale: token.scale,
+                            createdAt: Date.now()
+                        }]);
+                    } else if (token.isDistributionDestination) {
+                        setDistributionEffects(prev => [...prev, {
+                            id: `distribute-${Date.now()}`,
+                            x: token.targetX,
+                            y: token.targetY,
+                            type: token.type,
+                            scale: token.scale,
+                            createdAt: Date.now()
+                        }]);
+                    } else if (edge.target === '10') {
+                        // When reaching the Revenue Collector, route to appropriate splitter based on token type
+                        const nextEdge = token.type === 'icp' ? 
+                            edges.find(e => e.id === 'e12') :  // To ICP Splitter
+                            edges.find(e => e.id === 'e12b');  // To SNEED Splitter
+                        if (nextEdge) {
+                            const newToken = createToken(nextEdge, 1, token.type);
+                            if (newToken) updatedTokens.push(newToken);
+                        }
+                    } else if (edge.target === '2') {
+                        // Special handling for ICP Neuron Vector
+                        const nextEdge = token.previousNode === '1' 
+                            ? edges.find(e => e.source === '2' && e.target === '3')  // From 8y neuron, go to Splitter
+                            : edges.find(e => e.source === '2' && e.target === '1'); // From Splitter, go to 8y neuron
+                        
+                        if (nextEdge) {
+                            const newToken = createToken(nextEdge, 1, token.type);
+                            if (newToken) updatedTokens.push(newToken);
+                        }
+                    } else if (edge.target === '3' || edge.target === '5') {
+                        // Handle splitter nodes
+                        const outgoingEdges = edges.filter(e => e.source === edge.target);
+                        outgoingEdges.forEach(outEdge => {
+                            const percentage = parseFloat(outEdge.label) / 100 || 1;
+                            const newToken = createToken(outEdge, percentage, token.type);
+                            if (newToken) updatedTokens.push(newToken);
+                        });
                     }
                 }
             });
 
-            // Handle token splitting at splitter nodes
-            updatedTokens.forEach(token => {
-                const edge = edges.find(e => e.id === token.edge);
-                if (edge && token.progress >= 1) {
-                    const outgoingEdges = edges.filter(e => e.source === edge.target);
-                    if (outgoingEdges.length > 1) {
-                        outgoingEdges.forEach(outEdge => {
-                            const percentage = parseFloat(outEdge.label) / 100 || 1;
-                            const newToken = createToken(outEdge, percentage);
-                            if (newToken) {
-                                updatedTokens.push({
-                                    ...newToken,
-                                    progress: 0
-                                });
-                            }
-                        });
-                    }
+            // Then spawn new tokens at source nodes
+            edges.forEach(edge => {
+                if (isSourceNode(edge.source) && Math.random() < 0.005 && !updatedTokens.some(t => t.edge === edge.id)) {
+                    const newToken = createToken(edge);
+                    if (newToken) updatedTokens.push(newToken);
                 }
             });
 
             return updatedTokens;
         });
 
-        // Clean up old effects
         setBurnEffects(prev => prev.filter(effect => Date.now() - effect.createdAt < 500));
         setDistributionEffects(prev => prev.filter(effect => Date.now() - effect.createdAt < 800));
-    }, [edges, createToken]);
+    }, [edges, createToken, isSourceNode]);
 
     useEffect(() => {
         const interval = setInterval(animateTokens, 50);
@@ -435,28 +462,28 @@ const nodes = {
                 title: "SNEED/ICP LP Rewards",
                 description: "Liquidity provision rewards from ICPSwap",
                 inputs: ["LP rewards"],
-                outputs: ["Rewards to Revenue Collector"]
+                outputs: ["ICP and SNEED rewards to Revenue Collector"]
             },
             {
                 id: "12",
                 title: "Products",
                 description: "Virtual collector for product revenue",
-                inputs: ["Revenue from products"],
-                outputs: ["Revenue to Revenue Collector"]
+                inputs: ["ICP and SNEED revenue from products"],
+                outputs: ["ICP and SNEED to Revenue Collector"]
             },
             {
                 id: "13",
                 title: "SneedLock",
                 description: "Token and LP position locking product",
                 inputs: ["User interactions"],
-                outputs: ["Revenue to Products"]
+                outputs: ["ICP and SNEED revenue to Products"]
             },
             {
                 id: "14",
                 title: "Swaprunner",
                 description: "Automated trading product",
                 inputs: ["User interactions"],
-                outputs: ["Revenue to Products"]
+                outputs: ["ICP and SNEED revenue to Products"]
             }
         ]
     }
@@ -878,7 +905,7 @@ const initialNodes = [
             label: 'SNEED/ICP LP Rewards',
             description: "Liquidity provision rewards from ICPSwap",
             inputs: ["LP rewards"],
-            outputs: ["Rewards to Revenue Collector"]
+            outputs: ["ICP and SNEED rewards to Revenue Collector"]
         },
         position: { x: 300, y: 650 },
         style: nodeStyles.revenue,
@@ -891,8 +918,8 @@ const initialNodes = [
         data: { 
             label: 'Products',
             description: "Virtual collector for product revenue",
-            inputs: ["Revenue from products"],
-            outputs: ["Revenue to Revenue Collector"]
+            inputs: ["ICP and SNEED revenue from products"],
+            outputs: ["ICP and SNEED to Revenue Collector"]
         },
         position: { x: 500, y: 650 },
         style: nodeStyles.revenue,
@@ -906,7 +933,7 @@ const initialNodes = [
             label: 'SneedLock',
             description: "Token and LP position locking product",
             inputs: ["User interactions"],
-            outputs: ["Revenue to Products"]
+            outputs: ["ICP and SNEED revenue to Products"]
         },
         position: { x: 400, y: 750 },
         style: nodeStyles.revenue,
@@ -918,9 +945,9 @@ const initialNodes = [
         type: 'default',
         data: { 
             label: 'Swaprunner',
-            description: "DEX aggregator product",
+            description: "Automated trading product",
             inputs: ["User interactions"],
-            outputs: ["Revenue to Products"]
+            outputs: ["ICP and SNEED revenue to Products"]
         },
         position: { x: 600, y: 750 },
         style: nodeStyles.revenue,
@@ -952,24 +979,10 @@ const edgeStyles = {
 const initialEdges = [
     // ICP Flows
     {
-        id: 'e0',
-        source: '1',
-        target: '2',
-        label: 'Maturity',
-        type: 'smoothstep',
-        style: edgeStyles.icp,
-        markerEnd: { type: MarkerType.ArrowClosed },
-        data: {
-            description: "Maturity collection from NNS Neuron",
-            token: "ICP",
-            percentage: "100%"
-        }
-    },
-    {
         id: 'e1',
         source: '2',
         target: '1',
-        label: '100%',
+        label: 'Maturity',
         type: 'smoothstep',
         style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
