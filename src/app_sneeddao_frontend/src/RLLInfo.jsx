@@ -280,7 +280,8 @@ const TokenAnimationManager = ({ edges, nodes }) => {
 
 // Update the TooltipOverlay to accept tooltip as a prop
 const TooltipOverlay = ({ tooltip }) => {
-    return tooltip ? (
+    // Only render if tooltip exists and has content
+    return (tooltip && tooltip.content) ? (
         <div
             style={{
                 position: 'fixed',
