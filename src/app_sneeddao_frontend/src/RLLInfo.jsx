@@ -342,6 +342,19 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                             scale: token.scale,
                             createdAt: Date.now()
                         }]);
+                    } else if (edge.target === '2') {
+                        // When tokens reach ICP Neuron Vector (node 2)
+                        // Check where the token came from to determine where it should go
+                        const nextEdge = token.previousNode === '1' ?
+                            // If from 8y neuron (maturity), send to ICP Splitter
+                            edges.find(e => e.id === 'e2') :
+                            // If from ICP Splitter (compounding), send to 8y neuron
+                            edges.find(e => e.id === 'e1b');
+                        
+                        if (nextEdge) {
+                            const newToken = createToken(nextEdge, token.scale, token.type);
+                            if (newToken) updatedTokens.push(newToken);
+                        }
                     } else if (edge.target === '4') {
                         // When ICP reaches Buyback Vector, convert to SNEED and send to SNEED Splitter
                         const nextEdge = edges.find(e => e.source === '4' && e.target === '5');
@@ -369,17 +382,6 @@ const TokenAnimationManager = ({ edges, nodes }) => {
                         // When tokens reach DeFi Canister, forward to RLL Distribution
                         const nextEdge = edges.find(e => e.source === '7' && e.target === '9');
                         if (nextEdge) {
-                            const newToken = createToken(nextEdge, token.scale, token.type);
-                            if (newToken) updatedTokens.push(newToken);
-                        }
-                    } else if (edge.target === '2') {
-                        // Special handling for ICP Neuron Vector
-                        const nextEdge = token.previousNode === '1' 
-                            ? edges.find(e => e.source === '2' && e.target === '3')  // From 8y neuron, forward to ICP Splitter
-                            : edges.find(e => e.source === '2' && e.target === '1'); // From Splitter, go back to 8y neuron
-                        
-                        if (nextEdge) {
-                            // Preserve token scale when forwarding
                             const newToken = createToken(nextEdge, token.scale, token.type);
                             if (newToken) updatedTokens.push(newToken);
                         }
@@ -677,11 +679,17 @@ const edges = {
             },
             {
                 id: "e2",
-                source: "3",
-                target: "2",
-                description: "ICP compounding to Neuron",
-                token: "ICP",
-                percentage: "25%"
+                source: "2",
+                target: "3",
+                label: "100%",
+                type: "smoothstep",
+                style: edgeStyles.icp,
+                markerEnd: { type: MarkerType.ArrowClosed },
+                data: {
+                    description: "Maturity to ICP Splitter",
+                    token: "ICP",
+                    percentage: "100%"
+                }
             },
             {
                 id: "e3",
@@ -1065,16 +1073,16 @@ const initialEdges = [
     },
     {
         id: 'e2',
-        source: '3',
-        target: '2',
-        label: '25%',
+        source: '2',
+        target: '3',
+        label: '100%',
         type: 'smoothstep',
         style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
         data: {
-            description: "ICP compounding to Neuron",
+            description: "Maturity to ICP Splitter",
             token: "ICP",
-            percentage: "25%"
+            percentage: "100%"
         }
     },
     {
