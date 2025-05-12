@@ -2099,6 +2099,109 @@ function RLLInfo() {
             <main className="help-container">
                 <h1 style={{ color: '#ffffff' }}>Recursive Liquidity Loop (RLL)</h1>
                 
+                {/* Total Assets Section */}
+                <section style={styles.section}>
+                    <h2>Total Assets Overview</h2>
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                        gap: '20px',
+                        padding: '20px',
+                        backgroundColor: '#2a2a2a',
+                        borderRadius: '8px',
+                        marginBottom: '20px'
+                    }}>
+                        {/* ICP Assets */}
+                        <div style={{
+                            backgroundColor: '#1a1a1a',
+                            padding: '20px',
+                            borderRadius: '6px',
+                            border: '1px solid #3498db'
+                        }}>
+                            <h3 style={{ color: '#3498db', marginTop: 0 }}>ICP Assets</h3>
+                            {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                    <div style={styles.spinner} />
+                                </div>
+                            ) : (
+                                <>
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
+                                        <div style={{ fontSize: '1.1em' }}>{(Number(treasuryBalances.icp) / 1e8).toFixed(4)} ICP</div>
+                                    </div>
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ color: '#888', marginBottom: '5px' }}>8 Year Neuron:</div>
+                                        <div style={{ fontSize: '1.1em' }}>{(Number(neuronBalance?.stake_e8s || 0) / 1e8).toFixed(4)} ICP</div>
+                                    </div>
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
+                                        <div style={{ fontSize: '1.1em' }}>{(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} ICP</div>
+                                    </div>
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
+                                        <div style={{ fontSize: '1.1em' }}>{(Number(lpPositions.totals.tokensOwed1) / 1e8).toFixed(4)} ICP</div>
+                                    </div>
+                                    <div style={{
+                                        marginTop: '20px',
+                                        paddingTop: '15px',
+                                        borderTop: '1px solid #444'
+                                    }}>
+                                        <div style={{ color: '#3498db', marginBottom: '5px' }}>Total ICP:</div>
+                                        <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
+                                            {((Number(treasuryBalances.icp) + 
+                                               Number(neuronBalance?.stake_e8s || 0) + 
+                                               Number(lpPositions.totals.token1Amount) +
+                                               Number(lpPositions.totals.tokensOwed1)) / 1e8).toFixed(4)} ICP
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {/* SNEED Assets */}
+                        <div style={{
+                            backgroundColor: '#1a1a1a',
+                            padding: '20px',
+                            borderRadius: '6px',
+                            border: '1px solid #2ecc71'
+                        }}>
+                            <h3 style={{ color: '#2ecc71', marginTop: 0 }}>SNEED Assets</h3>
+                            {isLoadingBalances || isLoadingLp ? (
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                    <div style={styles.spinner} />
+                                </div>
+                            ) : (
+                                <>
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
+                                        <div style={{ fontSize: '1.1em' }}>{(Number(treasuryBalances.sneed) / 1e8).toFixed(4)} SNEED</div>
+                                    </div>
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
+                                        <div style={{ fontSize: '1.1em' }}>{(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} SNEED</div>
+                                    </div>
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
+                                        <div style={{ fontSize: '1.1em' }}>{(Number(lpPositions.totals.tokensOwed0) / 1e8).toFixed(4)} SNEED</div>
+                                    </div>
+                                    <div style={{
+                                        marginTop: '20px',
+                                        paddingTop: '15px',
+                                        borderTop: '1px solid #444'
+                                    }}>
+                                        <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Total SNEED:</div>
+                                        <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
+                                            {((Number(treasuryBalances.sneed) + 
+                                               Number(lpPositions.totals.token0Amount) +
+                                               Number(lpPositions.totals.tokensOwed0)) / 1e8).toFixed(4)} SNEED
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </section>
+
                 {/* Flow Diagram Section */}
                 <section style={styles.section}>
                     <h2>System Flow Diagram</h2>
