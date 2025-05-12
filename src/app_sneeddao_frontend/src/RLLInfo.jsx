@@ -1973,6 +1973,47 @@ function RLLInfo() {
                         )}
                     </div>
                 )}
+                {item.id === "9" && (
+                    <div style={{
+                        marginTop: '15px',
+                        padding: '15px',
+                        backgroundColor: '#2a2a2a',
+                        borderRadius: '6px'
+                    }}>
+                        <h4 style={{ margin: '0 0 15px 0', color: '#9b59b6' }}>Token Balances and Reconciliation</h4>
+                        {isLoadingRllData ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : (
+                            knownTokens.map(([tokenId, tokenInfo]) => {
+                                const reconciliation = reconciliationData.find(item => 
+                                    item.token_id.toString() === tokenId.toString()
+                                );
+                                if (!reconciliation) return null;
+
+                                return (
+                                    <div key={tokenId.toString()} style={{
+                                        marginBottom: '15px',
+                                        padding: '10px',
+                                        backgroundColor: '#3a3a3a',
+                                        borderRadius: '4px'
+                                    }}>
+                                        <div style={{ color: '#3498db', marginBottom: '8px', fontWeight: 'bold' }}>
+                                            {tokenInfo.symbol}
+                                        </div>
+                                        <div style={{ marginLeft: '10px' }}>
+                                            <div>Server Balance: {(Number(reconciliation.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}</div>
+                                            <div>Local Total: {(Number(reconciliation.local_total) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}</div>
+                                            <div>Remaining: {(Number(reconciliation.remaining) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}</div>
+                                            <div>Underflow: {(Number(reconciliation.underflow) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}</div>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -2142,7 +2183,7 @@ function RLLInfo() {
                                 <div style={styles.spinner} />
                             </div>
                         ) : (
-                            <>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 {knownTokens.map(([tokenId, tokenInfo]) => {
                                     const reconciliation = reconciliationData.find(item => 
                                         item.token_id.toString() === tokenId.toString()
@@ -2150,18 +2191,12 @@ function RLLInfo() {
                                     if (!reconciliation) return null;
 
                                     return (
-                                        <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
-                                            <div style={{ color: '#3498db', marginBottom: '4px' }}>{tokenInfo.symbol}:</div>
-                                            <div style={{ marginLeft: '10px', fontSize: '0.9em' }}>
-                                                <div>Server Balance: {(Number(reconciliation.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}</div>
-                                                <div>Local Total: {(Number(reconciliation.local_total) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}</div>
-                                                <div>Remaining: {(Number(reconciliation.remaining) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}</div>
-                                                <div>Underflow: {(Number(reconciliation.underflow) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}</div>
-                                            </div>
+                                        <div key={tokenId.toString()}>
+                                            {(Number(reconciliation.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
                                         </div>
                                     );
                                 })}
-                            </>
+                            </div>
                         )}
                     </div>
                 )}
