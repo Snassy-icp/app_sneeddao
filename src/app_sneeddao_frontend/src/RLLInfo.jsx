@@ -25,6 +25,7 @@ import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { get_token_conversion_rates } from './utils/TokenUtils';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
+import { createActor as createNeutriniteDappActor } from 'external/neutrinite_dapp';
 
 // Styles for the expandable sections
 const styles = {
@@ -1404,11 +1405,25 @@ function RLLInfo() {
         const fetchConversionRates = async () => {
             if (!identity) return;
             try {
-                const rates = await get_token_conversion_rates();
-                setConversionRates({
-                    ICP: rates.ICP || 0,
-                    SNEED: rates.SNEED || 0
+                const neutriniteActor = createNeutriniteDappActor(Principal.fromText("u45jl-liaaa-aaaam-abppa-cai"));
+                const tokens = await neutriniteActor.get_latest_wallet_tokens();
+                const rates = {};
+                
+                tokens.latest.forEach(token => {
+                    if (token.rates) {
+                        token.rates.forEach(rate => {
+                            if (rate.symbol.endsWith("/USD")) {
+                                const tokenSymbol = rate.symbol.split("/")[0];
+                                rates[tokenSymbol] = rate.rate;
+                            }
+                        });
+                    }
                 });
+                
+                setConversionRates(prevRates => ({
+                    ...prevRates,
+                    ...rates
+                }));
             } catch (error) {
                 console.error('Error fetching conversion rates:', error);
             }
@@ -2487,17 +2502,38 @@ function RLLInfo() {
                                         return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
                                     })
                                     .map(([tokenId, tokenInfo]) => {
-                                        const balance = reconciliationData.find(item => 
+                                        const rllBalance = reconciliationData.find(item => 
                                             item.token_id.toString() === tokenId.toString()
                                         );
+                                        const defiBalance = defiBalances[tokenId.toString()];
+                                        
                                         return (
-                                            <div key={tokenId.toString()} style={{ marginBottom: '15px' }}>
-                                                <div style={{ color: '#888', marginBottom: '5px' }}>
+                                            <div key={tokenId.toString()} style={{ marginBottom: '20px' }}>
+                                                <div style={{ color: '#888', marginBottom: '8px', fontSize: '1.1em' }}>
                                                     {tokenInfo.symbol}:
                                                 </div>
-                                                <div style={{ fontSize: '1.1em' }}>
-                                                    {(Number(balance?.server_balance || 0) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
-                                                </div>
+                                                {rllBalance && (
+                                                    <div style={{ marginLeft: '15px', marginBottom: '8px' }}>
+                                                        <span style={{ color: '#9b59b6' }}>RLL Distribution:</span>
+                                                        <div style={{ marginLeft: '10px' }}>
+                                                            {(Number(rllBalance.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                (${formatUSD(getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol))})
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                {defiBalance && (
+                                                    <div style={{ marginLeft: '15px' }}>
+                                                        <span style={{ color: '#3498db' }}>DeFi Canister:</span>
+                                                        <div style={{ marginLeft: '10px' }}>
+                                                            {(Number(defiBalance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                (${formatUSD(getUSDValue(defiBalance, tokenInfo.decimals, tokenInfo.symbol))})
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })
