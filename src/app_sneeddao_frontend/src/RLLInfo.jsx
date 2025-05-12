@@ -1848,11 +1848,11 @@ function RLLInfo() {
                                     <div style={{ color: '#3498db', marginBottom: '5px' }}>Position #{Number(position.id)}:</div>
                                     <div style={{ marginLeft: '10px' }}>
                                         <div>Current Position:</div>
-                                        <div>• {(Number(position.token0Amount) / 1e8).toFixed(4)} ICP</div>
-                                        <div>• {(Number(position.token1Amount) / 1e8).toFixed(4)} SNEED</div>
+                                        <div>• {(Number(position.token0Amount) / 1e8).toFixed(4)} SNEED</div>
+                                        <div>• {(Number(position.token1Amount) / 1e8).toFixed(4)} ICP</div>
                                         <div style={{ marginTop: '5px' }}>Unclaimed Rewards:</div>
-                                        <div>• {(Number(position.tokensOwed0) / 1e8).toFixed(4)} ICP</div>
-                                        <div>• {(Number(position.tokensOwed1) / 1e8).toFixed(4)} SNEED</div>
+                                        <div>• {(Number(position.tokensOwed0) / 1e8).toFixed(4)} SNEED</div>
+                                        <div>• {(Number(position.tokensOwed1) / 1e8).toFixed(4)} ICP</div>
                                     </div>
                                 </div>
                             ))
@@ -2000,11 +2000,11 @@ function RLLInfo() {
                         ) : lpPositions.totals ? (
                             <>
                                 <div style={{ color: '#3498db' }}>Total Current Position:</div>
-                                <div>• {(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} ICP</div>
-                                <div>• {(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} SNEED</div>
+                                <div>• {(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} SNEED</div>
+                                <div>• {(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} ICP</div>
                                 <div style={{ color: '#2ecc71', marginTop: '8px' }}>Total Unclaimed Rewards:</div>
-                                <div>• {(Number(lpPositions.totals.tokensOwed0) / 1e8).toFixed(4)} ICP</div>
-                                <div>• {(Number(lpPositions.totals.tokensOwed1) / 1e8).toFixed(4)} SNEED</div>
+                                <div>• {(Number(lpPositions.totals.tokensOwed0) / 1e8).toFixed(4)} SNEED</div>
+                                <div>• {(Number(lpPositions.totals.tokensOwed1) / 1e8).toFixed(4)} ICP</div>
                             </>
                         ) : (
                             <div>Failed to load LP positions</div>
