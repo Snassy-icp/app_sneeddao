@@ -2752,7 +2752,7 @@ function RLLInfo() {
                         ...styles.section, 
                         gridArea: 'flow',
                         width: '100%',
-                        maxWidth: '800px',
+                        maxWidth: '800px', // This will apply in 1-column mode
                         height: '800px',
                         minWidth: '0',
                         minHeight: '0',
@@ -2884,7 +2884,7 @@ function RLLInfo() {
 
                             .rll-layout > section[style*="gridArea: flow"] {
                                 width: 100% !important;
-                                max-width: none !important;
+                                max-width: unset !important; /* Remove max-width constraint in 3-column mode */
                                 min-width: 0 !important;
                             }
 
