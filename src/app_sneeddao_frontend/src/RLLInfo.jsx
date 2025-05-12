@@ -1372,7 +1372,15 @@ function RLLInfo() {
     const [isLoadingNeuron, setIsLoadingNeuron] = useState(false);
     const [vectorInfo, setVectorInfo] = useState({});
     const [isLoadingVectors, setIsLoadingVectors] = useState(false);
-    const [lpPositions, setLpPositions] = useState(null);
+    const [lpPositions, setLpPositions] = useState({
+        positions: [],
+        totals: {
+            token0Amount: BigInt(0),
+            token1Amount: BigInt(0),
+            tokensOwed0: BigInt(0),
+            tokensOwed1: BigInt(0)
+        }
+    });
     const [isLoadingLp, setIsLoadingLp] = useState(false);
 
     // Update the neuron balance fetching effect
@@ -1511,7 +1519,7 @@ function RLLInfo() {
         fetchVectorInfo();
     }, [identity]);
 
-    // Add effect to fetch LP positions
+    // Update effect to fetch LP positions
     useEffect(() => {
         const fetchLpPositions = async () => {
             if (!identity) return;
@@ -1522,13 +1530,13 @@ function RLLInfo() {
                 const swapActor = createIcpSwapActor(swapCanisterId, { agentOptions: { identity } });
                 
                 // Get positions 24, 25, and 26
-                const positionIds = [24, 25, 26];
+                const targetPositionIds = [24, 25, 26];
                 const positions = [];
                 
-                for (const id of positionIds) {
-                    const allPositions = await swapActor.getUserPositionWithTokenAmount(0, 50);
-                    if (allPositions.ok) {
-                        const position = allPositions.ok.content.find(p => p.id === id);
+                const allPositions = await swapActor.getUserPositionWithTokenAmount(0, 50);
+                if (allPositions.ok) {
+                    for (const id of targetPositionIds) {
+                        const position = allPositions.ok.content.find(p => Number(p.id) === id);
                         if (position) {
                             positions.push(position);
                         }
@@ -1549,7 +1557,10 @@ function RLLInfo() {
                     tokensOwed1: BigInt(0)    // Unclaimed SNEED
                 });
 
-                setLpPositions(totals);
+                setLpPositions({
+                    positions,
+                    totals
+                });
             } catch (error) {
                 console.error('Error fetching LP positions:', error);
             } finally {
@@ -1784,7 +1795,7 @@ function RLLInfo() {
         );
     };
 
-    // Update renderItemDetails to include vector info
+    // Update renderItemDetails to include LP position details
     const renderItemDetails = (item) => (
         <div style={styles.itemContent}>
             <p>{item.description}</p>
@@ -1812,6 +1823,42 @@ function RLLInfo() {
                         {item.details.split('\n').map((line, i) => (
                             <div key={i} style={{ marginBottom: '10px' }}>{line}</div>
                         ))}
+                    </div>
+                )}
+                {item.id === '11' && (
+                    <div style={{
+                        marginTop: '10px',
+                        padding: '10px',
+                        backgroundColor: '#3a3a3a',
+                        borderRadius: '4px'
+                    }}>
+                        <h4 style={{ margin: '0 0 10px 0' }}>LP Positions:</h4>
+                        {isLoadingLp ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : lpPositions.positions.length > 0 ? (
+                            lpPositions.positions.map((position, index) => (
+                                <div key={index} style={{
+                                    marginBottom: '15px',
+                                    padding: '10px',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                    borderRadius: '4px'
+                                }}>
+                                    <div style={{ color: '#3498db', marginBottom: '5px' }}>Position #{Number(position.id)}:</div>
+                                    <div style={{ marginLeft: '10px' }}>
+                                        <div>Current Position:</div>
+                                        <div>• {(Number(position.token0Amount) / 1e8).toFixed(4)} ICP</div>
+                                        <div>• {(Number(position.token1Amount) / 1e8).toFixed(4)} SNEED</div>
+                                        <div style={{ marginTop: '5px' }}>Unclaimed Rewards:</div>
+                                        <div>• {(Number(position.tokensOwed0) / 1e8).toFixed(4)} ICP</div>
+                                        <div>• {(Number(position.tokensOwed1) / 1e8).toFixed(4)} SNEED</div>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div>No LP positions found</div>
+                        )}
                     </div>
                 )}
                 {(item.id === '2' || item.id === '3' || item.id === '5' || item.id === '4') && (
@@ -1945,19 +1992,19 @@ function RLLInfo() {
                         backgroundColor: 'rgba(255, 255, 255, 0.1)',
                         borderRadius: '4px'
                     }}>
-                        <div style={{ marginBottom: '4px' }}>LP Position Status:</div>
+                        <div style={{ marginBottom: '4px' }}>Total LP Position Status:</div>
                         {isLoadingLp ? (
                             <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
                                 <div style={styles.spinner} />
                             </div>
-                        ) : lpPositions ? (
+                        ) : lpPositions.totals ? (
                             <>
-                                <div style={{ color: '#3498db' }}>Current Position:</div>
-                                <div>• {(Number(lpPositions.token0Amount) / 1e8).toFixed(4)} ICP</div>
-                                <div>• {(Number(lpPositions.token1Amount) / 1e8).toFixed(4)} SNEED</div>
-                                <div style={{ color: '#2ecc71', marginTop: '8px' }}>Unclaimed Rewards:</div>
-                                <div>• {(Number(lpPositions.tokensOwed0) / 1e8).toFixed(4)} ICP</div>
-                                <div>• {(Number(lpPositions.tokensOwed1) / 1e8).toFixed(4)} SNEED</div>
+                                <div style={{ color: '#3498db' }}>Total Current Position:</div>
+                                <div>• {(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} ICP</div>
+                                <div>• {(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} SNEED</div>
+                                <div style={{ color: '#2ecc71', marginTop: '8px' }}>Total Unclaimed Rewards:</div>
+                                <div>• {(Number(lpPositions.totals.tokensOwed0) / 1e8).toFixed(4)} ICP</div>
+                                <div>• {(Number(lpPositions.totals.tokensOwed1) / 1e8).toFixed(4)} SNEED</div>
                             </>
                         ) : (
                             <div>Failed to load LP positions</div>
