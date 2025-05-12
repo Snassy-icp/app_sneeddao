@@ -2684,6 +2684,19 @@ function RLLInfo() {
                                                 </span>
                                             </div>
                                         </div>
+                                        {vectorInfo['SNEED Buyback Vector']?.[0]?.[0]?.sources?.[0]?.balance && (
+                                            <div style={{ marginBottom: '15px' }}>
+                                                <div style={{ color: '#888', marginBottom: '5px' }}>Buyback Vector:</div>
+                                                <div style={{ fontSize: '1.1em' }}>
+                                                    {(Number(vectorInfo['SNEED Buyback Vector'][0][0].sources[0].balance) / 1e8).toFixed(4)} ICP
+                                                    <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        (${formatUSD(getUSDValue(vectorInfo['SNEED Buyback Vector'][0][0].sources[0].balance, 8, 'ICP'))})
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div style={{ marginBottom: '15px' }}>
+                                        </div>
                                     </>
                                 )}
                             </div>
