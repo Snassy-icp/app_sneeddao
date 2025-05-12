@@ -2571,9 +2571,6 @@ function RLLInfo() {
 
                                                 return (
                                                     <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
-                                                        <div style={{ color: '#888', marginBottom: '4px' }}>
-                                                            {tokenInfo.symbol}:
-                                                        </div>
                                                         <div style={{ marginLeft: '10px' }}>
                                                             {(Number(rllBalance.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
                                                             <span style={{ color: '#888', marginLeft: '8px' }}>
