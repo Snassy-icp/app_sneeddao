@@ -125,6 +125,10 @@ type SneedRLL =
    clear_user_distribution_events: () -> ();
    clear_user_distributions: () -> ();
    clear_whitelisted_tokens: () -> ();
+   get_all_token_min_distributions: () -> (vec record {
+                                                 principal;
+                                                 nat;
+                                               }) query;
    get_claim_events: () -> (vec ClaimEvent) query;
    get_claim_events_for_hotkey: (principal) -> (vec ClaimEvent) query;
    get_distribution_events: () -> (vec DistributionEvent) query;
@@ -173,6 +177,7 @@ type SneedRLL =
    get_token_distribution_events: (principal) ->
     (vec DistributionEvent) query;
    get_token_metadata: (principal) -> (opt TokenMetadata) query;
+   get_token_min_distribution: (principal) -> (opt nat) query;
    get_token_total_distribution: (principal) -> (nat) query;
    get_total_distributions: () -> (vec record {
                                          principal;
@@ -218,6 +223,8 @@ type SneedRLL =
    principal_is_admin: (principal) -> (bool) query;
    remove_admin: (principal) -> (Result);
    remove_known_token: (principal) -> ();
+   remove_token_min_distribution: (principal) -> (Result);
+   set_token_min_distribution: (principal, nat) -> (Result);
    start_distribution_cycle: () -> (Result);
    start_rll_main_loop: () -> (Result);
    stop_distribution_cycle: () -> (Result);
