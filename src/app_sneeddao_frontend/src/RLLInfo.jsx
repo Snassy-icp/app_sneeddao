@@ -103,6 +103,11 @@ const styles = {
         width: '20px',
         height: '20px',
         animation: 'spin 1s linear infinite'
+    },
+    statusItem: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        marginBottom: '5px'
     }
 };
 
@@ -2023,6 +2028,46 @@ function RLLInfo() {
                         ))}
                     </div>
                 )}
+                {item.id === '1' && (
+                    <div style={{
+                        marginTop: '15px',
+                        padding: '15px',
+                        backgroundColor: '#2a2a2a',
+                        borderRadius: '6px'
+                    }}>
+                        <h4 style={{ margin: '0 0 15px 0' }}>Current Status</h4>
+                        {isLoadingNeuron ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : neuronBalance ? (
+                            <>
+                                <div style={styles.statusItem}>
+                                    <span>Stake:</span>
+                                    <span>{(Number(neuronBalance.stake_e8s) / 1e8).toFixed(2)} ICP</span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span>Voting Power:</span>
+                                    <span>{(Number(neuronBalance.voting_power) / 1e8).toFixed(2)} ICP</span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span>Age:</span>
+                                    <span>{formatDuration(Number(neuronBalance.age_seconds))}</span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span>Dissolve Delay:</span>
+                                    <span>{formatDuration(Number(neuronBalance.dissolve_delay_seconds))}</span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span>State:</span>
+                                    <span>{neuronBalance.state === 1 ? 'Not Dissolving' : 'Dissolving'}</span>
+                                </div>
+                            </>
+                        ) : (
+                            <div>Failed to load neuron information</div>
+                        )}
+                    </div>
+                )}
                 {item.id === '11' && (
                     <div style={{
                         marginTop: '10px',
@@ -2200,11 +2245,26 @@ function RLLInfo() {
                             </div>
                         ) : (
                             <>
-                                <div>Stake: {(Number(neuronBalance.stake_e8s) / 1e8).toFixed(2)} ICP</div>
-                                <div>Voting Power: {(Number(neuronBalance.voting_power) / 1e8).toFixed(2)} ICP</div>
-                                <div>Age: {formatDuration(Number(neuronBalance.age_seconds))}</div>
-                                <div>Dissolve Delay: {formatDuration(Number(neuronBalance.dissolve_delay_seconds))}</div>
-                                <div>State: {neuronBalance.state === 1 ? 'Not Dissolving' : 'Dissolving'}</div>
+                                <div style={styles.statusItem}>
+                                    <span>Stake:</span>
+                                    <span>{(Number(neuronBalance.stake_e8s) / 1e8).toFixed(2)} ICP</span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span>Voting Power:</span>
+                                    <span>{(Number(neuronBalance.voting_power) / 1e8).toFixed(2)} ICP</span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span>Age:</span>
+                                    <span>{formatDuration(Number(neuronBalance.age_seconds))}</span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span>Dissolve Delay:</span>
+                                    <span>{formatDuration(Number(neuronBalance.dissolve_delay_seconds))}</span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span>State:</span>
+                                    <span>{neuronBalance.state === 1 ? 'Not Dissolving' : 'Dissolving'}</span>
+                                </div>
                             </>
                         )}
                     </div>
