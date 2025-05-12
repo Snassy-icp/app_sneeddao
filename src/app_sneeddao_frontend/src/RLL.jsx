@@ -608,13 +608,14 @@ function RLL() {
                 const knownTokens = await rllActor.get_known_tokens();
                 console.log('Known tokens:', knownTokens);
 
-                // For each token, get its balance
-                const balances = await Promise.all(knownTokens.map(async (tokenId) => {
+                // For each token, get its balance - extract just the principal from each token entry
+                const balances = await Promise.all(knownTokens.map(async ([tokenId]) => {
                     const ledgerActor = createLedgerActor(tokenId.toString(), {
                         agentOptions: { identity }
                     });
+
                     const balance = await ledgerActor.icrc1_balance_of({
-                        owner: Principal.fromText('lvc4n-7aaaa-aaaam-adm6a-cai'),
+                        owner: Principal.fromText(rllCanisterId),
                         subaccount: []
                     });
                     return [tokenId, balance];
