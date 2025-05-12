@@ -2787,9 +2787,10 @@ function RLLInfo() {
                     <section style={{
                         ...styles.section, 
                         gridArea: 'details',
-                        width: 'fit-content',  // Only take up needed space
+                        width: 'fit-content',  // Take up space based on content
                         minWidth: '350px',     // Minimum width to prevent squishing
-                        maxWidth: '100%'       // Allow shrinking on mobile
+                        maxWidth: '600px',     // Reasonable maximum width
+                        alignSelf: 'start'     // Prevent stretching
                     }}>
                         <h2>System Components</h2>
                         {Object.entries(nodes).map(([key, section]) => (
@@ -2866,7 +2867,7 @@ function RLLInfo() {
                     {`
                         @media (min-width: 1600px) {
                             .rll-layout {
-                                grid-template-columns: 400px 1fr 400px !important;
+                                grid-template-columns: 400px 1fr fit-content(600px) !important;
                                 grid-template-areas: "assets flow details";
                                 gap: 40px;
                             }
