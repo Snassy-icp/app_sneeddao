@@ -2395,7 +2395,8 @@ function RLLInfo() {
                 </div>
             </header>
             <main className="rllinfo-container" style={{
-                maxWidth: '2000px',  // Increase max width to allow more space
+                width: '100%',
+                maxWidth: '100%',
                 margin: '0 auto',
                 padding: '20px'
             }}>
@@ -2403,21 +2404,19 @@ function RLLInfo() {
                 
                 <div className="rll-layout" style={{
                     display: 'grid',
-                    gap: '40px',  // Increased gap between columns
-                    gridTemplateColumns: 'minmax(0, 1fr)',
+                    gap: '40px',
+                    gridTemplateColumns: '1fr',
+                    gridAutoFlow: 'row',  // Ensures vertical stacking on narrow screens
                     width: '100%'
                 }}>
                     {/* Total Assets Section */}
                     <section style={{...styles.section, gridArea: 'assets'}}>
                         <h2>Total Assets Overview</h2>
+                        {/* Remove the nested grid, just stack items vertically */}
                         <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-                            gap: '20px',
-                            padding: '20px',
                             backgroundColor: '#2a2a2a',
                             borderRadius: '8px',
-                            marginBottom: '20px'
+                            padding: '20px'
                         }}>
                             {/* Grand Total in USD */}
                             <div style={{
@@ -2425,8 +2424,7 @@ function RLLInfo() {
                                 padding: '20px',
                                 borderRadius: '6px',
                                 border: '1px solid #f1c40f',
-                                marginBottom: '20px',
-                                gridColumn: '1 / -1'  // Make it span full width
+                                marginBottom: '20px'
                             }}>
                                 <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px' }}>Total Value (USD)</h3>
                                 {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
@@ -2457,7 +2455,8 @@ function RLLInfo() {
                                 backgroundColor: '#1a1a1a',
                                 padding: '20px',
                                 borderRadius: '6px',
-                                border: '1px solid #3498db'
+                                border: '1px solid #3498db',
+                                marginBottom: '20px'
                             }}>
                                 <h3 style={{ color: '#3498db', marginTop: 0 }}>ICP Assets</h3>
                                 {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
@@ -2554,7 +2553,8 @@ function RLLInfo() {
                                 backgroundColor: '#1a1a1a',
                                 padding: '20px',
                                 borderRadius: '6px',
-                                border: '1px solid #2ecc71'
+                                border: '1px solid #2ecc71',
+                                marginBottom: '20px'
                             }}>
                                 <h3 style={{ color: '#2ecc71', marginTop: 0 }}>SNEED Assets</h3>
                                 {isLoadingBalances || isLoadingLp ? (
@@ -2634,105 +2634,104 @@ function RLLInfo() {
                                     </>
                                 )}
                             </div>
-                        </div>
 
-                        {/* Other Tokens */}
-                        <div style={{
-                            backgroundColor: '#1a1a1a',
-                            padding: '20px',
-                            borderRadius: '6px',
-                            border: '1px solid #9b59b6',
-                            marginTop: '20px'
-                        }}>
-                            <h3 style={{ color: '#9b59b6', marginTop: 0 }}>Other Tokens</h3>
-                            {isLoadingRllData ? (
-                                <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                                    <div style={styles.spinner} />
-                                </div>
-                            ) : (
-                                <>
-                                    {/* DeFi Canister Balances */}
-                                    <div style={{ marginBottom: '25px' }}>
-                                        <div style={{ 
-                                            color: '#3498db', 
-                                            fontSize: '1.1em', 
-                                            fontWeight: 'bold',
-                                            marginBottom: '15px',
-                                            borderBottom: '1px solid #3498db',
-                                            paddingBottom: '5px'
-                                        }}>
-                                            DeFi Canister Balances
-                                        </div>
-                                        <div style={{ marginLeft: '15px' }}>
-                                            {defiKnownTokens
-                                                .filter(([tokenId]) => {
-                                                    const id = tokenId.toString();
-                                                    return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && 
-                                                           id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
-                                                })
-                                                .map(([tokenId, tokenInfo]) => {
-                                                    const balance = defiTokenBalances[tokenId.toString()];
-                                                    if (!balance) return null;
-                                                    
-                                                    const usdValue = getUSDValue(balance, tokenInfo.decimals, tokenInfo.symbol);
-                                                    
-                                                    return (
-                                                        <div key={tokenId.toString()} style={{ marginBottom: '10px', marginLeft: '10px' }}>
-                                                            {(Number(balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
-                                                            {!isNaN(usdValue) && usdValue > 0 && (
-                                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                                    (${formatUSD(usdValue)})
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })
-                                                .filter(item => item !== null)
-                                            }
-                                        </div>
+                            {/* Other Tokens */}
+                            <div style={{
+                                backgroundColor: '#1a1a1a',
+                                padding: '20px',
+                                borderRadius: '6px',
+                                border: '1px solid #9b59b6'
+                            }}>
+                                <h3 style={{ color: '#9b59b6', marginTop: 0 }}>Other Tokens</h3>
+                                {isLoadingRllData ? (
+                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                        <div style={styles.spinner} />
                                     </div>
-
-                                    {/* RLL Distribution Balances */}
-                                    <div>
-                                        <div style={{ 
-                                            color: '#9b59b6', 
-                                            fontSize: '1.1em', 
-                                            fontWeight: 'bold',
-                                            marginBottom: '15px',
-                                            borderBottom: '1px solid #9b59b6',
-                                            paddingBottom: '5px'
-                                        }}>
-                                            RLL Distribution Balances
-                                        </div>
-                                        <div style={{ marginLeft: '15px' }}>
-                                            {knownTokens
-                                                .filter(([tokenId]) => {
-                                                    const id = tokenId.toString();
-                                                    return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
-                                                })
-                                                .map(([tokenId, tokenInfo]) => {
-                                                    const rllBalance = reconciliationData.find(item => 
-                                                        item.token_id.toString() === tokenId.toString()
-                                                    );
-                                                    if (!rllBalance) return null;
-
-                                                    return (
-                                                        <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
-                                                            <div style={{ marginLeft: '10px' }}>
-                                                                {(Number(rllBalance.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
-                                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                                    (${formatUSD(getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol))})
-                                                                </span>
+                                ) : (
+                                    <>
+                                        {/* DeFi Canister Balances */}
+                                        <div style={{ marginBottom: '25px' }}>
+                                            <div style={{ 
+                                                color: '#3498db', 
+                                                fontSize: '1.1em', 
+                                                fontWeight: 'bold',
+                                                marginBottom: '15px',
+                                                borderBottom: '1px solid #3498db',
+                                                paddingBottom: '5px'
+                                            }}>
+                                                DeFi Canister Balances
+                                            </div>
+                                            <div style={{ marginLeft: '15px' }}>
+                                                {defiKnownTokens
+                                                    .filter(([tokenId]) => {
+                                                        const id = tokenId.toString();
+                                                        return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && 
+                                                               id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
+                                                    })
+                                                    .map(([tokenId, tokenInfo]) => {
+                                                        const balance = defiTokenBalances[tokenId.toString()];
+                                                        if (!balance) return null;
+                                                        
+                                                        const usdValue = getUSDValue(balance, tokenInfo.decimals, tokenInfo.symbol);
+                                                        
+                                                        return (
+                                                            <div key={tokenId.toString()} style={{ marginBottom: '10px', marginLeft: '10px' }}>
+                                                                {(Number(balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                                {!isNaN(usdValue) && usdValue > 0 && (
+                                                                    <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                        (${formatUSD(usdValue)})
+                                                                    </span>
+                                                                )}
                                                             </div>
-                                                        </div>
-                                                    );
-                                                })
-                                                .filter(item => item !== null)
-                                            }
+                                                        );
+                                                    })
+                                                    .filter(item => item !== null)
+                                                }
+                                            </div>
                                         </div>
-                                    </div>
-                                </>
-                            )}
+
+                                        {/* RLL Distribution Balances */}
+                                        <div>
+                                            <div style={{ 
+                                                color: '#9b59b6', 
+                                                fontSize: '1.1em', 
+                                                fontWeight: 'bold',
+                                                marginBottom: '15px',
+                                                borderBottom: '1px solid #9b59b6',
+                                                paddingBottom: '5px'
+                                            }}>
+                                                RLL Distribution Balances
+                                            </div>
+                                            <div style={{ marginLeft: '15px' }}>
+                                                {knownTokens
+                                                    .filter(([tokenId]) => {
+                                                        const id = tokenId.toString();
+                                                        return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
+                                                    })
+                                                    .map(([tokenId, tokenInfo]) => {
+                                                        const rllBalance = reconciliationData.find(item => 
+                                                            item.token_id.toString() === tokenId.toString()
+                                                        );
+                                                        if (!rllBalance) return null;
+
+                                                        return (
+                                                            <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
+                                                                <div style={{ marginLeft: '10px' }}>
+                                                                    {(Number(rllBalance.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                                    <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                        (${formatUSD(getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol))})
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })
+                                                    .filter(item => item !== null)
+                                                }
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                         </div>
                     </section>
 
@@ -2837,8 +2836,9 @@ function RLLInfo() {
                     {`
                         @media (min-width: 1600px) {
                             .rll-layout {
-                                grid-template-columns: minmax(400px, 1fr) minmax(500px, 2fr) minmax(400px, 1fr);
+                                grid-template-columns: 25fr 50fr 25fr;
                                 grid-template-areas: "assets flow details";
+                                gap: 40px;
                             }
                         }
                     `}
