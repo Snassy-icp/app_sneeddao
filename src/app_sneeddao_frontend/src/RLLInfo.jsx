@@ -1367,6 +1367,10 @@ function RLLInfo() {
         icp: null,
         sneed: null
     });
+    const [defiBalances, setDefiBalances] = useState({
+        icp: null,
+        sneed: null
+    });
     const [neuronBalance, setNeuronBalance] = useState(null);
     const [isLoadingBalances, setIsLoadingBalances] = useState(false);
     const [isLoadingNeuron, setIsLoadingNeuron] = useState(false);
@@ -1448,12 +1452,28 @@ function RLLInfo() {
                     ]
                 });
 
+                // DeFi Canister balances
+                const defiIcpBalance = await icpLedgerActor.icrc1_balance_of({
+                    owner: Principal.fromText('ok64y-uiaaa-aaaag-qdcbq-cai'),
+                    subaccount: []
+                });
+
+                const defiSneedBalance = await sneedLedgerActor.icrc1_balance_of({
+                    owner: Principal.fromText('ok64y-uiaaa-aaaag-qdcbq-cai'),
+                    subaccount: []
+                });
+
                 setTreasuryBalances({
                     icp: icpBalance,
                     sneed: sneedBalance
                 });
+
+                setDefiBalances({
+                    icp: defiIcpBalance,
+                    sneed: defiSneedBalance
+                });
             } catch (error) {
-                console.error('Error fetching treasury balances:', error);
+                console.error('Error fetching balances:', error);
             } finally {
                 setIsLoadingBalances(false);
             }
@@ -2011,6 +2031,28 @@ function RLLInfo() {
                         )}
                     </div>
                 )}
+                {node.id === '7' && (
+                    <div style={{
+                        marginTop: '10px',
+                        padding: '10px',
+                        backgroundColor: '#3a3a3a',
+                        borderRadius: '4px'
+                    }}>
+                        <h4 style={{ margin: '0 0 10px 0' }}>Current Balances:</h4>
+                        {isLoadingBalances ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : (
+                            <>
+                                <div style={{ marginLeft: '10px' }}>
+                                    <div>• {(Number(defiBalances.icp) / 1e8).toFixed(4)} ICP</div>
+                                    <div>• {(Number(defiBalances.sneed) / 1e8).toFixed(4)} SNEED</div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
         );
         
@@ -2019,7 +2061,7 @@ function RLLInfo() {
             x: event.clientX,
             y: event.clientY
         });
-    }, [treasuryBalances, isLoadingBalances, neuronBalance, isLoadingNeuron, vectorInfo, isLoadingVectors, lpPositions, isLoadingLp]);
+    }, [treasuryBalances, isLoadingBalances, neuronBalance, isLoadingNeuron, vectorInfo, isLoadingVectors, lpPositions, isLoadingLp, defiBalances]);
 
     const handleEdgeMouseEnter = useCallback((event, edge) => {
         const content = (
@@ -2141,6 +2183,10 @@ function RLLInfo() {
                                         <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
                                         <div style={{ fontSize: '1.1em' }}>{(Number(lpPositions.totals.tokensOwed1) / 1e8).toFixed(4)} ICP</div>
                                     </div>
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
+                                        <div style={{ fontSize: '1.1em' }}>{(Number(defiBalances.icp) / 1e8).toFixed(4)} ICP</div>
+                                    </div>
                                     <div style={{
                                         marginTop: '20px',
                                         paddingTop: '15px',
@@ -2151,7 +2197,8 @@ function RLLInfo() {
                                             {((Number(treasuryBalances.icp) + 
                                                Number(neuronBalance?.stake_e8s || 0) + 
                                                Number(lpPositions.totals.token1Amount) +
-                                               Number(lpPositions.totals.tokensOwed1)) / 1e8).toFixed(4)} ICP
+                                               Number(lpPositions.totals.tokensOwed1) +
+                                               Number(defiBalances.icp)) / 1e8).toFixed(4)} ICP
                                         </div>
                                     </div>
                                 </>
@@ -2184,6 +2231,10 @@ function RLLInfo() {
                                         <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
                                         <div style={{ fontSize: '1.1em' }}>{(Number(lpPositions.totals.tokensOwed0) / 1e8).toFixed(4)} SNEED</div>
                                     </div>
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
+                                        <div style={{ fontSize: '1.1em' }}>{(Number(defiBalances.sneed) / 1e8).toFixed(4)} SNEED</div>
+                                    </div>
                                     <div style={{
                                         marginTop: '20px',
                                         paddingTop: '15px',
@@ -2193,7 +2244,8 @@ function RLLInfo() {
                                         <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
                                             {((Number(treasuryBalances.sneed) + 
                                                Number(lpPositions.totals.token0Amount) +
-                                               Number(lpPositions.totals.tokensOwed0)) / 1e8).toFixed(4)} SNEED
+                                               Number(lpPositions.totals.tokensOwed0) +
+                                               Number(defiBalances.sneed)) / 1e8).toFixed(4)} SNEED
                                         </div>
                                     </div>
                                 </>
