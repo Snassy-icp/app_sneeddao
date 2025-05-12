@@ -2428,6 +2428,15 @@ function RLLInfo() {
                                             </span>
                                         </div>
                                     </div>
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ color: '#888', marginBottom: '5px' }}>RLL Distribution:</div>
+                                        <div style={{ fontSize: '1.1em' }}>
+                                            {(Number(rllBalances.icp) / 1e8).toFixed(4)} ICP
+                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                (${formatUSD(getUSDValue(rllBalances.icp, 8, 'ICP'))})
+                                            </span>
+                                        </div>
+                                    </div>
                                     <div style={{
                                         marginTop: '20px',
                                         paddingTop: '15px',
@@ -2439,14 +2448,16 @@ function RLLInfo() {
                                                Number(neuronBalance?.stake_e8s || 0) + 
                                                Number(lpPositions.totals.token1Amount) +
                                                Number(lpPositions.totals.tokensOwed1) +
-                                               Number(defiBalances.icp)) / 1e8).toFixed(4)} ICP
+                                               Number(defiBalances.icp) +
+                                               Number(rllBalances.icp)) / 1e8).toFixed(4)} ICP
                                             <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
                                                 (${formatUSD(
                                                     getUSDValue(treasuryBalances.icp, 8, 'ICP') +
                                                     getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
                                                     getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
                                                     getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
-                                                    getUSDValue(defiBalances.icp, 8, 'ICP')
+                                                    getUSDValue(defiBalances.icp, 8, 'ICP') +
+                                                    getUSDValue(rllBalances.icp, 8, 'ICP')
                                                 )})
                                             </span>
                                         </div>
