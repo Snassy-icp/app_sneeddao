@@ -2410,13 +2410,17 @@ function RLLInfo() {
                     gap: '40px',
                     width: '100%',
                     minWidth: '0',
-                    minHeight: '0'
+                    minHeight: '0',
+                    gridTemplateAreas: "'assets' 'flow' 'details'",
+                    gridTemplateColumns: '1fr',
+                    justifyItems: 'center'
                 }}>
                     {/* Total Assets Section */}
                     <section style={{
                         ...styles.section, 
                         gridArea: 'assets',
-                        width: '400px',
+                        width: '100%',
+                        maxWidth: '800px',
                         alignSelf: 'start'
                     }}>
                         <h2>Total Assets Overview</h2>
@@ -2748,6 +2752,7 @@ function RLLInfo() {
                         ...styles.section, 
                         gridArea: 'flow',
                         width: '100%',
+                        maxWidth: '800px',
                         height: '800px',
                         minWidth: '0',
                         minHeight: '0',
@@ -2787,10 +2792,9 @@ function RLLInfo() {
                     <section style={{
                         ...styles.section, 
                         gridArea: 'details',
-                        width: 'fit-content',  // Take up space based on content
-                        minWidth: '350px',     // Minimum width to prevent squishing
-                        maxWidth: '800px',     // Increased maximum width
-                        alignSelf: 'start'     // Prevent stretching
+                        width: '100%',
+                        maxWidth: '800px',
+                        alignSelf: 'start'
                     }}>
                         <h2>System Components</h2>
                         {Object.entries(nodes).map(([key, section]) => (
@@ -2868,13 +2872,26 @@ function RLLInfo() {
                         @media (min-width: 1600px) {
                             .rll-layout {
                                 grid-template-columns: 400px 1fr fit-content(800px) !important;
-                                grid-template-areas: "assets flow details";
+                                grid-template-areas: "assets flow details" !important;
                                 gap: 40px;
+                                justifyItems: stretch;
+                            }
+
+                            .rll-layout > section[style*="gridArea: assets"] {
+                                width: 400px !important;
+                                max-width: 400px !important;
                             }
 
                             .rll-layout > section[style*="gridArea: flow"] {
                                 width: 100% !important;
+                                max-width: none !important;
                                 min-width: 0 !important;
+                            }
+
+                            .rll-layout > section[style*="gridArea: details"] {
+                                width: fit-content !important;
+                                min-width: 350px !important;
+                                max-width: 800px !important;
                             }
                         }
                     `}
