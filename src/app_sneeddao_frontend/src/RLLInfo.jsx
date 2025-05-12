@@ -2397,433 +2397,446 @@ function RLLInfo() {
             <main className="help-container">
                 <h1 style={{ color: '#ffffff' }}>Recursive Liquidity Loop (RLL)</h1>
                 
-                {/* Total Assets Section */}
-                <section style={styles.section}>
-                    <h2>Total Assets Overview</h2>
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-                        gap: '20px',
-                        padding: '20px',
-                        backgroundColor: '#2a2a2a',
-                        borderRadius: '8px',
-                        marginBottom: '20px'
-                    }}>
-                        {/* Grand Total in USD */}
+                <div className="rll-layout" style={{
+                    display: 'grid',
+                    gap: '20px',
+                    gridTemplateColumns: 'minmax(0, 1fr)'
+                }}>
+                    {/* Total Assets Section */}
+                    <section style={styles.section}>
+                        <h2>Total Assets Overview</h2>
                         <div style={{
-                            backgroundColor: '#1a1a1a',
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                            gap: '20px',
                             padding: '20px',
-                            borderRadius: '6px',
-                            border: '1px solid #f1c40f',
-                            marginBottom: '20px',
-                            gridColumn: '1 / -1'  // Make it span full width
+                            backgroundColor: '#2a2a2a',
+                            borderRadius: '8px',
+                            marginBottom: '20px'
                         }}>
-                            <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px' }}>Total Value (USD)</h3>
-                            {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
-                                <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                                    <div style={styles.spinner} />
-                                </div>
-                            ) : (
-                                <div style={{ fontSize: '1.6em', fontWeight: 'bold' }}>
-                                    ${formatUSD(
-                                        // ICP total in USD
-                                        getUSDValue(treasuryBalances.icp, 8, 'ICP') +
-                                        getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
-                                        getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
-                                        getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
-                                        getUSDValue(defiBalances.icp, 8, 'ICP') +
-                                        // SNEED total in USD
-                                        getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
-                                        getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
-                                        getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
-                                        getUSDValue(defiBalances.sneed, 8, 'SNEED')
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* ICP Assets */}
-                        <div style={{
-                            backgroundColor: '#1a1a1a',
-                            padding: '20px',
-                            borderRadius: '6px',
-                            border: '1px solid #3498db'
-                        }}>
-                            <h3 style={{ color: '#3498db', marginTop: 0 }}>ICP Assets</h3>
-                            {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
-                                <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                                    <div style={styles.spinner} />
-                                </div>
-                            ) : (
-                                <>
-                                    <div style={{ marginBottom: '15px' }}>
-                                        <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
-                                        <div style={{ fontSize: '1.1em' }}>
-                                            {(Number(treasuryBalances.icp) / 1e8).toFixed(4)} ICP
-                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                (${formatUSD(getUSDValue(treasuryBalances.icp, 8, 'ICP'))})
-                                            </span>
-                                        </div>
+                            {/* Grand Total in USD */}
+                            <div style={{
+                                backgroundColor: '#1a1a1a',
+                                padding: '20px',
+                                borderRadius: '6px',
+                                border: '1px solid #f1c40f',
+                                marginBottom: '20px',
+                                gridColumn: '1 / -1'  // Make it span full width
+                            }}>
+                                <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px' }}>Total Value (USD)</h3>
+                                {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
+                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                        <div style={styles.spinner} />
                                     </div>
-                                    <div style={{ marginBottom: '15px' }}>
-                                        <div style={{ color: '#888', marginBottom: '5px' }}>8 Year Neuron:</div>
-                                        <div style={{ fontSize: '1.1em' }}>
-                                            {(Number(neuronBalance?.stake_e8s || 0) / 1e8).toFixed(4)} ICP
-                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                (${formatUSD(getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP'))})
-                                            </span>
-                                        </div>
+                                ) : (
+                                    <div style={{ fontSize: '1.6em', fontWeight: 'bold' }}>
+                                        ${formatUSD(
+                                            // ICP total in USD
+                                            getUSDValue(treasuryBalances.icp, 8, 'ICP') +
+                                            getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
+                                            getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
+                                            getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
+                                            getUSDValue(defiBalances.icp, 8, 'ICP') +
+                                            // SNEED total in USD
+                                            getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
+                                            getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
+                                            getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
+                                            getUSDValue(defiBalances.sneed, 8, 'SNEED')
+                                        )}
                                     </div>
-                                    <div style={{ marginBottom: '15px' }}>
-                                        <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
-                                        <div style={{ fontSize: '1.1em' }}>
-                                            {(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} ICP
-                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                (${formatUSD(getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP'))})
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div style={{ marginBottom: '15px' }}>
-                                        <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
-                                        <div style={{ fontSize: '1.1em' }}>
-                                            {(Number(lpPositions.totals.tokensOwed1) / 1e8).toFixed(4)} ICP
-                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                (${formatUSD(getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP'))})
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div style={{ marginBottom: '15px' }}>
-                                        <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
-                                        <div style={{ fontSize: '1.1em' }}>
-                                            {(Number(defiBalances.icp) / 1e8).toFixed(4)} ICP
-                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                (${formatUSD(getUSDValue(defiBalances.icp, 8, 'ICP'))})
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div style={{ marginBottom: '15px' }}>
-                                        <div style={{ color: '#888', marginBottom: '5px' }}>RLL Distribution:</div>
-                                        <div style={{ fontSize: '1.1em' }}>
-                                            {(Number(rllBalances.icp) / 1e8).toFixed(4)} ICP
-                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                (${formatUSD(getUSDValue(rllBalances.icp, 8, 'ICP'))})
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div style={{
-                                        marginTop: '20px',
-                                        paddingTop: '15px',
-                                        borderTop: '1px solid #444'
-                                    }}>
-                                        <div style={{ color: '#3498db', marginBottom: '5px' }}>Total ICP:</div>
-                                        <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
-                                            {((Number(treasuryBalances.icp) + 
-                                               Number(neuronBalance?.stake_e8s || 0) + 
-                                               Number(lpPositions.totals.token1Amount) +
-                                               Number(lpPositions.totals.tokensOwed1) +
-                                               Number(defiBalances.icp) +
-                                               Number(rllBalances.icp)) / 1e8).toFixed(4)} ICP
-                                            <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
-                                                (${formatUSD(
-                                                    getUSDValue(treasuryBalances.icp, 8, 'ICP') +
-                                                    getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
-                                                    getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
-                                                    getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
-                                                    getUSDValue(defiBalances.icp, 8, 'ICP') +
-                                                    getUSDValue(rllBalances.icp, 8, 'ICP')
-                                                )})
-                                            </span>
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-
-                        {/* SNEED Assets */}
-                        <div style={{
-                            backgroundColor: '#1a1a1a',
-                            padding: '20px',
-                            borderRadius: '6px',
-                            border: '1px solid #2ecc71'
-                        }}>
-                            <h3 style={{ color: '#2ecc71', marginTop: 0 }}>SNEED Assets</h3>
-                            {isLoadingBalances || isLoadingLp ? (
-                                <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                                    <div style={styles.spinner} />
-                                </div>
-                            ) : (
-                                <>
-                                    <div style={{ marginBottom: '15px' }}>
-                                        <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
-                                        <div style={{ fontSize: '1.1em' }}>
-                                            {(Number(treasuryBalances.sneed) / 1e8).toFixed(4)} SNEED
-                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                (${formatUSD(getUSDValue(treasuryBalances.sneed, 8, 'SNEED'))})
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div style={{ marginBottom: '15px' }}>
-                                        <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
-                                        <div style={{ fontSize: '1.1em' }}>
-                                            {(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} SNEED
-                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                (${formatUSD(getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED'))})
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div style={{ marginBottom: '15px' }}>
-                                        <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
-                                        <div style={{ fontSize: '1.1em' }}>
-                                            {(Number(lpPositions.totals.tokensOwed0) / 1e8).toFixed(4)} SNEED
-                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                (${formatUSD(getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED'))})
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div style={{ marginBottom: '15px' }}>
-                                        <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
-                                        <div style={{ fontSize: '1.1em' }}>
-                                            {(Number(defiBalances.sneed) / 1e8).toFixed(4)} SNEED
-                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                (${formatUSD(getUSDValue(defiBalances.sneed, 8, 'SNEED'))})
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div style={{ marginBottom: '15px' }}>
-                                        <div style={{ color: '#888', marginBottom: '5px' }}>RLL Distribution:</div>
-                                        <div style={{ fontSize: '1.1em' }}>
-                                            {(Number(rllBalances.sneed) / 1e8).toFixed(4)} SNEED
-                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                (${formatUSD(getUSDValue(rllBalances.sneed, 8, 'SNEED'))})
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div style={{
-                                        marginTop: '20px',
-                                        paddingTop: '15px',
-                                        borderTop: '1px solid #444'
-                                    }}>
-                                        <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Total SNEED:</div>
-                                        <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
-                                            {((Number(treasuryBalances.sneed) + 
-                                               Number(lpPositions.totals.token0Amount) +
-                                               Number(lpPositions.totals.tokensOwed0) +
-                                               Number(defiBalances.sneed) +
-                                               Number(rllBalances.sneed)) / 1e8).toFixed(4)} SNEED
-                                            <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
-                                                (${formatUSD(
-                                                    getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
-                                                    getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
-                                                    getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
-                                                    getUSDValue(defiBalances.sneed, 8, 'SNEED') +
-                                                    getUSDValue(rllBalances.sneed, 8, 'SNEED')
-                                                )})
-                                            </span>
-                                        </div>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Other Tokens */}
-                    <div style={{
-                        backgroundColor: '#1a1a1a',
-                        padding: '20px',
-                        borderRadius: '6px',
-                        border: '1px solid #9b59b6',
-                        marginTop: '20px'
-                    }}>
-                        <h3 style={{ color: '#9b59b6', marginTop: 0 }}>Other Tokens</h3>
-                        {isLoadingRllData ? (
-                            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                                <div style={styles.spinner} />
+                                )}
                             </div>
-                        ) : (
-                            <>
-                                {/* DeFi Canister Balances */}
-                                <div style={{ marginBottom: '25px' }}>
-                                    <div style={{ 
-                                        color: '#3498db', 
-                                        fontSize: '1.1em', 
-                                        fontWeight: 'bold',
-                                        marginBottom: '15px',
-                                        borderBottom: '1px solid #3498db',
-                                        paddingBottom: '5px'
-                                    }}>
-                                        DeFi Canister Balances
+
+                            {/* ICP Assets */}
+                            <div style={{
+                                backgroundColor: '#1a1a1a',
+                                padding: '20px',
+                                borderRadius: '6px',
+                                border: '1px solid #3498db'
+                            }}>
+                                <h3 style={{ color: '#3498db', marginTop: 0 }}>ICP Assets</h3>
+                                {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
+                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                        <div style={styles.spinner} />
                                     </div>
-                                    <div style={{ marginLeft: '15px' }}>
-                                        {defiKnownTokens
-                                            .filter(([tokenId]) => {
-                                                const id = tokenId.toString();
-                                                return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && 
-                                                       id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
-                                            })
-                                            .map(([tokenId, tokenInfo]) => {
-                                                const balance = defiTokenBalances[tokenId.toString()];
-                                                if (!balance) return null;
-                                                
-                                                const usdValue = getUSDValue(balance, tokenInfo.decimals, tokenInfo.symbol);
-                                                
-                                                return (
-                                                    <div key={tokenId.toString()} style={{ marginBottom: '10px', marginLeft: '10px' }}>
-                                                        {(Number(balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
-                                                        {!isNaN(usdValue) && usdValue > 0 && (
-                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                                (${formatUSD(usdValue)})
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })
-                                            .filter(item => item !== null)
-                                        }
+                                ) : (
+                                    <>
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(treasuryBalances.icp) / 1e8).toFixed(4)} ICP
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(treasuryBalances.icp, 8, 'ICP'))})
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>8 Year Neuron:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(neuronBalance?.stake_e8s || 0) / 1e8).toFixed(4)} ICP
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP'))})
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} ICP
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP'))})
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(lpPositions.totals.tokensOwed1) / 1e8).toFixed(4)} ICP
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP'))})
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(defiBalances.icp) / 1e8).toFixed(4)} ICP
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(defiBalances.icp, 8, 'ICP'))})
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>RLL Distribution:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(rllBalances.icp) / 1e8).toFixed(4)} ICP
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(rllBalances.icp, 8, 'ICP'))})
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{
+                                            marginTop: '20px',
+                                            paddingTop: '15px',
+                                            borderTop: '1px solid #444'
+                                        }}>
+                                            <div style={{ color: '#3498db', marginBottom: '5px' }}>Total ICP:</div>
+                                            <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
+                                                {((Number(treasuryBalances.icp) + 
+                                                   Number(neuronBalance?.stake_e8s || 0) + 
+                                                   Number(lpPositions.totals.token1Amount) +
+                                                   Number(lpPositions.totals.tokensOwed1) +
+                                                   Number(defiBalances.icp) +
+                                                   Number(rllBalances.icp)) / 1e8).toFixed(4)} ICP
+                                                <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
+                                                    (${formatUSD(
+                                                        getUSDValue(treasuryBalances.icp, 8, 'ICP') +
+                                                        getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
+                                                        getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
+                                                        getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
+                                                        getUSDValue(defiBalances.icp, 8, 'ICP') +
+                                                        getUSDValue(rllBalances.icp, 8, 'ICP')
+                                                    )})
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* SNEED Assets */}
+                            <div style={{
+                                backgroundColor: '#1a1a1a',
+                                padding: '20px',
+                                borderRadius: '6px',
+                                border: '1px solid #2ecc71'
+                            }}>
+                                <h3 style={{ color: '#2ecc71', marginTop: 0 }}>SNEED Assets</h3>
+                                {isLoadingBalances || isLoadingLp ? (
+                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                        <div style={styles.spinner} />
                                     </div>
+                                ) : (
+                                    <>
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(treasuryBalances.sneed) / 1e8).toFixed(4)} SNEED
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(treasuryBalances.sneed, 8, 'SNEED'))})
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} SNEED
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED'))})
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(lpPositions.totals.tokensOwed0) / 1e8).toFixed(4)} SNEED
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED'))})
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(defiBalances.sneed) / 1e8).toFixed(4)} SNEED
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(defiBalances.sneed, 8, 'SNEED'))})
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>RLL Distribution:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(rllBalances.sneed) / 1e8).toFixed(4)} SNEED
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(rllBalances.sneed, 8, 'SNEED'))})
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div style={{
+                                            marginTop: '20px',
+                                            paddingTop: '15px',
+                                            borderTop: '1px solid #444'
+                                        }}>
+                                            <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Total SNEED:</div>
+                                            <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
+                                                {((Number(treasuryBalances.sneed) + 
+                                                   Number(lpPositions.totals.token0Amount) +
+                                                   Number(lpPositions.totals.tokensOwed0) +
+                                                   Number(defiBalances.sneed) +
+                                                   Number(rllBalances.sneed)) / 1e8).toFixed(4)} SNEED
+                                                <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
+                                                    (${formatUSD(
+                                                        getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
+                                                        getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
+                                                        getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
+                                                        getUSDValue(defiBalances.sneed, 8, 'SNEED') +
+                                                        getUSDValue(rllBalances.sneed, 8, 'SNEED')
+                                                    )})
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Other Tokens */}
+                        <div style={{
+                            backgroundColor: '#1a1a1a',
+                            padding: '20px',
+                            borderRadius: '6px',
+                            border: '1px solid #9b59b6',
+                            marginTop: '20px'
+                        }}>
+                            <h3 style={{ color: '#9b59b6', marginTop: 0 }}>Other Tokens</h3>
+                            {isLoadingRllData ? (
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                    <div style={styles.spinner} />
                                 </div>
-
-                                {/* RLL Distribution Balances */}
-                                <div>
-                                    <div style={{ 
-                                        color: '#9b59b6', 
-                                        fontSize: '1.1em', 
-                                        fontWeight: 'bold',
-                                        marginBottom: '15px',
-                                        borderBottom: '1px solid #9b59b6',
-                                        paddingBottom: '5px'
-                                    }}>
-                                        RLL Distribution Balances
-                                    </div>
-                                    <div style={{ marginLeft: '15px' }}>
-                                        {knownTokens
-                                            .filter(([tokenId]) => {
-                                                const id = tokenId.toString();
-                                                return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
-                                            })
-                                            .map(([tokenId, tokenInfo]) => {
-                                                const rllBalance = reconciliationData.find(item => 
-                                                    item.token_id.toString() === tokenId.toString()
-                                                );
-                                                if (!rllBalance) return null;
-
-                                                return (
-                                                    <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
-                                                        <div style={{ marginLeft: '10px' }}>
-                                                            {(Number(rllBalance.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
-                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                                (${formatUSD(getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol))})
-                                                            </span>
+                            ) : (
+                                <>
+                                    {/* DeFi Canister Balances */}
+                                    <div style={{ marginBottom: '25px' }}>
+                                        <div style={{ 
+                                            color: '#3498db', 
+                                            fontSize: '1.1em', 
+                                            fontWeight: 'bold',
+                                            marginBottom: '15px',
+                                            borderBottom: '1px solid #3498db',
+                                            paddingBottom: '5px'
+                                        }}>
+                                            DeFi Canister Balances
+                                        </div>
+                                        <div style={{ marginLeft: '15px' }}>
+                                            {defiKnownTokens
+                                                .filter(([tokenId]) => {
+                                                    const id = tokenId.toString();
+                                                    return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && 
+                                                           id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
+                                                })
+                                                .map(([tokenId, tokenInfo]) => {
+                                                    const balance = defiTokenBalances[tokenId.toString()];
+                                                    if (!balance) return null;
+                                                    
+                                                    const usdValue = getUSDValue(balance, tokenInfo.decimals, tokenInfo.symbol);
+                                                    
+                                                    return (
+                                                        <div key={tokenId.toString()} style={{ marginBottom: '10px', marginLeft: '10px' }}>
+                                                            {(Number(balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                            {!isNaN(usdValue) && usdValue > 0 && (
+                                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                    (${formatUSD(usdValue)})
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                    </div>
-                                                );
-                                            })
-                                            .filter(item => item !== null)
-                                        }
+                                                    );
+                                                })
+                                                .filter(item => item !== null)
+                                            }
+                                        </div>
                                     </div>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </section>
 
-                {/* Flow Diagram Section */}
-                <section style={styles.section}>
-                    <h2>System Flow Diagram</h2>
-                    <div style={styles.flowContainer}>
-                        <ReactFlow
-                            nodes={initialNodes}
-                            edges={initialEdges}
-                            fitView
-                            defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-                            onNodeMouseEnter={handleNodeMouseEnter}
-                            onNodeMouseLeave={handleMouseLeave}
-                            onEdgeMouseEnter={handleEdgeMouseEnter}
-                            onEdgeMouseLeave={handleMouseLeave}
-                            onMouseMove={handleMouseMove}
-                            onNodeClick={handleNodeClick}
-                        >
-                            <Background color="#444" gap={16} />
-                            <Controls />
-                            <TokenAnimationManager edges={initialEdges} nodes={initialNodes} />
-                            <TooltipOverlay tooltip={tooltip} />
-                        </ReactFlow>
-                    </div>
-                </section>
-
-                {/* Nodes Section */}
-                <section style={styles.section}>
-                    <h2>System Components</h2>
-                    {Object.entries(nodes).map(([key, section]) => (
-                        <div key={key}>
-                            <div 
-                                style={styles.expandableHeader}
-                                onClick={() => toggleSection(key)}
-                            >
-                                <span>{section.title}</span>
-                                <span>{expandedSections[key] ? '▼' : '▶'}</span>
-                            </div>
-                            {expandedSections[key] && (
-                                <div style={styles.content}>
-                                    {section.items.map(item => (
-                                        <div key={item.id} style={styles.item}>
-                                            <div 
-                                                style={styles.itemHeader}
-                                                onClick={() => toggleItem(item.id)}
-                                            >
-                                                {item.title} {expandedItems[item.id] ? '▼' : '▶'}
-                                            </div>
-                                            {expandedItems[item.id] && renderItemDetails(item)}
+                                    {/* RLL Distribution Balances */}
+                                    <div>
+                                        <div style={{ 
+                                            color: '#9b59b6', 
+                                            fontSize: '1.1em', 
+                                            fontWeight: 'bold',
+                                            marginBottom: '15px',
+                                            borderBottom: '1px solid #9b59b6',
+                                            paddingBottom: '5px'
+                                        }}>
+                                            RLL Distribution Balances
                                         </div>
-                                    ))}
-                                </div>
+                                        <div style={{ marginLeft: '15px' }}>
+                                            {knownTokens
+                                                .filter(([tokenId]) => {
+                                                    const id = tokenId.toString();
+                                                    return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
+                                                })
+                                                .map(([tokenId, tokenInfo]) => {
+                                                    const rllBalance = reconciliationData.find(item => 
+                                                        item.token_id.toString() === tokenId.toString()
+                                                    );
+                                                    if (!rllBalance) return null;
+
+                                                    return (
+                                                        <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
+                                                            <div style={{ marginLeft: '10px' }}>
+                                                                {(Number(rllBalance.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                    (${formatUSD(getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol))})
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })
+                                                .filter(item => item !== null)
+                                            }
+                                        </div>
+                                    </div>
+                                </>
                             )}
                         </div>
-                    ))}
-                </section>
+                    </section>
 
-                {/* Edges Section */}
-                <section style={styles.section}>
-                    <h2>Token Flows</h2>
-                    {Object.entries(edges).map(([key, section]) => (
-                        <div key={key}>
-                            <div 
-                                style={styles.expandableHeader}
-                                onClick={() => toggleSection(key + '_edges')}
+                    {/* Flow Diagram Section */}
+                    <section style={styles.section}>
+                        <h2>System Flow Diagram</h2>
+                        <div style={styles.flowContainer}>
+                            <ReactFlow
+                                nodes={initialNodes}
+                                edges={initialEdges}
+                                fitView
+                                defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+                                onNodeMouseEnter={handleNodeMouseEnter}
+                                onNodeMouseLeave={handleMouseLeave}
+                                onEdgeMouseEnter={handleEdgeMouseEnter}
+                                onEdgeMouseLeave={handleMouseLeave}
+                                onMouseMove={handleMouseMove}
+                                onNodeClick={handleNodeClick}
                             >
-                                <span>{section.title}</span>
-                                <span>{expandedSections[key + '_edges'] ? '▼' : '▶'}</span>
-                            </div>
-                            {expandedSections[key + '_edges'] && (
-                                <div style={styles.content}>
-                                    {section.items.map(item => (
-                                        <div key={item.id} style={styles.item}>
-                                            <div 
-                                                style={styles.itemHeader}
-                                                onClick={() => toggleItem(item.id)}
-                                            >
-                                                {item.description} {expandedItems[item.id] ? '▼' : '▶'}
-                                            </div>
-                                            {expandedItems[item.id] && (
-                                                <div style={styles.itemContent}>
-                                                    <p>Token: {item.token}</p>
-                                                    <p>From: {nodes.infrastructure.items.concat(
-                                                        nodes.tokenManagement.items,
-                                                        nodes.revenue.items
-                                                    ).find(n => n.id === item.source)?.title}</p>
-                                                    <p>To: {nodes.infrastructure.items.concat(
-                                                        nodes.tokenManagement.items,
-                                                        nodes.revenue.items
-                                                    ).find(n => n.id === item.target)?.title}</p>
-                                                    <p>Percentage: {item.percentage}</p>
+                                <Background color="#444" gap={16} />
+                                <Controls />
+                                <TokenAnimationManager edges={initialEdges} nodes={initialNodes} />
+                                <TooltipOverlay tooltip={tooltip} />
+                            </ReactFlow>
+                        </div>
+                    </section>
+
+                    {/* Combined Details Section */}
+                    <section style={styles.section}>
+                        <h2>System Components</h2>
+                        {Object.entries(nodes).map(([key, section]) => (
+                            <div key={key}>
+                                <div 
+                                    style={styles.expandableHeader}
+                                    onClick={() => toggleSection(key)}
+                                >
+                                    <span>{section.title}</span>
+                                    <span>{expandedSections[key] ? '▼' : '▶'}</span>
+                                </div>
+                                {expandedSections[key] && (
+                                    <div style={styles.content}>
+                                        {section.items.map(item => (
+                                            <div key={item.id} style={styles.item}>
+                                                <div 
+                                                    style={styles.itemHeader}
+                                                    onClick={() => toggleItem(item.id)}
+                                                >
+                                                    {item.title} {expandedItems[item.id] ? '▼' : '▶'}
                                                 </div>
-                                            )}
-                                        </div>
-                                    ))}
+                                                {expandedItems[item.id] && renderItemDetails(item)}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+
+                        <h2 style={{ marginTop: '40px' }}>Token Flows</h2>
+                        {Object.entries(edges).map(([key, section]) => (
+                            <div key={key}>
+                                <div 
+                                    style={styles.expandableHeader}
+                                    onClick={() => toggleSection(key + '_edges')}
+                                >
+                                    <span>{section.title}</span>
+                                    <span>{expandedSections[key + '_edges'] ? '▼' : '▶'}</span>
                                 </div>
-                            )}
-                        </div>
-                    ))}
-                </section>
+                                {expandedSections[key + '_edges'] && (
+                                    <div style={styles.content}>
+                                        {section.items.map(item => (
+                                            <div key={item.id} style={styles.item}>
+                                                <div 
+                                                    style={styles.itemHeader}
+                                                    onClick={() => toggleItem(item.id)}
+                                                >
+                                                    {item.description} {expandedItems[item.id] ? '▼' : '▶'}
+                                                </div>
+                                                {expandedItems[item.id] && (
+                                                    <div style={styles.itemContent}>
+                                                        <p>Token: {item.token}</p>
+                                                        <p>From: {nodes.infrastructure.items.concat(
+                                                            nodes.tokenManagement.items,
+                                                            nodes.revenue.items
+                                                        ).find(n => n.id === item.source)?.title}</p>
+                                                        <p>To: {nodes.infrastructure.items.concat(
+                                                            nodes.tokenManagement.items,
+                                                            nodes.revenue.items
+                                                        ).find(n => n.id === item.target)?.title}</p>
+                                                        <p>Percentage: {item.percentage}</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </section>
+                </div>
+
+                <style>
+                    {`
+                        @media (min-width: 1600px) {
+                            .rll-layout {
+                                grid-template-columns: repeat(3, minmax(0, 1fr));
+                            }
+                        }
+                    `}
+                </style>
             </main>
         </div>
     );
