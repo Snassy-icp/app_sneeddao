@@ -1400,6 +1400,8 @@ function RLLInfo() {
     const [knownTokens, setKnownTokens] = useState([]);
     const [reconciliationData, setReconciliationData] = useState([]);
     const [isLoadingRllData, setIsLoadingRllData] = useState(false);
+    const [defiKnownTokens, setDefiKnownTokens] = useState([]);
+    const [defiTokenBalances, setDefiTokenBalances] = useState({});
 
     useEffect(() => {
         const fetchConversionRates = async () => {
@@ -2333,6 +2335,44 @@ function RLLInfo() {
         fetchRllTokenData();
     }, [identity]);
 
+    // Add effect to fetch DeFi canister known tokens and balances
+    useEffect(() => {
+        const fetchDefiTokens = async () => {
+            if (!identity) return;
+            
+            setIsLoadingRllData(true);
+            try {
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: { identity }
+                });
+                
+                // Get known tokens for DeFi canister
+                const tokens = await rllActor.get_wallet_known_tokens(Principal.fromText("ok64y-uiaaa-aaaag-qdcbq-cai"));
+                setDefiKnownTokens(tokens);
+
+                // Get balance for each token
+                const balances = await Promise.all(tokens.map(async ([tokenId]) => {
+                    const ledgerActor = createLedgerActor(tokenId.toString(), {
+                        agentOptions: { identity }
+                    });
+                    const balance = await ledgerActor.icrc1_balance_of({
+                        owner: Principal.fromText("ok64y-uiaaa-aaaag-qdcbq-cai"),
+                        subaccount: []
+                    });
+                    return [tokenId.toString(), balance];
+                }));
+
+                setDefiTokenBalances(Object.fromEntries(balances));
+            } catch (error) {
+                console.error('Error fetching DeFi token data:', error);
+            } finally {
+                setIsLoadingRllData(false);
+            }
+        };
+
+        fetchDefiTokens();
+    }, [identity]);
+
     return (
         <div className='page-container'>
             <header className="site-header">
@@ -2581,14 +2621,15 @@ function RLLInfo() {
                                         DeFi Canister Balances
                                     </div>
                                     <div style={{ marginLeft: '15px' }}>
-                                        {knownTokens
+                                        {defiKnownTokens
                                             .filter(([tokenId]) => {
                                                 const id = tokenId.toString();
-                                                return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
+                                                return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && 
+                                                       id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
                                             })
                                             .map(([tokenId, tokenInfo]) => {
-                                                const defiBalance = defiBalances[tokenId.toString()];
-                                                if (!defiBalance) return null;
+                                                const balance = defiTokenBalances[tokenId.toString()];
+                                                if (!balance) return null;
                                                 
                                                 return (
                                                     <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
@@ -2596,9 +2637,9 @@ function RLLInfo() {
                                                             {tokenInfo.symbol}:
                                                         </div>
                                                         <div style={{ marginLeft: '10px' }}>
-                                                            {(Number(defiBalance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                            {(Number(balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
                                                             <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                                (${formatUSD(getUSDValue(defiBalance, tokenInfo.decimals, tokenInfo.symbol))})
+                                                                (${formatUSD(getUSDValue(balance, tokenInfo.decimals, tokenInfo.symbol))})
                                                             </span>
                                                         </div>
                                                     </div>
@@ -2606,11 +2647,11 @@ function RLLInfo() {
                                             })
                                             .filter(item => item !== null)
                                         }
-                                        {knownTokens.filter(([tokenId]) => {
+                                        {defiKnownTokens.filter(([tokenId]) => {
                                             const id = tokenId.toString();
                                             return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && 
                                                    id !== 'hvgxa-wqaaa-aaaaq-aacia-cai' && 
-                                                   !defiBalances[tokenId.toString()];
+                                                   !defiTokenBalances[tokenId.toString()];
                                         }).length === 0 && (
                                             <div style={{ color: '#888', fontStyle: 'italic' }}>No other token balances in DeFi canister</div>
                                         )}
