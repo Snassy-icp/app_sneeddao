@@ -7,7 +7,7 @@ import { createActor as createRllActor, canisterId as rllCanisterId } from 'exte
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { getTokenLogo } from './utils/TokenUtils';
 import ConfirmationModal from './ConfirmationModal';
-import './Help.css'; // We'll reuse the Help page styling for now
+import './RLL.css';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 import PrincipalBox from './PrincipalBox';
