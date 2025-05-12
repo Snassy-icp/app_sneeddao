@@ -2646,14 +2646,6 @@ function RLLInfo() {
                                             })
                                             .filter(item => item !== null)
                                         }
-                                        {defiKnownTokens.filter(([tokenId]) => {
-                                            const id = tokenId.toString();
-                                            return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && 
-                                                   id !== 'hvgxa-wqaaa-aaaaq-aacia-cai' && 
-                                                   !defiTokenBalances[tokenId.toString()];
-                                        }).length === 0 && (
-                                            <div style={{ color: '#888', fontStyle: 'italic' }}>No other token balances in DeFi canister</div>
-                                        )}
                                     </div>
                                 </div>
 
