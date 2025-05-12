@@ -1956,7 +1956,20 @@ function RLLInfo() {
                                         <div key={idx} style={{ marginLeft: '8px' }}>
                                             • {source.name || 'Default'}: {(Number(source.balance) / 1e8).toFixed(8)} {getTokenSymbolFromLedger(source.endpoint.ic.ledger)}
                                             <div style={{ fontSize: '0.9em', color: '#888' }}>
-                                                Account: <span className="long-account-string">{formatIcrc1Account(source.endpoint)}</span>
+                                                Account: 
+                                                <div style={{
+                                                    display: 'inline-block',
+                                                    maxWidth: '100%',
+                                                    wordBreak: 'break-all',
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.9em',
+                                                    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                                                    padding: '2px 4px',
+                                                    borderRadius: '3px',
+                                                    margin: '2px 0'
+                                                }}>
+                                                    {formatIcrc1Account(source.endpoint)}
+                                                </div>
                                                 {nodeName && <span style={{ color: '#3498db' }}> ({nodeName})</span>}
                                             </div>
                                         </div>
@@ -1975,7 +1988,20 @@ function RLLInfo() {
                                         <div key={idx} style={{ marginLeft: '8px' }}>
                                             • {dest.name}% {getTokenSymbolFromLedger(dest.endpoint.ic.ledger)}
                                             <div style={{ fontSize: '0.9em', color: '#888' }}>
-                                                Account: <span className="long-account-string">{formatIcrc1Account(dest.endpoint)}</span>
+                                                Account: 
+                                                <div style={{
+                                                    display: 'inline-block',
+                                                    maxWidth: '100%',
+                                                    wordBreak: 'break-all',
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.9em',
+                                                    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                                                    padding: '2px 4px',
+                                                    borderRadius: '3px',
+                                                    margin: '2px 0'
+                                                }}>
+                                                    {formatIcrc1Account(dest.endpoint)}
+                                                </div>
                                                 {nodeName && <span style={{ color: '#3498db' }}> ({nodeName})</span>}
                                             </div>
                                         </div>
