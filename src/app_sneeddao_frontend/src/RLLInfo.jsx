@@ -1560,11 +1560,9 @@ function RLLInfo() {
     // Add helper function to render vector info
     const renderVectorInfo = (vectorName) => {
         const vectorData = vectorInfo[vectorName];
-        if (!vectorData || !vectorData.length) return null;
+        if (!vectorData || !vectorData.length || !vectorData[0] || !vectorData[0][0]) return null;
         
-        // For exchange vector (SNEED Buyback), the data structure is slightly different
-        const isExchangeVector = vectorName === 'SNEED Buyback Vector';
-        const info = isExchangeVector ? vectorData[0] : vectorData[0][0];
+        const info = vectorData[0][0];
         if (!info) return null;
 
         // Helper to format nanoseconds timestamp
@@ -1579,32 +1577,6 @@ function RLLInfo() {
         const formatBalance = (balance) => {
             if (!balance) return '0';
             return (Number(balance) / 1e8).toFixed(8);
-        };
-
-        // Get split percentages if available
-        const getSplitPercentages = () => {
-            if (!info.custom?.[0]?.devefi_split?.variables?.split) return null;
-            return info.custom[0].devefi_split.variables.split;
-        };
-
-        // Get neuron info if available
-        const getNeuronInfo = () => {
-            if (!info.custom?.[0]?.devefi_jes1_icpneuron?.cache) return null;
-            const cache = info.custom[0].devefi_jes1_icpneuron.cache;
-            return {
-                cached_neuron_stake_e8s: cache.cached_neuron_stake_e8s?.[0],
-                voting_power: cache.voting_power?.[0],
-                age_seconds: cache.age_seconds?.[0],
-                dissolve_delay_seconds: cache.dissolve_delay_seconds?.[0],
-                maturity_e8s_equivalent: cache.maturity_e8s_equivalent?.[0],
-                state: cache.state?.[0]
-            };
-        };
-
-        // Get neuron followees if available
-        const getNeuronFollowees = () => {
-            if (!info.custom?.[0]?.devefi_jes1_icpneuron?.cache?.followees) return null;
-            return info.custom[0].devefi_jes1_icpneuron.cache.followees;
         };
 
         return (
@@ -1630,66 +1602,33 @@ function RLLInfo() {
                             <div style={{ marginTop: '8px' }}>
                                 <div style={{ fontWeight: 'bold' }}>Billing:</div>
                                 <div style={{ marginLeft: '8px' }}>
-                                    <div>Balance: {formatBalance(info.billing?.current_balance)} ICP</div>
-                                    <div>Status: {info.billing?.frozen ? 'Frozen' : 'Active'}</div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Split Percentages for Splitter Vectors */}
-                        {getSplitPercentages() && (
-                            <div style={{ marginTop: '8px' }}>
-                                <div style={{ fontWeight: 'bold' }}>Split Configuration:</div>
-                                <div style={{ marginLeft: '8px' }}>
-                                    {getSplitPercentages().map((percentage, idx) => (
-                                        <div key={idx}>
-                                            Destination {idx + 1}: {percentage.toString()}%
-                                            {info.destinations?.[idx] && ` (${info.destinations[idx].name})`}
-                                        </div>
-                                    ))}
+                                    <div>Balance: {formatBalance(info.billing.current_balance)} ICP</div>
+                                    <div>Status: {info.billing.frozen ? 'Frozen' : 'Active'}</div>
+                                    <div>Cost per day: {Number(info.billing.cost_per_day)} ICP</div>
                                 </div>
                             </div>
                         )}
 
                         {/* Exchange Vector Specific Information */}
-                        {isExchangeVector && info.custom && (
+                        {info.custom?.[0]?.exchange && (
                             <div style={{ marginTop: '8px' }}>
                                 <div style={{ fontWeight: 'bold' }}>Exchange Status:</div>
                                 <div style={{ marginLeft: '8px' }}>
-                                    {info.custom.map((entry, idx) => (
-                                        <div key={idx}>
-                                            {entry.operation}: {formatNanoTimestamp(entry.timestamp)}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Neuron Vector Specific Information */}
-                        {getNeuronInfo() && (
-                            <div style={{ marginTop: '8px' }}>
-                                <div style={{ fontWeight: 'bold' }}>Neuron Status:</div>
-                                <div style={{ marginLeft: '8px' }}>
-                                    <div>Stake: {formatBalance(getNeuronInfo().cached_neuron_stake_e8s)} ICP</div>
-                                    <div>Voting Power: {formatBalance(getNeuronInfo().voting_power)} ICP</div>
-                                    <div>Age: {formatDuration(Number(getNeuronInfo().age_seconds))}</div>
-                                    <div>Dissolve Delay: {formatDuration(Number(getNeuronInfo().dissolve_delay_seconds))}</div>
-                                    <div>Maturity: {formatBalance(getNeuronInfo().maturity_e8s_equivalent)} ICP</div>
-                                    <div>State: {getNeuronInfo().state === 1 ? 'Not Dissolving' : 'Dissolving'}</div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Neuron Followees */}
-                        {getNeuronFollowees() && (
-                            <div style={{ marginTop: '8px' }}>
-                                <div style={{ fontWeight: 'bold' }}>Following:</div>
-                                <div style={{ marginLeft: '8px' }}>
-                                    {getNeuronFollowees().map((followeeGroup, idx) => (
-                                        <div key={idx}>
-                                            • Topic {followeeGroup[0]}: {followeeGroup[1].followees.length} neuron{followeeGroup[1].followees.length !== 1 ? 's' : ''}
-                                        </div>
-                                    ))}
+                                    <div>Current Rate: {info.custom[0].exchange.internals.current_rate?.[0]?.toFixed(8) || 'N/A'}</div>
+                                    <div>Last Buy: {formatNanoTimestamp(info.custom[0].exchange.internals.last_buy)}</div>
+                                    <div>Next Buy: {formatNanoTimestamp(info.custom[0].exchange.internals.next_buy)}</div>
+                                    <div>Last Run: {formatNanoTimestamp(info.custom[0].exchange.internals.last_run)}</div>
+                                    <div>Swap Fee: {Number(info.custom[0].exchange.internals.swap_fee_e4s) / 10000}%</div>
+                                    {info.custom[0].exchange.internals.last_error?.length > 0 && (
+                                        <div style={{ color: '#ff6b6b' }}>Last Error: {info.custom[0].exchange.internals.last_error}</div>
+                                    )}
+                                    <div style={{ marginTop: '8px', fontWeight: 'bold' }}>Configuration:</div>
+                                    <div>Buy Amount: {formatBalance(info.custom[0].exchange.variables.buy_for_amount)} ICP</div>
+                                    <div>Buy Interval: {Number(info.custom[0].exchange.variables.buy_interval_seconds) / 60} minutes</div>
+                                    <div>Max Impact: {(info.custom[0].exchange.variables.max_impact * 100).toFixed(2)}%</div>
+                                    {info.custom[0].exchange.variables.max_rate?.length > 0 && (
+                                        <div>Max Rate: {info.custom[0].exchange.variables.max_rate[0]?.toFixed(8)}</div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -1701,6 +1640,9 @@ function RLLInfo() {
                                 {info.sources.map((source, idx) => (
                                     <div key={idx} style={{ marginLeft: '8px' }}>
                                         • {source.name}: {formatBalance(source.balance)} ICP
+                                        <div style={{ fontSize: '0.9em', color: '#888' }}>
+                                            Ledger: {source.endpoint.ic.ledger.toText()}
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -1713,18 +1655,9 @@ function RLLInfo() {
                                 {info.destinations.map((dest, idx) => (
                                     <div key={idx} style={{ marginLeft: '8px' }}>
                                         • {dest.name}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Recent Operations Log */}
-                        {info.log && info.log.length > 0 && (
-                            <div style={{ marginTop: '8px' }}>
-                                <div style={{ fontWeight: 'bold' }}>Recent Operations:</div>
-                                {info.log.slice(0, 3).map((logEntry, idx) => (
-                                    <div key={idx} style={{ marginLeft: '8px' }}>
-                                        • {logEntry.Ok?.operation}: {formatNanoTimestamp(logEntry.Ok?.timestamp)}
+                                        <div style={{ fontSize: '0.9em', color: '#888' }}>
+                                            Ledger: {dest.endpoint.ic.ledger.toText()}
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -1758,30 +1691,6 @@ function RLLInfo() {
                 {item.icrc1Account && (
                     <p>ICRC1 Account: <span style={styles.canisterId}>{item.icrc1Account}</span></p>
                 )}
-                {item.id === '1' && neuronBalance && (
-                    <div style={{
-                        marginTop: '10px',
-                        padding: '10px',
-                        backgroundColor: '#3a3a3a',
-                        borderRadius: '4px'
-                    }}>
-                        <h4 style={{ margin: '0 0 10px 0' }}>Neuron Status:</h4>
-                        {isLoadingNeuron ? (
-                            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
-                                <div style={styles.spinner} />
-                            </div>
-                        ) : (
-                            <>
-                                <div>Stake: {(Number(neuronBalance.stake_e8s) / 1e8).toFixed(2)} ICP</div>
-                                <div>Voting Power: {(Number(neuronBalance.voting_power) / 1e8).toFixed(2)} ICP</div>
-                                <div>Age: {formatDuration(Number(neuronBalance.age_seconds))}</div>
-                                <div>Dissolve Delay: {formatDuration(Number(neuronBalance.dissolve_delay_seconds))}</div>
-                                <div>State: {neuronBalance.state === 1 ? 'Not Dissolving' : 'Dissolving'}</div>
-                                <div>Created: {new Date(Number(neuronBalance.created_timestamp_seconds) * 1000).toLocaleDateString()}</div>
-                            </>
-                        )}
-                    </div>
-                )}
                 {item.details && (
                     <div style={{ marginTop: '10px' }}>
                         {item.details.split('\n').map((line, i) => (
@@ -1789,7 +1698,7 @@ function RLLInfo() {
                         ))}
                     </div>
                 )}
-                {(item.id === '2' || item.id === '3' || item.id === '5') && (
+                {(item.id === '2' || item.id === '3' || item.id === '5' || item.id === '4') && (
                     <div style={{
                         marginTop: '10px',
                         padding: '10px',
@@ -1800,6 +1709,7 @@ function RLLInfo() {
                         {renderVectorInfo(
                             item.id === '2' ? 'ICP Neuron Vector' :
                             item.id === '3' ? 'ICP Splitter Vector' :
+                            item.id === '4' ? 'SNEED Buyback Vector' :
                             'SNEED Splitter Vector'
                         )}
                     </div>
