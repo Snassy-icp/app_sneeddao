@@ -1375,13 +1375,13 @@ function RLLInfo() {
                     agentOptions: { identity }
                 });
 
-                // The neuron ID needs to be passed as an object with an id field
-                const neuronInfo = await governanceCanister.get_neuron_info({
-                    neuron_id: BigInt('4000934039483276792')
-                });
+                // Pass the neuron ID directly as a BigInt
+                const neuronId = BigInt('4000934039483276792');
+                const neuronInfo = await governanceCanister.get_neuron_info(neuronId);
 
                 if ('Ok' in neuronInfo) {
                     setNeuronBalance(neuronInfo.Ok.cached_neuron_stake_e8s);
+                    console.log('Neuron info:', neuronInfo.Ok);
                 } else if ('Error' in neuronInfo) {
                     console.error('Error from governance canister:', neuronInfo.Error);
                 }
