@@ -2028,6 +2028,44 @@ function RLLInfo() {
                         ))}
                     </div>
                 )}
+                {item.id === '6' && (
+                    <div style={{
+                        marginTop: '15px',
+                        padding: '15px',
+                        backgroundColor: '#2a2a2a',
+                        borderRadius: '6px'
+                    }}>
+                        <h4 style={{ margin: '0 0 15px 0' }}>Current Balances</h4>
+                        {isLoadingBalances ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : treasuryBalances ? (
+                            <>
+                                <div style={styles.statusItem}>
+                                    <span>ICP:</span>
+                                    <span>
+                                        {(Number(treasuryBalances.icp) / 1e8).toFixed(4)} ICP
+                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                            (${formatUSD(getUSDValue(treasuryBalances.icp, 8, 'ICP'))})
+                                        </span>
+                                    </span>
+                                </div>
+                                <div style={styles.statusItem}>
+                                    <span>SNEED:</span>
+                                    <span>
+                                        {(Number(treasuryBalances.sneed) / 1e8).toFixed(4)} SNEED
+                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                            (${formatUSD(getUSDValue(treasuryBalances.sneed, 8, 'SNEED'))})
+                                        </span>
+                                    </span>
+                                </div>
+                            </>
+                        ) : (
+                            <div>Failed to load treasury balances</div>
+                        )}
+                    </div>
+                )}
                 {item.id === '1' && (
                     <div style={{
                         marginTop: '15px',
