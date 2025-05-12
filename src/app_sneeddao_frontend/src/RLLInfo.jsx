@@ -1548,8 +1548,51 @@ function RLLInfo() {
 
     // Add helper function to render vector info
     const renderVectorInfo = (vectorName) => {
-        const info = vectorInfo[vectorName];
-        if (!info) return null;
+        const vectorData = vectorInfo[vectorName];
+        if (!vectorData || !vectorData[0]) return null;
+        
+        const info = vectorData[0];  // The actual vector data is in the first element
+
+        // Helper to format nanoseconds timestamp
+        const formatNanoTimestamp = (nanoTimestamp) => {
+            if (!nanoTimestamp) return 'Unknown';
+            // Convert from nanoseconds to milliseconds
+            const milliseconds = Number(nanoTimestamp) / 1_000_000;
+            return new Date(milliseconds).toLocaleString();
+        };
+
+        // Helper to format bigint balance
+        const formatBalance = (balance) => {
+            if (!balance) return '0';
+            return (Number(balance) / 1e8).toFixed(8);
+        };
+
+        // Get split percentages if available
+        const getSplitPercentages = () => {
+            if (!info.custom?.[0]?.devefi_split?.variables?.split) return null;
+            return info.custom[0].devefi_split.variables.split;
+        };
+
+        // Get neuron info if available
+        const getNeuronInfo = () => {
+            if (!info.custom?.[0]?.devefi_jes1_icpneuron?.cache) return null;
+            const cache = info.custom[0].devefi_jes1_icpneuron.cache;
+            // Add null checks for array access
+            return {
+                cached_neuron_stake_e8s: cache.cached_neuron_stake_e8s?.[0],
+                voting_power: cache.voting_power?.[0],
+                age_seconds: cache.age_seconds?.[0],
+                dissolve_delay_seconds: cache.dissolve_delay_seconds?.[0],
+                maturity_e8s_equivalent: cache.maturity_e8s_equivalent?.[0],
+                state: cache.state?.[0]
+            };
+        };
+
+        // Get neuron followees if available
+        const getNeuronFollowees = () => {
+            if (!info.custom?.[0]?.devefi_jes1_icpneuron?.cache?.followees) return null;
+            return info.custom[0].devefi_jes1_icpneuron.cache.followees;
+        };
 
         return (
             <div style={{
@@ -1565,24 +1608,96 @@ function RLLInfo() {
                     </div>
                 ) : (
                     <>
-                        <div>Active: {info.active ? 'Yes' : 'No'}</div>
-                        <div>Last Modified: {new Date(Number(info.modified)).toLocaleString()}</div>
+                        <div>Active: {info.active.toString()}</div>
+                        <div>Created: {formatNanoTimestamp(info.created)}</div>
+                        <div>Last Modified: {formatNanoTimestamp(info.modified)}</div>
+                        
+                        {/* Billing Information */}
+                        {info.billing && (
+                            <div style={{ marginTop: '8px' }}>
+                                <div style={{ fontWeight: 'bold' }}>Billing:</div>
+                                <div style={{ marginLeft: '8px' }}>
+                                    <div>Balance: {formatBalance(info.billing.current_balance)} ICP</div>
+                                    <div>Status: {info.billing.frozen ? 'Frozen' : 'Active'}</div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Split Percentages for Splitter Vectors */}
+                        {getSplitPercentages() && (
+                            <div style={{ marginTop: '8px' }}>
+                                <div style={{ fontWeight: 'bold' }}>Split Configuration:</div>
+                                <div style={{ marginLeft: '8px' }}>
+                                    {getSplitPercentages().map((percentage, idx) => (
+                                        <div key={idx}>
+                                            Destination {idx + 1}: {percentage.toString()}%
+                                            {info.destinations?.[idx] && ` (${info.destinations[idx].name})`}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Neuron Vector Specific Information */}
+                        {getNeuronInfo() && (
+                            <div style={{ marginTop: '8px' }}>
+                                <div style={{ fontWeight: 'bold' }}>Neuron Status:</div>
+                                <div style={{ marginLeft: '8px' }}>
+                                    <div>Stake: {formatBalance(getNeuronInfo().cached_neuron_stake_e8s)} ICP</div>
+                                    <div>Voting Power: {formatBalance(getNeuronInfo().voting_power)} ICP</div>
+                                    <div>Age: {formatDuration(Number(getNeuronInfo().age_seconds))}</div>
+                                    <div>Dissolve Delay: {formatDuration(Number(getNeuronInfo().dissolve_delay_seconds))}</div>
+                                    <div>Maturity: {formatBalance(getNeuronInfo().maturity_e8s_equivalent)} ICP</div>
+                                    <div>State: {getNeuronInfo().state === 1 ? 'Not Dissolving' : 'Dissolving'}</div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Neuron Followees */}
+                        {getNeuronFollowees() && (
+                            <div style={{ marginTop: '8px' }}>
+                                <div style={{ fontWeight: 'bold' }}>Following:</div>
+                                <div style={{ marginLeft: '8px' }}>
+                                    {getNeuronFollowees().map((followeeGroup, idx) => (
+                                        <div key={idx}>
+                                            • Topic {followeeGroup[0]}: {followeeGroup[1].followees.length} neuron{followeeGroup[1].followees.length !== 1 ? 's' : ''}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Sources */}
                         {info.sources && info.sources.length > 0 && (
-                            <div>
-                                <div style={{ marginTop: '4px', fontWeight: 'bold' }}>Sources:</div>
+                            <div style={{ marginTop: '8px' }}>
+                                <div style={{ fontWeight: 'bold' }}>Sources:</div>
                                 {info.sources.map((source, idx) => (
                                     <div key={idx} style={{ marginLeft: '8px' }}>
-                                        • {source.name}: {(Number(source.balance) / 1e8).toFixed(2)} ICP
+                                        • {source.name}: {formatBalance(source.balance)} ICP
                                     </div>
                                 ))}
                             </div>
                         )}
+
+                        {/* Destinations */}
                         {info.destinations && info.destinations.length > 0 && (
-                            <div>
-                                <div style={{ marginTop: '4px', fontWeight: 'bold' }}>Destinations:</div>
+                            <div style={{ marginTop: '8px' }}>
+                                <div style={{ fontWeight: 'bold' }}>Destinations:</div>
                                 {info.destinations.map((dest, idx) => (
                                     <div key={idx} style={{ marginLeft: '8px' }}>
                                         • {dest.name}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Recent Operations Log */}
+                        {info.log && info.log.length > 0 && (
+                            <div style={{ marginTop: '8px' }}>
+                                <div style={{ fontWeight: 'bold' }}>Recent Operations:</div>
+                                {info.log.slice(0, 3).map((logEntry, idx) => (
+                                    <div key={idx} style={{ marginLeft: '8px' }}>
+                                        • {logEntry.Ok?.operation}: {formatNanoTimestamp(logEntry.Ok?.timestamp)}
                                     </div>
                                 ))}
                             </div>
