@@ -2412,9 +2412,8 @@ function RLLInfo() {
                     <section style={{
                         ...styles.section, 
                         gridArea: 'assets',
-                        maxWidth: '100%',  // Allow shrinking on narrow screens
-                        width: '100%',
-                        alignSelf: 'start'  // Prevent stretching
+                        width: '400px',        // Fixed width
+                        maxWidth: '100%'       // Allow shrinking on mobile
                     }}>
                         <h2>Total Assets Overview</h2>
                         {/* Remove the nested grid, just stack items vertically */}
@@ -2745,11 +2744,15 @@ function RLLInfo() {
                         ...styles.section, 
                         gridArea: 'flow',
                         width: '100%',
-                        flex: 1,  // Allow growing
-                        minHeight: '600px'  // Ensure minimum height for diagram
+                        minWidth: 0,           // Allow shrinking
+                        height: '800px'        // Fixed height for diagram
                     }}>
                         <h2>System Flow Diagram</h2>
-                        <div style={styles.flowContainer}>
+                        <div style={{
+                            ...styles.flowContainer,
+                            width: '100%',
+                            height: 'calc(100% - 40px)'  // Account for header
+                        }}>
                             <ReactFlow
                                 nodes={initialNodes}
                                 edges={initialEdges}
@@ -2761,6 +2764,7 @@ function RLLInfo() {
                                 onEdgeMouseLeave={handleMouseLeave}
                                 onMouseMove={handleMouseMove}
                                 onNodeClick={handleNodeClick}
+                                style={{ width: '100%', height: '100%' }}
                             >
                                 <Background color="#444" gap={16} />
                                 <Controls />
@@ -2774,9 +2778,9 @@ function RLLInfo() {
                     <section style={{
                         ...styles.section, 
                         gridArea: 'details',
-                        maxWidth: '100%',  // Allow shrinking on narrow screens
-                        width: '100%',
-                        alignSelf: 'start'  // Prevent stretching
+                        width: 'fit-content',  // Only take up needed space
+                        minWidth: '350px',     // Minimum width to prevent squishing
+                        maxWidth: '100%'       // Allow shrinking on mobile
                     }}>
                         <h2>System Components</h2>
                         {Object.entries(nodes).map(([key, section]) => (
@@ -2853,7 +2857,7 @@ function RLLInfo() {
                     {`
                         @media (min-width: 1600px) {
                             .rll-layout {
-                                grid-template-columns: 400px 1fr 400px;
+                                grid-template-columns: 400px 1fr fit-content(800px);
                                 grid-template-areas: "assets flow details";
                                 gap: 40px;
                             }
