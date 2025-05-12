@@ -2789,7 +2789,7 @@ function RLLInfo() {
                         gridArea: 'details',
                         width: 'fit-content',  // Take up space based on content
                         minWidth: '350px',     // Minimum width to prevent squishing
-                        maxWidth: '600px',     // Reasonable maximum width
+                        maxWidth: '800px',     // Increased maximum width
                         alignSelf: 'start'     // Prevent stretching
                     }}>
                         <h2>System Components</h2>
@@ -2867,7 +2867,7 @@ function RLLInfo() {
                     {`
                         @media (min-width: 1600px) {
                             .rll-layout {
-                                grid-template-columns: 400px 1fr fit-content(600px) !important;
+                                grid-template-columns: 400px 1fr fit-content(800px) !important;
                                 grid-template-areas: "assets flow details";
                                 gap: 40px;
                             }
