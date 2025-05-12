@@ -1,0 +1,849 @@
+type Version = 
+ variant {
+   alpha: vec nat16;
+   beta: vec nat16;
+   release: vec nat16;
+ };
+type ValueMap = 
+ record {
+   text;
+   Value;
+ };
+type Value = 
+ variant {
+   Array: vec Value;
+   Blob: blob;
+   Int: int;
+   Map: vec ValueMap;
+   Nat: nat;
+   Text: text;
+ };
+type ValidationResult = 
+ variant {
+   Err: text;
+   Ok: text;
+ };
+type TransferResponse = 
+ variant {
+   err: text;
+   ok: nat64;
+ };
+type TransferRequest = 
+ record {
+   amount: nat;
+   from:
+    variant {
+      account: Account;
+      node: record {
+              endpoint_idx: EndpointIdx;
+              node_id: LocalNodeId;
+            };
+    };
+   ledger: SupportedLedger;
+   to:
+    variant {
+      account: Account;
+      external_account: variant {
+                          ic: Account;
+                          other: blob;
+                        };
+      node: record {
+              endpoint_idx: EndpointIdx;
+              node_id: LocalNodeId;
+            };
+      node_billing: LocalNodeId;
+      temp: record {
+              id: nat32;
+              source_idx: EndpointIdx;
+            };
+    };
+ };
+type TransactionRange = 
+ record {
+   length: nat;
+   start: nat;
+ };
+type TokenId = 
+ record {
+   path: PlatformPath;
+   platform: PlatformId;
+ };
+type TokenData = 
+ record {
+   volume24: Amount;
+   volume_total: Amount;
+ };
+type SwapResponse = 
+ variant {
+   err: text;
+   ok;
+ };
+type SwapRequest = 
+ record {
+   account: Account;
+   amount: nat;
+   ledger_from: SupportedLedger;
+   ledger_to: SupportedLedger;
+   min_amount_out: nat;
+ };
+type Swap = 
+ record {
+   amountIn: nat;
+   amountOut: nat;
+   from: Account;
+   newPrice: float64;
+   to: Account;
+   zeroForOne: bool;
+ };
+type SupportedLedger = 
+ variant {
+   ic: principal;
+   other: record {
+            ledger: blob;
+            platform: nat64;
+          };
+ };
+type SourceEndpointResp = 
+ record {
+   balance: nat;
+   endpoint: Endpoint;
+   name: text;
+ };
+type Shared__4 = 
+ record {
+   init: record {};
+   internals: record {wait_until_ts: nat64;};
+   variables: record {
+                interval_sec: NumVariant;
+                max_amount: NumVariant;
+              };
+ };
+type Shared__3 = 
+ record {
+   init: record {};
+   internals: record {};
+   variables: record {split: vec nat;};
+ };
+type Shared__2 = 
+ record {
+   init: record {};
+   internals:
+    record {
+      addedTokenA: nat;
+      addedTokenB: nat;
+      last_error: opt text;
+      last_run: nat64;
+      tokenA: nat;
+      tokenB: nat;
+    };
+   variables: record {
+                flow: Flow;
+                range: Range;
+              };
+ };
+type Shared__1 = 
+ record {
+   init: record {};
+   internals:
+    record {
+      current_rate: opt float64;
+      last_buy: nat64;
+      last_error: opt text;
+      last_run: nat64;
+      next_buy: nat64;
+      price: opt float64;
+      swap_fee_e4s: nat;
+    };
+   variables:
+    record {
+      buy_for_amount: nat;
+      buy_interval_seconds: nat64;
+      max_impact: float64;
+      max_rate: opt float64;
+    };
+ };
+type Shared = 
+ variant {
+   exchange: Shared__1;
+   exchange_liquidity: Shared__2;
+   split: Shared__3;
+   throttle: Shared__4;
+ };
+type Sent = 
+ record {
+   amount: nat;
+   ledger: principal;
+   to: variant {
+         icp: blob;
+         icrc: Account;
+       };
+ };
+type SETTINGS = 
+ record {
+   ALLOW_TEMP_NODE_CREATION: bool;
+   BILLING: BillingPylon;
+   MAX_INSTRUCTIONS_PER_HEARTBEAT: nat64;
+   PYLON_GOVERNED_BY: text;
+   PYLON_NAME: text;
+   REQUEST_MAX_EXPIRE_SEC: nat64;
+   TEMP_NODE_EXPIRATION_SEC: nat64;
+ };
+type Result_1 = 
+ variant {
+   err: text;
+   ok: nat64;
+ };
+type Result = 
+ variant {
+   err: text;
+   ok: vec record {
+             amount: nat;
+             ledger: principal;
+             result: Result_1;
+           };
+ };
+type Received = 
+ record {
+   amount: nat;
+   from: variant {
+           icp: blob;
+           icrc: Account;
+         };
+   ledger: principal;
+ };
+type Rate = float64;
+type Range = variant {
+               partial: record {
+                          from_price: float64;
+                          to_price: float64;
+                        };};
+type QuoteResponse = 
+ variant {
+   err: text;
+   ok:
+    record {
+      after_price: float64;
+      amount_in_max: nat;
+      amount_out: nat;
+      before_price: float64;
+      fees: vec record {
+                  text;
+                  SupportedLedger;
+                  nat;
+                };
+      path: vec record {
+                  SupportedLedger;
+                  float64;
+                };
+    };
+ };
+type QuoteRequest = 
+ record {
+   amount: nat;
+   ledger_from: SupportedLedger;
+   ledger_to: SupportedLedger;
+ };
+type PylonMetaResp = 
+ record {
+   billing: BillingPylon;
+   governed_by: text;
+   modules: vec ModuleMeta;
+   name: text;
+   request_max_expire_sec: nat64;
+   supported_ledgers: vec LedgerInfo;
+   temporary_nodes: record {
+                      allowed: bool;
+                      expire_sec: nat64;
+                    };
+ };
+type PoolResponse = 
+ variant {
+   err: text;
+   ok;
+ };
+type PoolRequest = 
+ record {
+   base: principal;
+   quote: principal;
+ };
+type PlatformPath = blob;
+type PlatformId = nat64;
+type PairResponseOk = vec PairData;
+type PairResponseErr = 
+ variant {
+   InvalidDepthLevel: Level;
+   InvalidDepthLimit: nat32;
+   NotFound: PairId;
+ };
+type PairResponse = 
+ variant {
+   Err: PairResponseErr;
+   Ok: PairResponseOk;
+ };
+type PairRequest = 
+ record {
+   depth: opt DepthRequest;
+   pairs: vec PairId;
+ };
+type PairInfo = 
+ record {
+   data: DataSource;
+   id: PairId;
+ };
+type PairId = 
+ record {
+   base: TokenId;
+   quote: TokenId;
+ };
+type PairData = 
+ record {
+   asks: vec record {
+               Rate;
+               Amount;
+             };
+   base: TokenData;
+   bids: vec record {
+               Rate;
+               Amount;
+             };
+   id: PairId;
+   last: Rate;
+   last_timestamp: nat64;
+   quote: TokenData;
+   updated_timestamp: nat64;
+   volume24_USD: opt Amount;
+   volume_total_USD: opt Amount;
+ };
+type OHLCVResponse = 
+ variant {
+   err: text;
+   ok:
+    record {
+      data: vec MarketTickInner;
+      l1: SupportedLedger;
+      l2: SupportedLedger;
+    };
+ };
+type OHLCVRequest = 
+ record {
+   l1: SupportedLedger;
+   l2: SupportedLedger;
+   period: variant {
+             t1d;
+             t1h;
+             t1m;
+             t1s;
+           };
+ };
+type NumVariant = 
+ variant {
+   fixed: nat64;
+   rnd: record {
+          max: nat64;
+          min: nat64;
+        };
+ };
+type NodeShared = 
+ record {
+   active: bool;
+   billing:
+    record {
+      account: Account;
+      billing_option: nat;
+      cost_per_day: nat;
+      current_balance: nat;
+      expires: opt nat64;
+      frozen: bool;
+      transaction_fee: BillingTransactionFee;
+    };
+   controllers: vec Controller;
+   created: nat64;
+   custom: opt Shared;
+   destinations: vec DestinationEndpointResp;
+   extractors: vec LocalNodeId;
+   id: LocalNodeId;
+   modified: nat64;
+   refund: Account;
+   sources: vec SourceEndpointResp;
+ };
+type ModuleMeta = 
+ record {
+   author: text;
+   author_account: Account;
+   billing: vec Billing;
+   create_allowed: bool;
+   description: text;
+   destinations: EndpointsDescription;
+   id: text;
+   ledger_slots: vec text;
+   name: text;
+   sources: EndpointsDescription;
+   supported_ledgers: vec SupportedLedger;
+   temporary_allowed: bool;
+   version: Version;
+ };
+type ModifyRequest__4 = 
+ record {
+   interval_sec: NumVariant;
+   max_amount: NumVariant;
+ };
+type ModifyRequest__3 = record {split: vec nat;};
+type ModifyRequest__2 = 
+ record {
+   flow: Flow;
+   range: Range;
+ };
+type ModifyRequest__1 = 
+ record {
+   buy_for_amount: nat;
+   buy_interval_seconds: nat64;
+   max_impact: float64;
+   max_rate: opt float64;
+ };
+type ModifyRequest = 
+ variant {
+   exchange: ModifyRequest__1;
+   exchange_liquidity: ModifyRequest__2;
+   split: ModifyRequest__3;
+   throttle: ModifyRequest__4;
+ };
+type ModifyNodeResponse = 
+ variant {
+   err: text;
+   ok: GetNodeResponse;
+ };
+type ModifyNodeRequest = 
+ record {
+   LocalNodeId;
+   opt CommonModifyRequest;
+   opt ModifyRequest;
+ };
+type MarketTickInner = 
+ record {
+   nat32;
+   float64;
+   float64;
+   float64;
+   float64;
+   nat;
+ };
+type LocalNodeId = nat32;
+type ListPairsResponse = vec PairInfo;
+type LiquidityRemove = 
+ record {
+   amountA: nat;
+   amountB: nat;
+   from: Account;
+   toA: Account;
+   toB: Account;
+ };
+type LiquidityAdd = 
+ record {
+   amountA: nat;
+   amountB: nat;
+   fromA: Account;
+   fromB: Account;
+   to: Account;
+ };
+type Level = nat8;
+type LedgerLabel = text;
+type LedgerInfo__1 = 
+ record {
+   id: principal;
+   info: variant {
+           icp: Info;
+           icrc: Info__1;
+         };
+ };
+type LedgerInfo = 
+ record {
+   decimals: nat8;
+   fee: nat;
+   ledger: SupportedLedger;
+   name: text;
+   symbol: text;
+ };
+type LedgerIdx = nat;
+type InputAddress = 
+ variant {
+   ic: Account;
+   other: blob;
+   temp: record {
+           id: nat32;
+           source_idx: EndpointIdx;
+         };
+ };
+type Info__1 = 
+ record {
+   accounts: nat;
+   actor_principal: principal;
+   errors: nat;
+   lastTxTime: nat64;
+   last_indexed_tx: nat;
+   pending: nat;
+   reader_instructions_cost: nat64;
+   sender_instructions_cost: nat64;
+ };
+type Info = 
+ record {
+   accounts: nat;
+   actor_principal: opt principal;
+   errors: nat;
+   lastTxTime: nat64;
+   last_indexed_tx: nat;
+   pending: nat;
+   reader_instructions_cost: nat64;
+   sender_instructions_cost: nat64;
+ };
+type GetTransactionsResult = 
+ record {
+   archived_blocks: vec ArchivedTransactionResponse;
+   blocks: vec record {
+                 block: opt Value;
+                 id: nat;
+               };
+   log_length: nat;
+ };
+type GetTransactionsFn = func (vec TransactionRange) ->
+                          (GetTransactionsResult) query;
+type GetNodeResponse = 
+ record {
+   active: bool;
+   billing:
+    record {
+      account: Account;
+      billing_option: nat;
+      cost_per_day: nat;
+      current_balance: nat;
+      expires: opt nat64;
+      frozen: bool;
+      transaction_fee: BillingTransactionFee;
+    };
+   controllers: vec Controller;
+   created: nat64;
+   custom: opt Shared;
+   destinations: vec DestinationEndpointResp;
+   extractors: vec LocalNodeId;
+   id: LocalNodeId;
+   modified: nat64;
+   refund: Account;
+   sources: vec SourceEndpointResp;
+ };
+type GetNode = 
+ variant {
+   endpoint: Endpoint;
+   id: LocalNodeId;
+ };
+type GetControllerNodesRequest = 
+ record {
+   id: Controller;
+   length: nat32;
+   start: LocalNodeId;
+ };
+type GetBlocksResult = 
+ record {
+   archived_blocks: vec ArchivedTransactionResponse;
+   blocks: vec record {
+                 block: opt Value;
+                 id: nat;
+               };
+   log_length: nat;
+ };
+type GetBlocksArgs = vec TransactionRange;
+type GetArchivesResultItem = 
+ record {
+   canister_id: principal;
+   end: nat;
+   start: nat;
+ };
+type GetArchivesResult = vec GetArchivesResultItem;
+type GetArchivesArgs = record {from: opt principal;};
+type Flow = 
+ variant {
+   add;
+   remove;
+ };
+type EndpointsDescription = 
+ vec record {
+       LedgerIdx;
+       LedgerLabel;
+     };
+type EndpointOther = 
+ record {
+   account: blob;
+   ledger: blob;
+   platform: nat64;
+ };
+type EndpointOptOther = 
+ record {
+   account: opt blob;
+   ledger: blob;
+   platform: nat64;
+ };
+type EndpointOptIC = 
+ record {
+   account: opt Account;
+   ledger: principal;
+ };
+type EndpointOpt = 
+ variant {
+   ic: EndpointOptIC;
+   other: EndpointOptOther;
+ };
+type EndpointIdx = nat8;
+type EndpointIC = 
+ record {
+   account: Account;
+   ledger: principal;
+ };
+type Endpoint = 
+ variant {
+   ic: EndpointIC;
+   other: EndpointOther;
+ };
+type DestinationEndpointResp = 
+ record {
+   endpoint: EndpointOpt;
+   name: text;
+ };
+type DepthRequest = 
+ record {
+   level: Level;
+   limit: nat32;
+ };
+type DeletePoolResponse = 
+ variant {
+   err: text;
+   ok;
+ };
+type DeletePoolRequest = 
+ record {
+   base: principal;
+   quote: principal;
+ };
+type DeleteNodeResp = 
+ variant {
+   err: text;
+   ok;
+ };
+type DataSource = principal;
+type DataCertificate = 
+ record {
+   certificate: blob;
+   hash_tree: blob;
+ };
+type CreateRequest__4 = 
+ record {
+   init: record {};
+   variables: record {
+                interval_sec: NumVariant;
+                max_amount: NumVariant;
+              };
+ };
+type CreateRequest__3 = 
+ record {
+   init: record {};
+   variables: record {split: vec nat;};
+ };
+type CreateRequest__2 = 
+ record {
+   init: record {};
+   variables: record {
+                flow: Flow;
+                range: Range;
+              };
+ };
+type CreateRequest__1 = 
+ record {
+   init: record {};
+   variables:
+    record {
+      buy_for_amount: nat;
+      buy_interval_seconds: nat64;
+      max_impact: float64;
+      max_rate: opt float64;
+    };
+ };
+type CreateRequest = 
+ variant {
+   exchange: CreateRequest__1;
+   exchange_liquidity: CreateRequest__2;
+   split: CreateRequest__3;
+   throttle: CreateRequest__4;
+ };
+type CreateNodeResponse = 
+ variant {
+   err: text;
+   ok: GetNodeResponse;
+ };
+type CreateNodeRequest = 
+ record {
+   CommonCreateRequest;
+   CreateRequest;
+ };
+type Controller = 
+ record {
+   owner: principal;
+   subaccount: opt blob;
+ };
+type CommonModifyRequest = 
+ record {
+   active: opt bool;
+   controllers: opt vec Controller;
+   destinations: opt vec opt InputAddress;
+   extractors: opt vec LocalNodeId;
+   refund: opt Account;
+   sources: opt vec opt InputAddress;
+ };
+type CommonCreateRequest = 
+ record {
+   affiliate: opt Account;
+   billing_option: nat;
+   controllers: vec Controller;
+   destinations: vec opt InputAddress;
+   extractors: vec LocalNodeId;
+   initial_billing_amount: opt nat;
+   ledgers: vec SupportedLedger;
+   refund: Account;
+   sources: vec opt InputAddress;
+   temp_id: nat32;
+   temporary: bool;
+ };
+type CommandResponse = 
+ variant {
+   create_node: CreateNodeResponse;
+   delete_node: DeleteNodeResp;
+   modify_node: ModifyNodeResponse;
+   transfer: TransferResponse;
+ };
+type Command = 
+ variant {
+   create_node: CreateNodeRequest;
+   delete_node: LocalNodeId;
+   modify_node: ModifyNodeRequest;
+   transfer: TransferRequest;
+ };
+type ChronoRecord = 
+ variant {
+   account: C100_Account;
+   dex: C200_Dex;
+ };
+type C200_Dex = 
+ variant {
+   liquidityAdd: LiquidityAdd;
+   liquidityRemove: LiquidityRemove;
+   swap: Swap;
+ };
+type C100_Account = 
+ variant {
+   received: Received;
+   sent: Sent;
+ };
+type BlockType = 
+ record {
+   block_type: text;
+   url: text;
+ };
+type BillingTransactionFee = 
+ variant {
+   flat_fee_multiplier: nat;
+   none;
+   transaction_percentage_fee_e8s: nat;
+ };
+type BillingPylon = 
+ record {
+   freezing_threshold_days: nat;
+   ledger: principal;
+   min_create_balance: nat;
+   operation_cost: nat;
+   platform_account: Account;
+   pylon_account: Account;
+   split: BillingFeeSplit;
+ };
+type BillingFeeSplit = 
+ record {
+   affiliate: nat;
+   author: nat;
+   platform: nat;
+   pylon: nat;
+ };
+type Billing = 
+ record {
+   cost_per_day: nat;
+   transaction_fee: BillingTransactionFee;
+ };
+type BatchCommandResponse = 
+ variant {
+   err:
+    variant {
+      caller_not_controller;
+      duplicate: nat;
+      expired;
+      invalid_signature;
+      other: text;
+    };
+   ok: record {
+         commands: vec CommandResponse;
+         id: opt nat;
+       };
+ };
+type BatchCommandRequest = 
+ record {
+   commands: vec Command;
+   controller: Controller;
+   expire_at: opt nat64;
+   request_id: opt nat32;
+   signature: opt blob;
+ };
+type ArchivedTransactionResponse = 
+ record {
+   args: vec TransactionRange;
+   callback: GetTransactionsFn;
+ };
+type Amount = nat;
+type AccountsResponse = vec AccountEndpoint;
+type AccountsRequest = 
+ record {
+   owner: principal;
+   subaccount: opt blob;
+ };
+type AccountEndpoint = 
+ record {
+   balance: nat;
+   endpoint: Endpoint;
+ };
+type Account = 
+ record {
+   owner: principal;
+   subaccount: opt blob;
+ };
+service : {
+  add_supported_ledger: (principal, variant {
+                                      icp;
+                                      icrc;
+                                    }) -> () oneway;
+  admin_withdraw_all: () -> (Result);
+  chrono_records: () -> (opt ChronoRecord) query;
+  dex_ohlcv: (OHLCVRequest) -> (OHLCVResponse) query;
+  dex_pool_create: (PoolRequest) -> (PoolResponse);
+  dex_pool_delete: (DeletePoolRequest) -> (DeletePoolResponse);
+  dex_quote: (QuoteRequest) -> (QuoteResponse) query;
+  dex_swap: (SwapRequest) -> (SwapResponse);
+  get_ledger_errors: () -> (vec vec text) query;
+  get_ledgers_info: () -> (vec LedgerInfo__1) query;
+  icrc3_get_archives: (GetArchivesArgs) -> (GetArchivesResult) query;
+  icrc3_get_blocks: (GetBlocksArgs) -> (GetBlocksResult) query;
+  icrc3_get_tip_certificate: () -> (opt DataCertificate) query;
+  icrc3_supported_block_types: () -> (vec BlockType) query;
+  icrc45_get_pairs: (PairRequest) -> (PairResponse) query;
+  icrc45_list_pairs: () -> (ListPairsResponse) query;
+  icrc55_account_register: (Account) -> ();
+  icrc55_accounts: (AccountsRequest) -> (AccountsResponse) query;
+  icrc55_command: (BatchCommandRequest) -> (BatchCommandResponse);
+  icrc55_command_validate: (BatchCommandRequest) -> (ValidationResult) query;
+  icrc55_get_controller_nodes: (GetControllerNodesRequest) ->
+   (vec NodeShared) query;
+  icrc55_get_defaults: (text) -> (CreateRequest) query;
+  icrc55_get_nodes: (vec GetNode) -> (vec opt NodeShared) query;
+  icrc55_get_pylon_meta: () -> (PylonMetaResp) query;
+}
