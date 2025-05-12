@@ -1956,7 +1956,7 @@ function RLLInfo() {
                                         <div key={idx} style={{ marginLeft: '8px' }}>
                                             • {source.name || 'Default'}: {(Number(source.balance) / 1e8).toFixed(8)} {getTokenSymbolFromLedger(source.endpoint.ic.ledger)}
                                             <div style={{ fontSize: '0.9em', color: '#888' }}>
-                                                Account: {formatIcrc1Account(source.endpoint)}
+                                                Account: <span className="long-account-string">{formatIcrc1Account(source.endpoint)}</span>
                                                 {nodeName && <span style={{ color: '#3498db' }}> ({nodeName})</span>}
                                             </div>
                                         </div>
@@ -1975,7 +1975,7 @@ function RLLInfo() {
                                         <div key={idx} style={{ marginLeft: '8px' }}>
                                             • {dest.name}% {getTokenSymbolFromLedger(dest.endpoint.ic.ledger)}
                                             <div style={{ fontSize: '0.9em', color: '#888' }}>
-                                                Account: {formatIcrc1Account(dest.endpoint)}
+                                                Account: <span className="long-account-string">{formatIcrc1Account(dest.endpoint)}</span>
                                                 {nodeName && <span style={{ color: '#3498db' }}> ({nodeName})</span>}
                                             </div>
                                         </div>
@@ -2007,10 +2007,10 @@ function RLLInfo() {
             </ul>
             <div style={styles.detailsSection}>
                 {item.canisterId && (
-                    <p>Canister ID: <span style={styles.canisterId}>{item.canisterId}</span></p>
+                    <p>Canister ID: <span className="long-account-string">{item.canisterId}</span></p>
                 )}
                 {item.icrc1Account && (
-                    <p>ICRC1 Account: <span style={styles.canisterId}>{item.icrc1Account}</span></p>
+                    <p>ICRC1 Account: <span className="long-account-string">{item.icrc1Account}</span></p>
                 )}
                 {item.details && (
                     <div style={{ marginTop: '10px' }}>
