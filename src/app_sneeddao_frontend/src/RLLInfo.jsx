@@ -23,6 +23,7 @@ import { createActor as createVectorActor } from 'external/icrc55_vector';
 import { createActor as createExVectorActor } from 'external/icrc55_exvector';
 import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
+import { get_token_conversion_rates } from './utils/TokenUtils';
 
 // Styles for the expandable sections
 const styles = {
@@ -1386,6 +1387,38 @@ function RLLInfo() {
         }
     });
     const [isLoadingLp, setIsLoadingLp] = useState(false);
+    const [conversionRates, setConversionRates] = useState({
+        ICP: 0,
+        SNEED: 0
+    });
+
+    useEffect(() => {
+        const fetchConversionRates = async () => {
+            if (!identity) return;
+            try {
+                const rates = await get_token_conversion_rates();
+                setConversionRates({
+                    ICP: rates.ICP || 0,
+                    SNEED: rates.SNEED || 0
+                });
+            } catch (error) {
+                console.error('Error fetching conversion rates:', error);
+            }
+        };
+
+        fetchConversionRates();
+    }, [identity]);
+
+    // Helper function to calculate USD value
+    const getUSDValue = (amount, decimals, symbol) => {
+        const value = Number(amount) / Math.pow(10, decimals);
+        return value * conversionRates[symbol];
+    };
+
+    // Helper function to format USD
+    const formatUSD = (value) => {
+        return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
 
     // Update the neuron balance fetching effect
     useEffect(() => {
@@ -2189,23 +2222,48 @@ function RLLInfo() {
                                 <>
                                     <div style={{ marginBottom: '15px' }}>
                                         <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
-                                        <div style={{ fontSize: '1.1em' }}>{(Number(treasuryBalances.icp) / 1e8).toFixed(4)} ICP</div>
+                                        <div style={{ fontSize: '1.1em' }}>
+                                            {(Number(treasuryBalances.icp) / 1e8).toFixed(4)} ICP
+                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                (${formatUSD(getUSDValue(treasuryBalances.icp, 8, 'ICP'))})
+                                            </span>
+                                        </div>
                                     </div>
                                     <div style={{ marginBottom: '15px' }}>
                                         <div style={{ color: '#888', marginBottom: '5px' }}>8 Year Neuron:</div>
-                                        <div style={{ fontSize: '1.1em' }}>{(Number(neuronBalance?.stake_e8s || 0) / 1e8).toFixed(4)} ICP</div>
+                                        <div style={{ fontSize: '1.1em' }}>
+                                            {(Number(neuronBalance?.stake_e8s || 0) / 1e8).toFixed(4)} ICP
+                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                (${formatUSD(getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP'))})
+                                            </span>
+                                        </div>
                                     </div>
                                     <div style={{ marginBottom: '15px' }}>
                                         <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
-                                        <div style={{ fontSize: '1.1em' }}>{(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} ICP</div>
+                                        <div style={{ fontSize: '1.1em' }}>
+                                            {(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} ICP
+                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                (${formatUSD(getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP'))})
+                                            </span>
+                                        </div>
                                     </div>
                                     <div style={{ marginBottom: '15px' }}>
                                         <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
-                                        <div style={{ fontSize: '1.1em' }}>{(Number(lpPositions.totals.tokensOwed1) / 1e8).toFixed(4)} ICP</div>
+                                        <div style={{ fontSize: '1.1em' }}>
+                                            {(Number(lpPositions.totals.tokensOwed1) / 1e8).toFixed(4)} ICP
+                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                (${formatUSD(getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP'))})
+                                            </span>
+                                        </div>
                                     </div>
                                     <div style={{ marginBottom: '15px' }}>
                                         <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
-                                        <div style={{ fontSize: '1.1em' }}>{(Number(defiBalances.icp) / 1e8).toFixed(4)} ICP</div>
+                                        <div style={{ fontSize: '1.1em' }}>
+                                            {(Number(defiBalances.icp) / 1e8).toFixed(4)} ICP
+                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                (${formatUSD(getUSDValue(defiBalances.icp, 8, 'ICP'))})
+                                            </span>
+                                        </div>
                                     </div>
                                     <div style={{
                                         marginTop: '20px',
@@ -2219,6 +2277,15 @@ function RLLInfo() {
                                                Number(lpPositions.totals.token1Amount) +
                                                Number(lpPositions.totals.tokensOwed1) +
                                                Number(defiBalances.icp)) / 1e8).toFixed(4)} ICP
+                                            <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
+                                                (${formatUSD(
+                                                    getUSDValue(treasuryBalances.icp, 8, 'ICP') +
+                                                    getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
+                                                    getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
+                                                    getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
+                                                    getUSDValue(defiBalances.icp, 8, 'ICP')
+                                                )})
+                                            </span>
                                         </div>
                                     </div>
                                 </>
@@ -2241,19 +2308,39 @@ function RLLInfo() {
                                 <>
                                     <div style={{ marginBottom: '15px' }}>
                                         <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
-                                        <div style={{ fontSize: '1.1em' }}>{(Number(treasuryBalances.sneed) / 1e8).toFixed(4)} SNEED</div>
+                                        <div style={{ fontSize: '1.1em' }}>
+                                            {(Number(treasuryBalances.sneed) / 1e8).toFixed(4)} SNEED
+                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                (${formatUSD(getUSDValue(treasuryBalances.sneed, 8, 'SNEED'))})
+                                            </span>
+                                        </div>
                                     </div>
                                     <div style={{ marginBottom: '15px' }}>
                                         <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
-                                        <div style={{ fontSize: '1.1em' }}>{(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} SNEED</div>
+                                        <div style={{ fontSize: '1.1em' }}>
+                                            {(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} SNEED
+                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                (${formatUSD(getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED'))})
+                                            </span>
+                                        </div>
                                     </div>
                                     <div style={{ marginBottom: '15px' }}>
                                         <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
-                                        <div style={{ fontSize: '1.1em' }}>{(Number(lpPositions.totals.tokensOwed0) / 1e8).toFixed(4)} SNEED</div>
+                                        <div style={{ fontSize: '1.1em' }}>
+                                            {(Number(lpPositions.totals.tokensOwed0) / 1e8).toFixed(4)} SNEED
+                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                (${formatUSD(getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED'))})
+                                            </span>
+                                        </div>
                                     </div>
                                     <div style={{ marginBottom: '15px' }}>
                                         <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
-                                        <div style={{ fontSize: '1.1em' }}>{(Number(defiBalances.sneed) / 1e8).toFixed(4)} SNEED</div>
+                                        <div style={{ fontSize: '1.1em' }}>
+                                            {(Number(defiBalances.sneed) / 1e8).toFixed(4)} SNEED
+                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                (${formatUSD(getUSDValue(defiBalances.sneed, 8, 'SNEED'))})
+                                            </span>
+                                        </div>
                                     </div>
                                     <div style={{
                                         marginTop: '20px',
@@ -2266,11 +2353,51 @@ function RLLInfo() {
                                                Number(lpPositions.totals.token0Amount) +
                                                Number(lpPositions.totals.tokensOwed0) +
                                                Number(defiBalances.sneed)) / 1e8).toFixed(4)} SNEED
+                                            <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
+                                                (${formatUSD(
+                                                    getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
+                                                    getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
+                                                    getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
+                                                    getUSDValue(defiBalances.sneed, 8, 'SNEED')
+                                                )})
+                                            </span>
                                         </div>
                                     </div>
                                 </>
                             )}
                         </div>
+                    </div>
+
+                    {/* Grand Total in USD */}
+                    <div style={{
+                        backgroundColor: '#1a1a1a',
+                        padding: '20px',
+                        borderRadius: '6px',
+                        border: '1px solid #f1c40f',
+                        marginTop: '20px'
+                    }}>
+                        <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px' }}>Total Value (USD)</h3>
+                        {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : (
+                            <div style={{ fontSize: '1.6em', fontWeight: 'bold' }}>
+                                ${formatUSD(
+                                    // ICP total in USD
+                                    getUSDValue(treasuryBalances.icp, 8, 'ICP') +
+                                    getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
+                                    getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
+                                    getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
+                                    getUSDValue(defiBalances.icp, 8, 'ICP') +
+                                    // SNEED total in USD
+                                    getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
+                                    getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
+                                    getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
+                                    getUSDValue(defiBalances.sneed, 8, 'SNEED')
+                                )}
+                            </div>
+                        )}
                     </div>
                 </section>
 
