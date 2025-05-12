@@ -564,7 +564,8 @@ const nodes = {
                 description: "Purchases SNEED from market using ICP",
                 inputs: ["ICP from Splitter (50%)"],
                 outputs: ["100% SNEED to SNEED Splitter"],
-                canisterId: "togwv-zqaaa-aaaal-qr7aa-cai-ihr3xbq.100000000120000000000000000000000000000000000000000000000000000",
+                canisterId: "togwv-zqaaa-aaaal-qr7aa-cai",
+                icrc1Account: "togwv-zqaaa-aaaal-qr7aa-cai-ihr3xbq.100000000120000000000000000000000000000000000000000000000000000",
                 details: "Vector ID: 18 on ICPCoins",
                 link: "https://beta.icpcoins.com/#/vector/modify/togwv-zqaaa-aaaal-qr7aa-cai/exchange/18"
             },
@@ -926,7 +927,8 @@ const initialNodes = [
             description: "Purchases SNEED from market using ICP",
             inputs: ["ICP from Splitter (50%)"],
             outputs: ["100% SNEED to SNEED Splitter"],
-            canisterId: "togwv-zqaaa-aaaal-qr7aa-cai-ihr3xbq.100000000120000000000000000000000000000000000000000000000000000",
+            canisterId: "togwv-zqaaa-aaaal-qr7aa-cai",
+            icrc1Account: "togwv-zqaaa-aaaal-qr7aa-cai-ihr3xbq.100000000120000000000000000000000000000000000000000000000000000",
             details: "Vector ID: 18 on ICPCoins",
             link: "https://beta.icpcoins.com/#/vector/modify/togwv-zqaaa-aaaal-qr7aa-cai/exchange/18"
         },
@@ -1727,6 +1729,9 @@ function RLLInfo() {
             <div style={styles.detailsSection}>
                 {item.canisterId && (
                     <p>Canister ID: <span style={styles.canisterId}>{item.canisterId}</span></p>
+                )}
+                {item.icrc1Account && (
+                    <p>ICRC1 Account: <span style={styles.canisterId}>{item.icrc1Account}</span></p>
                 )}
                 {item.id === '1' && neuronBalance && (
                     <div style={{
