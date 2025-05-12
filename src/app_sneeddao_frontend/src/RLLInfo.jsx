@@ -2516,6 +2516,15 @@ function RLLInfo() {
                                             </span>
                                         </div>
                                     </div>
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <div style={{ color: '#888', marginBottom: '5px' }}>RLL Distribution:</div>
+                                        <div style={{ fontSize: '1.1em' }}>
+                                            {(Number(rllBalances.sneed) / 1e8).toFixed(4)} SNEED
+                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                (${formatUSD(getUSDValue(rllBalances.sneed, 8, 'SNEED'))})
+                                            </span>
+                                        </div>
+                                    </div>
                                     <div style={{
                                         marginTop: '20px',
                                         paddingTop: '15px',
@@ -2526,13 +2535,15 @@ function RLLInfo() {
                                             {((Number(treasuryBalances.sneed) + 
                                                Number(lpPositions.totals.token0Amount) +
                                                Number(lpPositions.totals.tokensOwed0) +
-                                               Number(defiBalances.sneed)) / 1e8).toFixed(4)} SNEED
+                                               Number(defiBalances.sneed) +
+                                               Number(rllBalances.sneed)) / 1e8).toFixed(4)} SNEED
                                             <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
                                                 (${formatUSD(
                                                     getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
                                                     getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
                                                     getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
-                                                    getUSDValue(defiBalances.sneed, 8, 'SNEED')
+                                                    getUSDValue(defiBalances.sneed, 8, 'SNEED') +
+                                                    getUSDValue(rllBalances.sneed, 8, 'SNEED')
                                                 )})
                                             </span>
                                         </div>
