@@ -1569,10 +1569,32 @@ function RLLInfo() {
 
     // Add helper function to format ICRC1 account
     const formatIcrc1Account = (account) => {
-        if (!account || !account.owner) return 'Unknown';
-        const owner = account.owner.toText();
-        if (!account.subaccount || !account.subaccount.length) return owner;
-        return `${owner}-${uint8ArrayToHex(account.subaccount[0])}`;
+        if (!account) return 'Unknown';
+        
+        // For destinations, the structure is endpoint.ic.account[0]
+        if (account.ic && account.ic.account && Array.isArray(account.ic.account)) {
+            const acc = account.ic.account[0];
+            if (!acc) return 'Unknown';
+            const owner = acc.owner ? acc.owner.toText() : 'Unknown';
+            if (!acc.subaccount || !acc.subaccount.length) return owner;
+            return `${owner}-${uint8ArrayToHex(acc.subaccount[0])}`;
+        }
+        
+        // For sources, the structure is endpoint.ic.account
+        if (account.ic && account.ic.account && account.ic.account.owner) {
+            const owner = account.ic.account.owner.toText();
+            if (!account.ic.account.subaccount || !account.ic.account.subaccount.length) return owner;
+            return `${owner}-${uint8ArrayToHex(account.ic.account.subaccount[0])}`;
+        }
+        
+        // Fallback for direct account structure
+        if (account.owner) {
+            const owner = account.owner.toText();
+            if (!account.subaccount || !account.subaccount.length) return owner;
+            return `${owner}-${uint8ArrayToHex(account.subaccount[0])}`;
+        }
+        
+        return 'Unknown';
     };
 
     // Add helper function to render vector info
@@ -1619,9 +1641,9 @@ function RLLInfo() {
                                 <div style={{ fontWeight: 'bold' }}>Sources:</div>
                                 {info.sources.map((source, idx) => (
                                     <div key={idx} style={{ marginLeft: '8px' }}>
-                                        • {source.name}: {(Number(source.balance) / 1e8).toFixed(8)} {getTokenSymbolFromLedger(source.endpoint.ic.ledger)}
+                                        • {source.name || 'Default'}: {(Number(source.balance) / 1e8).toFixed(8)} {getTokenSymbolFromLedger(source.endpoint.ic.ledger)}
                                         <div style={{ fontSize: '0.9em', color: '#888' }}>
-                                            Account: {formatIcrc1Account(source.endpoint.ic.account[0])}
+                                            Account: {formatIcrc1Account(source.endpoint)}
                                         </div>
                                     </div>
                                 ))}
@@ -1636,7 +1658,7 @@ function RLLInfo() {
                                     <div key={idx} style={{ marginLeft: '8px' }}>
                                         • {dest.name}% {getTokenSymbolFromLedger(dest.endpoint.ic.ledger)}
                                         <div style={{ fontSize: '0.9em', color: '#888' }}>
-                                            Account: {formatIcrc1Account(dest.endpoint.ic.account[0])}
+                                            Account: {formatIcrc1Account(dest.endpoint)}
                                         </div>
                                     </div>
                                 ))}
