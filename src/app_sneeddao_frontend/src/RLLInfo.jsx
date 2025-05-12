@@ -1605,7 +1605,49 @@ function RLLInfo() {
         return 'Unknown';
     };
 
-    // Add helper function to render vector info
+    // Add helper function to get node name from account and token
+    const getNodeNameFromAccount = (account, tokenId) => {
+        if (!account) return '';
+        
+        try {
+            const formattedAccount = formatIcrc1Account(account);
+            
+            // Special case for fi3zi-fyaaa-aaaaq-aachq-cai (Treasury/Burn)
+            if (formattedAccount.startsWith('fi3zi-fyaaa-aaaaq-aachq-cai')) {
+                // For SNEED token it's the burn address
+                if (tokenId.toString() === 'hvgxa-wqaaa-aaaaq-aacia-cai') {
+                    return 'SNEED Burn Address';
+                }
+                // For ICP token it's the treasury
+                if (tokenId.toString() === 'ryjl3-tyaaa-aaaaa-aaaba-cai') {
+                    return 'Sneed DAO Treasury';
+                }
+            }
+
+            // Map other known accounts to node names
+            const nodeMapping = {
+                '6jvpj-sqaaa-aaaaj-azwnq-cai-wu6phoy': 'ICP Neuron Vector',
+                '6jvpj-sqaaa-aaaaj-azwnq-cai-m7u3kpi': 'ICP Splitter Vector',
+                '6jvpj-sqaaa-aaaaj-azwnq-cai-vilbrxq': 'SNEED Splitter Vector',
+                'togwv-zqaaa-aaaal-qr7aa-cai-ihr3xbq': 'SNEED Buyback Vector',
+                'ok64y-uiaaa-aaaag-qdcbq-cai': 'Sneed DeFi Canister',
+                'lvc4n-7aaaa-aaaam-adm6a-cai': 'RLL Distribution'
+            };
+
+            // Try to find a matching node name
+            for (const [accountPrefix, nodeName] of Object.entries(nodeMapping)) {
+                if (formattedAccount.startsWith(accountPrefix)) {
+                    return nodeName;
+                }
+            }
+        } catch (error) {
+            console.error('Error getting node name:', error);
+        }
+        
+        return '';
+    };
+
+    // Update renderVectorInfo to include node names
     const renderVectorInfo = (vectorName) => {
         const vectorData = vectorInfo[vectorName];
         if (!vectorData || !vectorData.length || !vectorData[0] || !vectorData[0][0]) return null;
@@ -1647,14 +1689,18 @@ function RLLInfo() {
                         {info.sources && info.sources.length > 0 && (
                             <div style={{ marginTop: '8px' }}>
                                 <div style={{ fontWeight: 'bold' }}>Sources:</div>
-                                {info.sources.map((source, idx) => (
-                                    <div key={idx} style={{ marginLeft: '8px' }}>
-                                        • {source.name || 'Default'}: {(Number(source.balance) / 1e8).toFixed(8)} {getTokenSymbolFromLedger(source.endpoint.ic.ledger)}
-                                        <div style={{ fontSize: '0.9em', color: '#888' }}>
-                                            Account: {formatIcrc1Account(source.endpoint)}
+                                {info.sources.map((source, idx) => {
+                                    const nodeName = getNodeNameFromAccount(source.endpoint, source.endpoint.ic.ledger);
+                                    return (
+                                        <div key={idx} style={{ marginLeft: '8px' }}>
+                                            • {source.name || 'Default'}: {(Number(source.balance) / 1e8).toFixed(8)} {getTokenSymbolFromLedger(source.endpoint.ic.ledger)}
+                                            <div style={{ fontSize: '0.9em', color: '#888' }}>
+                                                Account: {formatIcrc1Account(source.endpoint)}
+                                                {nodeName && <span style={{ color: '#3498db' }}> ({nodeName})</span>}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
 
@@ -1662,14 +1708,18 @@ function RLLInfo() {
                         {info.destinations && info.destinations.length > 0 && (
                             <div style={{ marginTop: '8px' }}>
                                 <div style={{ fontWeight: 'bold' }}>Destinations:</div>
-                                {info.destinations.map((dest, idx) => (
-                                    <div key={idx} style={{ marginLeft: '8px' }}>
-                                        • {dest.name}% {getTokenSymbolFromLedger(dest.endpoint.ic.ledger)}
-                                        <div style={{ fontSize: '0.9em', color: '#888' }}>
-                                            Account: {formatIcrc1Account(dest.endpoint)}
+                                {info.destinations.map((dest, idx) => {
+                                    const nodeName = getNodeNameFromAccount(dest.endpoint, dest.endpoint.ic.ledger);
+                                    return (
+                                        <div key={idx} style={{ marginLeft: '8px' }}>
+                                            • {dest.name}% {getTokenSymbolFromLedger(dest.endpoint.ic.ledger)}
+                                            <div style={{ fontSize: '0.9em', color: '#888' }}>
+                                                Account: {formatIcrc1Account(dest.endpoint)}
+                                                {nodeName && <span style={{ color: '#3498db' }}> ({nodeName})</span>}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </>
