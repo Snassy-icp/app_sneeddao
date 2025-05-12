@@ -19,6 +19,7 @@ import { Principal } from '@dfinity/principal';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { createActor as createNnsGovActor } from 'external/nns_gov';
+import { createActor as createVectorActor } from 'external/icrc55_vector';
 
 // Styles for the expandable sections
 const styles = {
@@ -1256,6 +1257,7 @@ const initialEdges = [
         id: 'e10',
         source: '11',
         target: '10',
+        label: 'LP Rewards to Revenue Collector',
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1269,6 +1271,7 @@ const initialEdges = [
         id: 'e11',
         source: '12',
         target: '10',
+        label: 'Product Revenue to Collector',
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1282,6 +1285,7 @@ const initialEdges = [
         id: 'e12',
         source: '10',
         target: '3',
+        label: 'ICP Revenue to ICP Splitter',
         type: 'smoothstep',
         style: edgeStyles.icp,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1295,6 +1299,7 @@ const initialEdges = [
         id: 'e12b',
         source: '10',
         target: '5',
+        label: 'SNEED Revenue to SNEED Splitter',
         type: 'smoothstep',
         style: edgeStyles.sneed,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1308,6 +1313,7 @@ const initialEdges = [
         id: 'e13',
         source: '7',
         target: '9',
+        label: 'Tokens to RLL Distribution',
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1321,6 +1327,7 @@ const initialEdges = [
         id: 'e14',
         source: '13',
         target: '12',
+        label: 'SneedLock Revenue',
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1334,6 +1341,7 @@ const initialEdges = [
         id: 'e15',
         source: '14',
         target: '12',
+        label: 'Swaprunner Revenue',
         type: 'smoothstep',
         style: edgeStyles.various,
         markerEnd: { type: MarkerType.ArrowClosed },
@@ -1357,6 +1365,8 @@ function RLLInfo() {
     const [neuronBalance, setNeuronBalance] = useState(null);
     const [isLoadingBalances, setIsLoadingBalances] = useState(false);
     const [isLoadingNeuron, setIsLoadingNeuron] = useState(false);
+    const [vectorInfo, setVectorInfo] = useState({});
+    const [isLoadingVectors, setIsLoadingVectors] = useState(false);
 
     // Update the neuron balance fetching effect
     useEffect(() => {
@@ -1441,6 +1451,57 @@ function RLLInfo() {
         return () => clearInterval(interval);
     }, [identity]);
 
+    // Add effect to fetch vector information
+    useEffect(() => {
+        const fetchVectorInfo = async () => {
+            if (!identity) return;
+            
+            setIsLoadingVectors(true);
+            try {
+                // Create actors for each vector
+                const vectors = {
+                    'ICP Neuron Vector': {
+                        id: '6jvpj-sqaaa-aaaaj-azwnq-cai',
+                        nodeId: 1 // Local node ID in the vector system
+                    },
+                    'ICP Splitter Vector': {
+                        id: '6jvpj-sqaaa-aaaaj-azwnq-cai',
+                        nodeId: 6
+                    },
+                    'SNEED Splitter Vector': {
+                        id: '6jvpj-sqaaa-aaaaj-azwnq-cai',
+                        nodeId: 45
+                    }
+                };
+
+                const vectorData = {};
+                
+                for (const [name, vector] of Object.entries(vectors)) {
+                    const actor = createVectorActor(vector.id, {
+                        agentOptions: { identity }
+                    });
+
+                    // Fetch node information
+                    const nodes = await actor.icrc55_get_nodes([{ id: vector.nodeId }]);
+                    if (nodes && nodes[0]) {
+                        vectorData[name] = nodes[0];
+                        console.log(`Vector info for ${name}:`, nodes[0]);
+                    }
+                }
+
+                setVectorInfo(vectorData);
+            } catch (error) {
+                console.error('Error fetching vector information:', error);
+            } finally {
+                setIsLoadingVectors(false);
+            }
+        };
+
+        fetchVectorInfo();
+        const interval = setInterval(fetchVectorInfo, 30000);
+        return () => clearInterval(interval);
+    }, [identity]);
+
     // Add helper function to convert hex to Uint8Array
     const hexToUint8Array = (hex) => {
         const pairs = hex.match(/[\dA-F]{2}/gi);
@@ -1485,7 +1546,54 @@ function RLLInfo() {
         return parts.join(', ') || '< 1 day';
     };
 
-    // Update renderItemDetails to show neuron info
+    // Add helper function to render vector info
+    const renderVectorInfo = (vectorName) => {
+        const info = vectorInfo[vectorName];
+        if (!info) return null;
+
+        return (
+            <div style={{
+                marginTop: '8px',
+                padding: '8px',
+                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                borderRadius: '4px'
+            }}>
+                <div style={{ marginBottom: '4px' }}>Vector Status:</div>
+                {isLoadingVectors ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                        <div style={styles.spinner} />
+                    </div>
+                ) : (
+                    <>
+                        <div>Active: {info.active ? 'Yes' : 'No'}</div>
+                        <div>Last Modified: {new Date(Number(info.modified)).toLocaleString()}</div>
+                        {info.sources && info.sources.length > 0 && (
+                            <div>
+                                <div style={{ marginTop: '4px', fontWeight: 'bold' }}>Sources:</div>
+                                {info.sources.map((source, idx) => (
+                                    <div key={idx} style={{ marginLeft: '8px' }}>
+                                        • {source.name}: {(Number(source.balance) / 1e8).toFixed(2)} ICP
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {info.destinations && info.destinations.length > 0 && (
+                            <div>
+                                <div style={{ marginTop: '4px', fontWeight: 'bold' }}>Destinations:</div>
+                                {info.destinations.map((dest, idx) => (
+                                    <div key={idx} style={{ marginLeft: '8px' }}>
+                                        • {dest.name}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+        );
+    };
+
+    // Update renderItemDetails to include vector info
     const renderItemDetails = (item) => (
         <div style={styles.itemContent}>
             <p>{item.description}</p>
@@ -1536,11 +1644,26 @@ function RLLInfo() {
                         ))}
                     </div>
                 )}
+                {(item.id === '2' || item.id === '3' || item.id === '5') && (
+                    <div style={{
+                        marginTop: '10px',
+                        padding: '10px',
+                        backgroundColor: '#3a3a3a',
+                        borderRadius: '4px'
+                    }}>
+                        <h4 style={{ margin: '0 0 10px 0' }}>Vector Status:</h4>
+                        {renderVectorInfo(
+                            item.id === '2' ? 'ICP Neuron Vector' :
+                            item.id === '3' ? 'ICP Splitter Vector' :
+                            'SNEED Splitter Vector'
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
 
-    // Update handleNodeMouseEnter to show detailed neuron info
+    // Update handleNodeMouseEnter to include vector info
     const handleNodeMouseEnter = useCallback((event, node) => {
         const content = (
             <div>
@@ -1607,6 +1730,9 @@ function RLLInfo() {
                         ))}
                     </div>
                 )}
+                {node.id === '2' && renderVectorInfo('ICP Neuron Vector')}
+                {node.id === '3' && renderVectorInfo('ICP Splitter Vector')}
+                {node.id === '5' && renderVectorInfo('SNEED Splitter Vector')}
             </div>
         );
         
@@ -1615,7 +1741,7 @@ function RLLInfo() {
             x: event.clientX,
             y: event.clientY
         });
-    }, [treasuryBalances, isLoadingBalances, neuronBalance, isLoadingNeuron]);
+    }, [treasuryBalances, isLoadingBalances, neuronBalance, isLoadingNeuron, vectorInfo, isLoadingVectors]);
 
     const handleEdgeMouseEnter = useCallback((event, edge) => {
         const content = (
