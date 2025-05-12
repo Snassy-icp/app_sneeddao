@@ -365,7 +365,11 @@ function RLL() {
     const [loadingReconciliation, setLoadingReconciliation] = useState(true);
     const [isAdmin, setIsAdmin] = useState(false);
     const [highestClosedProposalId, setHighestClosedProposalId] = useState(null);
-
+    const [tokenDistributionLimits, setTokenDistributionLimits] = useState({});
+    const [loadingDistributionLimits, setLoadingDistributionLimits] = useState(true);
+    const [newMinAmount, setNewMinAmount] = useState('');
+    const [newMaxAmount, setNewMaxAmount] = useState('');
+    const [selectedToken, setSelectedToken] = useState(null);
 
     // New state for hotkey neurons
     const [hotkeyNeurons, setHotkeyNeurons] = useState({
@@ -855,6 +859,83 @@ function RLL() {
         }
     };
 
+    // Add function to fetch token distribution limits
+    const fetchTokenDistributionLimits = async () => {
+        if (!tokens.length) return;
+        setLoadingDistributionLimits(true);
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            const limits = {};
+            
+            for (const token of tokens) {
+                const minDist = await rllActor.get_token_min_distribution(token.ledger_id);
+                const maxDist = await rllActor.get_token_max_distribution(token.ledger_id);
+                limits[token.ledger_id.toString()] = {
+                    min: minDist,
+                    max: maxDist
+                };
+            }
+            
+            setTokenDistributionLimits(limits);
+        } catch (error) {
+            console.error('Error fetching token distribution limits:', error);
+        } finally {
+            setLoadingDistributionLimits(false);
+        }
+    };
+
+    // Add function to set token distribution limits
+    const handleSetDistributionLimits = async (tokenId) => {
+        if (!isAdmin || !tokenId) return;
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            
+            if (newMinAmount) {
+                const minAmount = BigInt(Math.floor(Number(newMinAmount) * Math.pow(10, 8)));
+                await rllActor.set_token_min_distribution(Principal.fromText(tokenId), minAmount);
+            }
+            
+            if (newMaxAmount) {
+                const maxAmount = BigInt(Math.floor(Number(newMaxAmount) * Math.pow(10, 8)));
+                await rllActor.set_token_max_distribution(Principal.fromText(tokenId), maxAmount);
+            }
+            
+            // Refresh the limits
+            await fetchTokenDistributionLimits();
+            
+            // Clear the input fields
+            setNewMinAmount('');
+            setNewMaxAmount('');
+            setSelectedToken(null);
+        } catch (error) {
+            console.error('Error setting distribution limits:', error);
+        }
+    };
+
+    // Add function to remove token distribution limits
+    const handleRemoveDistributionLimits = async (tokenId) => {
+        if (!isAdmin || !tokenId) return;
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            
+            // Remove both min and max limits
+            await rllActor.remove_token_min_distribution(Principal.fromText(tokenId));
+            await rllActor.remove_token_max_distribution(Principal.fromText(tokenId));
+            
+            // Refresh the limits
+            await fetchTokenDistributionLimits();
+        } catch (error) {
+            console.error('Error removing distribution limits:', error);
+        }
+    };
+
+    // Add useEffect to fetch token distribution limits when tokens are loaded
+    useEffect(() => {
+        if (tokens.length > 0 && identity) {
+            fetchTokenDistributionLimits();
+        }
+    }, [tokens, identity]);
+
     return (
         <div className='page-container'>
             <header className="site-header">
@@ -1190,37 +1271,23 @@ function RLL() {
                                     padding: '15px',
                                     marginBottom: '10px'
                                 }}>
-                                    <div style={styles.statusItem}>
-                                        <span>Token:</span>
-                                        <span style={{fontWeight: 'bold'}}>{symbol}</span>
-                                    </div>
-                                    {totalDistributed !== undefined && (
-                                        <div style={styles.statusItem}>
-                                            <span>All-Time Distributed:</span>
-                                            <span style={{fontFamily: 'monospace'}}>{formatBalance(totalDistributed, decimals)} {symbol}</span>
-                                        </div>
-                                    )}
-                                    <div style={styles.statusItem}>
-                                        <span>Currently Claimable:</span>
-                                        <span style={{fontFamily: 'monospace'}}>{formatBalance(item.local_total, decimals)} {symbol}</span>
-                                    </div>
-                                    <div style={styles.statusItem}>
+                                    <div style={{ fontWeight: 'bold', marginBottom: '10px' }}>{symbol}</div>
+                                    <div style={styles.reconciliationItem}>
                                         <span>Server Balance:</span>
-                                        <span style={{fontFamily: 'monospace'}}>{formatBalance(item.server_balance, decimals)} {symbol}</span>
+                                        <span>{formatBalance(item.server_balance, decimals)} {symbol}</span>
                                     </div>
-                                    <div style={styles.statusItem}>
+                                    <div style={styles.reconciliationItem}>
+                                        <span>Local Total:</span>
+                                        <span>{formatBalance(item.local_total, decimals)} {symbol}</span>
+                                    </div>
+                                    <div style={styles.reconciliationItem}>
+                                        <span>Total Distributed:</span>
+                                        <span>{formatBalance(totalDistributed || 0, decimals)} {symbol}</span>
+                                    </div>
+                                    <div style={styles.reconciliationItem}>
                                         <span>Remaining:</span>
-                                        <span style={{
-                                            fontFamily: 'monospace',
-                                            color: Number(item.remaining) > 0 ? '#2ecc71' : '#ffffff'
-                                        }}>{formatBalance(item.remaining, decimals)} {symbol}</span>
+                                        <span>{formatBalance(item.remaining, decimals)} {symbol}</span>
                                     </div>
-                                    {Number(item.underflow) > 0 && (
-                                        <div style={{...styles.statusItem, color: '#e74c3c'}}>
-                                            <span>Underflow:</span>
-                                            <span style={{fontFamily: 'monospace'}}>{formatBalance(item.underflow, decimals)} {symbol}</span>
-                                        </div>
-                                    )}
                                 </div>
                             );
                         })}
@@ -1228,6 +1295,41 @@ function RLL() {
                     )}
                 </section>
 
+                {/* Token Distribution Limits Section */}
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Token Distribution Limits</h2>
+                    {loadingDistributionLimits ? (
+                        <div style={styles.spinner} />
+                    ) : (
+                        <div style={styles.reconciliationList}>
+                            {tokens.map(token => {
+                                const limits = tokenDistributionLimits[token.ledger_id.toString()];
+                                return (
+                                    <div key={token.ledger_id.toString()} style={{
+                                        backgroundColor: '#3a3a3a',
+                                        borderRadius: '6px',
+                                        padding: '15px',
+                                        marginBottom: '10px'
+                                    }}>
+                                        <div style={{ fontWeight: 'bold', marginBottom: '10px' }}>{token.symbol}</div>
+                                        <div style={styles.reconciliationItem}>
+                                            <span>Minimum Distribution:</span>
+                                            <span>
+                                                {limits?.min ? formatBalance(limits.min[0], token.decimals) : 'Not set'} {limits?.min ? token.symbol : ''}
+                                            </span>
+                                        </div>
+                                        <div style={styles.reconciliationItem}>
+                                            <span>Maximum Distribution:</span>
+                                            <span>
+                                                {limits?.max ? formatBalance(limits.max[0], token.decimals) : 'Not set'} {limits?.max ? token.symbol : ''}
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </section>
 
                 {/* Distribution Cycle Status */}
                 <section style={styles.section}>
@@ -1302,47 +1404,144 @@ function RLL() {
                 </section>
                 {/* Admin Controls */}
                 {isAdmin && (
-                    <section style={styles.section}>
-                        <h2 style={styles.heading}>Admin Controls</h2>
-                        <div style={styles.adminControls}>
-                            <button 
-                                onClick={handleStartDistributionCycle}
-                                style={styles.adminButton}
-                            >
-                                Start Distribution Cycle
-                            </button>
-                            <button 
-                                onClick={handleStopDistributionCycle}
-                                style={styles.adminButton}
-                            >
-                                Stop Distribution Cycle
-                            </button>
-                            <button 
-                                onClick={handleImportAllNeurons}
-                                style={styles.adminButton}
-                            >
-                                Import All Neurons
-                            </button>
-                            <button 
-                                onClick={handleImportAllProposals}
-                                style={styles.adminButton}
-                            >
-                                Import All Proposals
-                            </button>
-                            <button 
-                                onClick={handleStartMainLoop}
-                                style={styles.adminButton}
-                            >
-                                Start Main Loop
-                            </button>
-                            <button 
-                                onClick={handleStopMainLoop}
-                                style={styles.adminButton}
-                            >
-                                Stop Main Loop
-                            </button>
-                        </div>
-                    </section>
+                    <>
+                        <section style={styles.section}>
+                            <h2 style={styles.heading}>Admin Controls</h2>
+                            <div style={styles.adminControls}>
+                                <button 
+                                    onClick={handleStartDistributionCycle}
+                                    style={styles.adminButton}
+                                >
+                                    Start Distribution Cycle
+                                </button>
+                                <button 
+                                    onClick={handleStopDistributionCycle}
+                                    style={styles.adminButton}
+                                >
+                                    Stop Distribution Cycle
+                                </button>
+                                <button 
+                                    onClick={handleImportAllNeurons}
+                                    style={styles.adminButton}
+                                >
+                                    Import All Neurons
+                                </button>
+                                <button 
+                                    onClick={handleImportAllProposals}
+                                    style={styles.adminButton}
+                                >
+                                    Import All Proposals
+                                </button>
+                                <button 
+                                    onClick={handleStartMainLoop}
+                                    style={styles.adminButton}
+                                >
+                                    Start Main Loop
+                                </button>
+                                <button 
+                                    onClick={handleStopMainLoop}
+                                    style={styles.adminButton}
+                                >
+                                    Stop Main Loop
+                                </button>
+                            </div>
+                        </section>
+
+                        {/* Token Distribution Limits Admin Section */}
+                        <section style={styles.section}>
+                            <h2 style={styles.heading}>Manage Token Distribution Limits</h2>
+                            <div style={{
+                                backgroundColor: '#3a3a3a',
+                                borderRadius: '6px',
+                                padding: '20px',
+                                marginBottom: '20px'
+                            }}>
+                                <div style={{ marginBottom: '15px' }}>
+                                    <label style={{ display: 'block', marginBottom: '5px' }}>Select Token:</label>
+                                    <select 
+                                        value={selectedToken || ''}
+                                        onChange={(e) => setSelectedToken(e.target.value)}
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px',
+                                            backgroundColor: '#2a2a2a',
+                                            color: '#ffffff',
+                                            border: '1px solid #4a4a4a',
+                                            borderRadius: '4px',
+                                            marginBottom: '10px'
+                                        }}
+                                    >
+                                        <option value="">Select a token</option>
+                                        {tokens.map(token => (
+                                            <option key={token.ledger_id.toString()} value={token.ledger_id.toString()}>
+                                                {token.symbol}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div style={{ marginBottom: '15px' }}>
+                                    <label style={{ display: 'block', marginBottom: '5px' }}>Minimum Distribution:</label>
+                                    <input
+                                        type="number"
+                                        value={newMinAmount}
+                                        onChange={(e) => setNewMinAmount(e.target.value)}
+                                        placeholder="Enter minimum amount"
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px',
+                                            backgroundColor: '#2a2a2a',
+                                            color: '#ffffff',
+                                            border: '1px solid #4a4a4a',
+                                            borderRadius: '4px'
+                                        }}
+                                    />
+                                </div>
+
+                                <div style={{ marginBottom: '15px' }}>
+                                    <label style={{ display: 'block', marginBottom: '5px' }}>Maximum Distribution:</label>
+                                    <input
+                                        type="number"
+                                        value={newMaxAmount}
+                                        onChange={(e) => setNewMaxAmount(e.target.value)}
+                                        placeholder="Enter maximum amount"
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px',
+                                            backgroundColor: '#2a2a2a',
+                                            color: '#ffffff',
+                                            border: '1px solid #4a4a4a',
+                                            borderRadius: '4px'
+                                        }}
+                                    />
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <button
+                                        onClick={() => handleSetDistributionLimits(selectedToken)}
+                                        disabled={!selectedToken}
+                                        style={{
+                                            ...styles.adminButton,
+                                            opacity: !selectedToken ? 0.5 : 1
+                                        }}
+                                    >
+                                        Set Limits
+                                    </button>
+                                    <button
+                                        onClick={() => handleRemoveDistributionLimits(selectedToken)}
+                                        disabled={!selectedToken}
+                                        style={{
+                                            ...styles.adminButton,
+                                            backgroundColor: '#e74c3c',
+                                            opacity: !selectedToken ? 0.5 : 1
+                                        }}
+                                    >
+                                        Remove Limits
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
+                    </>
                 )}
 
                 <section style={styles.section}>
