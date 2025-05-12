@@ -87,6 +87,18 @@ type SneedRLL =
         token_id: principal;
         underflow: nat;
       });
+   balance_reconciliation_from_balances: (vec record {
+                                                principal;
+                                                nat;
+                                              }) ->
+    (vec
+      record {
+        local_total: nat;
+        remaining: nat;
+        server_balance: nat;
+        token_id: principal;
+        underflow: nat;
+      }) query;
    balances_count: () -> (nat) query;
    balances_of_hotkey: () -> (vec record {
                                     principal;

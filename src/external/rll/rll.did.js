@@ -274,6 +274,21 @@ export const idlFactory = ({ IDL }) => {
         ],
         [],
       ),
+    'balance_reconciliation_from_balances' : IDL.Func(
+        [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
+        [
+          IDL.Vec(
+            IDL.Record({
+              'token_id' : IDL.Principal,
+              'underflow' : IDL.Nat,
+              'local_total' : IDL.Nat,
+              'remaining' : IDL.Nat,
+              'server_balance' : IDL.Nat,
+            })
+          ),
+        ],
+        ['query'],
+      ),
     'balances_count' : IDL.Func([], [IDL.Nat], ['query']),
     'balances_of_hotkey' : IDL.Func(
         [],
