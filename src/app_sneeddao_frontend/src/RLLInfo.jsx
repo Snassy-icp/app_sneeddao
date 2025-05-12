@@ -2394,13 +2394,18 @@ function RLLInfo() {
                     />
                 </div>
             </header>
-            <main className="help-container">
+            <main className="rllinfo-container" style={{
+                maxWidth: '2000px',  // Increase max width to allow more space
+                margin: '0 auto',
+                padding: '20px'
+            }}>
                 <h1 style={{ color: '#ffffff' }}>Recursive Liquidity Loop (RLL)</h1>
                 
                 <div className="rll-layout" style={{
                     display: 'grid',
-                    gap: '20px',
-                    gridTemplateColumns: 'minmax(0, 1fr)'
+                    gap: '40px',  // Increased gap between columns
+                    gridTemplateColumns: 'minmax(0, 1fr)',
+                    width: '100%'
                 }}>
                     {/* Total Assets Section */}
                     <section style={{...styles.section, gridArea: 'assets'}}>
@@ -2832,7 +2837,7 @@ function RLLInfo() {
                     {`
                         @media (min-width: 1600px) {
                             .rll-layout {
-                                grid-template-columns: repeat(3, minmax(0, 1fr));
+                                grid-template-columns: minmax(400px, 1fr) minmax(500px, 2fr) minmax(400px, 1fr);
                                 grid-template-areas: "assets flow details";
                             }
                         }

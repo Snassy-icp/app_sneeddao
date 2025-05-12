@@ -868,7 +868,7 @@ function RLL() {
                     />
                 </div>
             </header>
-            <main className="help-container">
+            <main className="rll-container">
                 <h1 style={{ color: '#ffffff' }}>RLL Distribution Server</h1>
                 
                 {loadingHotkeyNeurons ? (

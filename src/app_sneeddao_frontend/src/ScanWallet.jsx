@@ -254,7 +254,7 @@ function ScanWallet() {
                     <Link to="/scan_wallet" className="active">Scan Wallet</Link>
                 </nav>
             </header>
-            <main className="help-container">
+            <main className="scanwallet-container">
                 <h1 style={{ color: '#ffffff' }}>Scan Wallet</h1>
                 
                 <section style={styles.section}>
