@@ -20,6 +20,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { createActor as createNnsGovActor } from 'external/nns_gov';
 import { createActor as createVectorActor } from 'external/icrc55_vector';
+import { createActor as createExVectorActor } from 'external/icrc55_exvector';
 
 // Styles for the expandable sections
 const styles = {
@@ -1464,30 +1465,38 @@ function RLLInfo() {
                 const vectors = {
                     'ICP Neuron Vector': {
                         id: '6jvpj-sqaaa-aaaaj-azwnq-cai',
-                        nodeId: 1 // Local node ID in the vector system
+                        nodeId: 1, // Local node ID in the vector system
+                        useExchange: false
                     },
                     'ICP Splitter Vector': {
                         id: '6jvpj-sqaaa-aaaaj-azwnq-cai',
-                        nodeId: 6
+                        nodeId: 6,
+                        useExchange: false
                     },
                     'SNEED Splitter Vector': {
                         id: '6jvpj-sqaaa-aaaaj-azwnq-cai',
-                        nodeId: 45
+                        nodeId: 45,
+                        useExchange: false
+                    },
+                    'SNEED Buyback Vector': {
+                        id: 'togwv-zqaaa-aaaal-qr7aa-cai',
+                        nodeId: 18,
+                        useExchange: true
                     }
                 };
 
                 const vectorData = {};
                 
                 for (const [name, vector] of Object.entries(vectors)) {
-                    const actor = createVectorActor(vector.id, {
-                        agentOptions: { identity }
-                    });
+                    const actor = vector.useExchange ? 
+                        createExVectorActor(vector.id, { agentOptions: { identity } }) :
+                        createVectorActor(vector.id, { agentOptions: { identity } });
 
                     // Fetch node information
                     const nodes = await actor.icrc55_get_nodes([{ id: vector.nodeId }]);
-                    if (nodes && nodes[0]) {
-                        vectorData[name] = nodes[0];
-                        console.log(`Vector info for ${name}:`, nodes[0]);
+                    if (nodes && nodes.length > 0) {
+                        vectorData[name] = nodes;
+                        console.log(`Vector info for ${name}:`, nodes);
                     }
                 }
 
@@ -1551,9 +1560,12 @@ function RLLInfo() {
     // Add helper function to render vector info
     const renderVectorInfo = (vectorName) => {
         const vectorData = vectorInfo[vectorName];
-        if (!vectorData || !vectorData[0]) return null;
+        if (!vectorData || !vectorData.length) return null;
         
-        const info = vectorData[0];  // The actual vector data is in the first element
+        // For exchange vector (SNEED Buyback), the data structure is slightly different
+        const isExchangeVector = vectorName === 'SNEED Buyback Vector';
+        const info = isExchangeVector ? vectorData[0] : vectorData[0][0];
+        if (!info) return null;
 
         // Helper to format nanoseconds timestamp
         const formatNanoTimestamp = (nanoTimestamp) => {
@@ -1579,7 +1591,6 @@ function RLLInfo() {
         const getNeuronInfo = () => {
             if (!info.custom?.[0]?.devefi_jes1_icpneuron?.cache) return null;
             const cache = info.custom[0].devefi_jes1_icpneuron.cache;
-            // Add null checks for array access
             return {
                 cached_neuron_stake_e8s: cache.cached_neuron_stake_e8s?.[0],
                 voting_power: cache.voting_power?.[0],
@@ -1619,8 +1630,8 @@ function RLLInfo() {
                             <div style={{ marginTop: '8px' }}>
                                 <div style={{ fontWeight: 'bold' }}>Billing:</div>
                                 <div style={{ marginLeft: '8px' }}>
-                                    <div>Balance: {formatBalance(info.billing.current_balance)} ICP</div>
-                                    <div>Status: {info.billing.frozen ? 'Frozen' : 'Active'}</div>
+                                    <div>Balance: {formatBalance(info.billing?.current_balance)} ICP</div>
+                                    <div>Status: {info.billing?.frozen ? 'Frozen' : 'Active'}</div>
                                 </div>
                             </div>
                         )}
@@ -1634,6 +1645,20 @@ function RLLInfo() {
                                         <div key={idx}>
                                             Destination {idx + 1}: {percentage.toString()}%
                                             {info.destinations?.[idx] && ` (${info.destinations[idx].name})`}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Exchange Vector Specific Information */}
+                        {isExchangeVector && info.custom && (
+                            <div style={{ marginTop: '8px' }}>
+                                <div style={{ fontWeight: 'bold' }}>Exchange Status:</div>
+                                <div style={{ marginLeft: '8px' }}>
+                                    {info.custom.map((entry, idx) => (
+                                        <div key={idx}>
+                                            {entry.operation}: {formatNanoTimestamp(entry.timestamp)}
                                         </div>
                                     ))}
                                 </div>
