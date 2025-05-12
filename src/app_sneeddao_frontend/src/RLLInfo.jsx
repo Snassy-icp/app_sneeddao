@@ -2631,17 +2631,16 @@ function RLLInfo() {
                                                 const balance = defiTokenBalances[tokenId.toString()];
                                                 if (!balance) return null;
                                                 
+                                                const usdValue = getUSDValue(balance, tokenInfo.decimals, tokenInfo.symbol);
+                                                
                                                 return (
-                                                    <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
-                                                        <div style={{ color: '#888', marginBottom: '4px' }}>
-                                                            {tokenInfo.symbol}:
-                                                        </div>
-                                                        <div style={{ marginLeft: '10px' }}>
-                                                            {(Number(balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                    <div key={tokenId.toString()} style={{ marginBottom: '10px', marginLeft: '10px' }}>
+                                                        {(Number(balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                        {!isNaN(usdValue) && usdValue > 0 && (
                                                             <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                                (${formatUSD(getUSDValue(balance, tokenInfo.decimals, tokenInfo.symbol))})
+                                                                (${formatUSD(usdValue)})
                                                             </span>
-                                                        </div>
+                                                        )}
                                                     </div>
                                                 );
                                             })
