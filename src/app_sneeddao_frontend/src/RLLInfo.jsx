@@ -24,6 +24,7 @@ import { createActor as createExVectorActor } from 'external/icrc55_exvector';
 import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { get_token_conversion_rates } from './utils/TokenUtils';
+import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 
 // Styles for the expandable sections
 const styles = {
@@ -1391,6 +1392,13 @@ function RLLInfo() {
         ICP: 0,
         SNEED: 0
     });
+    const [rllBalances, setRllBalances] = useState({
+        icp: null,
+        sneed: null
+    });
+    const [knownTokens, setKnownTokens] = useState([]);
+    const [reconciliationData, setReconciliationData] = useState([]);
+    const [isLoadingRllData, setIsLoadingRllData] = useState(false);
 
     useEffect(() => {
         const fetchConversionRates = async () => {
@@ -2106,6 +2114,42 @@ function RLLInfo() {
                         )}
                     </div>
                 )}
+                {node.id === '9' && (
+                    <div style={{
+                        marginTop: '8px',
+                        padding: '8px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                        borderRadius: '4px'
+                    }}>
+                        <div style={{ marginBottom: '4px' }}>Current Balances:</div>
+                        {isLoadingRllData ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : (
+                            <>
+                                {knownTokens.map(([tokenId, tokenInfo]) => {
+                                    const reconciliation = reconciliationData.find(item => 
+                                        item.token_id.toString() === tokenId.toString()
+                                    );
+                                    if (!reconciliation) return null;
+
+                                    return (
+                                        <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
+                                            <div style={{ color: '#3498db', marginBottom: '4px' }}>{tokenInfo.symbol}:</div>
+                                            <div style={{ marginLeft: '10px', fontSize: '0.9em' }}>
+                                                <div>Server Balance: {(Number(reconciliation.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}</div>
+                                                <div>Local Total: {(Number(reconciliation.local_total) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}</div>
+                                                <div>Remaining: {(Number(reconciliation.remaining) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}</div>
+                                                <div>Underflow: {(Number(reconciliation.underflow) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}</div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
         );
         
@@ -2114,7 +2158,7 @@ function RLLInfo() {
             x: event.clientX,
             y: event.clientY
         });
-    }, [treasuryBalances, isLoadingBalances, neuronBalance, isLoadingNeuron, vectorInfo, isLoadingVectors, lpPositions, isLoadingLp, defiBalances]);
+    }, [treasuryBalances, isLoadingBalances, neuronBalance, isLoadingNeuron, vectorInfo, isLoadingVectors, lpPositions, isLoadingLp, defiBalances, reconciliationData, knownTokens, isLoadingRllData]);
 
     const handleEdgeMouseEnter = useCallback((event, edge) => {
         const content = (
@@ -2169,6 +2213,60 @@ function RLLInfo() {
             [id]: !prev[id]
         }));
     };
+
+    // Add effect to fetch RLL token data
+    useEffect(() => {
+        const fetchRllTokenData = async () => {
+            if (!identity) return;
+            
+            setIsLoadingRllData(true);
+            try {
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: { identity }
+                });
+                
+                // First get known tokens
+                const tokens = await rllActor.get_known_tokens();
+                setKnownTokens(tokens);
+                console.log('Known tokens:', tokens);
+
+                // For each token, get its balance
+                const balances = await Promise.all(tokens.map(async ([tokenId]) => {
+                    const ledgerActor = createLedgerActor(tokenId.toString(), {
+                        agentOptions: { identity }
+                    });
+                    const balance = await ledgerActor.icrc1_balance_of({
+                        owner: Principal.fromText(rllCanisterId),
+                        subaccount: []
+                    });
+                    return [tokenId, balance];
+                }));
+
+                // Call balance_reconciliation_from_balances
+                const reconciliation = await rllActor.balance_reconciliation_from_balances(balances);
+                console.log('Reconciliation data:', reconciliation);
+                setReconciliationData(reconciliation);
+
+                // Update RLL balances state with ICP and SNEED
+                const icpBalance = balances.find(([tokenId]) => 
+                    tokenId.toString() === 'ryjl3-tyaaa-aaaaa-aaaba-cai')?.[1] || null;
+                const sneedBalance = balances.find(([tokenId]) => 
+                    tokenId.toString() === 'hvgxa-wqaaa-aaaaq-aacia-cai')?.[1] || null;
+                
+                setRllBalances({
+                    icp: icpBalance,
+                    sneed: sneedBalance
+                });
+
+            } catch (error) {
+                console.error('Error fetching RLL token data:', error);
+            } finally {
+                setIsLoadingRllData(false);
+            }
+        };
+
+        fetchRllTokenData();
+    }, [identity]);
 
     return (
         <div className='page-container'>
@@ -2366,6 +2464,46 @@ function RLLInfo() {
                                 </>
                             )}
                         </div>
+                    </div>
+
+                    {/* Other Tokens */}
+                    <div style={{
+                        backgroundColor: '#1a1a1a',
+                        padding: '20px',
+                        borderRadius: '6px',
+                        border: '1px solid #9b59b6',
+                        marginTop: '20px'
+                    }}>
+                        <h3 style={{ color: '#9b59b6', marginTop: 0 }}>Other Tokens</h3>
+                        {isLoadingRllData ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : (
+                            <>
+                                {knownTokens
+                                    .filter(([tokenId]) => {
+                                        const id = tokenId.toString();
+                                        return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
+                                    })
+                                    .map(([tokenId, tokenInfo]) => {
+                                        const balance = reconciliationData.find(item => 
+                                            item.token_id.toString() === tokenId.toString()
+                                        );
+                                        return (
+                                            <div key={tokenId.toString()} style={{ marginBottom: '15px' }}>
+                                                <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                    {tokenInfo.symbol}:
+                                                </div>
+                                                <div style={{ fontSize: '1.1em' }}>
+                                                    {(Number(balance?.server_balance || 0) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                }
+                            </>
+                        )}
                     </div>
 
                     {/* Grand Total in USD */}
