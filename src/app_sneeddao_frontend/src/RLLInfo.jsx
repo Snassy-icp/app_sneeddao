@@ -1612,9 +1612,13 @@ function RLLInfo() {
         try {
             const formattedAccount = formatIcrc1Account(account);
             
-            // Special case for fi3zi-fyaaa-aaaaq-aachq-cai (Treasury/Burn)
+            // Special case for fi3zi-fyaaa-aaaaq-aachq-cai accounts
             if (formattedAccount.startsWith('fi3zi-fyaaa-aaaaq-aachq-cai')) {
-                // For SNEED token it's the burn address
+                // SNEED Treasury has a specific subaccount
+                if (formattedAccount.includes('8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de')) {
+                    return 'Sneed DAO Treasury';
+                }
+                // For SNEED token without the treasury subaccount, it's the burn address
                 if (tokenId.toString() === 'hvgxa-wqaaa-aaaaq-aacia-cai') {
                     return 'SNEED Burn Address';
                 }
