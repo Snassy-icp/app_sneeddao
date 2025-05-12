@@ -361,10 +361,13 @@ function RLL() {
         const fetchTokens = async () => {
             console.log('Starting to fetch whitelisted tokens...');
             try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+                
                 const backendActor = createBackendActor(backendCanisterId, {
-                    agentOptions: {
-                        identity,
-                    },
+                    agentOptions: { agent }
                 });
                 console.log('Created backend actor, fetching tokens...');
                 const whitelistedTokens = await backendActor.get_whitelisted_tokens();
@@ -377,29 +380,22 @@ function RLL() {
             }
         };
 
-        if (isAuthenticated) {
-            console.log('User is authenticated, fetching tokens...');
-            fetchTokens();
-        } else {
-            console.log('User is not authenticated, skipping token fetch');
-        }
-    }, [isAuthenticated, identity]);
+        fetchTokens();
+    }, []);
 
     // Fetch total distributions
     useEffect(() => {
         const fetchDistributions = async () => {
-            if (!isAuthenticated) {
-                console.log('Skipping distributions fetch - not authenticated');
-                return;
-            }
-            
             console.log('Starting to fetch total distributions...');
             setLoadingDistributions(true);
             try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+                
                 const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: {
-                        identity,
-                    },
+                    agentOptions: { agent }
                 });
                 console.log('Created RLL actor, fetching distributions...');
                 const totalDistributions = await rllActor.get_total_distributions();
@@ -420,23 +416,21 @@ function RLL() {
         };
 
         fetchDistributions();
-    }, [isAuthenticated, identity]);
+    }, []);
 
     // Fetch events
     useEffect(() => {
         const fetchEvents = async () => {
-            if (!isAuthenticated) {
-                console.log('Skipping events fetch - not authenticated');
-                return;
-            }
-            
             console.log('Starting to fetch events...');
             setLoadingEvents(true);
             try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+                
                 const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: {
-                        identity,
-                    },
+                    agentOptions: { agent }
                 });
                 console.log('Created RLL actor, fetching events...');
                 const [distributions, claims] = await Promise.all([
@@ -457,7 +451,7 @@ function RLL() {
         };
 
         fetchEvents();
-    }, [isAuthenticated, identity]);
+    }, []);
 
     // Fetch user's claim events
     useEffect(() => {
@@ -525,15 +519,15 @@ function RLL() {
     // Fetch import status
     useEffect(() => {
         const fetchImportStatus = async () => {
-            if (!isAuthenticated) {
-                console.log('Skipping import status fetch - not authenticated');
-                return;
-            }
-            
             console.log('Starting to fetch import status...');
             try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+                
                 const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: { identity }
+                    agentOptions: { agent }
                 });
                 
                 const [
@@ -541,7 +535,6 @@ function RLL() {
                     owners,
                     props,
                     stage,
-                    adminStatus,
                     proposalId,
                     loopStatus
                 ] = await Promise.all([
@@ -549,7 +542,6 @@ function RLL() {
                     rllActor.imported_owners_count(),
                     rllActor.imported_props_count(),
                     rllActor.get_import_stage(),
-                    rllActor.caller_is_admin(),
                     rllActor.get_highest_closed_proposal_id(),
                     rllActor.get_main_loop_status()
                 ]);
@@ -559,7 +551,6 @@ function RLL() {
                     owners,
                     props,
                     stage,
-                    adminStatus,
                     proposalId,
                     loopStatus
                 });
@@ -568,7 +559,6 @@ function RLL() {
                 setImportedOwnersCount(owners);
                 setImportedPropsCount(props);
                 setImportStage(stage);
-                setIsAdmin(adminStatus);
                 setHighestClosedProposalId(proposalId);
                 setMainLoopStatus({
                     isRunning: loopStatus.is_running,
@@ -587,21 +577,21 @@ function RLL() {
         };
 
         fetchImportStatus();
-    }, [isAuthenticated, identity]);
+    }, []);
 
     // Fetch balance reconciliation
     useEffect(() => {
         const fetchReconciliation = async () => {
-            if (!isAuthenticated) {
-                console.log('Skipping reconciliation fetch - not authenticated');
-                return;
-            }
-            
             console.log('Starting to fetch balance reconciliation...');
             setLoadingReconciliation(true);
             try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+                
                 const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: { identity }
+                    agentOptions: { agent }
                 });
                 
                 // First get known tokens
@@ -611,7 +601,7 @@ function RLL() {
                 // For each token, get its balance - extract just the principal from each token entry
                 const balances = await Promise.all(knownTokens.map(async ([tokenId]) => {
                     const ledgerActor = createLedgerActor(tokenId.toString(), {
-                        agentOptions: { identity }
+                        agentOptions: { agent }
                     });
 
                     const balance = await ledgerActor.icrc1_balance_of({
@@ -634,7 +624,7 @@ function RLL() {
         };
 
         fetchReconciliation();
-    }, [isAuthenticated, identity]);
+    }, []);
 
     // Function to fetch neurons directly from SNS
     const fetchNeuronsFromSns = async () => {
