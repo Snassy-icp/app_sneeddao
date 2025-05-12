@@ -1,0 +1,717 @@
+type Version = 
+ variant {
+   alpha: vec nat16;
+   beta: vec nat16;
+   release: vec nat16;
+ };
+type ValueMap = 
+ record {
+   text;
+   Value;
+ };
+type Value = 
+ variant {
+   Array: vec Value;
+   Blob: blob;
+   Int: int;
+   Map: vec ValueMap;
+   Nat: nat;
+   Text: text;
+ };
+type ValidationResult = 
+ variant {
+   Err: text;
+   Ok: text;
+ };
+type UpdatingStatus = 
+ variant {
+   Calling: nat64;
+   Done: nat64;
+   Init;
+ };
+type TransferResponse = 
+ variant {
+   err: text;
+   ok: nat64;
+ };
+type TransferRequest = 
+ record {
+   amount: nat;
+   from:
+    variant {
+      account: Account;
+      node: record {
+              endpoint_idx: EndpointIdx;
+              node_id: LocalNodeId;
+            };
+    };
+   ledger: SupportedLedger;
+   to:
+    variant {
+      account: Account;
+      external_account: variant {
+                          ic: Account;
+                          other: blob;
+                        };
+      node: record {
+              endpoint_idx: EndpointIdx;
+              node_id: LocalNodeId;
+            };
+      node_billing: LocalNodeId;
+      temp: record {
+              id: nat32;
+              source_idx: EndpointIdx;
+            };
+    };
+ };
+type TransactionRange = 
+ record {
+   length: nat;
+   start: nat;
+ };
+type SupportedLedger = 
+ variant {
+   ic: principal;
+   other: record {
+            ledger: blob;
+            platform: nat64;
+          };
+ };
+type SourceEndpointResp = 
+ record {
+   balance: nat;
+   endpoint: Endpoint;
+   name: text;
+ };
+type SnsParametersCache = 
+ record {
+   default_followees:
+    opt
+     record {
+       followees:
+        vec record {
+              nat64;
+              record {followees: vec record {id: blob;};};
+            };};
+   initial_voting_period_seconds: opt nat64;
+   maturity_modulation_disabled: opt bool;
+   max_age_bonus_percentage: opt nat64;
+   max_dissolve_delay_bonus_percentage: opt nat64;
+   max_dissolve_delay_seconds: opt nat64;
+   max_followees_per_function: opt nat64;
+   max_neuron_age_for_age_bonus: opt nat64;
+   max_number_of_neurons: opt nat64;
+   max_number_of_principals_per_neuron: opt nat64;
+   max_number_of_proposals_with_ballots: opt nat64;
+   max_proposals_to_keep_per_action: opt nat32;
+   neuron_claimer_permissions: opt record {permissions: vec int32;};
+   neuron_grantable_permissions: opt record {permissions: vec int32;};
+   neuron_minimum_dissolve_delay_to_vote_seconds: opt nat64;
+   neuron_minimum_stake_e8s: opt nat64;
+   reject_cost_e8s: opt nat64;
+   transaction_fee_e8s: opt nat64;
+   voting_rewards_parameters:
+    opt
+     record {
+       final_reward_rate_basis_points: opt nat64;
+       initial_reward_rate_basis_points: opt nat64;
+       reward_rate_transition_duration_seconds: opt nat64;
+       round_duration_seconds: opt nat64;
+     };
+   wait_for_quiet_deadline_increase_seconds: opt nat64;
+ };
+type SnsNeuronUpdatingStatus = 
+ variant {
+   Calling: nat64;
+   Done: nat64;
+   Init;
+ };
+type SnsNeuronCache = 
+ record {
+   aging_since_timestamp_seconds: nat64;
+   auto_stake_maturity: opt bool;
+   cached_neuron_stake_e8s: nat64;
+   created_timestamp_seconds: nat64;
+   disburse_maturity_in_progress:
+    vec
+     record {
+       account_to_disburse_to:
+        opt
+         record {
+           owner: opt principal;
+           subaccount: opt record {subaccount: blob;};
+         };
+       amount_e8s: nat64;
+       finalize_disbursement_timestamp_seconds: opt nat64;
+       timestamp_of_disbursement_seconds: nat64;
+     };
+   dissolve_state:
+    opt
+     variant {
+       DissolveDelaySeconds: nat64;
+       WhenDissolvedTimestampSeconds: nat64;
+     };
+   followees: vec record {
+                    nat64;
+                    record {followees: vec record {id: blob;};};
+                  };
+   id: opt record {id: blob;};
+   maturity_e8s_equivalent: nat64;
+   neuron_fees_e8s: nat64;
+   permissions:
+    vec record {
+          permission_type: vec int32;
+          "principal": opt principal;
+        };
+   source_nns_neuron_id: opt nat64;
+   vesting_period_seconds: opt nat64;
+   voting_power_percentage_multiplier: nat64;
+ };
+type SnsNeuronActivity = 
+ variant {
+   Err: record {
+          msg: text;
+          operation: text;
+          timestamp: nat64;
+        };
+   Ok: record {
+         operation: text;
+         timestamp: nat64;
+       };
+ };
+type SnsFollowee = 
+ variant {
+   FolloweeId: blob;
+   Unspecified;
+ };
+type SnsDissolveStatus = 
+ variant {
+   Dissolving;
+   Locked;
+ };
+type SnsDissolveDelay = 
+ variant {
+   Default;
+   DelayDays: nat64;
+ };
+type Shared__3 = record {variables: record {split: vec nat;};};
+type Shared__2 = 
+ record {
+   internals:
+    record {
+      governance_canister: opt principal;
+      neuron_claimed: bool;
+      neuron_state: opt int32;
+      refresh_idx: opt nat64;
+      updating: SnsNeuronUpdatingStatus;
+    };
+   log: vec SnsNeuronActivity;
+   neuron_cache: opt SnsNeuronCache;
+   parameters_cache: opt SnsParametersCache;
+   variables:
+    record {
+      dissolve_delay: SnsDissolveDelay;
+      dissolve_status: SnsDissolveStatus;
+      followee: SnsFollowee;
+    };
+ };
+type Shared__1 = 
+ record {
+   cache: SharedNeuronCache;
+   internals:
+    record {
+      local_idx: nat32;
+      refresh_idx: opt nat64;
+      spawning_neurons: vec SharedNeuronCache;
+      updating: UpdatingStatus;
+    };
+   log: vec Activity;
+   variables:
+    record {
+      dissolve_delay: DissolveDelay;
+      dissolve_status: DissolveStatus;
+      followee: Followee;
+    };
+ };
+type SharedNeuronCache = 
+ record {
+   age_seconds: opt nat64;
+   cached_neuron_stake_e8s: opt nat64;
+   created_timestamp_seconds: opt nat64;
+   deciding_voting_power: opt nat64;
+   dissolve_delay_seconds: opt nat64;
+   followees:
+    vec record {
+          int32;
+          record {followees: vec record {id: nat64;};};
+        };
+   maturity_e8s_equivalent: opt nat64;
+   neuron_id: opt nat64;
+   nonce: opt nat64;
+   potential_voting_power: opt nat64;
+   state: opt int32;
+   voting_power: opt nat64;
+   voting_power_refreshed_timestamp_seconds: opt nat64;
+ };
+type Shared = 
+ variant {
+   devefi_jes1_icpneuron: Shared__1;
+   devefi_jes1_snsneuron: Shared__2;
+   devefi_split: Shared__3;
+ };
+type SETTINGS = 
+ record {
+   ALLOW_TEMP_NODE_CREATION: bool;
+   BILLING: BillingPylon;
+   MAX_INSTRUCTIONS_PER_HEARTBEAT: nat64;
+   PYLON_GOVERNED_BY: text;
+   PYLON_NAME: text;
+   REQUEST_MAX_EXPIRE_SEC: nat64;
+   TEMP_NODE_EXPIRATION_SEC: nat64;
+ };
+type PylonMetaResp = 
+ record {
+   billing: BillingPylon;
+   governed_by: text;
+   modules: vec ModuleMeta;
+   name: text;
+   request_max_expire_sec: nat64;
+   supported_ledgers: vec LedgerInfo;
+   temporary_nodes: record {
+                      allowed: bool;
+                      expire_sec: nat64;
+                    };
+ };
+type NodeShared = 
+ record {
+   active: bool;
+   billing:
+    record {
+      account: Account;
+      billing_option: nat;
+      cost_per_day: nat;
+      current_balance: nat;
+      expires: opt nat64;
+      frozen: bool;
+      transaction_fee: BillingTransactionFee;
+    };
+   controllers: vec Controller;
+   created: nat64;
+   custom: opt Shared;
+   destinations: vec DestinationEndpointResp;
+   extractors: vec LocalNodeId;
+   id: LocalNodeId;
+   modified: nat64;
+   refund: Account;
+   sources: vec SourceEndpointResp;
+ };
+type ModuleMeta = 
+ record {
+   author: text;
+   author_account: Account;
+   billing: vec Billing;
+   create_allowed: bool;
+   description: text;
+   destinations: EndpointsDescription;
+   id: text;
+   ledger_slots: vec text;
+   name: text;
+   sources: EndpointsDescription;
+   supported_ledgers: vec SupportedLedger;
+   temporary_allowed: bool;
+   version: Version;
+ };
+type ModifyRequest__3 = record {split: vec nat;};
+type ModifyRequest__2 = 
+ record {
+   dissolve_delay: opt SnsDissolveDelay;
+   dissolve_status: opt SnsDissolveStatus;
+   followee: opt SnsFollowee;
+ };
+type ModifyRequest__1 = 
+ record {
+   dissolve_delay: opt DissolveDelay;
+   dissolve_status: opt DissolveStatus;
+   followee: opt Followee;
+ };
+type ModifyRequest = 
+ variant {
+   devefi_jes1_icpneuron: ModifyRequest__1;
+   devefi_jes1_snsneuron: ModifyRequest__2;
+   devefi_split: ModifyRequest__3;
+ };
+type ModifyNodeResponse = 
+ variant {
+   err: text;
+   ok: GetNodeResponse;
+ };
+type ModifyNodeRequest = 
+ record {
+   LocalNodeId;
+   opt CommonModifyRequest;
+   opt ModifyRequest;
+ };
+type LocalNodeId = nat32;
+type LedgerLabel = text;
+type LedgerInfo__1 = 
+ record {
+   id: principal;
+   info: variant {
+           icp: Info;
+           icrc: Info__1;
+         };
+ };
+type LedgerInfo = 
+ record {
+   decimals: nat8;
+   fee: nat;
+   ledger: SupportedLedger;
+   name: text;
+   symbol: text;
+ };
+type LedgerIdx = nat;
+type InputAddress = 
+ variant {
+   ic: Account;
+   other: blob;
+   temp: record {
+           id: nat32;
+           source_idx: EndpointIdx;
+         };
+ };
+type Info__1 = 
+ record {
+   accounts: nat;
+   actor_principal: principal;
+   errors: nat;
+   lastTxTime: nat64;
+   last_indexed_tx: nat;
+   pending: nat;
+   reader_instructions_cost: nat64;
+   sender_instructions_cost: nat64;
+ };
+type Info = 
+ record {
+   accounts: nat;
+   actor_principal: opt principal;
+   errors: nat;
+   lastTxTime: nat64;
+   last_indexed_tx: nat;
+   pending: nat;
+   reader_instructions_cost: nat64;
+   sender_instructions_cost: nat64;
+ };
+type GetTransactionsResult = 
+ record {
+   archived_blocks: vec ArchivedTransactionResponse;
+   blocks: vec record {
+                 block: opt Value;
+                 id: nat;
+               };
+   log_length: nat;
+ };
+type GetTransactionsFn = func (vec TransactionRange) ->
+                          (GetTransactionsResult) query;
+type GetNodeResponse = 
+ record {
+   active: bool;
+   billing:
+    record {
+      account: Account;
+      billing_option: nat;
+      cost_per_day: nat;
+      current_balance: nat;
+      expires: opt nat64;
+      frozen: bool;
+      transaction_fee: BillingTransactionFee;
+    };
+   controllers: vec Controller;
+   created: nat64;
+   custom: opt Shared;
+   destinations: vec DestinationEndpointResp;
+   extractors: vec LocalNodeId;
+   id: LocalNodeId;
+   modified: nat64;
+   refund: Account;
+   sources: vec SourceEndpointResp;
+ };
+type GetNode = 
+ variant {
+   endpoint: Endpoint;
+   id: LocalNodeId;
+ };
+type GetControllerNodesRequest = 
+ record {
+   id: Controller;
+   length: nat32;
+   start: LocalNodeId;
+ };
+type GetBlocksResult = 
+ record {
+   archived_blocks: vec ArchivedTransactionResponse;
+   blocks: vec record {
+                 block: opt Value;
+                 id: nat;
+               };
+   log_length: nat;
+ };
+type GetBlocksArgs = vec TransactionRange;
+type GetArchivesResultItem = 
+ record {
+   canister_id: principal;
+   end: nat;
+   start: nat;
+ };
+type GetArchivesResult = vec GetArchivesResultItem;
+type GetArchivesArgs = record {from: opt principal;};
+type Followee = 
+ variant {
+   Default;
+   FolloweeId: nat64;
+ };
+type EndpointsDescription = 
+ vec record {
+       LedgerIdx;
+       LedgerLabel;
+     };
+type EndpointOther = 
+ record {
+   account: blob;
+   ledger: blob;
+   platform: nat64;
+ };
+type EndpointOptOther = 
+ record {
+   account: opt blob;
+   ledger: blob;
+   platform: nat64;
+ };
+type EndpointOptIC = 
+ record {
+   account: opt Account;
+   ledger: principal;
+ };
+type EndpointOpt = 
+ variant {
+   ic: EndpointOptIC;
+   other: EndpointOptOther;
+ };
+type EndpointIdx = nat8;
+type EndpointIC = 
+ record {
+   account: Account;
+   ledger: principal;
+ };
+type Endpoint = 
+ variant {
+   ic: EndpointIC;
+   other: EndpointOther;
+ };
+type DissolveStatus = 
+ variant {
+   Dissolving;
+   Locked;
+ };
+type DissolveDelay = 
+ variant {
+   Default;
+   DelayDays: nat64;
+ };
+type DestinationEndpointResp = 
+ record {
+   endpoint: EndpointOpt;
+   name: text;
+ };
+type DeleteNodeResp = 
+ variant {
+   err: text;
+   ok;
+ };
+type DataCertificate = 
+ record {
+   certificate: blob;
+   hash_tree: blob;
+ };
+type CreateRequest__3 = record {variables: record {split: vec nat;};};
+type CreateRequest__2 = record {
+                          variables:
+                           record {
+                             dissolve_delay: SnsDissolveDelay;
+                             dissolve_status: SnsDissolveStatus;
+                             followee: SnsFollowee;
+                           };};
+type CreateRequest__1 = record {
+                          variables:
+                           record {
+                             dissolve_delay: DissolveDelay;
+                             dissolve_status: DissolveStatus;
+                             followee: Followee;
+                           };};
+type CreateRequest = 
+ variant {
+   devefi_jes1_icpneuron: CreateRequest__1;
+   devefi_jes1_snsneuron: CreateRequest__2;
+   devefi_split: CreateRequest__3;
+ };
+type CreateNodeResponse = 
+ variant {
+   err: text;
+   ok: GetNodeResponse;
+ };
+type CreateNodeRequest = 
+ record {
+   CommonCreateRequest;
+   CreateRequest;
+ };
+type Controller = 
+ record {
+   owner: principal;
+   subaccount: opt blob;
+ };
+type CommonModifyRequest = 
+ record {
+   active: opt bool;
+   controllers: opt vec Controller;
+   destinations: opt vec opt InputAddress;
+   extractors: opt vec LocalNodeId;
+   refund: opt Account;
+   sources: opt vec opt InputAddress;
+ };
+type CommonCreateRequest = 
+ record {
+   affiliate: opt Account;
+   billing_option: nat;
+   controllers: vec Controller;
+   destinations: vec opt InputAddress;
+   extractors: vec LocalNodeId;
+   initial_billing_amount: opt nat;
+   ledgers: vec SupportedLedger;
+   refund: Account;
+   sources: vec opt InputAddress;
+   temp_id: nat32;
+   temporary: bool;
+ };
+type CommandResponse = 
+ variant {
+   create_node: CreateNodeResponse;
+   delete_node: DeleteNodeResp;
+   modify_node: ModifyNodeResponse;
+   transfer: TransferResponse;
+ };
+type Command = 
+ variant {
+   create_node: CreateNodeRequest;
+   delete_node: LocalNodeId;
+   modify_node: ModifyNodeRequest;
+   transfer: TransferRequest;
+ };
+type BlockType = 
+ record {
+   block_type: text;
+   url: text;
+ };
+type BillingTransactionFee = 
+ variant {
+   flat_fee_multiplier: nat;
+   none;
+   transaction_percentage_fee_e8s: nat;
+ };
+type BillingPylon = 
+ record {
+   freezing_threshold_days: nat;
+   ledger: principal;
+   min_create_balance: nat;
+   operation_cost: nat;
+   platform_account: Account;
+   pylon_account: Account;
+   split: BillingFeeSplit;
+ };
+type BillingFeeSplit = 
+ record {
+   affiliate: nat;
+   author: nat;
+   platform: nat;
+   pylon: nat;
+ };
+type Billing = 
+ record {
+   cost_per_day: nat;
+   transaction_fee: BillingTransactionFee;
+ };
+type BatchCommandResponse = 
+ variant {
+   err:
+    variant {
+      caller_not_controller;
+      duplicate: nat;
+      expired;
+      invalid_signature;
+      other: text;
+    };
+   ok: record {
+         commands: vec CommandResponse;
+         id: opt nat;
+       };
+ };
+type BatchCommandRequest = 
+ record {
+   commands: vec Command;
+   controller: Controller;
+   expire_at: opt nat64;
+   request_id: opt nat32;
+   signature: opt blob;
+ };
+type ArchivedTransactionResponse = 
+ record {
+   args: vec TransactionRange;
+   callback: GetTransactionsFn;
+ };
+type Activity = 
+ variant {
+   Err: record {
+          msg: text;
+          operation: text;
+          timestamp: nat64;
+        };
+   Ok: record {
+         operation: text;
+         timestamp: nat64;
+       };
+ };
+type AccountsResponse = vec AccountEndpoint;
+type AccountsRequest = 
+ record {
+   owner: principal;
+   subaccount: opt blob;
+ };
+type AccountEndpoint = 
+ record {
+   balance: nat;
+   endpoint: Endpoint;
+ };
+type Account = 
+ record {
+   owner: principal;
+   subaccount: opt blob;
+ };
+service : {
+  add_supported_ledger: (principal, variant {
+                                      icp;
+                                      icrc;
+                                    }) -> () oneway;
+  get_ledger_errors: () -> (vec vec text) query;
+  get_ledgers_info: () -> (vec LedgerInfo__1) query;
+  icrc3_get_archives: (GetArchivesArgs) -> (GetArchivesResult) query;
+  icrc3_get_blocks: (GetBlocksArgs) -> (GetBlocksResult) query;
+  icrc3_get_tip_certificate: () -> (opt DataCertificate) query;
+  icrc3_supported_block_types: () -> (vec BlockType) query;
+  icrc55_account_register: (Account) -> ();
+  icrc55_accounts: (AccountsRequest) -> (AccountsResponse) query;
+  icrc55_command: (BatchCommandRequest) -> (BatchCommandResponse);
+  icrc55_command_validate: (BatchCommandRequest) -> (ValidationResult) query;
+  icrc55_get_controller_nodes: (GetControllerNodesRequest) ->
+   (vec NodeShared) query;
+  icrc55_get_defaults: (text) -> (CreateRequest) query;
+  icrc55_get_nodes: (vec GetNode) -> (vec opt NodeShared) query;
+  icrc55_get_pylon_meta: () -> (PylonMetaResp) query;
+}
