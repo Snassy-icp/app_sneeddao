@@ -2000,13 +2000,15 @@ function RLLInfo() {
                                         borderRadius: '4px'
                                     }}>
                                         <div style={{ color: '#3498db', marginBottom: '8px', fontWeight: 'bold' }}>
-                                            {tokenInfo.symbol}
+                                            Token: {tokenInfo.symbol}
                                         </div>
                                         <div style={{ marginLeft: '10px' }}>
-                                            <div>Server Balance: {(Number(reconciliation.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}</div>
-                                            <div>Local Total: {(Number(reconciliation.local_total) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}</div>
-                                            <div>Remaining: {(Number(reconciliation.remaining) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}</div>
-                                            <div>Underflow: {(Number(reconciliation.underflow) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}</div>
+                                            <div>All-Time Distributed: {(Number(reconciliation.total_distributed) / Math.pow(10, tokenInfo.decimals)).toFixed(8)} {tokenInfo.symbol}</div>
+                                            <div>Currently Claimable: {(Number(reconciliation.local_total) / Math.pow(10, tokenInfo.decimals)).toFixed(8)} {tokenInfo.symbol}</div>
+                                            <div>Server Balance: {(Number(reconciliation.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(8)} {tokenInfo.symbol}</div>
+                                            <div style={{ color: Number(reconciliation.remaining) > 0 ? '#2ecc71' : '#ffffff' }}>
+                                                Remaining: {(Number(reconciliation.remaining) / Math.pow(10, tokenInfo.decimals)).toFixed(8)} {tokenInfo.symbol}
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -2280,6 +2282,12 @@ function RLLInfo() {
                 setKnownTokens(tokens);
                 console.log('Known tokens:', tokens);
 
+                // Get total distributions
+                const totalDistributions = await rllActor.get_total_distributions();
+                const distributionsMap = Object.fromEntries(
+                    totalDistributions.map(([tokenId, amount]) => [tokenId.toString(), amount])
+                );
+
                 // For each token, get its balance
                 const balances = await Promise.all(tokens.map(async ([tokenId]) => {
                     const ledgerActor = createLedgerActor(tokenId.toString(), {
@@ -2295,7 +2303,14 @@ function RLLInfo() {
                 // Call balance_reconciliation_from_balances
                 const reconciliation = await rllActor.balance_reconciliation_from_balances(balances);
                 console.log('Reconciliation data:', reconciliation);
-                setReconciliationData(reconciliation);
+                
+                // Enhance reconciliation data with total distributions
+                const enhancedReconciliation = reconciliation.map(item => ({
+                    ...item,
+                    total_distributed: distributionsMap[item.token_id.toString()] || BigInt(0)
+                }));
+                
+                setReconciliationData(enhancedReconciliation);
 
                 // Update RLL balances state with ICP and SNEED
                 const icpBalance = balances.find(([tokenId]) => 
