@@ -596,10 +596,31 @@ function RLL() {
 
             } catch (error) {
                 console.error('Error fetching import status:', error);
+                // Set default values on error
+                setImportedNeuronsCount(0);
+                setImportedOwnersCount(0);
+                setImportedPropsCount(0);
+                setImportStage('');
+                setHighestClosedProposalId(null);
+                setMainLoopStatus({
+                    isRunning: null,
+                    lastStarted: null,
+                    lastStopped: null,
+                    lastCycleStarted: null,
+                    lastCycleEnded: null,
+                    nextScheduled: null,
+                    frequencySeconds: null,
+                    currentTime: null
+                });
             }
         };
 
         fetchImportStatus();
+        
+        // Set up periodic refresh
+        const intervalId = setInterval(fetchImportStatus, 30000); // Refresh every 30 seconds
+        
+        return () => clearInterval(intervalId);
     }, []);
 
     // Fetch balance reconciliation
@@ -673,9 +694,12 @@ function RLL() {
 
     // Updated function to fetch hotkey neurons data
     const fetchHotkeyNeuronsData = async () => {
-        if (!identity) return;
-        setLoadingHotkeyNeurons(true);
+        if (!identity) {
+            setLoadingHotkeyNeurons(false);
+            return;
+        }
         
+        setLoadingHotkeyNeurons(true);
         try {
             // First get neurons from SNS
             const neurons = await fetchNeuronsFromSns();
@@ -687,17 +711,25 @@ function RLL() {
             setHotkeyNeurons(result);
         } catch (error) {
             console.error('Error fetching hotkey neurons:', error);
+            // Set empty state on error
+            setHotkeyNeurons({
+                neurons_by_owner: [],
+                total_voting_power: 0,
+                distribution_voting_power: 0
+            });
         } finally {
             setLoadingHotkeyNeurons(false);
         }
     };
 
-    // Update useEffect to use new function
+    // Update useEffect to use new function and handle authentication changes
     useEffect(() => {
-        if (isAuthenticated) {
+        if (isAuthenticated && identity) {
             fetchHotkeyNeuronsData();
+        } else {
+            setLoadingHotkeyNeurons(false);
         }
-    }, [isAuthenticated]);
+    }, [isAuthenticated, identity]);
 
     const formatBalance = (balance, decimals) => {
         if (!balance) return '0';
@@ -935,6 +967,32 @@ function RLL() {
             fetchTokenDistributionLimits();
         }
     }, [tokens, identity]);
+
+    // Add function to check admin status
+    const checkAdminStatus = async () => {
+        if (!identity) {
+            setIsAdmin(false);
+            return;
+        }
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            const isAdminResult = await rllActor.principal_is_admin(identity.getPrincipal());
+            console.log('Admin check result:', isAdminResult);
+            setIsAdmin(isAdminResult);
+        } catch (error) {
+            console.error('Error checking admin status:', error);
+            setIsAdmin(false);
+        }
+    };
+
+    // Add useEffect to check admin status when identity changes
+    useEffect(() => {
+        if (identity) {
+            checkAdminStatus();
+        } else {
+            setIsAdmin(false);
+        }
+    }, [identity]);
 
     return (
         <div className='page-container'>
