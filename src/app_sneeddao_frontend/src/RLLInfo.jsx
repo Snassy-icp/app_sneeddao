@@ -1514,6 +1514,13 @@ function RLLInfo() {
         return new Uint8Array(integers);
     };
 
+    // Add helper function to convert Uint8Array to hex
+    const uint8ArrayToHex = (array) => {
+        return Array.from(array)
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+    };
+
     // Update tooltip content to show loading state
     const renderTreasuryBalances = () => (
         <div style={{
@@ -1551,6 +1558,23 @@ function RLLInfo() {
         return parts.join(', ') || '< 1 day';
     };
 
+    // Add helper function to get token symbol from ledger ID
+    const getTokenSymbolFromLedger = (ledgerId) => {
+        const tokenMap = {
+            'ryjl3-tyaaa-aaaaa-aaaba-cai': 'ICP',
+            'hvgxa-wqaaa-aaaaq-aacia-cai': 'SNEED'
+        };
+        return tokenMap[ledgerId.toString()] || 'Unknown';
+    };
+
+    // Add helper function to format ICRC1 account
+    const formatIcrc1Account = (account) => {
+        if (!account || !account.owner) return 'Unknown';
+        const owner = account.owner.toText();
+        if (!account.subaccount || !account.subaccount.length) return owner;
+        return `${owner}-${uint8ArrayToHex(account.subaccount[0])}`;
+    };
+
     // Add helper function to render vector info
     const renderVectorInfo = (vectorName) => {
         const vectorData = vectorInfo[vectorName];
@@ -1558,20 +1582,6 @@ function RLLInfo() {
         
         const info = vectorData[0][0];
         if (!info) return null;
-
-        // Helper to format nanoseconds timestamp
-        const formatNanoTimestamp = (nanoTimestamp) => {
-            if (!nanoTimestamp) return 'Unknown';
-            // Convert from nanoseconds to milliseconds
-            const milliseconds = Number(nanoTimestamp) / 1_000_000;
-            return new Date(milliseconds).toLocaleString();
-        };
-
-        // Helper to format bigint balance
-        const formatBalance = (balance) => {
-            if (!balance) return '0';
-            return (Number(balance) / 1e8).toFixed(8);
-        };
 
         return (
             <div style={{
@@ -1596,33 +1606,9 @@ function RLLInfo() {
                             <div style={{ marginTop: '8px' }}>
                                 <div style={{ fontWeight: 'bold' }}>Billing:</div>
                                 <div style={{ marginLeft: '8px' }}>
-                                    <div>Balance: {formatBalance(info.billing.current_balance)} ICP</div>
+                                    <div>Balance: {(Number(info.billing.current_balance) / 1e8).toFixed(8)} ICP</div>
                                     <div>Status: {info.billing.frozen ? 'Frozen' : 'Active'}</div>
                                     <div>Cost per day: {Number(info.billing.cost_per_day)} ICP</div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Exchange Vector Specific Information */}
-                        {info.custom?.[0]?.exchange && (
-                            <div style={{ marginTop: '8px' }}>
-                                <div style={{ fontWeight: 'bold' }}>Exchange Status:</div>
-                                <div style={{ marginLeft: '8px' }}>
-                                    <div>Current Rate: {info.custom[0].exchange.internals.current_rate?.[0]?.toFixed(8) || 'N/A'}</div>
-                                    <div>Last Buy: {formatNanoTimestamp(info.custom[0].exchange.internals.last_buy)}</div>
-                                    <div>Next Buy: {formatNanoTimestamp(info.custom[0].exchange.internals.next_buy)}</div>
-                                    <div>Last Run: {formatNanoTimestamp(info.custom[0].exchange.internals.last_run)}</div>
-                                    <div>Swap Fee: {Number(info.custom[0].exchange.internals.swap_fee_e4s) / 10000}%</div>
-                                    {info.custom[0].exchange.internals.last_error?.length > 0 && (
-                                        <div style={{ color: '#ff6b6b' }}>Last Error: {info.custom[0].exchange.internals.last_error}</div>
-                                    )}
-                                    <div style={{ marginTop: '8px', fontWeight: 'bold' }}>Configuration:</div>
-                                    <div>Buy Amount: {formatBalance(info.custom[0].exchange.variables.buy_for_amount)} ICP</div>
-                                    <div>Buy Interval: {Number(info.custom[0].exchange.variables.buy_interval_seconds) / 60} minutes</div>
-                                    <div>Max Impact: {(info.custom[0].exchange.variables.max_impact * 100).toFixed(2)}%</div>
-                                    {info.custom[0].exchange.variables.max_rate?.length > 0 && (
-                                        <div>Max Rate: {info.custom[0].exchange.variables.max_rate[0]?.toFixed(8)}</div>
-                                    )}
                                 </div>
                             </div>
                         )}
@@ -1633,9 +1619,9 @@ function RLLInfo() {
                                 <div style={{ fontWeight: 'bold' }}>Sources:</div>
                                 {info.sources.map((source, idx) => (
                                     <div key={idx} style={{ marginLeft: '8px' }}>
-                                        • {source.name}: {formatBalance(source.balance)} ICP
+                                        • {source.name}: {(Number(source.balance) / 1e8).toFixed(8)} {getTokenSymbolFromLedger(source.endpoint.ic.ledger)}
                                         <div style={{ fontSize: '0.9em', color: '#888' }}>
-                                            Ledger: {source.endpoint.ic.ledger.toText()}
+                                            Account: {formatIcrc1Account(source.endpoint.ic.account[0])}
                                         </div>
                                     </div>
                                 ))}
@@ -1648,9 +1634,9 @@ function RLLInfo() {
                                 <div style={{ fontWeight: 'bold' }}>Destinations:</div>
                                 {info.destinations.map((dest, idx) => (
                                     <div key={idx} style={{ marginLeft: '8px' }}>
-                                        • {dest.name}
+                                        • {dest.name}% {getTokenSymbolFromLedger(dest.endpoint.ic.ledger)}
                                         <div style={{ fontSize: '0.9em', color: '#888' }}>
-                                            Ledger: {dest.endpoint.ic.ledger.toText()}
+                                            Account: {formatIcrc1Account(dest.endpoint.ic.account[0])}
                                         </div>
                                     </div>
                                 ))}
