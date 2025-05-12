@@ -125,6 +125,10 @@ type SneedRLL =
    clear_user_distribution_events: () -> ();
    clear_user_distributions: () -> ();
    clear_whitelisted_tokens: () -> ();
+   get_all_token_max_distributions: () -> (vec record {
+                                                 principal;
+                                                 nat;
+                                               }) query;
    get_all_token_min_distributions: () -> (vec record {
                                                  principal;
                                                  nat;
@@ -176,6 +180,7 @@ type SneedRLL =
      }) query;
    get_token_distribution_events: (principal) ->
     (vec DistributionEvent) query;
+   get_token_max_distribution: (principal) -> (opt nat) query;
    get_token_metadata: (principal) -> (opt TokenMetadata) query;
    get_token_min_distribution: (principal) -> (opt nat) query;
    get_token_total_distribution: (principal) -> (nat) query;
@@ -223,7 +228,9 @@ type SneedRLL =
    principal_is_admin: (principal) -> (bool) query;
    remove_admin: (principal) -> (Result);
    remove_known_token: (principal) -> ();
+   remove_token_max_distribution: (principal) -> (Result);
    remove_token_min_distribution: (principal) -> (Result);
+   set_token_max_distribution: (principal, nat) -> (Result);
    set_token_min_distribution: (principal, nat) -> (Result);
    start_distribution_cycle: () -> (Result);
    start_rll_main_loop: () -> (Result);

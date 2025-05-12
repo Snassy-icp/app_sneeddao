@@ -320,6 +320,11 @@ export const idlFactory = ({ IDL }) => {
     'clear_user_distribution_events' : IDL.Func([], [], []),
     'clear_user_distributions' : IDL.Func([], [], []),
     'clear_whitelisted_tokens' : IDL.Func([], [], []),
+    'get_all_token_max_distributions' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
+        ['query'],
+      ),
     'get_all_token_min_distributions' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
@@ -403,6 +408,11 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(DistributionEvent)],
         ['query'],
       ),
+    'get_token_max_distribution' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Opt(IDL.Nat)],
+        ['query'],
+      ),
     'get_token_metadata' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(TokenMetadata)],
@@ -483,7 +493,13 @@ export const idlFactory = ({ IDL }) => {
     'principal_is_admin' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
     'remove_admin' : IDL.Func([IDL.Principal], [Result], []),
     'remove_known_token' : IDL.Func([IDL.Principal], [], []),
+    'remove_token_max_distribution' : IDL.Func([IDL.Principal], [Result], []),
     'remove_token_min_distribution' : IDL.Func([IDL.Principal], [Result], []),
+    'set_token_max_distribution' : IDL.Func(
+        [IDL.Principal, IDL.Nat],
+        [Result],
+        [],
+      ),
     'set_token_min_distribution' : IDL.Func(
         [IDL.Principal, IDL.Nat],
         [Result],
