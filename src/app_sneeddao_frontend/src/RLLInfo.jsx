@@ -2409,6 +2409,39 @@ function RLLInfo() {
                         borderRadius: '8px',
                         marginBottom: '20px'
                     }}>
+                        {/* Grand Total in USD */}
+                        <div style={{
+                            backgroundColor: '#1a1a1a',
+                            padding: '20px',
+                            borderRadius: '6px',
+                            border: '1px solid #f1c40f',
+                            marginBottom: '20px',
+                            gridColumn: '1 / -1'  // Make it span full width
+                        }}>
+                            <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px' }}>Total Value (USD)</h3>
+                            {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
+                                <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                    <div style={styles.spinner} />
+                                </div>
+                            ) : (
+                                <div style={{ fontSize: '1.6em', fontWeight: 'bold' }}>
+                                    ${formatUSD(
+                                        // ICP total in USD
+                                        getUSDValue(treasuryBalances.icp, 8, 'ICP') +
+                                        getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
+                                        getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
+                                        getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
+                                        getUSDValue(defiBalances.icp, 8, 'ICP') +
+                                        // SNEED total in USD
+                                        getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
+                                        getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
+                                        getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
+                                        getUSDValue(defiBalances.sneed, 8, 'SNEED')
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
                         {/* ICP Assets */}
                         <div style={{
                             backgroundColor: '#1a1a1a',
@@ -2689,38 +2722,6 @@ function RLLInfo() {
                                     </div>
                                 </div>
                             </>
-                        )}
-                    </div>
-
-                    {/* Grand Total in USD */}
-                    <div style={{
-                        backgroundColor: '#1a1a1a',
-                        padding: '20px',
-                        borderRadius: '6px',
-                        border: '1px solid #f1c40f',
-                        marginTop: '20px'
-                    }}>
-                        <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px' }}>Total Value (USD)</h3>
-                        {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
-                            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                                <div style={styles.spinner} />
-                            </div>
-                        ) : (
-                            <div style={{ fontSize: '1.6em', fontWeight: 'bold' }}>
-                                ${formatUSD(
-                                    // ICP total in USD
-                                    getUSDValue(treasuryBalances.icp, 8, 'ICP') +
-                                    getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
-                                    getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
-                                    getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
-                                    getUSDValue(defiBalances.icp, 8, 'ICP') +
-                                    // SNEED total in USD
-                                    getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
-                                    getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
-                                    getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
-                                    getUSDValue(defiBalances.sneed, 8, 'SNEED')
-                                )}
-                            </div>
                         )}
                     </div>
                 </section>
