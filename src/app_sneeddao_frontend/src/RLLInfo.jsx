@@ -2973,9 +2973,12 @@ function RLLInfo() {
                     {`
                         @media (min-width: 1600px) {
                             .rll-layout {
-                                grid-template-columns: 400px 1fr fit-content(800px) !important;
+                                grid-template-columns: 400px minmax(600px, 1fr) 500px !important;
                                 grid-template-areas: "assets flow details" !important;
-                                gap: 40px;
+                                gap: 20px;
+                                max-width: 1800px;
+                                margin: 0 auto;
+                                padding: 0 20px;
                                 justifyItems: stretch;
                             }
 
@@ -2986,14 +2989,55 @@ function RLLInfo() {
 
                             .rll-layout > section[style*="gridArea: flow"] {
                                 width: 100% !important;
-                                max-width: unset !important; /* Remove max-width constraint in 3-column mode */
-                                min-width: 0 !important;
+                                max-width: unset !important;
+                                min-width: 600px !important;
                             }
 
                             .rll-layout > section[style*="gridArea: details"] {
-                                width: fit-content !important;
-                                min-width: 350px !important;
-                                max-width: 800px !important;
+                                width: 500px !important;
+                                max-width: 500px !important;
+                                overflow-x: hidden !important;
+                            }
+
+                            /* Comprehensive text wrapping for all content types */
+                            .rll-layout > section[style*="gridArea: details"] * {
+                                overflow-wrap: break-word !important;
+                                word-wrap: break-word !important;
+                                word-break: break-word !important;
+                                hyphens: auto !important;
+                            }
+
+                            .rll-layout > section[style*="gridArea: details"] .item-content {
+                                max-width: 100% !important;
+                                padding-right: 10px !important;
+                            }
+
+                            .rll-layout > section[style*="gridArea: details"] .canisterId,
+                            .rll-layout > section[style*="gridArea: details"] .icrc1Account,
+                            .rll-layout > section[style*="gridArea: details"] pre,
+                            .rll-layout > section[style*="gridArea: details"] code {
+                                max-width: 100% !important;
+                                white-space: pre-wrap !important;
+                                font-family: monospace !important;
+                            }
+
+                            /* Ensure expandable headers don't overflow */
+                            .rll-layout > section[style*="gridArea: details"] .expandableHeader {
+                                display: flex !important;
+                                align-items: center !important;
+                                justify-content: space-between !important;
+                                padding-right: 10px !important;
+                            }
+
+                            /* Add padding to nested content */
+                            .rll-layout > section[style*="gridArea: details"] .detailsSection {
+                                padding: 10px !important;
+                                margin-right: 10px !important;
+                            }
+
+                            /* Ensure long URLs and links wrap properly */
+                            .rll-layout > section[style*="gridArea: details"] a {
+                                word-break: break-all !important;
                             }
                         }
                     `}
