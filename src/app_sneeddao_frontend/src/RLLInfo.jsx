@@ -1380,7 +1380,8 @@ function RLLInfo() {
                 const neuronInfo = await governanceCanister.get_neuron_info(neuronId);
 
                 if ('Ok' in neuronInfo) {
-                    setNeuronBalance(neuronInfo.Ok.cached_neuron_stake_e8s);
+                    // Store the full neuron info instead of just the balance
+                    setNeuronBalance(neuronInfo.Ok);
                     console.log('Neuron info:', neuronInfo.Ok);
                 } else if ('Error' in neuronInfo) {
                     console.error('Error from governance canister:', neuronInfo.Error);
@@ -1469,7 +1470,77 @@ function RLLInfo() {
         </div>
     );
 
-    // Update handleNodeMouseEnter to include neuron balance
+    // Add helper function to format duration
+    const formatDuration = (seconds) => {
+        if (!seconds) return '0 seconds';
+        const years = Math.floor(seconds / (365 * 24 * 60 * 60));
+        const months = Math.floor((seconds % (365 * 24 * 60 * 60)) / (30 * 24 * 60 * 60));
+        const days = Math.floor((seconds % (30 * 24 * 60 * 60)) / (24 * 60 * 60));
+        
+        const parts = [];
+        if (years > 0) parts.push(`${years} year${years > 1 ? 's' : ''}`);
+        if (months > 0) parts.push(`${months} month${months > 1 ? 's' : ''}`);
+        if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
+        
+        return parts.join(', ') || '< 1 day';
+    };
+
+    // Update renderItemDetails to show neuron info
+    const renderItemDetails = (item) => (
+        <div style={styles.itemContent}>
+            <p>{item.description}</p>
+            <h4>Inputs:</h4>
+            <ul style={styles.list}>
+                {item.inputs.map((input, i) => (
+                    <li key={i}>{input}</li>
+                ))}
+            </ul>
+            <h4>Outputs:</h4>
+            <ul style={styles.list}>
+                {item.outputs.map((output, i) => (
+                    <li key={i}>{output}</li>
+                ))}
+            </ul>
+            <div style={styles.detailsSection}>
+                {item.canisterId && (
+                    <p>Canister ID: <span style={styles.canisterId}>{item.canisterId}</span></p>
+                )}
+                {item.id === '1' && neuronBalance && (
+                    <div style={{
+                        marginTop: '10px',
+                        padding: '10px',
+                        backgroundColor: '#3a3a3a',
+                        borderRadius: '4px'
+                    }}>
+                        <h4 style={{ margin: '0 0 10px 0' }}>Neuron Status:</h4>
+                        {isLoadingNeuron ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : (
+                            <>
+                                <div>Stake: {(Number(neuronBalance.stake_e8s) / 1e8).toFixed(2)} ICP</div>
+                                <div>Voting Power: {(Number(neuronBalance.voting_power) / 1e8).toFixed(2)} ICP</div>
+                                <div>Age: {formatDuration(Number(neuronBalance.age_seconds))}</div>
+                                <div>Dissolve Delay: {formatDuration(Number(neuronBalance.dissolve_delay_seconds))}</div>
+                                <div>State: {neuronBalance.state === 1 ? 'Not Dissolving' : 'Dissolving'}</div>
+                                <div>Created: {new Date(Number(neuronBalance.created_timestamp_seconds) * 1000).toLocaleDateString()}</div>
+                            </>
+                        )}
+                    </div>
+                )}
+                {item.details && (
+                    <div style={{ marginTop: '10px' }}>
+                        {item.details.split('\n').map((line, i) => (
+                            <div key={i} style={{ marginBottom: '10px' }}>{line}</div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+
+    // Update handleNodeMouseEnter to show detailed neuron info
     const handleNodeMouseEnter = useCallback((event, node) => {
         const content = (
             <div>
@@ -1505,20 +1576,26 @@ function RLLInfo() {
                         Canister ID: {node.data.canisterId}
                     </div>
                 )}
-                {node.id === '1' && (
+                {node.id === '1' && neuronBalance && (
                     <div style={{
                         marginTop: '8px',
                         padding: '8px',
                         backgroundColor: 'rgba(255, 255, 255, 0.1)',
                         borderRadius: '4px'
                     }}>
-                        <div style={{ marginBottom: '4px' }}>Current Balance:</div>
+                        <div style={{ marginBottom: '4px' }}>Current Status:</div>
                         {isLoadingNeuron ? (
                             <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
                                 <div style={styles.spinner} />
                             </div>
                         ) : (
-                            <div>ICP: {neuronBalance ? (Number(neuronBalance) / 1e8).toFixed(2) : '0.00'} ICP</div>
+                            <>
+                                <div>Stake: {(Number(neuronBalance.stake_e8s) / 1e8).toFixed(2)} ICP</div>
+                                <div>Voting Power: {(Number(neuronBalance.voting_power) / 1e8).toFixed(2)} ICP</div>
+                                <div>Age: {formatDuration(Number(neuronBalance.age_seconds))}</div>
+                                <div>Dissolve Delay: {formatDuration(Number(neuronBalance.dissolve_delay_seconds))}</div>
+                                <div>State: {neuronBalance.state === 1 ? 'Not Dissolving' : 'Dissolving'}</div>
+                            </>
                         )}
                     </div>
                 )}
@@ -1526,33 +1603,7 @@ function RLLInfo() {
                 {node.data.details && (
                     <div style={{ marginTop: '10px' }}>
                         {node.data.details.split('\n').map((line, i) => (
-                            <div key={i} style={{ marginBottom: '10px' }}>
-                                {line}
-                                {line.includes('ICP Treasury:') && (
-                                    <div style={{ marginTop: '4px' }}>
-                                        <a 
-                                            href="https://dashboard.internetcomputer.org/account/580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9" 
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={styles.link}
-                                        >
-                                            View on Platform →
-                                        </a>
-                                    </div>
-                                )}
-                                {line.includes('SNEED Treasury:') && (
-                                    <div style={{ marginTop: '4px' }}>
-                                        <a 
-                                            href="https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai/account/fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de" 
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={styles.link}
-                                        >
-                                            View on Platform →
-                                        </a>
-                                    </div>
-                                )}
-                            </div>
+                            <div key={i} style={{ marginBottom: '10px' }}>{line}</div>
                         ))}
                     </div>
                 )}
@@ -1619,82 +1670,6 @@ function RLLInfo() {
             [id]: !prev[id]
         }));
     };
-
-    const renderItemDetails = (item) => (
-        <div style={styles.itemContent}>
-            <p>{item.description}</p>
-            <h4>Inputs:</h4>
-            <ul style={styles.list}>
-                {item.inputs.map((input, i) => (
-                    <li key={i}>{input}</li>
-                ))}
-            </ul>
-            <h4>Outputs:</h4>
-            <ul style={styles.list}>
-                {item.outputs.map((output, i) => (
-                    <li key={i}>{output}</li>
-                ))}
-            </ul>
-            <div style={styles.detailsSection}>
-                {item.canisterId && (
-                    <p>Canister ID: <span style={styles.canisterId}>{item.canisterId}</span></p>
-                )}
-                {item.title === "Sneed DAO Treasury" && (
-                    <div style={{
-                        marginTop: '10px',
-                        padding: '10px',
-                        backgroundColor: '#3a3a3a',
-                        borderRadius: '4px'
-                    }}>
-                        <h4 style={{ margin: '0 0 10px 0' }}>Current Balances:</h4>
-                        {isLoadingBalances ? (
-                            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
-                                <div style={styles.spinner} />
-                            </div>
-                        ) : (
-                            <>
-                                <div style={{ marginBottom: '5px' }}>ICP: {(Number(treasuryBalances.icp) / 1e8).toFixed(2)} ICP</div>
-                                <div>SNEED: {(Number(treasuryBalances.sneed) / 1e8).toFixed(2)} SNEED</div>
-                            </>
-                        )}
-                    </div>
-                )}
-                {item.details && (
-                    <div style={{ marginTop: '10px' }}>
-                        {item.details.split('\n').map((line, i) => (
-                            <div key={i} style={{ marginBottom: '10px' }}>
-                                {line}
-                                {line.includes('ICP Treasury:') && (
-                                    <div style={{ marginTop: '4px' }}>
-                                        <a 
-                                            href="https://dashboard.internetcomputer.org/account/580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9" 
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={styles.link}
-                                        >
-                                            View on Platform →
-                                        </a>
-                                    </div>
-                                )}
-                                {line.includes('SNEED Treasury:') && (
-                                    <div style={{ marginTop: '4px' }}>
-                                        <a 
-                                            href="https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai/account/fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de" 
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={styles.link}
-                                        >
-                                            View on Platform →
-                                        </a>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
 
     return (
         <div className='page-container'>
