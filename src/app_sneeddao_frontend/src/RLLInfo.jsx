@@ -21,6 +21,7 @@ import { Actor, HttpAgent } from '@dfinity/agent';
 import { createActor as createNnsGovActor } from 'external/nns_gov';
 import { createActor as createVectorActor } from 'external/icrc55_vector';
 import { createActor as createExVectorActor } from 'external/icrc55_exvector';
+import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 
 // Styles for the expandable sections
 const styles = {
@@ -1571,27 +1572,34 @@ function RLLInfo() {
     const formatIcrc1Account = (account) => {
         if (!account) return 'Unknown';
         
-        // For destinations, the structure is endpoint.ic.account[0]
-        if (account.ic && account.ic.account && Array.isArray(account.ic.account)) {
-            const acc = account.ic.account[0];
-            if (!acc) return 'Unknown';
-            const owner = acc.owner ? acc.owner.toText() : 'Unknown';
-            if (!acc.subaccount || !acc.subaccount.length) return owner;
-            return `${owner}-${uint8ArrayToHex(acc.subaccount[0])}`;
-        }
-        
-        // For sources, the structure is endpoint.ic.account
-        if (account.ic && account.ic.account && account.ic.account.owner) {
-            const owner = account.ic.account.owner.toText();
-            if (!account.ic.account.subaccount || !account.ic.account.subaccount.length) return owner;
-            return `${owner}-${uint8ArrayToHex(account.ic.account.subaccount[0])}`;
-        }
-        
-        // Fallback for direct account structure
-        if (account.owner) {
-            const owner = account.owner.toText();
-            if (!account.subaccount || !account.subaccount.length) return owner;
-            return `${owner}-${uint8ArrayToHex(account.subaccount[0])}`;
+        try {
+            // For destinations, the structure is endpoint.ic.account[0]
+            if (account.ic && account.ic.account && Array.isArray(account.ic.account)) {
+                const acc = account.ic.account[0];
+                if (!acc || !acc.owner) return 'Unknown';
+                return encodeIcrcAccount({
+                    owner: acc.owner,
+                    subaccount: acc.subaccount?.[0]
+                });
+            }
+            
+            // For sources, the structure is endpoint.ic.account
+            if (account.ic && account.ic.account && account.ic.account.owner) {
+                return encodeIcrcAccount({
+                    owner: account.ic.account.owner,
+                    subaccount: account.ic.account.subaccount?.[0]
+                });
+            }
+            
+            // Fallback for direct account structure
+            if (account.owner) {
+                return encodeIcrcAccount({
+                    owner: account.owner,
+                    subaccount: account.subaccount?.[0]
+                });
+            }
+        } catch (error) {
+            console.error('Error formatting ICRC1 account:', error);
         }
         
         return 'Unknown';
