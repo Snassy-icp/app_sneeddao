@@ -1881,6 +1881,26 @@ function RLLInfo() {
                         )}
                     </div>
                 )}
+                {item.id === '7' && (
+                    <div style={{
+                        marginTop: '10px',
+                        padding: '10px',
+                        backgroundColor: '#3a3a3a',
+                        borderRadius: '4px'
+                    }}>
+                        <h4 style={{ margin: '0 0 10px 0' }}>Current Balances:</h4>
+                        {isLoadingBalances ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : (
+                            <div style={{ marginLeft: '10px' }}>
+                                <div>• {(Number(defiBalances.icp) / 1e8).toFixed(4)} ICP</div>
+                                <div>• {(Number(defiBalances.sneed) / 1e8).toFixed(4)} SNEED</div>
+                            </div>
+                        )}
+                    </div>
+                )}
                 {(item.id === '2' || item.id === '3' || item.id === '5' || item.id === '4') && (
                     <div style={{
                         marginTop: '10px',
