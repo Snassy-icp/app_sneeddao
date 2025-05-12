@@ -1,10 +1,12 @@
 import React, { useState, useRef } from 'react';
+import { useAuth } from './AuthContext';
 import './PrincipalBox.css';
 
 function PrincipalBox({ principalText, onLogout }) {
     const [showPopup, setShowPopup] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState('');
     const principalRef = useRef(null);
+    const { login } = useAuth();
 
     const truncateString = (
       fullStr,
@@ -38,6 +40,15 @@ function PrincipalBox({ principalText, onLogout }) {
           setTimeout(() => setCopyFeedback(''), 2000);
       }
     };
+
+    // If not logged in, show login button
+    if (principalText === "Not logged in.") {
+        return (
+            <button className="principal-button" onClick={login}>
+                Login
+            </button>
+        );
+    }
 
     return (
       <div className="principal-box-container">
