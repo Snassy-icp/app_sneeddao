@@ -2496,36 +2496,33 @@ function RLLInfo() {
                             </div>
                         ) : (
                             <>
-                                {knownTokens
-                                    .filter(([tokenId]) => {
-                                        const id = tokenId.toString();
-                                        return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
-                                    })
-                                    .map(([tokenId, tokenInfo]) => {
-                                        const rllBalance = reconciliationData.find(item => 
-                                            item.token_id.toString() === tokenId.toString()
-                                        );
-                                        const defiBalance = defiBalances[tokenId.toString()];
-                                        
-                                        return (
-                                            <div key={tokenId.toString()} style={{ marginBottom: '20px' }}>
-                                                <div style={{ color: '#888', marginBottom: '8px', fontSize: '1.1em' }}>
-                                                    {tokenInfo.symbol}:
-                                                </div>
-                                                {rllBalance && (
-                                                    <div style={{ marginLeft: '15px', marginBottom: '8px' }}>
-                                                        <span style={{ color: '#9b59b6' }}>RLL Distribution:</span>
-                                                        <div style={{ marginLeft: '10px' }}>
-                                                            {(Number(rllBalance.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
-                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                                (${formatUSD(getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol))})
-                                                            </span>
+                                {/* DeFi Canister Balances */}
+                                <div style={{ marginBottom: '25px' }}>
+                                    <div style={{ 
+                                        color: '#3498db', 
+                                        fontSize: '1.1em', 
+                                        fontWeight: 'bold',
+                                        marginBottom: '15px',
+                                        borderBottom: '1px solid #3498db',
+                                        paddingBottom: '5px'
+                                    }}>
+                                        DeFi Canister Balances
+                                    </div>
+                                    <div style={{ marginLeft: '15px' }}>
+                                        {knownTokens
+                                            .filter(([tokenId]) => {
+                                                const id = tokenId.toString();
+                                                return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
+                                            })
+                                            .map(([tokenId, tokenInfo]) => {
+                                                const defiBalance = defiBalances[tokenId.toString()];
+                                                if (!defiBalance) return null;
+                                                
+                                                return (
+                                                    <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
+                                                        <div style={{ color: '#888', marginBottom: '4px' }}>
+                                                            {tokenInfo.symbol}:
                                                         </div>
-                                                    </div>
-                                                )}
-                                                {defiBalance && (
-                                                    <div style={{ marginLeft: '15px' }}>
-                                                        <span style={{ color: '#3498db' }}>DeFi Canister:</span>
                                                         <div style={{ marginLeft: '10px' }}>
                                                             {(Number(defiBalance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
                                                             <span style={{ color: '#888', marginLeft: '8px' }}>
@@ -2533,11 +2530,70 @@ function RLLInfo() {
                                                             </span>
                                                         </div>
                                                     </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })
-                                }
+                                                );
+                                            })
+                                            .filter(item => item !== null)
+                                        }
+                                        {knownTokens.filter(([tokenId]) => {
+                                            const id = tokenId.toString();
+                                            return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && 
+                                                   id !== 'hvgxa-wqaaa-aaaaq-aacia-cai' && 
+                                                   !defiBalances[tokenId.toString()];
+                                        }).length === 0 && (
+                                            <div style={{ color: '#888', fontStyle: 'italic' }}>No other token balances in DeFi canister</div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* RLL Distribution Balances */}
+                                <div>
+                                    <div style={{ 
+                                        color: '#9b59b6', 
+                                        fontSize: '1.1em', 
+                                        fontWeight: 'bold',
+                                        marginBottom: '15px',
+                                        borderBottom: '1px solid #9b59b6',
+                                        paddingBottom: '5px'
+                                    }}>
+                                        RLL Distribution Balances
+                                    </div>
+                                    <div style={{ marginLeft: '15px' }}>
+                                        {knownTokens
+                                            .filter(([tokenId]) => {
+                                                const id = tokenId.toString();
+                                                return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
+                                            })
+                                            .map(([tokenId, tokenInfo]) => {
+                                                const rllBalance = reconciliationData.find(item => 
+                                                    item.token_id.toString() === tokenId.toString()
+                                                );
+                                                if (!rllBalance) return null;
+
+                                                return (
+                                                    <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
+                                                        <div style={{ color: '#888', marginBottom: '4px' }}>
+                                                            {tokenInfo.symbol}:
+                                                        </div>
+                                                        <div style={{ marginLeft: '10px' }}>
+                                                            Server Balance: {(Number(rllBalance.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                (${formatUSD(getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol))})
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ marginLeft: '10px', fontSize: '0.9em', color: '#666' }}>
+                                                            Local Total: {(Number(rllBalance.local_total) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}
+                                                            <br />
+                                                            Remaining: {(Number(rllBalance.remaining) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}
+                                                            <br />
+                                                            Underflow: {(Number(rllBalance.underflow) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                            .filter(item => item !== null)
+                                        }
+                                    </div>
+                                </div>
                             </>
                         )}
                     </div>
