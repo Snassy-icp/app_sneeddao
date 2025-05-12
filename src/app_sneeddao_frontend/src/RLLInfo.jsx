@@ -73,8 +73,8 @@ const styles = {
         width: '100%',
         height: '600px',
         backgroundColor: '#1a1a1a',
-        borderRadius: '8px',
-        flex: '1 1 auto'      // Allow container to grow and shrink
+        borderRadius: '8px'
+        // Remove the conflicting flex: '1 1 auto' from here
     },
     link: {
         color: '#3498db',
@@ -2400,22 +2400,24 @@ function RLLInfo() {
                 width: '100%',
                 maxWidth: '100%',
                 margin: '0 auto',
-                padding: '20px'
+                padding: '20px',
+                overflow: 'hidden'  // Prevent overflow issues
             }}>
                 <h1 style={{ color: '#ffffff' }}>Recursive Liquidity Loop (RLL)</h1>
                 
                 <div className="rll-layout" style={{
                     display: 'grid',
                     gap: '40px',
-                    gridTemplateColumns: '1fr',
-                    width: '100%'
+                    width: '100%',
+                    minWidth: '0',
+                    minHeight: '0'
                 }}>
                     {/* Total Assets Section */}
                     <section style={{
                         ...styles.section, 
                         gridArea: 'assets',
-                        width: '400px',        // Fixed width
-                        maxWidth: '100%'       // Allow shrinking on mobile
+                        width: '400px',
+                        alignSelf: 'start'
                     }}>
                         <h2>Total Assets Overview</h2>
                         {/* Remove the nested grid, just stack items vertically */}
@@ -2745,14 +2747,20 @@ function RLLInfo() {
                     <section style={{
                         ...styles.section, 
                         gridArea: 'flow',
-                        flex: '1 1 auto',     // Allow section to grow
-                        minWidth: '800px',     // Minimum reasonable width for diagram
-                        height: '800px'
+                        width: '100%',
+                        height: '800px',
+                        minWidth: '0',
+                        minHeight: '0',
+                        overflow: 'hidden'
                     }}>
                         <h2>System Flow Diagram</h2>
                         <div style={{
-                            ...styles.flowContainer,
-                            height: 'calc(100% - 40px)'  // Account for header
+                            position: 'relative',
+                            width: '100%',
+                            height: 'calc(100% - 40px)',
+                            backgroundColor: '#1a1a1a',
+                            borderRadius: '8px',
+                            overflow: 'hidden'
                         }}>
                             <ReactFlow
                                 nodes={initialNodes}
@@ -2858,9 +2866,14 @@ function RLLInfo() {
                     {`
                         @media (min-width: 1600px) {
                             .rll-layout {
-                                grid-template-columns: 400px 1fr fit-content(800px);
+                                grid-template-columns: 400px 1fr 400px !important;
                                 grid-template-areas: "assets flow details";
                                 gap: 40px;
+                            }
+
+                            .rll-layout > section[style*="gridArea: flow"] {
+                                width: 100% !important;
+                                min-width: 0 !important;
                             }
                         }
                     `}
