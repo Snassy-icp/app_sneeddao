@@ -1718,6 +1718,14 @@ function RLLInfo() {
         </div>
     );
 
+    // Helper function for nanosecond timestamps
+    const formatNanoTimestamp = (nanoTimestamp) => {
+        if (!nanoTimestamp) return 'Unknown';
+        // Convert from nanoseconds to milliseconds
+        const milliseconds = Number(nanoTimestamp) / 1_000_000;
+        return new Date(milliseconds).toLocaleString();
+    };
+
     // Update handleNodeMouseEnter to include vector info
     const handleNodeMouseEnter = useCallback((event, node) => {
         const content = (
@@ -1778,6 +1786,35 @@ function RLLInfo() {
                     </div>
                 )}
                 {node.data.label === 'Sneed DAO Treasury' && renderTreasuryBalances()}
+                {node.id === '2' && renderVectorInfo('ICP Neuron Vector')}
+                {node.id === '3' && renderVectorInfo('ICP Splitter Vector')}
+                {node.id === '4' && (
+                    <div style={{
+                        marginTop: '8px',
+                        padding: '8px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                        borderRadius: '4px'
+                    }}>
+                        <div style={{ marginBottom: '4px' }}>Exchange Status:</div>
+                        {isLoadingVectors ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : (
+                            <>
+                                {vectorInfo['SNEED Buyback Vector']?.[0]?.[0]?.custom?.[0]?.exchange && (
+                                    <>
+                                        <div>Rate: {vectorInfo['SNEED Buyback Vector'][0][0].custom[0].exchange.internals.current_rate?.[0]?.toFixed(8) || 'N/A'} ICP/SNEED</div>
+                                        <div>Next Buy: {formatNanoTimestamp(vectorInfo['SNEED Buyback Vector'][0][0].custom[0].exchange.internals.next_buy)}</div>
+                                        <div>Buy Amount: {(Number(vectorInfo['SNEED Buyback Vector'][0][0].custom[0].exchange.variables.buy_for_amount) / 1e8).toFixed(2)} ICP</div>
+                                        <div>Balance: {(Number(vectorInfo['SNEED Buyback Vector'][0][0].sources?.[0]?.balance || 0) / 1e8).toFixed(2)} ICP</div>
+                                    </>
+                                )}
+                            </>
+                        )}
+                    </div>
+                )}
+                {node.id === '5' && renderVectorInfo('SNEED Splitter Vector')}
                 {node.data.details && (
                     <div style={{ marginTop: '10px' }}>
                         {node.data.details.split('\n').map((line, i) => (
@@ -1785,9 +1822,6 @@ function RLLInfo() {
                         ))}
                     </div>
                 )}
-                {node.id === '2' && renderVectorInfo('ICP Neuron Vector')}
-                {node.id === '3' && renderVectorInfo('ICP Splitter Vector')}
-                {node.id === '5' && renderVectorInfo('SNEED Splitter Vector')}
             </div>
         );
         
