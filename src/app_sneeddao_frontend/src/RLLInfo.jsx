@@ -17,6 +17,8 @@ import 'reactflow/dist/style.css';
 import { useCallback as useTooltipCallback } from 'react';
 import { Principal } from '@dfinity/principal';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { Actor, HttpAgent } from '@dfinity/agent';
+import { createActor as createNnsGovActor } from 'external/nns_gov';
 
 // Styles for the expandable sections
 const styles = {
@@ -1352,7 +1354,48 @@ function RLLInfo() {
         icp: null,
         sneed: null
     });
+    const [neuronBalance, setNeuronBalance] = useState(null);
     const [isLoadingBalances, setIsLoadingBalances] = useState(false);
+    const [isLoadingNeuron, setIsLoadingNeuron] = useState(false);
+
+    // Update the neuron balance fetching effect
+    useEffect(() => {
+        const fetchNeuronBalance = async () => {
+            if (!identity) return;
+            
+            setIsLoadingNeuron(true);
+            try {
+                const agent = new HttpAgent({
+                    identity,
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+                
+                const governanceCanister = createNnsGovActor('rrkah-fqaaa-aaaaa-aaaaq-cai', {
+                    agentOptions: { identity }
+                });
+
+                // The neuron ID needs to be passed as an object with an id field
+                const neuronInfo = await governanceCanister.get_neuron_info({
+                    neuron_id: BigInt('4000934039483276792')
+                });
+
+                if ('Ok' in neuronInfo) {
+                    setNeuronBalance(neuronInfo.Ok.cached_neuron_stake_e8s);
+                } else if ('Error' in neuronInfo) {
+                    console.error('Error from governance canister:', neuronInfo.Error);
+                }
+            } catch (error) {
+                console.error('Error fetching neuron balance:', error);
+            } finally {
+                setIsLoadingNeuron(false);
+            }
+        };
+
+        fetchNeuronBalance();
+        const interval = setInterval(fetchNeuronBalance, 30000);
+        return () => clearInterval(interval);
+    }, [identity]);
 
     // Update effect to show loading state
     useEffect(() => {
@@ -1426,7 +1469,7 @@ function RLLInfo() {
         </div>
     );
 
-    // Update handleNodeMouseEnter to use the new balance renderer
+    // Update handleNodeMouseEnter to include neuron balance
     const handleNodeMouseEnter = useCallback((event, node) => {
         const content = (
             <div>
@@ -1462,16 +1505,28 @@ function RLLInfo() {
                         Canister ID: {node.data.canisterId}
                     </div>
                 )}
-                {node.data.label === 'Sneed DAO Treasury' && renderTreasuryBalances()}
-                {node.data.details && (
-                    <div style={{ 
+                {node.id === '1' && (
+                    <div style={{
                         marginTop: '8px',
                         padding: '8px',
                         backgroundColor: 'rgba(255, 255, 255, 0.1)',
                         borderRadius: '4px'
                     }}>
+                        <div style={{ marginBottom: '4px' }}>Current Balance:</div>
+                        {isLoadingNeuron ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : (
+                            <div>ICP: {neuronBalance ? (Number(neuronBalance) / 1e8).toFixed(2) : '0.00'} ICP</div>
+                        )}
+                    </div>
+                )}
+                {node.data.label === 'Sneed DAO Treasury' && renderTreasuryBalances()}
+                {node.data.details && (
+                    <div style={{ marginTop: '10px' }}>
                         {node.data.details.split('\n').map((line, i) => (
-                            <div key={i} style={{ marginBottom: i < node.data.details.split('\n').length - 1 ? '8px' : 0 }}>
+                            <div key={i} style={{ marginBottom: '10px' }}>
                                 {line}
                                 {line.includes('ICP Treasury:') && (
                                     <div style={{ marginTop: '4px' }}>
@@ -1479,8 +1534,7 @@ function RLLInfo() {
                                             href="https://dashboard.internetcomputer.org/account/580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9" 
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            style={{ color: '#3498db', textDecoration: 'none' }}
-                                            onClick={e => e.stopPropagation()}
+                                            style={styles.link}
                                         >
                                             View on Platform →
                                         </a>
@@ -1492,8 +1546,7 @@ function RLLInfo() {
                                             href="https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai/account/fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de" 
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            style={{ color: '#3498db', textDecoration: 'none' }}
-                                            onClick={e => e.stopPropagation()}
+                                            style={styles.link}
                                         >
                                             View on Platform →
                                         </a>
@@ -1511,7 +1564,7 @@ function RLLInfo() {
             x: event.clientX,
             y: event.clientY
         });
-    }, [treasuryBalances, isLoadingBalances]);
+    }, [treasuryBalances, isLoadingBalances, neuronBalance, isLoadingNeuron]);
 
     const handleEdgeMouseEnter = useCallback((event, edge) => {
         const content = (
