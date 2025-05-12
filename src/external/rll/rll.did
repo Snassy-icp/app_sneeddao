@@ -110,6 +110,7 @@ type SneedRLL =
            nat;
          }) query;
    caller_is_admin: () -> (bool) query;
+   check_wallet_token_balances: (principal) -> (Result);
    check_whitelisted_token_balances: () -> (Result);
    claim_full_balance_of_hotkey: (principal, nat) -> (TransferResult);
    clear_all_balances_and_distributions: () -> ();
@@ -187,6 +188,19 @@ type SneedRLL =
    get_user_token_distribution: (principal, principal) -> (nat) query;
    get_user_token_distribution_events: (principal, principal) ->
     (vec UserDistributionEvent) query;
+   get_wallet_known_tokens: (principal) ->
+    (vec record {
+           principal;
+           TokenMetadata;
+         }) query;
+   get_wallet_token_check_status: () ->
+    (record {
+       is_running: bool;
+       processed: nat;
+       ticks: nat;
+       total: nat;
+       wallet: opt principal;
+     }) query;
    get_whitelisted_tokens: () ->
     (vec record {
            principal;
@@ -211,6 +225,7 @@ type SneedRLL =
    stop_proposal_import: () -> (Result);
    stop_rll_main_loop: () -> (Result);
    stop_token_balance_check: () -> (Result);
+   stop_wallet_token_check: () -> (Result);
    total_balance: (principal) -> (nat) query;
  };
 type Result = 

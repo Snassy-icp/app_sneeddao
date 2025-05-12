@@ -301,6 +301,7 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'caller_is_admin' : IDL.Func([], [IDL.Bool], ['query']),
+    'check_wallet_token_balances' : IDL.Func([IDL.Principal], [Result], []),
     'check_whitelisted_token_balances' : IDL.Func([], [Result], []),
     'claim_full_balance_of_hotkey' : IDL.Func(
         [IDL.Principal, IDL.Nat],
@@ -437,6 +438,24 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(UserDistributionEvent)],
         ['query'],
       ),
+    'get_wallet_known_tokens' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Vec(IDL.Tuple(IDL.Principal, TokenMetadata))],
+        ['query'],
+      ),
+    'get_wallet_token_check_status' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'ticks' : IDL.Nat,
+            'total' : IDL.Nat,
+            'wallet' : IDL.Opt(IDL.Principal),
+            'is_running' : IDL.Bool,
+            'processed' : IDL.Nat,
+          }),
+        ],
+        ['query'],
+      ),
     'get_whitelisted_tokens' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(IDL.Principal, TokenMetadata))],
@@ -461,6 +480,7 @@ export const idlFactory = ({ IDL }) => {
     'stop_proposal_import' : IDL.Func([], [Result], []),
     'stop_rll_main_loop' : IDL.Func([], [Result], []),
     'stop_token_balance_check' : IDL.Func([], [Result], []),
+    'stop_wallet_token_check' : IDL.Func([], [Result], []),
     'total_balance' : IDL.Func([IDL.Principal], [IDL.Nat], ['query']),
   });
   return SneedRLL;
