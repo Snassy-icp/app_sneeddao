@@ -2403,7 +2403,7 @@ function RLLInfo() {
                     gridTemplateColumns: 'minmax(0, 1fr)'
                 }}>
                     {/* Total Assets Section */}
-                    <section style={styles.section}>
+                    <section style={{...styles.section, gridArea: 'assets'}}>
                         <h2>Total Assets Overview</h2>
                         <div style={{
                             display: 'grid',
@@ -2732,7 +2732,7 @@ function RLLInfo() {
                     </section>
 
                     {/* Flow Diagram Section */}
-                    <section style={styles.section}>
+                    <section style={{...styles.section, gridArea: 'flow'}}>
                         <h2>System Flow Diagram</h2>
                         <div style={styles.flowContainer}>
                             <ReactFlow
@@ -2756,7 +2756,7 @@ function RLLInfo() {
                     </section>
 
                     {/* Combined Details Section */}
-                    <section style={styles.section}>
+                    <section style={{...styles.section, gridArea: 'details'}}>
                         <h2>System Components</h2>
                         {Object.entries(nodes).map(([key, section]) => (
                             <div key={key}>
@@ -2833,6 +2833,7 @@ function RLLInfo() {
                         @media (min-width: 1600px) {
                             .rll-layout {
                                 grid-template-columns: repeat(3, minmax(0, 1fr));
+                                grid-template-areas: "assets flow details";
                             }
                         }
                     `}
