@@ -646,16 +646,6 @@ const nodes = {
         title: "Revenue Sources",
         items: [
             {
-                id: "10",
-                title: "Other Revenue Sources",
-                description: "Virtual collector for various revenue streams",
-                inputs: ["Various token streams"],
-                outputs: [
-                    "ICP to ICP Splitter Vector",
-                    "SNEED to SNEED Splitter Vector"
-                ]
-            },
-            {
                 id: "11",
                 title: "SNEED/ICP LP Rewards",
                 description: "Liquidity provision rewards from ICPSwap",
@@ -663,13 +653,6 @@ const nodes = {
                 outputs: ["ICP and SNEED rewards to Revenue Collector"],
                 details: "Positions 24, 25 and 26",
                 link: "https://info.icpswap.com/swap-scan/positions?pair=osyzs-xiaaa-aaaag-qc76q-cai"
-            },
-            {
-                id: "12",
-                title: "Products",
-                description: "Virtual collector for product revenue",
-                inputs: ["ICP and SNEED revenue from products"],
-                outputs: ["ICP and SNEED to Revenue Collector"]
             },
             {
                 id: "13",
