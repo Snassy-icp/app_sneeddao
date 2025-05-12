@@ -1405,9 +1405,9 @@ function RLLInfo() {
     const [defiKnownTokens, setDefiKnownTokens] = useState([]);
     const [defiTokenBalances, setDefiTokenBalances] = useState({});
 
+    // Update effect to fetch conversion rates
     useEffect(() => {
         const fetchConversionRates = async () => {
-            if (!identity) return;
             try {
                 const neutriniteActor = createNeutriniteDappActor(Principal.fromText("u45jl-liaaa-aaaam-abppa-cai"));
                 const tokens = await neutriniteActor.get_latest_wallet_tokens();
@@ -1434,7 +1434,7 @@ function RLLInfo() {
         };
 
         fetchConversionRates();
-    }, [identity]);
+    }, []);
 
     // Helper function to calculate USD value
     const getUSDValue = (amount, decimals, symbol) => {
@@ -1450,18 +1450,15 @@ function RLLInfo() {
     // Update the neuron balance fetching effect
     useEffect(() => {
         const fetchNeuronBalance = async () => {
-            if (!identity) return;
-            
             setIsLoadingNeuron(true);
             try {
                 const agent = new HttpAgent({
-                    identity,
                     host: 'https://ic0.app'
                 });
                 await agent.fetchRootKey();
                 
                 const governanceCanister = createNnsGovActor('rrkah-fqaaa-aaaaa-aaaaq-cai', {
-                    agentOptions: { identity }
+                    agentOptions: { agent }
                 });
 
                 // Pass the neuron ID directly as a BigInt
@@ -1469,7 +1466,6 @@ function RLLInfo() {
                 const neuronInfo = await governanceCanister.get_neuron_info(neuronId);
 
                 if ('Ok' in neuronInfo) {
-                    // Store the full neuron info instead of just the balance
                     setNeuronBalance(neuronInfo.Ok);
                     console.log('Neuron info:', neuronInfo.Ok);
                 } else if ('Error' in neuronInfo) {
@@ -1483,18 +1479,21 @@ function RLLInfo() {
         };
 
         fetchNeuronBalance();
-    }, [identity]);
+    }, []);
 
     // Update effect to show loading state
     useEffect(() => {
         const fetchTreasuryBalances = async () => {
-            if (!identity) return;
-            
             setIsLoadingBalances(true);
             try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+
                 // ICP Treasury balance
                 const icpLedgerActor = createLedgerActor('ryjl3-tyaaa-aaaaa-aaaba-cai', {
-                    agentOptions: { identity }
+                    agentOptions: { agent }
                 });
                 const icpBalance = await icpLedgerActor.icrc1_balance_of({
                     owner: Principal.fromText('fi3zi-fyaaa-aaaaq-aachq-cai'),
@@ -1503,7 +1502,7 @@ function RLLInfo() {
 
                 // SNEED Treasury balance
                 const sneedLedgerActor = createLedgerActor('hvgxa-wqaaa-aaaaq-aacia-cai', {
-                    agentOptions: { identity }
+                    agentOptions: { agent }
                 });
                 const sneedBalance = await sneedLedgerActor.icrc1_balance_of({
                     owner: Principal.fromText('fi3zi-fyaaa-aaaaq-aachq-cai'),
@@ -1540,15 +1539,18 @@ function RLLInfo() {
         };
 
         fetchTreasuryBalances();
-    }, [identity]);
+    }, []);
 
     // Add effect to fetch vector information
     useEffect(() => {
         const fetchVectorInfo = async () => {
-            if (!identity) return;
-            
             setIsLoadingVectors(true);
             try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+
                 // Create actors for each vector
                 const vectors = {
                     'ICP Neuron Vector': {
@@ -1577,8 +1579,8 @@ function RLLInfo() {
                 
                 for (const [name, vector] of Object.entries(vectors)) {
                     const actor = vector.useExchange ? 
-                        createExVectorActor(vector.id, { agentOptions: { identity } }) :
-                        createVectorActor(vector.id, { agentOptions: { identity } });
+                        createExVectorActor(vector.id, { agentOptions: { agent } }) :
+                        createVectorActor(vector.id, { agentOptions: { agent } });
 
                     // Fetch node information
                     const nodes = await actor.icrc55_get_nodes([{ id: vector.nodeId }]);
@@ -1597,17 +1599,22 @@ function RLLInfo() {
         };
 
         fetchVectorInfo();
-    }, [identity]);
+    }, []);
 
     // Update effect to fetch LP positions
     useEffect(() => {
         const fetchLpPositions = async () => {
-            if (!identity) return;
-            
             setIsLoadingLp(true);
             try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+
                 const swapCanisterId = 'osyzs-xiaaa-aaaag-qc76q-cai';
-                const swapActor = createIcpSwapActor(swapCanisterId, { agentOptions: { identity } });
+                const swapActor = createIcpSwapActor(swapCanisterId, {
+                    agentOptions: { agent }
+                });
                 
                 // Get positions 24, 25, and 26
                 const targetPositionIds = [24, 25, 26];
@@ -1649,7 +1656,118 @@ function RLLInfo() {
         };
 
         fetchLpPositions();
-    }, [identity]);
+    }, []);
+
+    // Add effect to fetch RLL token data
+    useEffect(() => {
+        const fetchRllTokenData = async () => {
+            setIsLoadingRllData(true);
+            try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: { agent }
+                });
+                
+                // First get known tokens
+                const tokens = await rllActor.get_known_tokens();
+                setKnownTokens(tokens);
+                console.log('Known tokens:', tokens);
+
+                // Get total distributions
+                const totalDistributions = await rllActor.get_total_distributions();
+                const distributionsMap = Object.fromEntries(
+                    totalDistributions.map(([tokenId, amount]) => [tokenId.toString(), amount])
+                );
+
+                // For each token, get its balance
+                const balances = await Promise.all(tokens.map(async ([tokenId]) => {
+                    const ledgerActor = createLedgerActor(tokenId.toString(), {
+                        agentOptions: { agent }
+                    });
+                    const balance = await ledgerActor.icrc1_balance_of({
+                        owner: Principal.fromText(rllCanisterId),
+                        subaccount: []
+                    });
+                    return [tokenId, balance];
+                }));
+
+                // Call balance_reconciliation_from_balances
+                const reconciliation = await rllActor.balance_reconciliation_from_balances(balances);
+                console.log('Reconciliation data:', reconciliation);
+                
+                // Enhance reconciliation data with total distributions
+                const enhancedReconciliation = reconciliation.map(item => ({
+                    ...item,
+                    total_distributed: distributionsMap[item.token_id.toString()] || BigInt(0)
+                }));
+                
+                setReconciliationData(enhancedReconciliation);
+
+                // Update RLL balances state with ICP and SNEED
+                const icpBalance = balances.find(([tokenId]) => 
+                    tokenId.toString() === 'ryjl3-tyaaa-aaaaa-aaaba-cai')?.[1] || null;
+                const sneedBalance = balances.find(([tokenId]) => 
+                    tokenId.toString() === 'hvgxa-wqaaa-aaaaq-aacia-cai')?.[1] || null;
+                
+                setRllBalances({
+                    icp: icpBalance,
+                    sneed: sneedBalance
+                });
+
+            } catch (error) {
+                console.error('Error fetching RLL token data:', error);
+            } finally {
+                setIsLoadingRllData(false);
+            }
+        };
+
+        fetchRllTokenData();
+    }, []);
+
+    // Add effect to fetch DeFi canister known tokens and balances
+    useEffect(() => {
+        const fetchDefiTokens = async () => {
+            setIsLoadingRllData(true);
+            try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: { agent }
+                });
+                
+                // Get known tokens for DeFi canister
+                const tokens = await rllActor.get_wallet_known_tokens(Principal.fromText("ok64y-uiaaa-aaaag-qdcbq-cai"));
+                setDefiKnownTokens(tokens);
+
+                // Get balance for each token
+                const balances = await Promise.all(tokens.map(async ([tokenId]) => {
+                    const ledgerActor = createLedgerActor(tokenId.toString(), {
+                        agentOptions: { agent }
+                    });
+                    const balance = await ledgerActor.icrc1_balance_of({
+                        owner: Principal.fromText("ok64y-uiaaa-aaaag-qdcbq-cai"),
+                        subaccount: []
+                    });
+                    return [tokenId.toString(), balance];
+                }));
+
+                setDefiTokenBalances(Object.fromEntries(balances));
+            } catch (error) {
+                console.error('Error fetching DeFi token data:', error);
+            } finally {
+                setIsLoadingRllData(false);
+            }
+        };
+
+        fetchDefiTokens();
+    }, []);
 
     // Add helper function to convert hex to Uint8Array
     const hexToUint8Array = (hex) => {
@@ -2269,111 +2387,6 @@ function RLLInfo() {
             [id]: !prev[id]
         }));
     };
-
-    // Add effect to fetch RLL token data
-    useEffect(() => {
-        const fetchRllTokenData = async () => {
-            if (!identity) return;
-            
-            setIsLoadingRllData(true);
-            try {
-                const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: { identity }
-                });
-                
-                // First get known tokens
-                const tokens = await rllActor.get_known_tokens();
-                setKnownTokens(tokens);
-                console.log('Known tokens:', tokens);
-
-                // Get total distributions
-                const totalDistributions = await rllActor.get_total_distributions();
-                const distributionsMap = Object.fromEntries(
-                    totalDistributions.map(([tokenId, amount]) => [tokenId.toString(), amount])
-                );
-
-                // For each token, get its balance
-                const balances = await Promise.all(tokens.map(async ([tokenId]) => {
-                    const ledgerActor = createLedgerActor(tokenId.toString(), {
-                        agentOptions: { identity }
-                    });
-                    const balance = await ledgerActor.icrc1_balance_of({
-                        owner: Principal.fromText(rllCanisterId),
-                        subaccount: []
-                    });
-                    return [tokenId, balance];
-                }));
-
-                // Call balance_reconciliation_from_balances
-                const reconciliation = await rllActor.balance_reconciliation_from_balances(balances);
-                console.log('Reconciliation data:', reconciliation);
-                
-                // Enhance reconciliation data with total distributions
-                const enhancedReconciliation = reconciliation.map(item => ({
-                    ...item,
-                    total_distributed: distributionsMap[item.token_id.toString()] || BigInt(0)
-                }));
-                
-                setReconciliationData(enhancedReconciliation);
-
-                // Update RLL balances state with ICP and SNEED
-                const icpBalance = balances.find(([tokenId]) => 
-                    tokenId.toString() === 'ryjl3-tyaaa-aaaaa-aaaba-cai')?.[1] || null;
-                const sneedBalance = balances.find(([tokenId]) => 
-                    tokenId.toString() === 'hvgxa-wqaaa-aaaaq-aacia-cai')?.[1] || null;
-                
-                setRllBalances({
-                    icp: icpBalance,
-                    sneed: sneedBalance
-                });
-
-            } catch (error) {
-                console.error('Error fetching RLL token data:', error);
-            } finally {
-                setIsLoadingRllData(false);
-            }
-        };
-
-        fetchRllTokenData();
-    }, [identity]);
-
-    // Add effect to fetch DeFi canister known tokens and balances
-    useEffect(() => {
-        const fetchDefiTokens = async () => {
-            if (!identity) return;
-            
-            setIsLoadingRllData(true);
-            try {
-                const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: { identity }
-                });
-                
-                // Get known tokens for DeFi canister
-                const tokens = await rllActor.get_wallet_known_tokens(Principal.fromText("ok64y-uiaaa-aaaag-qdcbq-cai"));
-                setDefiKnownTokens(tokens);
-
-                // Get balance for each token
-                const balances = await Promise.all(tokens.map(async ([tokenId]) => {
-                    const ledgerActor = createLedgerActor(tokenId.toString(), {
-                        agentOptions: { identity }
-                    });
-                    const balance = await ledgerActor.icrc1_balance_of({
-                        owner: Principal.fromText("ok64y-uiaaa-aaaag-qdcbq-cai"),
-                        subaccount: []
-                    });
-                    return [tokenId.toString(), balance];
-                }));
-
-                setDefiTokenBalances(Object.fromEntries(balances));
-            } catch (error) {
-                console.error('Error fetching DeFi token data:', error);
-            } finally {
-                setIsLoadingRllData(false);
-            }
-        };
-
-        fetchDefiTokens();
-    }, [identity]);
 
     return (
         <div className='page-container'>
