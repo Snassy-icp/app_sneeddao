@@ -2575,17 +2575,10 @@ function RLLInfo() {
                                                             {tokenInfo.symbol}:
                                                         </div>
                                                         <div style={{ marginLeft: '10px' }}>
-                                                            Server Balance: {(Number(rllBalance.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                            {(Number(rllBalance.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
                                                             <span style={{ color: '#888', marginLeft: '8px' }}>
                                                                 (${formatUSD(getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol))})
                                                             </span>
-                                                        </div>
-                                                        <div style={{ marginLeft: '10px', fontSize: '0.9em', color: '#666' }}>
-                                                            Local Total: {(Number(rllBalance.local_total) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}
-                                                            <br />
-                                                            Remaining: {(Number(rllBalance.remaining) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}
-                                                            <br />
-                                                            Underflow: {(Number(rllBalance.underflow) / Math.pow(10, tokenInfo.decimals)).toFixed(4)}
                                                         </div>
                                                     </div>
                                                 );
