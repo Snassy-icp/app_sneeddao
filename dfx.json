@@ -57,6 +57,17 @@
           "ic": "fi3zi-fyaaa-aaaaq-aachq-cai"
         }
       }
+    },
+    "nns_gov": {
+      "type": "custom",
+      "candid": "src/external/nns_gov/nns_gov.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "rrkah-fqaaa-aaaaa-aaaaq-cai"
+        }
+      }
     }
   },
   "defaults": {
