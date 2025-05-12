@@ -2406,11 +2406,16 @@ function RLLInfo() {
                     display: 'grid',
                     gap: '40px',
                     gridTemplateColumns: '1fr',
-                    gridAutoFlow: 'row',  // Ensures vertical stacking on narrow screens
                     width: '100%'
                 }}>
                     {/* Total Assets Section */}
-                    <section style={{...styles.section, gridArea: 'assets'}}>
+                    <section style={{
+                        ...styles.section, 
+                        gridArea: 'assets',
+                        maxWidth: '100%',  // Allow shrinking on narrow screens
+                        width: '100%',
+                        alignSelf: 'start'  // Prevent stretching
+                    }}>
                         <h2>Total Assets Overview</h2>
                         {/* Remove the nested grid, just stack items vertically */}
                         <div style={{
@@ -2736,7 +2741,13 @@ function RLLInfo() {
                     </section>
 
                     {/* Flow Diagram Section */}
-                    <section style={{...styles.section, gridArea: 'flow'}}>
+                    <section style={{
+                        ...styles.section, 
+                        gridArea: 'flow',
+                        width: '100%',
+                        flex: 1,  // Allow growing
+                        minHeight: '600px'  // Ensure minimum height for diagram
+                    }}>
                         <h2>System Flow Diagram</h2>
                         <div style={styles.flowContainer}>
                             <ReactFlow
@@ -2760,7 +2771,13 @@ function RLLInfo() {
                     </section>
 
                     {/* Combined Details Section */}
-                    <section style={{...styles.section, gridArea: 'details'}}>
+                    <section style={{
+                        ...styles.section, 
+                        gridArea: 'details',
+                        maxWidth: '100%',  // Allow shrinking on narrow screens
+                        width: '100%',
+                        alignSelf: 'start'  // Prevent stretching
+                    }}>
                         <h2>System Components</h2>
                         {Object.entries(nodes).map(([key, section]) => (
                             <div key={key}>
@@ -2836,7 +2853,7 @@ function RLLInfo() {
                     {`
                         @media (min-width: 1600px) {
                             .rll-layout {
-                                grid-template-columns: 25fr 50fr 25fr;
+                                grid-template-columns: 400px 1fr 400px;
                                 grid-template-areas: "assets flow details";
                                 gap: 40px;
                             }
