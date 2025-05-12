@@ -69,10 +69,12 @@ const styles = {
         margin: '10px 0'
     },
     flowContainer: {
+        position: 'relative',  // Establish positioning context
         width: '100%',
         height: '600px',
         backgroundColor: '#1a1a1a',
-        borderRadius: '8px'
+        borderRadius: '8px',
+        flex: '1 1 auto'      // Allow container to grow and shrink
     },
     link: {
         color: '#3498db',
@@ -2743,14 +2745,13 @@ function RLLInfo() {
                     <section style={{
                         ...styles.section, 
                         gridArea: 'flow',
-                        width: '100%',
-                        minWidth: 0,           // Allow shrinking
-                        height: '800px'        // Fixed height for diagram
+                        flex: '1 1 auto',     // Allow section to grow
+                        minWidth: '800px',     // Minimum reasonable width for diagram
+                        height: '800px'
                     }}>
                         <h2>System Flow Diagram</h2>
                         <div style={{
                             ...styles.flowContainer,
-                            width: '100%',
                             height: 'calc(100% - 40px)'  // Account for header
                         }}>
                             <ReactFlow
