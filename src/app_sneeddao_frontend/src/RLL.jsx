@@ -604,7 +604,24 @@ function RLL() {
                     agentOptions: { identity }
                 });
                 
-                const reconciliationData = await rllActor.balance_reconciliation();
+                // First get known tokens
+                const knownTokens = await rllActor.get_known_tokens();
+                console.log('Known tokens:', knownTokens);
+
+                // For each token, get its balance
+                const balances = await Promise.all(knownTokens.map(async (tokenId) => {
+                    const ledgerActor = createLedgerActor(tokenId.toString(), {
+                        agentOptions: { identity }
+                    });
+                    const balance = await ledgerActor.icrc1_balance_of({
+                        owner: Principal.fromText('lvc4n-7aaaa-aaaam-adm6a-cai'),
+                        subaccount: []
+                    });
+                    return [tokenId, balance];
+                }));
+
+                // Call balance_reconciliation_from_balances with the fetched balances
+                const reconciliationData = await rllActor.balance_reconciliation_from_balances(balances);
                 console.log('Received reconciliation data:', reconciliationData);
                 setReconciliation(reconciliationData);
 
