@@ -1407,8 +1407,6 @@ function RLLInfo() {
         };
 
         fetchNeuronBalance();
-        const interval = setInterval(fetchNeuronBalance, 30000);
-        return () => clearInterval(interval);
     }, [identity]);
 
     // Update effect to show loading state
@@ -1450,8 +1448,6 @@ function RLLInfo() {
         };
 
         fetchTreasuryBalances();
-        const interval = setInterval(fetchTreasuryBalances, 30000);
-        return () => clearInterval(interval);
     }, [identity]);
 
     // Add effect to fetch vector information
@@ -1509,8 +1505,6 @@ function RLLInfo() {
         };
 
         fetchVectorInfo();
-        const interval = setInterval(fetchVectorInfo, 30000);
-        return () => clearInterval(interval);
     }, [identity]);
 
     // Add helper function to convert hex to Uint8Array
