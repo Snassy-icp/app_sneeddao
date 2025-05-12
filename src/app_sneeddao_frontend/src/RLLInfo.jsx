@@ -2556,10 +2556,10 @@ function RLLInfo() {
     const getOtherPoolsIcpTotal = () => {
         let total = BigInt(0);
         
-        // Add ICP/CLOWN position ICP (assuming token0 is ICP)
+        // Add ICP/CLOWN position ICP (assuming token1 is ICP)
         if (otherLpPositions['ICP/CLOWN'].position) {
             const pos = otherLpPositions['ICP/CLOWN'].position;
-            total += BigInt(pos.token0Amount || 0) + BigInt(pos.tokensOwed0 || 0);
+            total += BigInt(pos.token1Amount || 0) + BigInt(pos.tokensOwed1 || 0);
         }
         
         return total;
@@ -2987,11 +2987,11 @@ function RLLInfo() {
                                         </div>
                                         <div style={{ marginLeft: '10px' }}>
                                             <div>Current Position:</div>
-                                            <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token0Amount) / 1e8).toFixed(4)} ICP</div>
-                                            <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token1Amount) / 1e8).toFixed(4)} CLOWN</div>
+                                            <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token1Amount) / 1e8).toFixed(4)} ICP</div>
+                                            <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token0Amount) / 1e8).toFixed(4)} CLOWN</div>
                                             <div style={{ marginTop: '5px' }}>Unclaimed Rewards:</div>
-                                            <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed0) / 1e8).toFixed(4)} ICP</div>
-                                            <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed1) / 1e8).toFixed(4)} CLOWN</div>
+                                            <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed1) / 1e8).toFixed(4)} ICP</div>
+                                            <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed0) / 1e8).toFixed(4)} CLOWN</div>
                                         </div>
                                     </div>
                                 )}
