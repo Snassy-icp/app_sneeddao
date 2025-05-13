@@ -58,7 +58,10 @@ const styles = {
     itemHeader: {
         cursor: 'pointer',
         fontWeight: 'bold',
-        marginBottom: '10px'
+        marginBottom: '10px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
     },
     itemContent: {
         marginLeft: '20px'
@@ -110,13 +113,17 @@ const styles = {
         marginBottom: '5px'
     },
     infoIcon: {
+        color: '#3498db',
         cursor: 'help',
-        fontSize: '12px',
-        marginLeft: '4px',
-        color: '#95a5a6',
-        '&:hover': {
-            color: '#f1c40f'
-        }
+        fontSize: '16px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '20px',
+        height: '20px',
+        borderRadius: '50%',
+        border: '1px solid #3498db',
+        marginLeft: '4px'
     },
     heading: {
         display: 'flex',
@@ -3141,7 +3148,15 @@ function RLLInfo() {
                                     style={styles.expandableHeader}
                                     onClick={() => toggleSection(key)}
                                 >
-                                    <span>{section.title}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span>{section.title}</span>
+                                        <span 
+                                            style={styles.infoIcon} 
+                                            title={section.description || `Details about ${section.title} components and their functions in the system`}
+                                        >
+                                            i
+                                        </span>
+                                    </div>
                                     <span>{expandedSections[key] ? '▼' : '▶'}</span>
                                 </div>
                                 {expandedSections[key] && (
@@ -3152,7 +3167,16 @@ function RLLInfo() {
                                                     style={styles.itemHeader}
                                                     onClick={() => toggleItem(item.id)}
                                                 >
-                                                    {item.title} {expandedItems[item.id] ? '▼' : '▶'}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span>{item.title}</span>
+                                                        <span 
+                                                            style={styles.infoIcon} 
+                                                            title={item.description}
+                                                        >
+                                                            i
+                                                        </span>
+                                                    </div>
+                                                    <span>{expandedItems[item.id] ? '▼' : '▶'}</span>
                                                 </div>
                                                 {expandedItems[item.id] && renderItemDetails(item)}
                                             </div>
@@ -3177,7 +3201,15 @@ function RLLInfo() {
                                     style={styles.expandableHeader}
                                     onClick={() => toggleSection(key + '_edges')}
                                 >
-                                    <span>{section.title}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span>{section.title}</span>
+                                        <span 
+                                            style={styles.infoIcon} 
+                                            title={`Token flow paths for ${section.title}, showing how tokens move between components`}
+                                        >
+                                            i
+                                        </span>
+                                    </div>
                                     <span>{expandedSections[key + '_edges'] ? '▼' : '▶'}</span>
                                 </div>
                                 {expandedSections[key + '_edges'] && (
@@ -3188,7 +3220,16 @@ function RLLInfo() {
                                                     style={styles.itemHeader}
                                                     onClick={() => toggleItem(item.id)}
                                                 >
-                                                    {item.description} {expandedItems[item.id] ? '▼' : '▶'}
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span>{item.description}</span>
+                                                        <span 
+                                                            style={styles.infoIcon} 
+                                                            title={`Token flow from ${item.source} to ${item.target} (${item.percentage} of ${item.token})`}
+                                                        >
+                                                            i
+                                                        </span>
+                                                    </div>
+                                                    <span>{expandedItems[item.id] ? '▼' : '▶'}</span>
                                                 </div>
                                                 {expandedItems[item.id] && (
                                                     <div style={styles.itemContent}>
