@@ -51,7 +51,22 @@ const styles = {
     },
     heading: {
         color: '#ffffff',
-        marginBottom: '15px'
+        marginBottom: '15px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
+    },
+    infoIcon: {
+        color: '#3498db',
+        cursor: 'help',
+        fontSize: '16px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '20px',
+        height: '20px',
+        borderRadius: '50%',
+        border: '1px solid #3498db'
     },
     spinner: {
         width: '20px',
@@ -1333,7 +1348,15 @@ function RLL() {
 
                 {/* Token Distribution Limits */}
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>Token Distribution Limits</h2>
+                    <h2 style={styles.heading}>
+                        Token Distribution Limits
+                        <span 
+                            style={styles.infoIcon} 
+                            title="Distribution limits control token rewards: Min ensures users receive meaningful amounts (smaller rewards accumulate until min is reached), while Max caps the reward size per cycle (excess rewards carry over to future cycles)"
+                        >
+                            i
+                        </span>
+                    </h2>
                     {loadingDistributionLimits ? (
                         <div style={styles.spinner} />
                     ) : (
