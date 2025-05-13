@@ -3267,6 +3267,18 @@ function RLLInfo() {
                                 justifyItems: stretch;
                             }
 
+                            .long-account-string {
+                                display: inline-block;
+                                max-width: 100%;
+                                word-break: break-all;
+                                font-family: monospace;
+                                font-size: 0.9em;
+                                background-color: rgba(0, 0, 0, 0.2);
+                                padding: 2px 4px;
+                                border-radius: 3px;
+                                margin: 2px 0;
+                            }
+
                             .rll-layout > section[style*="gridArea: assets"] {
                                 width: 400px !important;
                                 max-width: 400px !important;
