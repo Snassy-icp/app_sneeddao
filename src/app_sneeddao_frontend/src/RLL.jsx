@@ -1767,7 +1767,7 @@ function RLL() {
                         <div style={styles.spinner} />
                     ) : (
                         <div style={styles.eventList}>
-                            {distributionEvents.slice(0, 5).map((event, index) => (
+                            {[...distributionEvents].reverse().slice(0, 5).map((event, index) => (
                                 <div key={index} style={styles.eventItem}>
                                     <div style={styles.eventHeader}>
                                         <span>Proposals: {formatProposalRange(event.proposal_range)}</span>
@@ -1796,7 +1796,7 @@ function RLL() {
                         <div style={styles.spinner} />
                     ) : (
                         <div style={styles.eventList}>
-                            {claimEvents.slice(0, 5).map((event, index) => (
+                            {[...claimEvents].reverse().slice(0, 5).map((event, index) => (
                                 <div key={index} style={styles.eventItem}>
                                     <div style={styles.eventHeader}>
                                         <span>{
