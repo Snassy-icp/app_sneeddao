@@ -1383,22 +1383,37 @@ function RLL() {
                                     marginBottom: '10px'
                                 }}>
                                     <div style={{ fontWeight: 'bold', marginBottom: '10px' }}>{symbol}</div>
-                                    <div style={styles.reconciliationItem}>
+                                    <div style={styles.statusItem}>
+                                        <span>Token:</span>
+                                        <span style={{fontWeight: 'bold'}}>{symbol}</span>
+                                    </div>
+                                    {totalDistributed !== undefined && (
+                                        <div style={styles.statusItem}>
+                                            <span>All-Time Distributed:</span>
+                                            <span style={{fontFamily: 'monospace'}}>{formatBalance(totalDistributed, decimals)} {symbol}</span>
+                                        </div>
+                                    )}
+                                    <div style={styles.statusItem}>
+                                        <span>Currently Claimable:</span>
+                                        <span style={{fontFamily: 'monospace'}}>{formatBalance(item.local_total, decimals)} {symbol}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
                                         <span>Server Balance:</span>
-                                        <span>{formatBalance(item.server_balance, decimals)} {symbol}</span>
+                                        <span style={{fontFamily: 'monospace'}}>{formatBalance(item.server_balance, decimals)} {symbol}</span>
                                     </div>
-                                    <div style={styles.reconciliationItem}>
-                                        <span>Local Total:</span>
-                                        <span>{formatBalance(item.local_total, decimals)} {symbol}</span>
-                                    </div>
-                                    <div style={styles.reconciliationItem}>
-                                        <span>Total Distributed:</span>
-                                        <span>{formatBalance(totalDistributed || 0, decimals)} {symbol}</span>
-                                    </div>
-                                    <div style={styles.reconciliationItem}>
+                                    <div style={styles.statusItem}>
                                         <span>Remaining:</span>
-                                        <span>{formatBalance(item.remaining, decimals)} {symbol}</span>
+                                        <span style={{
+                                            fontFamily: 'monospace',
+                                            color: Number(item.remaining) > 0 ? '#2ecc71' : '#ffffff'
+                                        }}>{formatBalance(item.remaining, decimals)} {symbol}</span>
                                     </div>
+                                    {Number(item.underflow) > 0 && (
+                                        <div style={{...styles.statusItem, color: '#e74c3c'}}>
+                                            <span>Underflow:</span>
+                                            <span style={{fontFamily: 'monospace'}}>{formatBalance(item.underflow, decimals)} {symbol}</span>
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })}
