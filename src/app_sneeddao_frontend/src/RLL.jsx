@@ -1263,7 +1263,7 @@ function RLL() {
                                     Your Hotkey Neurons
                                     <span 
                                         style={styles.infoIcon} 
-                                        title="Neurons that have your current principal configured as a hotkey, allowing you to participate in Sneed DAO governance."
+                                        title="For each NNS account (Internet Identity) containing Sneed neurons, you only need to configure one neuron as a hotkey. All other Sneed neurons in the same account will be automatically accessible. If you have multiple NNS accounts with Sneed neurons, you'll need to set up one hotkey neuron per account."
                                     >
                                         i
                                     </span>
@@ -1370,7 +1370,7 @@ function RLL() {
                             Add Your Principal as a Hotkey
                             <span 
                                 style={styles.infoIcon} 
-                                title="To participate in Sneed DAO and earn rewards, add your principal as a hotkey to your neuron"
+                                title="To participate in Sneed DAO and earn rewards, add your principal as a hotkey to one Sneed neuron in your NNS account. This will automatically give access to all other Sneed neurons in the same account. If you have multiple NNS accounts (different Internet Identities), you'll need to set up one hotkey neuron per account."
                             >
                                 i
                             </span>
@@ -1379,9 +1379,9 @@ function RLL() {
                             <p>To participate in Sneed DAO and earn rewards:</p>
                             <ol style={styles.instructionsList}>
                                 <li>First, you need to have a Sneed neuron</li>
-                                <li>Add this principal as a hotkey to your neuron</li>
+                                <li>Add your principal from this application as a hotkey to your neuron</li>
                                 <li>Your current principal is: <code style={styles.principalCode}>{identity && identity.getPrincipal ? identity.getPrincipal().toText() : 'Not connected'}</code></li>
-                                <li>Once added as a hotkey, you'll be able to see your balances, claim history, and neurons here</li>
+                                <li>Once added as a hotkey, you'll be able to claim voting rewards, see your balances, claim history, and neurons here</li>
                             </ol>
                             <button 
                                 onClick={fetchHotkeyNeuronsData}
