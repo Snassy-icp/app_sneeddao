@@ -2068,9 +2068,22 @@ function RLLInfo() {
                 )}
                 {item.details && (
                     <div style={{ marginTop: '10px' }}>
-                        {item.details.split('\n').map((line, i) => (
-                            <div key={i} style={{ marginBottom: '10px' }}>{line}</div>
-                        ))}
+                        {item.details.split('\n').map((line, i) => {
+                            if (line.includes('ICRC1 Account') || line.includes('ICP Account')) {
+                                const parts = line.split(/(ICRC1 Account |, ICP Account )/);
+                                return (
+                                    <div key={i} style={{ marginBottom: '10px' }}>
+                                        {parts.map((part, j) => {
+                                            if (part === 'ICRC1 Account ' || part === ', ICP Account ') {
+                                                return <span key={j}>{part}</span>;
+                                            }
+                                            return <span key={j} className="long-account-string">{part}</span>;
+                                        })}
+                                    </div>
+                                );
+                            }
+                            return <div key={i} style={{ marginBottom: '10px' }}>{line}</div>;
+                        })}
                     </div>
                 )}
                 {item.id === '6' && (
