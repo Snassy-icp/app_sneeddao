@@ -1402,46 +1402,6 @@ function RLL() {
                     </section>
                 )}
 
-                {/* Token Distribution Limits */}
-                <section style={styles.section}>
-                    <h2 style={styles.heading}>
-                        Token Distribution Limits
-                        <span 
-                            style={styles.infoIcon} 
-                            title="Distribution limits control token rewards: Min ensures users receive meaningful amounts (smaller rewards accumulate until min is reached), while Max caps the reward size per cycle (excess rewards carry over to future cycles)"
-                        >
-                            i
-                        </span>
-                    </h2>
-                    {loadingDistributionLimits ? (
-                        <div style={styles.spinner} />
-                    ) : (
-                        <div style={styles.tokenList}>
-                            {tokens
-                                .filter(token => {
-                                    const limits = tokenDistributionLimits[token.ledger_id.toString()];
-                                    return limits && (limits.min?.[0] || limits.max?.[0]);
-                                })
-                                .map(token => {
-                                    const limits = tokenDistributionLimits[token.ledger_id.toString()];
-                                    return (
-                                        <div key={token.ledger_id.toString()} style={styles.tokenItem}>
-                                            <div style={styles.tokenSymbol}>{token.symbol}</div>
-                                            <div style={styles.tokenBalance}>
-                                                <div>
-                                                    Min: {limits?.min?.[0] ? (Number(limits.min[0]) / Math.pow(10, token.decimals)).toFixed(token.decimals) : 'Not set'}
-                                                    {' | '}
-                                                    Max: {limits?.max?.[0] ? (Number(limits.max[0]) / Math.pow(10, token.decimals)).toFixed(token.decimals) : 'Not set'}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })
-                            }
-                        </div>
-                    )}
-                </section>
-
                 {/* Balance Reconciliation */}
                 <section style={styles.section}>
                     <h2 style={styles.heading}>
@@ -1505,6 +1465,46 @@ function RLL() {
                             );
                         })}
                     </div>
+                    )}
+                </section>
+
+                {/* Token Distribution Limits */}
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>
+                        Token Distribution Limits
+                        <span 
+                            style={styles.infoIcon} 
+                            title="Distribution limits control token rewards: Min ensures users receive meaningful amounts (smaller rewards accumulate until min is reached), while Max caps the reward size per cycle (excess rewards carry over to future cycles)"
+                        >
+                            i
+                        </span>
+                    </h2>
+                    {loadingDistributionLimits ? (
+                        <div style={styles.spinner} />
+                    ) : (
+                        <div style={styles.tokenList}>
+                            {tokens
+                                .filter(token => {
+                                    const limits = tokenDistributionLimits[token.ledger_id.toString()];
+                                    return limits && (limits.min?.[0] || limits.max?.[0]);
+                                })
+                                .map(token => {
+                                    const limits = tokenDistributionLimits[token.ledger_id.toString()];
+                                    return (
+                                        <div key={token.ledger_id.toString()} style={styles.tokenItem}>
+                                            <div style={styles.tokenSymbol}>{token.symbol}</div>
+                                            <div style={styles.tokenBalance}>
+                                                <div>
+                                                    Min: {limits?.min?.[0] ? (Number(limits.min[0]) / Math.pow(10, token.decimals)).toFixed(token.decimals) : 'Not set'}
+                                                    {' | '}
+                                                    Max: {limits?.max?.[0] ? (Number(limits.max[0]) / Math.pow(10, token.decimals)).toFixed(token.decimals) : 'Not set'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            }
+                        </div>
                     )}
                 </section>
 
