@@ -896,16 +896,38 @@ function RLL() {
         if (!tokens.length) return;
         setLoadingDistributionLimits(true);
         try {
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            const limits = {};
+            const agent = new HttpAgent({
+                host: 'https://ic0.app'
+            });
+            await agent.fetchRootKey();
             
+            const rllActor = createRllActor(rllCanisterId, {
+                agentOptions: { agent }
+            });
+
+            // Get all min and max distributions in parallel
+            const [allMinDist, allMaxDist] = await Promise.all([
+                rllActor.get_all_token_min_distributions(),
+                rllActor.get_all_token_max_distributions()
+            ]);
+
+            // Convert arrays to maps for easier lookup
+            const minDistMap = new Map(allMinDist.map(([principal, amount]) => [principal.toString(), amount]));
+            const maxDistMap = new Map(allMaxDist.map(([principal, amount]) => [principal.toString(), amount]));
+
+            // Create limits object only for tokens that have either min or max set
+            const limits = {};
             for (const token of tokens) {
-                const minDist = await rllActor.get_token_min_distribution(token.ledger_id);
-                const maxDist = await rllActor.get_token_max_distribution(token.ledger_id);
-                limits[token.ledger_id.toString()] = {
-                    min: minDist,
-                    max: maxDist
-                };
+                const tokenId = token.ledger_id.toString();
+                const min = minDistMap.get(tokenId);
+                const max = maxDistMap.get(tokenId);
+                
+                if (min || max) {
+                    limits[tokenId] = {
+                        min: min ? [min] : null,
+                        max: max ? [max] : null
+                    };
+                }
             }
             
             setTokenDistributionLimits(limits);
@@ -963,10 +985,10 @@ function RLL() {
 
     // Add useEffect to fetch token distribution limits when tokens are loaded
     useEffect(() => {
-        if (tokens.length > 0 && identity) {
+        if (tokens.length > 0) {
             fetchTokenDistributionLimits();
         }
-    }, [tokens, identity]);
+    }, [tokens]);
 
     // Add function to check admin status
     const checkAdminStatus = async () => {
@@ -1309,6 +1331,37 @@ function RLL() {
                     </section>
                 )}
 
+                {/* Token Distribution Limits */}
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>Token Distribution Limits</h2>
+                    {loadingDistributionLimits ? (
+                        <div style={styles.spinner} />
+                    ) : (
+                        <div style={styles.tokenList}>
+                            {tokens
+                                .filter(token => {
+                                    const limits = tokenDistributionLimits[token.ledger_id.toString()];
+                                    return limits && (limits.min?.[0] || limits.max?.[0]);
+                                })
+                                .map(token => {
+                                    const limits = tokenDistributionLimits[token.ledger_id.toString()];
+                                    return (
+                                        <div key={token.ledger_id.toString()} style={styles.tokenItem}>
+                                            <div style={styles.tokenSymbol}>{token.symbol}</div>
+                                            <div style={styles.tokenBalance}>
+                                                <div>
+                                                    Min: {limits?.min?.[0] ? (Number(limits.min[0]) / Math.pow(10, token.decimals)).toFixed(token.decimals) : 'Not set'}
+                                                    {' | '}
+                                                    Max: {limits?.max?.[0] ? (Number(limits.max[0]) / Math.pow(10, token.decimals)).toFixed(token.decimals) : 'Not set'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            }
+                        </div>
+                    )}
+                </section>
 
                 {/* Balance Reconciliation */}
                 <section style={styles.section}>
@@ -1350,42 +1403,6 @@ function RLL() {
                             );
                         })}
                     </div>
-                    )}
-                </section>
-
-                {/* Token Distribution Limits Section */}
-                <section style={styles.section}>
-                    <h2 style={styles.heading}>Token Distribution Limits</h2>
-                    {loadingDistributionLimits ? (
-                        <div style={styles.spinner} />
-                    ) : (
-                        <div style={styles.reconciliationList}>
-                            {tokens.map(token => {
-                                const limits = tokenDistributionLimits[token.ledger_id.toString()];
-                                return (
-                                    <div key={token.ledger_id.toString()} style={{
-                                        backgroundColor: '#3a3a3a',
-                                        borderRadius: '6px',
-                                        padding: '15px',
-                                        marginBottom: '10px'
-                                    }}>
-                                        <div style={{ fontWeight: 'bold', marginBottom: '10px' }}>{token.symbol}</div>
-                                        <div style={styles.reconciliationItem}>
-                                            <span>Minimum Distribution:</span>
-                                            <span>
-                                                {limits?.min ? formatBalance(limits.min[0], token.decimals) : 'Not set'} {limits?.min ? token.symbol : ''}
-                                            </span>
-                                        </div>
-                                        <div style={styles.reconciliationItem}>
-                                            <span>Maximum Distribution:</span>
-                                            <span>
-                                                {limits?.max ? formatBalance(limits.max[0], token.decimals) : 'Not set'} {limits?.max ? token.symbol : ''}
-                                            </span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
                     )}
                 </section>
 
