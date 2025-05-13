@@ -1054,12 +1054,28 @@ function RLL() {
                 </div>
             </header>
             <main className="rll-container">
-                <h1 style={{ color: '#ffffff' }}>RLL Distribution Server</h1>
+                <h1 style={{ color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    RLL Distribution Server
+                    <span 
+                        style={styles.infoIcon} 
+                        title="The RLL Distribution Server manages token rewards for Sneed DAO participants based on their voting activity and neuron holdings"
+                    >
+                        i
+                    </span>
+                </h1>
                 
                 {/* Your Hotkey Neurons */}
                 {!isAuthenticated ? (
                     <section style={styles.section}>
-                        <h2 style={styles.heading}>Sneed Voting Rewards</h2>
+                        <h2 style={styles.heading}>
+                            Sneed Voting Rewards
+                            <span 
+                                style={styles.infoIcon} 
+                                title="Earn rewards by participating in Sneed DAO governance. Connect your wallet and add this principal as a hotkey to your neuron to start earning"
+                            >
+                                i
+                            </span>
+                        </h2>
                         <div style={{
                             textAlign: 'center',
                             padding: '20px',
@@ -1092,7 +1108,15 @@ function RLL() {
                     </section>
                 ) : loadingHotkeyNeurons ? (
                     <section style={styles.section}>
-                        <h2 style={styles.heading}>Your Hotkey Status</h2>
+                        <h2 style={styles.heading}>
+                            Your Hotkey Status
+                            <span 
+                                style={styles.infoIcon} 
+                                title="Shows whether your current principal is successfully configured as a hotkey for any Sneed neurons"
+                            >
+                                i
+                            </span>
+                        </h2>
                         <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
                             <div style={styles.spinner} />
                         </div>
@@ -1101,7 +1125,15 @@ function RLL() {
                     <>
                         {/* Your Token Balances */}
                         <section style={styles.section}>
-                            <h2 style={styles.heading}>Your Rewards</h2>
+                            <h2 style={styles.heading}>
+                                Your Rewards
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="Tokens you've earned through Sneed DAO participation. Click 'Claim' to transfer rewards to your wallet"
+                                >
+                                    i
+                                </span>
+                            </h2>
                             <p style={{ 
                                 color: '#ffffff', 
                                 marginBottom: '20px',
@@ -1157,7 +1189,15 @@ function RLL() {
                         {/* Your Claim History */}
                         <section style={styles.section}>
                             <div style={styles.sectionHeader}>
-                                <h2 style={styles.heading}>Your Claim History</h2>
+                                <h2 style={styles.heading}>
+                                    Your Claim History
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="History of your token claim events, including status, timestamps, and amounts"
+                                    >
+                                        i
+                                    </span>
+                                </h2>
                                 <button 
                                     onClick={() => setIsClaimHistoryExpanded(!isClaimHistoryExpanded)}
                                     style={styles.expandButton}
@@ -1219,7 +1259,15 @@ function RLL() {
                         {/* Your Hotkey Neurons */}
                         <section style={styles.section}>
                             <div style={styles.sectionHeader}>
-                                <h2 style={styles.heading}>Your Hotkey Neurons</h2>
+                                <h2 style={styles.heading}>
+                                    Your Hotkey Neurons
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="Neurons that have your current principal configured as a hotkey, allowing you to participate in Sneed DAO governance."
+                                    >
+                                        i
+                                    </span>
+                                </h2>
                                 <button 
                                     onClick={() => setIsHotkeyNeuronsExpanded(!isHotkeyNeuronsExpanded)}
                                     style={styles.expandButton}
@@ -1318,7 +1366,15 @@ function RLL() {
                     </>
                 ) : (
                     <section style={styles.section}>
-                        <h2 style={styles.heading}>Add Your Principal as a Hotkey</h2>
+                        <h2 style={styles.heading}>
+                            Add Your Principal as a Hotkey
+                            <span 
+                                style={styles.infoIcon} 
+                                title="To participate in Sneed DAO and earn rewards, add your principal as a hotkey to your neuron"
+                            >
+                                i
+                            </span>
+                        </h2>
                         <div style={styles.noNeuronsMessage}>
                             <p>To participate in Sneed DAO and earn rewards:</p>
                             <ol style={styles.instructionsList}>
@@ -1388,7 +1444,15 @@ function RLL() {
 
                 {/* Balance Reconciliation */}
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>RLL Server Balances</h2>
+                    <h2 style={styles.heading}>
+                        RLL Server Balances
+                        <span 
+                            style={styles.infoIcon} 
+                            title="Overview of token balances held by the RLL server for distribution, including total distributed amounts and currently claimable rewards"
+                        >
+                            i
+                        </span>
+                    </h2>
                     {loadingReconciliation ? (
                         <div style={styles.spinner} />
                     ) : (
@@ -1446,7 +1510,15 @@ function RLL() {
 
                 {/* Distribution Cycle Status */}
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>Distribution Cycle</h2>
+                    <h2 style={styles.heading}>
+                        Distribution Cycle Status
+                        <span 
+                            style={styles.infoIcon} 
+                            title="Current status of the RLL distribution cycle, including timing information and cycle frequency"
+                        >
+                            i
+                        </span>
+                    </h2>
                     <div style={styles.cycleInfo}>
                         <div style={styles.statusItem}>
                             <span>Status:</span>
@@ -1495,7 +1567,15 @@ function RLL() {
 
                 {/* Import Status Section */}
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>Import Status</h2>
+                    <h2 style={styles.heading}>
+                        Import Status
+                        <span 
+                            style={styles.infoIcon} 
+                            title="Statistics about imported data from the Sneed governance system, including neurons, owners, and proposals"
+                        >
+                            i
+                        </span>
+                    </h2>
                     <div style={styles.statusGrid}>
                         <div style={styles.statusItem}>
                             <span>Imported Neurons:</span>
@@ -1519,7 +1599,15 @@ function RLL() {
                 {isAdmin && (
                     <>
                         <section style={styles.section}>
-                            <h2 style={styles.heading}>Admin Controls</h2>
+                            <h2 style={styles.heading}>
+                                Admin Controls
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="Administrative functions for managing the RLL system, including cycle control and data import operations"
+                                >
+                                    i
+                                </span>
+                            </h2>
                             <div style={styles.adminControls}>
                                 <button 
                                     onClick={handleStartDistributionCycle}
@@ -1562,7 +1650,15 @@ function RLL() {
 
                         {/* Token Distribution Limits Admin Section */}
                         <section style={styles.section}>
-                            <h2 style={styles.heading}>Manage Token Distribution Limits</h2>
+                            <h2 style={styles.heading}>
+                                Manage Token Distribution Limits
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="Set or remove minimum and maximum distribution limits for each token"
+                                >
+                                    i
+                                </span>
+                            </h2>
                             <div style={{
                                 backgroundColor: '#3a3a3a',
                                 borderRadius: '6px',
@@ -1658,7 +1754,15 @@ function RLL() {
                 )}
 
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>Recent Distribution Events</h2>
+                    <h2 style={styles.heading}>
+                        Recent Distribution Events
+                        <span 
+                            style={styles.infoIcon} 
+                            title="History of recent token distributions, showing proposal ranges, timestamps, and distributed amounts"
+                        >
+                            i
+                        </span>
+                    </h2>
                     {loadingEvents ? (
                         <div style={styles.spinner} />
                     ) : (
@@ -1679,7 +1783,15 @@ function RLL() {
                 </section>
 
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>Recent Claim Events</h2>
+                    <h2 style={styles.heading}>
+                        Recent Claim Events
+                        <span 
+                            style={styles.infoIcon} 
+                            title="History of recent token claims by users, including timestamps and claimed amounts"
+                        >
+                            i
+                        </span>
+                    </h2>
                     {loadingEvents ? (
                         <div style={styles.spinner} />
                     ) : (

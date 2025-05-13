@@ -108,6 +108,20 @@ const styles = {
         display: 'flex',
         justifyContent: 'space-between',
         marginBottom: '5px'
+    },
+    infoIcon: {
+        cursor: 'help',
+        fontSize: '12px',
+        marginLeft: '4px',
+        color: '#95a5a6',
+        '&:hover': {
+            color: '#f1c40f'
+        }
+    },
+    heading: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
     }
 };
 
@@ -2593,7 +2607,15 @@ function RLLInfo() {
                 padding: '20px',
                 overflow: 'hidden'  // Prevent overflow issues
             }}>
-                <h1 style={{ color: '#ffffff' }}>Recursive Liquidity Loop (RLL)</h1>
+                <h1 style={{ color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    Recursive Liquidity Loop (RLL)
+                    <span 
+                        style={styles.infoIcon} 
+                        title="A comprehensive system for managing DAO treasury assets, automating token distributions, and maintaining liquidity across multiple protocols"
+                    >
+                        i
+                    </span>
+                </h1>
                 
                 <div className="rll-layout" style={{
                     display: 'grid',
@@ -2613,7 +2635,15 @@ function RLLInfo() {
                         maxWidth: '800px',
                         alignSelf: 'start'
                     }}>
-                        <h2>Total Assets Overview</h2>
+                        <h2 style={{ ...styles.heading }}>
+                            Total Assets Overview
+                            <span 
+                                style={styles.infoIcon} 
+                                title="Comprehensive overview of all DAO assets across different protocols, including treasury holdings, staked positions, LP positions, and tokens pending distribution"
+                            >
+                                i
+                            </span>
+                        </h2>
                         {/* Remove the nested grid, just stack items vertically */}
                         <div style={{
                             backgroundColor: '#2a2a2a',
@@ -2628,7 +2658,15 @@ function RLLInfo() {
                                 border: '1px solid #f1c40f',
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px' }}>Total Value (USD)</h3>
+                                <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    Total Value (USD)
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="Combined USD value of all DAO assets, including ICP and SNEED holdings across all protocols and positions"
+                                    >
+                                        i
+                                    </span>
+                                </h3>
                                 {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
                                     <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
                                         <div style={styles.spinner} />
@@ -2660,7 +2698,15 @@ function RLLInfo() {
                                 border: '1px solid #3498db',
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ color: '#3498db', marginTop: 0 }}>ICP Assets</h3>
+                                <h3 style={{ color: '#3498db', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    ICP Assets
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="All ICP holdings across Treasury, Neurons, LP positions, DeFi canister, and other protocols"
+                                    >
+                                        i
+                                    </span>
+                                </h3>
                                 {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
                                     <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
                                         <div style={styles.spinner} />
@@ -2782,7 +2828,15 @@ function RLLInfo() {
                                 border: '1px solid #2ecc71',
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ color: '#2ecc71', marginTop: 0 }}>SNEED Assets</h3>
+                                <h3 style={{ color: '#2ecc71', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    SNEED Assets
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="All SNEED holdings across Treasury, LP positions, DeFi canister, and pending distributions"
+                                    >
+                                        i
+                                    </span>
+                                </h3>
                                 {isLoadingBalances || isLoadingLp ? (
                                     <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
                                         <div style={styles.spinner} />
@@ -2869,7 +2923,15 @@ function RLLInfo() {
                                 border: '1px solid #9b59b6',
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ color: '#9b59b6', marginTop: 0 }}>Other Tokens</h3>
+                                <h3 style={{ color: '#9b59b6', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    Other Tokens
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="Additional token holdings in the DeFi canister and RLL Distribution system"
+                                    >
+                                        i
+                                    </span>
+                                </h3>
                                 {isLoadingRllData ? (
                                     <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
                                         <div style={styles.spinner} />
@@ -2968,7 +3030,15 @@ function RLLInfo() {
                                 border: '1px solid #9b59b6',
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ color: '#9b59b6', marginTop: 0 }}>Other Positions</h3>
+                                <h3 style={{ color: '#9b59b6', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    Other Positions
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="Additional liquidity positions and holdings in other protocols"
+                                    >
+                                        i
+                                    </span>
+                                </h3>
                                 {otherLpPositions['ICP/CLOWN'].loading ? (
                                     <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
                                         <div style={styles.spinner} />
@@ -3004,13 +3074,21 @@ function RLLInfo() {
                         ...styles.section, 
                         gridArea: 'flow',
                         width: '100%',
-                        maxWidth: '800px', // This will apply in 1-column mode
+                        maxWidth: '800px',
                         height: '800px',
                         minWidth: '0',
                         minHeight: '0',
                         overflow: 'hidden'
                     }}>
-                        <h2>System Flow Diagram</h2>
+                        <h2 style={{ ...styles.heading }}>
+                            System Flow Diagram
+                            <span 
+                                style={styles.infoIcon} 
+                                title="Interactive visualization of token flows between different system components. Hover over nodes and edges for detailed information. Click nodes to visit relevant external links."
+                            >
+                                i
+                            </span>
+                        </h2>
                         <div style={{
                             position: 'relative',
                             width: '100%',
@@ -3048,7 +3126,15 @@ function RLLInfo() {
                         maxWidth: '800px',
                         alignSelf: 'start'
                     }}>
-                        <h2>System Components</h2>
+                        <h2 style={{ ...styles.heading }}>
+                            System Components
+                            <span 
+                                style={styles.infoIcon} 
+                                title="Detailed information about each component in the system, including infrastructure nodes, token management canisters, and revenue sources"
+                            >
+                                i
+                            </span>
+                        </h2>
                         {Object.entries(nodes).map(([key, section]) => (
                             <div key={key}>
                                 <div 
@@ -3076,7 +3162,15 @@ function RLLInfo() {
                             </div>
                         ))}
 
-                        <h2 style={{ marginTop: '40px' }}>Token Flows</h2>
+                        <h2 style={{ marginTop: '40px', ...styles.heading }}>
+                            Token Flows
+                            <span 
+                                style={styles.infoIcon} 
+                                title="Detailed breakdown of token movement paths between system components, including percentages and token types"
+                            >
+                                i
+                            </span>
+                        </h2>
                         {Object.entries(edges).map(([key, section]) => (
                             <div key={key}>
                                 <div 
