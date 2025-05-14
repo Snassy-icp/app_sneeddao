@@ -1,0 +1,47 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono&display=swap');
+
+.ticker-container {
+  width: 100%;
+  height: 40px;
+  background: #1a1a1a;
+  overflow: hidden;
+  position: relative;
+}
+
+.ticker-content {
+  display: flex;
+  white-space: nowrap;
+  position: absolute;
+  animation: scroll 20s linear infinite;
+  will-change: transform;
+}
+
+.ticker-text {
+  font-family: 'Space Mono', monospace;
+  color: #ffffff;
+  font-size: 16px;
+  letter-spacing: 0.1em;
+  padding: 0 20px;
+  line-height: 40px;
+}
+
+@keyframes scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+/* Pause animation on hover */
+.ticker-container:hover .ticker-content {
+  animation-play-state: paused;
+}
+
+/* Ensure smooth animation */
+.ticker-content {
+  backface-visibility: hidden;
+  perspective: 1000;
+  transform: translate3d(0, 0, 0);
+} 

@@ -11,24 +11,27 @@ import RLL from './RLL';
 import RLLInfo from './RLLInfo';
 import ScanWallet from './ScanWallet';
 import { AuthProvider } from './AuthContext';
+import Layout from './components/Layout';
 
 function App() {
   return (
     <AuthProvider>
       <Router>
-        <Routes>
-          <Route path="/" element={<Login />} />
-          <Route path="/wallet" element={<Wallet />} />
-          <Route path="/doc" element={<Doc />} />
-          <Route path="/help" element={<Help />} />
-          <Route path="/rll" element={<RLL />} />
-          <Route path="/rll_info" element={<RLLInfo />} />
-          <Route path="/scan_wallet" element={<ScanWallet />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/tokenlock" element={<TokenLock />} />
-          <Route path="/positionlock" element={<PositionLock />} />
-          <Route path="/tokenlocksoverview" element={<TokenLocksOverview />} />
-        </Routes>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Login />} />
+            <Route path="/wallet" element={<Wallet />} />
+            <Route path="/doc" element={<Doc />} />
+            <Route path="/help" element={<Help />} />
+            <Route path="/rll" element={<RLL />} />
+            <Route path="/rll_info" element={<RLLInfo />} />
+            <Route path="/scan_wallet" element={<ScanWallet />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/tokenlock" element={<TokenLock />} />
+            <Route path="/positionlock" element={<PositionLock />} />
+            <Route path="/tokenlocksoverview" element={<TokenLocksOverview />} />
+          </Routes>
+        </Layout>
       </Router>
     </AuthProvider>
   );
