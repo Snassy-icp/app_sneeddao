@@ -8,10 +8,25 @@ import { get_token_conversion_rates } from '../utils/TokenUtils';
 import { Principal } from '@dfinity/principal';
 
 const Layout = ({ children }) => {
-  const [tickerText, setTickerText] = useState('');
+  const [tickerText, setTickerText] = useState('Loading...');
   const [totalSupply, setTotalSupply] = useState(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
+    // Wait for IC agent to be available
+    const checkAgent = () => {
+      if (window.ic?.agent) {
+        setIsInitialized(true);
+      } else {
+        setTimeout(checkAgent, 500);
+      }
+    };
+    checkAgent();
+  }, []);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+
     const fetchData = async () => {
       try {
         // Get conversion rates
@@ -45,6 +60,7 @@ const Layout = ({ children }) => {
         setTickerText(text);
       } catch (error) {
         console.error('Error fetching data:', error);
+        setTickerText('Error loading data...');
       }
     };
 
@@ -52,7 +68,7 @@ const Layout = ({ children }) => {
     // Refresh every minute
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isInitialized]);
   
   return (
     <div className="app-layout">
