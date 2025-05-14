@@ -7,7 +7,9 @@ import { createActor as createRllActor, canisterId as rllCanisterId } from 'exte
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { getTokenLogo } from './utils/TokenUtils';
 import ConfirmationModal from './ConfirmationModal';
+import Notification from './Notification';
 import './RLL.css';
+import './Notification.css';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 import PrincipalBox from './PrincipalBox';
@@ -394,6 +396,10 @@ function RLL() {
     });
     const [loadingHotkeyNeurons, setLoadingHotkeyNeurons] = useState(true);
 
+    // New state for claiming tokens
+    const [claimingTokens, setClaimingTokens] = useState({});
+    const [notification, setNotification] = useState(null);
+
     // Fetch whitelisted tokens
     useEffect(() => {
         const fetchTokens = async () => {
@@ -777,6 +783,7 @@ function RLL() {
         // Store a direct function that will be executed when confirmed
         setConfirmAction(async () => {
             console.log('Executing claim action...');
+            setClaimingTokens(prev => ({ ...prev, [tokenId.toString()]: true }));
             try {
                 const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
                 console.log('Created RLL actor, calling claim_full_balance_of_hotkey...');
@@ -797,8 +804,19 @@ function RLL() {
                 setUserBalances(balances);
                 setUserClaimEvents(claims);
                 console.log('Data refreshed successfully');
+                
+                setNotification({
+                    type: 'success',
+                    message: `Successfully claimed ${formatBalance(balance, token.decimals)} ${token.symbol}`
+                });
             } catch (error) {
                 console.error('Error during claim process:', error);
+                setNotification({
+                    type: 'error',
+                    message: `Failed to claim ${token.symbol}: ${error.message}`
+                });
+            } finally {
+                setClaimingTokens(prev => ({ ...prev, [tokenId.toString()]: false }));
             }
         });
         
@@ -1167,14 +1185,24 @@ function RLL() {
                                                 <div style={styles.eventActions}>
                                                     <button
                                                         onClick={() => handleClaimRewards(tokenId, balance, token)}
-                                                        disabled={balance <= 0}
+                                                        disabled={balance <= 0 || claimingTokens[tokenId.toString()]}
                                                         style={{
                                                             ...styles.claimButton,
-                                                            opacity: balance <= 0 ? 0.5 : 1,
-                                                            cursor: balance <= 0 ? 'not-allowed' : 'pointer'
+                                                            opacity: balance <= 0 || claimingTokens[tokenId.toString()] ? 0.5 : 1,
+                                                            cursor: balance <= 0 || claimingTokens[tokenId.toString()] ? 'not-allowed' : 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '8px'
                                                         }}
                                                     >
-                                                        Claim
+                                                        {claimingTokens[tokenId.toString()] ? (
+                                                            <>
+                                                                <div style={styles.spinner} />
+                                                                Claiming...
+                                                            </>
+                                                        ) : (
+                                                            'Claim'
+                                                        )}
                                                     </button>
                                                 </div>
                                             </div>
@@ -1840,6 +1868,15 @@ function RLL() {
                 onCancel={() => setShowConfirmModal(false)}
                 onClose={() => setShowConfirmModal(false)}
             />
+
+            {/* Add notification */}
+            {notification && (
+                <Notification
+                    type={notification.type}
+                    message={notification.message}
+                    onClose={() => setNotification(null)}
+                />
+            )}
 
             <style>
                 {`
