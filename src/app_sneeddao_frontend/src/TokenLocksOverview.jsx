@@ -11,6 +11,7 @@ import { formatAmount, getUSD } from './utils/StringUtils';
 import TokenCard from './TokenCard';
 import PositionCard from './PositionCard';
 import './Wallet.css';
+import Header from './components/Header';
 
 function TokenLocksOverview() {
     const [token, setToken] = useState(null);
@@ -290,16 +291,7 @@ function TokenLocksOverview() {
 
     return (
         <div className='page-container'>
-            <header className="site-header">
-                <div className="logo">
-                    <Link to="/">
-                        <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
-                    </Link>
-                </div>
-                <div className="header-right">
-                    <Link to="/help" className="help-link">Help</Link>
-                </div>
-            </header>
+            <Header />
             <div className="wallet-container">
                 {/* Token Overview Section */}
                 {loadingStates.token ? (

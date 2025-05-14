@@ -14,6 +14,7 @@ import { Actor, HttpAgent } from '@dfinity/agent';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 import PrincipalBox from './PrincipalBox';
 import { headerStyles } from './styles/HeaderStyles';
+import Header from './components/Header';
 
 // Styles
 const styles = {
@@ -1051,26 +1052,7 @@ function RLL() {
 
     return (
         <div className='page-container'>
-            <header className="site-header">
-                <div style={headerStyles.logoContainer}>
-                    <div className="logo">
-                        <Link to="/wallet">
-                            <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
-                        </Link>
-                    </div>
-                    <Link to="/rll" style={headerStyles.rllLogo}>
-                        RLL
-                    </Link>
-                </div>
-                <div className="header-right">
-                    <Link to="/rll_info" className="help-link" style={{ marginRight: '10px' }}>Info</Link>
-                    <Link to="/help" className="help-link">Help</Link>
-                    <PrincipalBox 
-                        principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
-                        onLogout={logout}
-                    />
-                </div>
-            </header>
+            <Header />
             <main className="rll-container">
                 <h1 style={{ color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     RLL Distribution Server

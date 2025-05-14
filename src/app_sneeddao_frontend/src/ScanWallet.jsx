@@ -6,6 +6,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { getTokenLogo } from './utils/TokenUtils';
 import './Help.css';
+import Header from './components/Header';
 
 // Styles
 const styles = {
@@ -242,18 +243,7 @@ function ScanWallet() {
 
     return (
         <div className='page-container'>
-            <header className="site-header">
-                <div className="logo">
-                    <Link to="/wallet">
-                        <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
-                    </Link>
-                </div>
-                <nav className="nav-links">
-                    <Link to="/help">Help</Link>
-                    <Link to="/rll">RLL</Link>
-                    <Link to="/scan_wallet" className="active">Scan Wallet</Link>
-                </nav>
-            </header>
+            <Header />
             <main className="scanwallet-container">
                 <h1 style={{ color: '#ffffff' }}>Scan Wallet</h1>
                 

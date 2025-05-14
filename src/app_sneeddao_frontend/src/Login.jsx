@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import './Login.css'; // Make sure to create this CSS file
+import Header from './components/Header';
 
 function Login() {
   const [authOutput, setAuthOutput] = useState('');
@@ -28,11 +29,7 @@ function Login() {
 
   return (
     <div className='page-container'>
-      <header className="site-header">
-        <div className="logo">
-          <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
-        </div>
-      </header>
+      <Header />
       <main className="login-container">
         <form action="#" onSubmit={handleLogin}>
           <button type="submit" className="login-button">Login with Internet Identity</button>

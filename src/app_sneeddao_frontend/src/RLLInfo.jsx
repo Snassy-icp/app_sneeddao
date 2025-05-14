@@ -26,6 +26,7 @@ import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { get_token_conversion_rates } from './utils/TokenUtils';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { createActor as createNeutriniteDappActor } from 'external/neutrinite_dapp';
+import Header from './components/Header';
 
 // Styles for the expandable sections
 const styles = {
@@ -2660,25 +2661,7 @@ function RLLInfo() {
 
     return (
         <div className='page-container'>
-            <header className="site-header">
-                <div style={headerStyles.logoContainer}>
-                    <div className="logo">
-                        <Link to="/wallet">
-                            <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
-                        </Link>
-                    </div>
-                    <Link to="/rll" style={headerStyles.rllLogo}>
-                        RLL
-                    </Link>
-                </div>
-                <div className="header-right">
-                    <Link to="/help" className="help-link">Help</Link>
-                    <PrincipalBox 
-                        principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
-                        onLogout={logout}
-                    />
-                </div>
-            </header>
+            <Header />
             <main className="rllinfo-container" style={{
                 width: '100%',
                 maxWidth: '100%',

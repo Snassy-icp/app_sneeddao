@@ -1,34 +1,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import './Help.css';
-import { headerStyles } from './styles/HeaderStyles';
-import { useAuth } from './AuthContext';
-import PrincipalBox from './PrincipalBox';
+import Header from './components/Header';
 
 function Help() {
-  const { identity, logout } = useAuth();
-
   return (
     <div className='page-container'>
-      <header className="site-header">
-        <div style={headerStyles.logoContainer}>
-          <div className="logo">
-            <Link to="/wallet">
-              <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
-            </Link>
-          </div>
-          <Link to="/rll" style={headerStyles.rllLogo}>
-            RLL
-          </Link>
-        </div>
-        <div className="header-right">
-          <Link to="/help" className="help-link">Help</Link>
-          <PrincipalBox 
-            principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
-            onLogout={logout}
-          />
-        </div>
-      </header>
+      <Header />
       <main className="help-container">
         <h1>Sneedlock Help Guide</h1>
         <p>Welcome to Sneedlock, a decentralized application built on the Internet Computer. Here's what you can do with our dApp:</p>

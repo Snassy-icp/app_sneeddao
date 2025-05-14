@@ -7,6 +7,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo, get_token_conversion_rates } from './utils/TokenUtils';
 import TokenCard from './TokenCard';
 import './Wallet.css';
+import Header from './components/Header';
 
 function TokenLock() {
     const [token, setToken] = useState(null);
@@ -68,16 +69,7 @@ function TokenLock() {
 
     return (
         <div className='page-container'>
-            <header className="site-header">
-                <div className="logo">
-                    <Link to="/">
-                        <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
-                    </Link>
-                </div>
-                <div className="header-right">
-                    <Link to="/help" className="help-link">Help</Link>
-                </div>
-            </header>
+            <Header />
             <div className="wallet-container">
                 {token && (
                     <TokenCard
