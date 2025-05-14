@@ -26,6 +26,15 @@ const getOwnerPrincipals = (neuron) => {
     return Array.from(owners);
 };
 
+// Helper function to get neuron ID as string
+const getNeuronId = (neuron) => {
+    if (!neuron.id || !neuron.id.id) return null;
+    // Convert the Blob to hex string for consistent comparison
+    return Array.from(neuron.id.id)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+};
+
 export const fetchUserNeurons = async (identity) => {
     if (!identity) return [];
     
@@ -41,8 +50,8 @@ export const fetchUserNeurons = async (identity) => {
         const userPrincipal = identity.getPrincipal().toString();
         fetchedPrincipals.add(userPrincipal);
         
-        // Initialize result array to store all neurons
-        let allNeurons = [];
+        // Initialize result map to store unique neurons by ID
+        const neuronsMap = new Map();
         
         // Queue of principals to fetch neurons for
         let principalsToFetch = [userPrincipal];
@@ -58,14 +67,15 @@ export const fetchUserNeurons = async (identity) => {
                 start_page_at: []
             });
             
-            // Add these neurons to our result array
-            allNeurons = allNeurons.concat(result.neurons);
-            
-            // For each neuron, find its owner principals
+            // Add these neurons to our map, deduplicating by ID
             for (const neuron of result.neurons) {
-                const ownerPrincipals = getOwnerPrincipals(neuron);
+                const neuronId = getNeuronId(neuron);
+                if (neuronId) {
+                    neuronsMap.set(neuronId, neuron);
+                }
                 
-                // Add any new owner principals to our queue
+                // Find owner principals and add to queue
+                const ownerPrincipals = getOwnerPrincipals(neuron);
                 for (const ownerPrincipal of ownerPrincipals) {
                     if (!fetchedPrincipals.has(ownerPrincipal)) {
                         fetchedPrincipals.add(ownerPrincipal);
@@ -75,7 +85,8 @@ export const fetchUserNeurons = async (identity) => {
             }
         }
         
-        return allNeurons;
+        // Convert map values back to array
+        return Array.from(neuronsMap.values());
     } catch (error) {
         console.error('Error fetching neurons from SNS:', error);
         return [];
