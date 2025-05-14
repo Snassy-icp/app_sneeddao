@@ -1394,8 +1394,8 @@ function RLLInfo() {
         sneed: null
     });
     const [neuronBalance, setNeuronBalance] = useState(null);
-    const [isLoadingBalances, setIsLoadingBalances] = useState(false);
-    const [isLoadingNeuron, setIsLoadingNeuron] = useState(false);
+    const [isLoadingBalances, setIsLoadingBalances] = useState(true);
+    const [isLoadingNeuron, setIsLoadingNeuron] = useState(true);
     const [vectorInfo, setVectorInfo] = useState({});
     const [isLoadingVectors, setIsLoadingVectors] = useState(false);
     const [lpPositions, setLpPositions] = useState({
@@ -1407,7 +1407,7 @@ function RLLInfo() {
             tokensOwed1: BigInt(0)
         }
     });
-    const [isLoadingLp, setIsLoadingLp] = useState(false);
+    const [isLoadingLp, setIsLoadingLp] = useState(true);
     const [conversionRates, setConversionRates] = useState({
         ICP: 0,
         SNEED: 0
@@ -1418,7 +1418,7 @@ function RLLInfo() {
     });
     const [knownTokens, setKnownTokens] = useState([]);
     const [reconciliationData, setReconciliationData] = useState([]);
-    const [isLoadingRllData, setIsLoadingRllData] = useState(false);
+    const [isLoadingRllData, setIsLoadingRllData] = useState(true);
     const [defiKnownTokens, setDefiKnownTokens] = useState([]);
     const [defiTokenBalances, setDefiTokenBalances] = useState({});
     const [otherLpPositions, setOtherLpPositions] = useState({
@@ -2718,124 +2718,139 @@ function RLLInfo() {
                                 border: '1px solid #3498db',
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ color: '#3498db', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <h3 
+                                    onClick={() => toggleSection('icpAssets')}
+                                    style={{ 
+                                        color: '#3498db', 
+                                        marginTop: 0, 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '8px',
+                                        cursor: 'pointer' 
+                                    }}
+                                >
                                     ICP Assets
                                     <span 
                                         style={styles.infoIcon} 
                                         title="All ICP holdings across Treasury, Neurons, LP positions, DeFi canister, and other protocols"
+                                        onClick={e => e.stopPropagation()}
                                     >
                                         i
                                     </span>
                                 </h3>
-                                {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
-                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                                        <div style={styles.spinner} />
-                                    </div>
-                                ) : (
+                                {expandedSections.icpAssets && (
                                     <>
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(treasuryBalances.icp) / 1e8).toFixed(4)} ICP
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(treasuryBalances.icp, 8, 'ICP'))})
-                                                </span>
+                                        {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
+                                            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                                <div style={styles.spinner} />
                                             </div>
-                                        </div>
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>8 Year Neuron:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(neuronBalance?.stake_e8s || 0) / 1e8).toFixed(4)} ICP
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP'))})
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} ICP
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP'))})
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(lpPositions.totals.tokensOwed1) / 1e8).toFixed(4)} ICP
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP'))})
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(defiBalances.icp) / 1e8).toFixed(4)} ICP
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(defiBalances.icp, 8, 'ICP'))})
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>RLL Distribution:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(rllBalances.icp) / 1e8).toFixed(4)} ICP
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(rllBalances.icp, 8, 'ICP'))})
-                                                </span>
-                                            </div>
-                                        </div>
-                                        {vectorInfo['SNEED Buyback Vector']?.[0]?.[0]?.sources?.[0]?.balance && (
-                                            <div style={{ marginBottom: '15px' }}>
-                                                <div style={{ color: '#888', marginBottom: '5px' }}>Buyback Vector:</div>
-                                                <div style={{ fontSize: '1.1em' }}>
-                                                    {(Number(vectorInfo['SNEED Buyback Vector'][0][0].sources[0].balance) / 1e8).toFixed(4)} ICP
-                                                    <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                        (${formatUSD(getUSDValue(vectorInfo['SNEED Buyback Vector'][0][0].sources[0].balance, 8, 'ICP'))})
-                                                    </span>
+                                        ) : (
+                                            <>
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
+                                                    <div style={{ fontSize: '1.1em' }}>
+                                                        {(Number(treasuryBalances.icp) / 1e8).toFixed(4)} ICP
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(treasuryBalances.icp, 8, 'ICP'))})
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                            </div>
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>8 Year Neuron:</div>
+                                                    <div style={{ fontSize: '1.1em' }}>
+                                                        {(Number(neuronBalance?.stake_e8s || 0) / 1e8).toFixed(4)} ICP
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP'))})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
+                                                    <div style={{ fontSize: '1.1em' }}>
+                                                        {(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} ICP
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP'))})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
+                                                    <div style={{ fontSize: '1.1em' }}>
+                                                        {(Number(lpPositions.totals.tokensOwed1) / 1e8).toFixed(4)} ICP
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP'))})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
+                                                    <div style={{ fontSize: '1.1em' }}>
+                                                        {(Number(defiBalances.icp) / 1e8).toFixed(4)} ICP
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(defiBalances.icp, 8, 'ICP'))})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>RLL Distribution:</div>
+                                                    <div style={{ fontSize: '1.1em' }}>
+                                                        {(Number(rllBalances.icp) / 1e8).toFixed(4)} ICP
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(rllBalances.icp, 8, 'ICP'))})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                {vectorInfo['SNEED Buyback Vector']?.[0]?.[0]?.sources?.[0]?.balance && (
+                                                    <div style={{ marginBottom: '15px' }}>
+                                                        <div style={{ color: '#888', marginBottom: '5px' }}>Buyback Vector:</div>
+                                                        <div style={{ fontSize: '1.1em' }}>
+                                                            {(Number(vectorInfo['SNEED Buyback Vector'][0][0].sources[0].balance) / 1e8).toFixed(4)} ICP
+                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                (${formatUSD(getUSDValue(vectorInfo['SNEED Buyback Vector'][0][0].sources[0].balance, 8, 'ICP'))})
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>Other Pools:</div>
+                                                    <div style={{ fontSize: '1.1em' }}>
+                                                        {(Number(getOtherPoolsIcpTotal()) / 1e8).toFixed(4)} ICP
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(getOtherPoolsIcpTotal(), 8, 'ICP'))})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div style={{
+                                                    marginTop: '20px',
+                                                    paddingTop: '15px',
+                                                    borderTop: '1px solid #444'
+                                                }}>
+                                                    <div style={{ color: '#3498db', marginBottom: '5px' }}>Total ICP:</div>
+                                                    <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
+                                                        {((Number(treasuryBalances.icp) + 
+                                                           Number(neuronBalance?.stake_e8s || 0) + 
+                                                           Number(lpPositions.totals.token1Amount) +
+                                                           Number(lpPositions.totals.tokensOwed1) +
+                                                           Number(defiBalances.icp) +
+                                                           Number(rllBalances.icp) +
+                                                           Number(vectorInfo['SNEED Buyback Vector']?.[0]?.[0]?.sources?.[0]?.balance || 0) +
+                                                           Number(getOtherPoolsIcpTotal())) / 1e8).toFixed(4)} ICP
+                                                        <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
+                                                            (${formatUSD(
+                                                                getUSDValue(treasuryBalances.icp, 8, 'ICP') +
+                                                                getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
+                                                                getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
+                                                                getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
+                                                                getUSDValue(defiBalances.icp, 8, 'ICP') +
+                                                                getUSDValue(rllBalances.icp, 8, 'ICP') +
+                                                                getUSDValue(vectorInfo['SNEED Buyback Vector']?.[0]?.[0]?.sources?.[0]?.balance || 0, 8, 'ICP') +
+                                                                getUSDValue(getOtherPoolsIcpTotal(), 8, 'ICP')
+                                                            )})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </>
                                         )}
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>Other Pools:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(getOtherPoolsIcpTotal()) / 1e8).toFixed(4)} ICP
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(getOtherPoolsIcpTotal(), 8, 'ICP'))})
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div style={{
-                                            marginTop: '20px',
-                                            paddingTop: '15px',
-                                            borderTop: '1px solid #444'
-                                        }}>
-                                            <div style={{ color: '#3498db', marginBottom: '5px' }}>Total ICP:</div>
-                                            <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
-                                                {((Number(treasuryBalances.icp) + 
-                                                   Number(neuronBalance?.stake_e8s || 0) + 
-                                                   Number(lpPositions.totals.token1Amount) +
-                                                   Number(lpPositions.totals.tokensOwed1) +
-                                                   Number(defiBalances.icp) +
-                                                   Number(rllBalances.icp) +
-                                                   Number(vectorInfo['SNEED Buyback Vector']?.[0]?.[0]?.sources?.[0]?.balance || 0) +
-                                                   Number(getOtherPoolsIcpTotal())) / 1e8).toFixed(4)} ICP
-                                                <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
-                                                    (${formatUSD(
-                                                        getUSDValue(treasuryBalances.icp, 8, 'ICP') +
-                                                        getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
-                                                        getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
-                                                        getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
-                                                        getUSDValue(defiBalances.icp, 8, 'ICP') +
-                                                        getUSDValue(rllBalances.icp, 8, 'ICP') +
-                                                        getUSDValue(vectorInfo['SNEED Buyback Vector']?.[0]?.[0]?.sources?.[0]?.balance || 0, 8, 'ICP') +
-                                                        getUSDValue(getOtherPoolsIcpTotal(), 8, 'ICP')
-                                                    )})
-                                                </span>
-                                            </div>
-                                        </div>
                                     </>
                                 )}
                             </div>
@@ -2848,89 +2863,104 @@ function RLLInfo() {
                                 border: '1px solid #2ecc71',
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ color: '#2ecc71', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <h3 
+                                    onClick={() => toggleSection('sneedAssets')}
+                                    style={{ 
+                                        color: '#2ecc71', 
+                                        marginTop: 0, 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '8px',
+                                        cursor: 'pointer' 
+                                    }}
+                                >
                                     SNEED Assets
                                     <span 
                                         style={styles.infoIcon} 
                                         title="All SNEED holdings across Treasury, LP positions, DeFi canister, and pending distributions"
+                                        onClick={e => e.stopPropagation()}
                                     >
                                         i
                                     </span>
                                 </h3>
-                                {isLoadingBalances || isLoadingLp ? (
-                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                                        <div style={styles.spinner} />
-                                    </div>
-                                ) : (
+                                {expandedSections.sneedAssets && (
                                     <>
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(treasuryBalances.sneed) / 1e8).toFixed(4)} SNEED
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(treasuryBalances.sneed, 8, 'SNEED'))})
-                                                </span>
+                                        {isLoadingBalances || isLoadingLp ? (
+                                            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                                <div style={styles.spinner} />
                                             </div>
-                                        </div>
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} SNEED
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED'))})
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(lpPositions.totals.tokensOwed0) / 1e8).toFixed(4)} SNEED
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED'))})
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(defiBalances.sneed) / 1e8).toFixed(4)} SNEED
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(defiBalances.sneed, 8, 'SNEED'))})
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>RLL Distribution:</div>
-                                            <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(rllBalances.sneed) / 1e8).toFixed(4)} SNEED
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(rllBalances.sneed, 8, 'SNEED'))})
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div style={{
-                                            marginTop: '20px',
-                                            paddingTop: '15px',
-                                            borderTop: '1px solid #444'
-                                        }}>
-                                            <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Total SNEED:</div>
-                                            <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
-                                                {((Number(treasuryBalances.sneed) + 
-                                                   Number(lpPositions.totals.token0Amount) +
-                                                   Number(lpPositions.totals.tokensOwed0) +
-                                                   Number(defiBalances.sneed) +
-                                                   Number(rllBalances.sneed)) / 1e8).toFixed(4)} SNEED
-                                                <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
-                                                    (${formatUSD(
-                                                        getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
-                                                        getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
-                                                        getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
-                                                        getUSDValue(defiBalances.sneed, 8, 'SNEED') +
-                                                        getUSDValue(rllBalances.sneed, 8, 'SNEED')
-                                                    )})
-                                                </span>
-                                            </div>
-                                        </div>
+                                        ) : (
+                                            <>
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
+                                                    <div style={{ fontSize: '1.1em' }}>
+                                                        {(Number(treasuryBalances.sneed) / 1e8).toFixed(4)} SNEED
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(treasuryBalances.sneed, 8, 'SNEED'))})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
+                                                    <div style={{ fontSize: '1.1em' }}>
+                                                        {(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} SNEED
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED'))})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
+                                                    <div style={{ fontSize: '1.1em' }}>
+                                                        {(Number(lpPositions.totals.tokensOwed0) / 1e8).toFixed(4)} SNEED
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED'))})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
+                                                    <div style={{ fontSize: '1.1em' }}>
+                                                        {(Number(defiBalances.sneed) / 1e8).toFixed(4)} SNEED
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(defiBalances.sneed, 8, 'SNEED'))})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>RLL Distribution:</div>
+                                                    <div style={{ fontSize: '1.1em' }}>
+                                                        {(Number(rllBalances.sneed) / 1e8).toFixed(4)} SNEED
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(rllBalances.sneed, 8, 'SNEED'))})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div style={{
+                                                    marginTop: '20px',
+                                                    paddingTop: '15px',
+                                                    borderTop: '1px solid #444'
+                                                }}>
+                                                    <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Total SNEED:</div>
+                                                    <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
+                                                        {((Number(treasuryBalances.sneed) + 
+                                                           Number(lpPositions.totals.token0Amount) +
+                                                           Number(lpPositions.totals.tokensOwed0) +
+                                                           Number(defiBalances.sneed) +
+                                                           Number(rllBalances.sneed)) / 1e8).toFixed(4)} SNEED
+                                                        <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
+                                                            (${formatUSD(
+                                                                getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
+                                                                getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
+                                                                getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
+                                                                getUSDValue(defiBalances.sneed, 8, 'SNEED') +
+                                                                getUSDValue(rllBalances.sneed, 8, 'SNEED')
+                                                            )})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
                                     </>
                                 )}
                             </div>
@@ -2943,101 +2973,116 @@ function RLLInfo() {
                                 border: '1px solid #9b59b6',
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ color: '#9b59b6', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <h3 
+                                    onClick={() => toggleSection('otherTokens')}
+                                    style={{ 
+                                        color: '#9b59b6', 
+                                        marginTop: 0, 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '8px',
+                                        cursor: 'pointer' 
+                                    }}
+                                >
                                     Other Tokens
                                     <span 
                                         style={styles.infoIcon} 
                                         title="Additional token holdings in the DeFi canister and RLL Distribution system"
+                                        onClick={e => e.stopPropagation()}
                                     >
                                         i
                                     </span>
                                 </h3>
-                                {isLoadingRllData ? (
-                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                                        <div style={styles.spinner} />
-                                    </div>
-                                ) : (
+                                {expandedSections.otherTokens && (
                                     <>
-                                        {/* DeFi Canister Balances */}
-                                        <div style={{ marginBottom: '25px' }}>
-                                            <div style={{ 
-                                                color: '#3498db', 
-                                                fontSize: '1.1em', 
-                                                fontWeight: 'bold',
-                                                marginBottom: '15px',
-                                                borderBottom: '1px solid #3498db',
-                                                paddingBottom: '5px'
-                                            }}>
-                                                DeFi Canister Balances
+                                        {isLoadingRllData ? (
+                                            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                                <div style={styles.spinner} />
                                             </div>
-                                            <div style={{ marginLeft: '15px' }}>
-                                                {defiKnownTokens
-                                                    .filter(([tokenId]) => {
-                                                        const id = tokenId.toString();
-                                                        return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && 
-                                                               id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
-                                                    })
-                                                    .map(([tokenId, tokenInfo]) => {
-                                                        const balance = defiTokenBalances[tokenId.toString()];
-                                                        if (!balance) return null;
-                                                        
-                                                        const usdValue = getUSDValue(balance, tokenInfo.decimals, tokenInfo.symbol);
-                                                        
-                                                        return (
-                                                            <div key={tokenId.toString()} style={{ marginBottom: '10px', marginLeft: '10px' }}>
-                                                                {(Number(balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
-                                                                {!isNaN(usdValue) && usdValue > 0 && (
-                                                                    <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                                        (${formatUSD(usdValue)})
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    })
-                                                    .filter(item => item !== null)
-                                                }
-                                            </div>
-                                        </div>
+                                        ) : (
+                                            <>
+                                                {/* DeFi Canister Balances */}
+                                                <div style={{ marginBottom: '25px' }}>
+                                                    <div style={{ 
+                                                        color: '#3498db', 
+                                                        fontSize: '1.1em', 
+                                                        fontWeight: 'bold',
+                                                        marginBottom: '15px',
+                                                        borderBottom: '1px solid #3498db',
+                                                        paddingBottom: '5px'
+                                                    }}>
+                                                        DeFi Canister Balances
+                                                    </div>
+                                                    <div style={{ marginLeft: '15px' }}>
+                                                        {defiKnownTokens
+                                                            .filter(([tokenId]) => {
+                                                                const id = tokenId.toString();
+                                                                return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && 
+                                                                       id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
+                                                            })
+                                                            .map(([tokenId, tokenInfo]) => {
+                                                                const balance = defiTokenBalances[tokenId.toString()];
+                                                                if (!balance) return null;
+                                                                
+                                                                const usdValue = getUSDValue(balance, tokenInfo.decimals, tokenInfo.symbol);
+                                                                
+                                                                return (
+                                                                    <div key={tokenId.toString()} style={{ marginBottom: '10px', marginLeft: '10px' }}>
+                                                                        {(Number(balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                                        {!isNaN(usdValue) && usdValue > 0 && (
+                                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                                (${formatUSD(usdValue)})
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })
+                                                            .filter(item => item !== null)
+                                                        }
+                                                    </div>
+                                                </div>
 
-                                        {/* RLL Distribution Balances */}
-                                        <div>
-                                            <div style={{ 
-                                                color: '#9b59b6', 
-                                                fontSize: '1.1em', 
-                                                fontWeight: 'bold',
-                                                marginBottom: '15px',
-                                                borderBottom: '1px solid #9b59b6',
-                                                paddingBottom: '5px'
-                                            }}>
-                                                RLL Distribution Balances
-                                            </div>
-                                            <div style={{ marginLeft: '15px' }}>
-                                                {knownTokens
-                                                    .filter(([tokenId]) => {
-                                                        const id = tokenId.toString();
-                                                        return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
-                                                    })
-                                                    .map(([tokenId, tokenInfo]) => {
-                                                        const rllBalance = reconciliationData.find(item => 
-                                                            item.token_id.toString() === tokenId.toString()
-                                                        );
-                                                        if (!rllBalance) return null;
+                                                {/* RLL Distribution Balances */}
+                                                <div>
+                                                    <div style={{ 
+                                                        color: '#9b59b6', 
+                                                        fontSize: '1.1em', 
+                                                        fontWeight: 'bold',
+                                                        marginBottom: '15px',
+                                                        borderBottom: '1px solid #9b59b6',
+                                                        paddingBottom: '5px'
+                                                    }}>
+                                                        RLL Distribution Balances
+                                                    </div>
+                                                    <div style={{ marginLeft: '15px' }}>
+                                                        {knownTokens
+                                                            .filter(([tokenId]) => {
+                                                                const id = tokenId.toString();
+                                                                return id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai';
+                                                            })
+                                                            .map(([tokenId, tokenInfo]) => {
+                                                                const rllBalance = reconciliationData.find(item => 
+                                                                    item.token_id.toString() === tokenId.toString()
+                                                                );
+                                                                if (!rllBalance) return null;
 
-                                                        return (
-                                                            <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
-                                                                <div style={{ marginLeft: '10px' }}>
-                                                                    {(Number(rllBalance.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
-                                                                    <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                                        (${formatUSD(getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol))})
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })
-                                                    .filter(item => item !== null)
-                                                }
-                                            </div>
-                                        </div>
+                                                                return (
+                                                                    <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
+                                                                        <div style={{ marginLeft: '10px' }}>
+                                                                            {(Number(rllBalance.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
+                                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                                (${formatUSD(getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol))})
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })
+                                                            .filter(item => item !== null)
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
                                     </>
                                 )}
                             </div>
@@ -3050,40 +3095,55 @@ function RLLInfo() {
                                 border: '1px solid #9b59b6',
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ color: '#9b59b6', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <h3 
+                                    onClick={() => toggleSection('otherPositions')}
+                                    style={{ 
+                                        color: '#9b59b6', 
+                                        marginTop: 0, 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '8px',
+                                        cursor: 'pointer' 
+                                    }}
+                                >
                                     Other Positions
                                     <span 
                                         style={styles.infoIcon} 
                                         title="Additional liquidity positions and holdings in other protocols"
+                                        onClick={e => e.stopPropagation()}
                                     >
                                         i
                                     </span>
                                 </h3>
-                                {otherLpPositions['ICP/CLOWN'].loading ? (
-                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                                        <div style={styles.spinner} />
-                                    </div>
-                                ) : otherLpPositions['ICP/CLOWN'].error ? (
-                                    <div style={{ color: '#e74c3c' }}>Error loading ICP/CLOWN position: {otherLpPositions['ICP/CLOWN'].error}</div>
-                                ) : otherLpPositions['ICP/CLOWN'].position && (
-                                    <div style={{
-                                        marginBottom: '15px',
-                                        padding: '10px',
-                                        backgroundColor: '#2a2a2a',
-                                        borderRadius: '4px'
-                                    }}>
-                                        <div style={{ color: '#3498db', marginBottom: '8px', fontWeight: 'bold' }}>
-                                            ICP/CLOWN Position #168
-                                        </div>
-                                        <div style={{ marginLeft: '10px' }}>
-                                            <div>Current Position:</div>
-                                            <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token1Amount) / 1e8).toFixed(4)} ICP</div>
-                                            <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token0Amount) / 1e8).toFixed(4)} CLOWN</div>
-                                            <div style={{ marginTop: '5px' }}>Unclaimed Rewards:</div>
-                                            <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed1) / 1e8).toFixed(4)} ICP</div>
-                                            <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed0) / 1e8).toFixed(4)} CLOWN</div>
-                                        </div>
-                                    </div>
+                                {expandedSections.otherPositions && (
+                                    <>
+                                        {otherLpPositions['ICP/CLOWN'].loading ? (
+                                            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                                <div style={styles.spinner} />
+                                            </div>
+                                        ) : otherLpPositions['ICP/CLOWN'].error ? (
+                                            <div style={{ color: '#e74c3c' }}>Error loading ICP/CLOWN position: {otherLpPositions['ICP/CLOWN'].error}</div>
+                                        ) : otherLpPositions['ICP/CLOWN'].position && (
+                                            <div style={{
+                                                marginBottom: '15px',
+                                                padding: '10px',
+                                                backgroundColor: '#2a2a2a',
+                                                borderRadius: '4px'
+                                            }}>
+                                                <div style={{ color: '#3498db', marginBottom: '8px', fontWeight: 'bold' }}>
+                                                    ICP/CLOWN Position #168
+                                                </div>
+                                                <div style={{ marginLeft: '10px' }}>
+                                                    <div>Current Position:</div>
+                                                    <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token1Amount) / 1e8).toFixed(4)} ICP</div>
+                                                    <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token0Amount) / 1e8).toFixed(4)} CLOWN</div>
+                                                    <div style={{ marginTop: '5px' }}>Unclaimed Rewards:</div>
+                                                    <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed1) / 1e8).toFixed(4)} ICP</div>
+                                                    <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed0) / 1e8).toFixed(4)} CLOWN</div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </div>
