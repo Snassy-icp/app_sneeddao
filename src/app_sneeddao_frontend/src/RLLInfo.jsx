@@ -2756,7 +2756,16 @@ function RLLInfo() {
                                         ) : (
                                             <>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                        <a 
+                                                            href="https://dashboard.internetcomputer.org/account/580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                        >
+                                                            Treasury:
+                                                        </a>
+                                                    </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(treasuryBalances.icp) / 1e8).toFixed(4)} ICP
                                                         <span style={{ color: '#888', marginLeft: '8px' }}>
@@ -2765,7 +2774,16 @@ function RLLInfo() {
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>8 Year Neuron:</div>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                        <a 
+                                                            href="https://dashboard.internetcomputer.org/neuron/4000934039483276792"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                        >
+                                                            8 Year Neuron:
+                                                        </a>
+                                                    </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(neuronBalance?.stake_e8s || 0) / 1e8).toFixed(4)} ICP
                                                         <span style={{ color: '#888', marginLeft: '8px' }}>
@@ -2774,7 +2792,16 @@ function RLLInfo() {
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                        <a 
+                                                            href="https://info.icpswap.com/swap-scan/positions?pair=osyzs-xiaaa-aaaag-qc76q-cai"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                        >
+                                                            ICP/SNEED LP:
+                                                        </a>
+                                                    </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} ICP
                                                         <span style={{ color: '#888', marginLeft: '8px' }}>
@@ -2801,7 +2828,16 @@ function RLLInfo() {
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>RLL Distribution:</div>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                        <a 
+                                                            href="https://app.sneeddao.com/rll"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                        >
+                                                            RLL Distribution:
+                                                        </a>
+                                                    </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(rllBalances.icp) / 1e8).toFixed(4)} ICP
                                                         <span style={{ color: '#888', marginLeft: '8px' }}>
@@ -2903,7 +2939,16 @@ function RLLInfo() {
                                         ) : (
                                             <>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>Treasury:</div>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                        <a 
+                                                            href="https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai/account/fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                        >
+                                                            Treasury:
+                                                        </a>
+                                                    </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(treasuryBalances.sneed) / 1e8).toFixed(4)} SNEED
                                                         <span style={{ color: '#888', marginLeft: '8px' }}>
@@ -2912,7 +2957,16 @@ function RLLInfo() {
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>ICP/SNEED LP:</div>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                        <a 
+                                                            href="https://info.icpswap.com/swap-scan/positions?pair=osyzs-xiaaa-aaaag-qc76q-cai"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                        >
+                                                            ICP/SNEED LP:
+                                                        </a>
+                                                    </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} SNEED
                                                         <span style={{ color: '#888', marginLeft: '8px' }}>
@@ -2939,7 +2993,16 @@ function RLLInfo() {
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>RLL Distribution:</div>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                        <a 
+                                                            href="https://app.sneeddao.com/rll"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                        >
+                                                            RLL Distribution:
+                                                        </a>
+                                                    </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(rllBalances.sneed) / 1e8).toFixed(4)} SNEED
                                                         <span style={{ color: '#888', marginLeft: '8px' }}>
