@@ -9,37 +9,32 @@ import { Principal } from '@dfinity/principal';
 
 const Layout = ({ children }) => {
   const [tickerText, setTickerText] = useState('Loading...');
-  const [totalSupply, setTotalSupply] = useState(null);
-  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    // Wait for IC agent to be available
-    const checkAgent = () => {
-      if (window.ic?.agent) {
-        setIsInitialized(true);
-      } else {
-        setTimeout(checkAgent, 500);
-      }
-    };
-    checkAgent();
-  }, []);
-
-  useEffect(() => {
-    if (!isInitialized) return;
-
     const fetchData = async () => {
       try {
-        // Get conversion rates
+        console.log('Fetching conversion rates...');
         const rates = await get_token_conversion_rates();
-        const icpPrice = rates.icp_usd;
-        const sneedPrice = rates.sneed_icp;
+        console.log('Rates:', rates);
+        
+        if (!rates || !rates.ICP || !rates.SNEED) {
+          console.error('Invalid rates:', rates);
+          setTickerText('Error: Invalid rates data');
+          return;
+        }
 
-        // Get total supply
+        const icpPrice = rates.ICP;
+        const sneedPrice = rates.SNEED;
+
+        console.log('Creating SNEED ledger actor...');
         const sneedLedgerActor = await Actor.createActor(sneedLedgerIDL, {
           agent: window.ic.agent,
           canisterId: Principal.fromText('hvgxa-wqaaa-aaaaq-aacia-cai'),
         });
+
+        console.log('Fetching total supply...');
         const supply = await sneedLedgerActor.icrc1_total_supply();
+        console.log('Total supply:', supply.toString());
         const totalSupply = Number(supply) / Math.pow(10, 8); // Assuming 8 decimals for SNEED
 
         // Calculate values
@@ -57,10 +52,11 @@ const Layout = ({ children }) => {
           `SNEED Market Cap: ${formatICP(sneedMarketCapICP)} ICP (${formatUSD(sneedMarketCapUSD)})`
         ].join('  •  ');
 
+        console.log('Setting ticker text:', text);
         setTickerText(text);
       } catch (error) {
         console.error('Error fetching data:', error);
-        setTickerText('Error loading data...');
+        setTickerText('Error loading data. Please try again later.');
       }
     };
 
@@ -68,7 +64,7 @@ const Layout = ({ children }) => {
     // Refresh every minute
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
-  }, [isInitialized]);
+  }, []);
   
   return (
     <div className="app-layout">
