@@ -2617,6 +2617,17 @@ function RLLInfo() {
                     }
                 }
             });
+
+        // Add RLL Distribution balances
+        reconciliationData.forEach(rllBalance => {
+            const tokenInfo = defiKnownTokens[rllBalance.token_id.toString()];
+            if (tokenInfo) {
+                const usdValue = getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol);
+                if (!isNaN(usdValue)) {
+                    total += usdValue;
+                }
+            }
+        });
         
         return total;
     };
