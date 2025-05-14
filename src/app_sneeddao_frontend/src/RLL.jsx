@@ -1926,7 +1926,7 @@ function RLL() {
                                     <h4 style={{ color: '#f1c40f', marginBottom: '10px' }}>Claims</h4>
                                     <div style={styles.statusItem}>
                                         <span>Total Count:</span>
-                                        <span>{eventStats.all_time.claims.total.toString()}</span>
+                                        <span>{eventStats.all_time.claims.pending.toString()}</span>
                                     </div>
                                     {eventStats.all_time.claims.per_token.map(([tokenId, amount]) => (
                                         <div key={tokenId.toString()} style={styles.statusItem}>
@@ -1942,11 +1942,11 @@ function RLL() {
                                         <span>Failed:</span>
                                         <span style={{ color: '#e74c3c' }}>{eventStats.all_time.claims.failed.toString()}</span>
                                     </div>
-                                    {(eventStats.all_time.claims.total - eventStats.all_time.claims.successful - eventStats.all_time.claims.failed) > 0 && (
+                                    {(eventStats.all_time.claims.pending - eventStats.all_time.claims.successful - eventStats.all_time.claims.failed) > 0 && (
                                         <div style={styles.statusItem}>
                                             <span>Pending:</span>
                                             <span style={{ color: '#f1c40f' }}>
-                                                {(eventStats.all_time.claims.total - eventStats.all_time.claims.successful - eventStats.all_time.claims.failed).toString()}
+                                                {(eventStats.all_time.claims.pending - eventStats.all_time.claims.successful - eventStats.all_time.claims.failed).toString()}
                                             </span>
                                         </div>
                                     )}
@@ -1997,7 +1997,7 @@ function RLL() {
                                     <h4 style={{ color: '#f1c40f', marginBottom: '10px' }}>Claims</h4>
                                     <div style={styles.statusItem}>
                                         <span>Total Count:</span>
-                                        <span>{eventStats.last_24h.claims.total.toString()}</span>
+                                        <span>{eventStats.last_24h.claims.pending.toString()}</span>
                                     </div>
                                     {eventStats.last_24h.claims.per_token.map(([tokenId, amount]) => (
                                         <div key={tokenId.toString()} style={styles.statusItem}>
@@ -2013,11 +2013,11 @@ function RLL() {
                                         <span>Failed:</span>
                                         <span style={{ color: '#e74c3c' }}>{eventStats.last_24h.claims.failed.toString()}</span>
                                     </div>
-                                    {(eventStats.last_24h.claims.total - eventStats.last_24h.claims.successful - eventStats.last_24h.claims.failed) > 0 && (
+                                    {(eventStats.last_24h.claims.pending - eventStats.last_24h.claims.successful - eventStats.last_24h.claims.failed) > 0 && (
                                         <div style={styles.statusItem}>
                                             <span>Pending:</span>
                                             <span style={{ color: '#f1c40f' }}>
-                                                {(eventStats.last_24h.claims.total - eventStats.last_24h.claims.successful - eventStats.last_24h.claims.failed).toString()}
+                                                {(eventStats.last_24h.claims.pending - eventStats.last_24h.claims.successful - eventStats.last_24h.claims.failed).toString()}
                                             </span>
                                         </div>
                                     )}
