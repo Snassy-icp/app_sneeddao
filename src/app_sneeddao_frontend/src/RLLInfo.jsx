@@ -2147,7 +2147,7 @@ function RLLInfo() {
                                 </div>
                                 <div style={styles.statusItem}>
                                     <span>Voting Power:</span>
-                                    <span>{(Number(neuronBalance.voting_power) / 1e8).toFixed(2)} ICP</span>
+                                    <span>{(Number(neuronBalance.voting_power) / 1e8).toFixed(2)} VP</span>
                                 </div>
                                 <div style={styles.statusItem}>
                                     <span>Age:</span>
@@ -2350,7 +2350,7 @@ function RLLInfo() {
                                 </div>
                                 <div style={styles.statusItem}>
                                     <span>Voting Power:</span>
-                                    <span>{(Number(neuronBalance.voting_power) / 1e8).toFixed(2)} ICP</span>
+                                    <span>{(Number(neuronBalance.voting_power) / 1e8).toFixed(2)} VP</span>
                                 </div>
                                 <div style={styles.statusItem}>
                                     <span>Age:</span>
@@ -3089,7 +3089,16 @@ function RLLInfo() {
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                        <a 
+                                                            href="https://dashboard.internetcomputer.org/canister/ok64y-uiaaa-aaaag-qdcbq-cai"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                        >
+                                                            DeFi Canister:
+                                                        </a>
+                                                    </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(defiBalances.sneed) / 1e8).toFixed(4)} SNEED
                                                         <span style={{ color: '#888', marginLeft: '8px' }}>
