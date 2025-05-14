@@ -26,6 +26,7 @@ import { get_available, get_available_backend, getTokenLogo, get_token_conversio
 import { getPositionTVL } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
+import Header from './components/Header';
 
 const showDebug = false;
         
@@ -877,143 +878,124 @@ function Wallet() {
 
     return (
         <div className='page-container'>
-        <header className="site-header">
-            <div style={headerStyles.logoContainer}>
-                <div className="logo">
-                    <Link to="/wallet">
-                        <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
-                    </Link>
+            <Header showTotalValue={totalDollarValue} />
+            <div className="wallet-container">
+                <div className="disclaimer">
+                    <h3>Disclaimer</h3>
+                    <p>This is <b>beta</b> software. Please only use small amounts (that you don't mind losing) and <b>use at your own risk.</b></p>
+                    <p>Maximum lock time is 31 days.</p>
                 </div>
-                <Link to="/rll" style={headerStyles.rllLogo}>
-                    RLL
-                </Link>
-            </div>
-            <h4>Total Value: ${totalDollarValue}</h4>
-            <div className="header-right">
-                <Link to="/help" className="help-link">Help</Link>
-                <PrincipalBox 
-                    principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
-                    onLogout={logout}
-                />
-            </div>
-        </header>
-        <div className="wallet-container">
-            <div className="disclaimer">
-                <h3>Disclaimer</h3>
-                <p>This is <b>beta</b> software. Please only use small amounts (that you don't mind losing) and <b>use at your own risk.</b></p>
-                <p>Maximum lock time is 31 days.</p>
-            </div>
-            <p>Tokens <b className="card add-ledger-card" onClick={() => setShowAddLedgerModal(true)}>&nbsp;&nbsp;+&nbsp;&nbsp;</b></p>
-            <div className="card-grid">
-                {tokens.map((token, index) => (
-                    <TokenCard
-                        key={index}
-                        token={token}
-                        locks={locks}
-                        lockDetailsLoading={lockDetailsLoading}
-                        showDebug={showDebug}
-                        openSendModal={openSendModal}
-                        openLockModal={openLockModal}
-                        handleUnregisterToken={handleUnregisterToken}
-                        rewardDetailsLoading={rewardDetailsLoading}
-                        handleClaimRewards={handleClaimRewards}
-                    />
-                ))}
-                {showTokensSpinner ? (
-                    <div className="card">
-                        <div className="spinner"></div>
-                    </div>
-                ) : (
-                    <div/>
-                )}
-            </div>
-            <p>Liquidity Positions <b className="card add-swap-card" onClick={() => setShowAddSwapModal(true)}>&nbsp;&nbsp;+&nbsp;&nbsp;</b></p>
-            <div className="card-grid">                
-                {liquidityPositions.map((position, index) => (
-                    position.positions.length < 1 
-                    ? <div key={index} className="card">
-
-                        <div className="card-header">
-                            <img src={position.token0Logo} alt={position.token0Symbol} className="swap-token-logo1" />
-                            <img src={position.token1Logo} alt={position.token1Symbol} className="swap-token-logo2" />
-                            <span className="token-symbol">{position.token0Symbol}/{position.token1Symbol}</span>
+                <p>Tokens <b className="card add-ledger-card" onClick={() => setShowAddLedgerModal(true)}>&nbsp;&nbsp;+&nbsp;&nbsp;</b></p>
+                <div className="card-grid">
+                    {tokens.map((token, index) => (
+                        <TokenCard
+                            key={index}
+                            token={token}
+                            locks={locks}
+                            lockDetailsLoading={lockDetailsLoading}
+                            showDebug={showDebug}
+                            openSendModal={openSendModal}
+                            openLockModal={openLockModal}
+                            handleUnregisterToken={handleUnregisterToken}
+                            rewardDetailsLoading={rewardDetailsLoading}
+                            handleClaimRewards={handleClaimRewards}
+                        />
+                    ))}
+                    {showTokensSpinner ? (
+                        <div className="card">
+                            <div className="spinner"></div>
                         </div>
-                        <br />
-                        <p>No Positions</p>
-                        <div className="action-buttons">
-                            <div className="tooltip-wrapper">
-                                <button className="remove-button" onClick={() => handleUnregisterSwapCanister(position.swapCanisterId)}>
-                                    <img src="red-x-black.png" alt="Remove" />
-                                </button>
-                                <span className="tooltip">Remove Swap Pair</span>
+                    ) : (
+                        <div/>
+                    )}
+                </div>
+                <p>Liquidity Positions <b className="card add-swap-card" onClick={() => setShowAddSwapModal(true)}>&nbsp;&nbsp;+&nbsp;&nbsp;</b></p>
+                <div className="card-grid">                
+                    {liquidityPositions.map((position, index) => (
+                        position.positions.length < 1 
+                        ? <div key={index} className="card">
+
+                            <div className="card-header">
+                                <img src={position.token0Logo} alt={position.token0Symbol} className="swap-token-logo1" />
+                                <img src={position.token1Logo} alt={position.token1Symbol} className="swap-token-logo2" />
+                                <span className="token-symbol">{position.token0Symbol}/{position.token1Symbol}</span>
+                            </div>
+                            <br />
+                            <p>No Positions</p>
+                            <div className="action-buttons">
+                                <div className="tooltip-wrapper">
+                                    <button className="remove-button" onClick={() => handleUnregisterSwapCanister(position.swapCanisterId)}>
+                                        <img src="red-x-black.png" alt="Remove" />
+                                    </button>
+                                    <span className="tooltip">Remove Swap Pair</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    : position.positions.map((positionDetails, positionIndex) => (
-                        <PositionCard
-                            key={`${index}-${positionIndex}`}
-                            position={position}
-                            positionDetails={positionDetails}
-                            openSendLiquidityPositionModal={openSendLiquidityPositionModal}
-                            openLockPositionModal={openLockPositionModal}
-                            withdraw_position_rewards={withdraw_position_rewards}
-                            hideButtons={false}
-                            hideUnclaimedFees={false}
-                        />
-                    ))
-                ))}
-                {showPositionsSpinner ? (
-                    <div className="card">
-                        <div className="spinner"></div>
-                    </div>
-                ) : (
-                    <div/>
-                )}
+                        : position.positions.map((positionDetails, positionIndex) => (
+                            <PositionCard
+                                key={`${index}-${positionIndex}`}
+                                position={position}
+                                positionDetails={positionDetails}
+                                openSendLiquidityPositionModal={openSendLiquidityPositionModal}
+                                openLockPositionModal={openLockPositionModal}
+                                withdraw_position_rewards={withdraw_position_rewards}
+                                hideButtons={false}
+                                hideUnclaimedFees={false}
+                            />
+                        ))
+                    ))}
+                    {showPositionsSpinner ? (
+                        <div className="card">
+                            <div className="spinner"></div>
+                        </div>
+                    ) : (
+                        <div/>
+                    )}
+                </div>
+                <AddSwapCanisterModal
+                    show={showAddSwapModal}
+                    onClose={() => setShowAddSwapModal(false)}
+                    onSubmit={handleAddSwapCanister}
+                />
+                <AddLedgerCanisterModal
+                    show={showAddLedgerModal}
+                    onClose={() => setShowAddLedgerModal(false)}
+                    onSubmit={handleAddLedgerCanister}
+                />
+                <SendTokenModal
+                    show={showSendModal}
+                    onClose={() => setShowSendModal(false)}
+                    onSend={handleSendToken}
+                    token={selectedToken}
+                />
+                <LockModal
+                    show={showLockModal}
+                    onClose={() => setShowLockModal(false)}
+                    token={selectedToken}
+                    locks={locks}
+                    onAddLock={handleAddLock}
+                />
+                <SendLiquidityPositionModal
+                    show={showSendLiquidityPositionModal}
+                    onClose={() => setShowSendLiquidityPositionModal(false)}
+                    onSend={handleSendLiquidityPosition}
+                    liquidityPosition={selectedLiquidityPosition}
+                />
+                <LockPositionModal
+                    show={showLockPositionModal}
+                    onClose={() => setShowLockPositionModal(false)}
+                    liquidityPosition={selectedLiquidityPosition}
+                    onAddLockPosition={handleAddLockPosition}
+                />
+                <ConfirmationModal
+                    show={showConfirmModal}
+                    onClose={() => setShowConfirmModal(false)}
+                    onSubmit={confirmAction}
+                    message={confirmMessage}
+                    doAwait={true}
+                />
             </div>
-            <AddSwapCanisterModal
-                show={showAddSwapModal}
-                onClose={() => setShowAddSwapModal(false)}
-                onSubmit={handleAddSwapCanister}
-            />
-            <AddLedgerCanisterModal
-                show={showAddLedgerModal}
-                onClose={() => setShowAddLedgerModal(false)}
-                onSubmit={handleAddLedgerCanister}
-            />
-            <SendTokenModal
-                show={showSendModal}
-                onClose={() => setShowSendModal(false)}
-                onSend={handleSendToken}
-                token={selectedToken}
-            />
-            <LockModal
-                show={showLockModal}
-                onClose={() => setShowLockModal(false)}
-                token={selectedToken}
-                locks={locks}
-                onAddLock={handleAddLock}
-            />
-            <SendLiquidityPositionModal
-                show={showSendLiquidityPositionModal}
-                onClose={() => setShowSendLiquidityPositionModal(false)}
-                onSend={handleSendLiquidityPosition}
-                liquidityPosition={selectedLiquidityPosition}
-            />
-            <LockPositionModal
-                show={showLockPositionModal}
-                onClose={() => setShowLockPositionModal(false)}
-                liquidityPosition={selectedLiquidityPosition}
-                onAddLockPosition={handleAddLockPosition}
-            />
-            <ConfirmationModal
-                show={showConfirmModal}
-                onClose={() => setShowConfirmModal(false)}
-                onSubmit={confirmAction}
-                message={confirmMessage}
-                doAwait={true}
-            />
-        </div>
         </div>
     );
 }
