@@ -27,6 +27,7 @@ import { getPositionTVL } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 import Header from './components/Header';
+import { fetchUserNeurons } from './utils/NeuronUtils';
 
 const showDebug = false;
         
@@ -140,16 +141,8 @@ function Wallet() {
         // fetch rewards from RLL canister
         const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
         
-        // First get neurons from SNS
-        const snsGovActor = createSnsGovernanceActor(snsGovernanceCanisterId, {
-            agentOptions: { identity }
-        });
-        const result = await snsGovActor.list_neurons({
-            of_principal: [identity.getPrincipal()],
-            limit: 100,
-            start_page_at: []
-        });
-        const neurons = result.neurons;
+        // Get neurons using the common utility function
+        const neurons = await fetchUserNeurons(identity);
         
         // Then get rewards using the new query method
         const arr_balances = await rllActor.balances_of_hotkey_neurons(neurons);

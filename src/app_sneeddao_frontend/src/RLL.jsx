@@ -15,6 +15,7 @@ import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCan
 import PrincipalBox from './PrincipalBox';
 import { headerStyles } from './styles/HeaderStyles';
 import Header from './components/Header';
+import { fetchUserNeurons } from './utils/NeuronUtils';
 
 // Styles
 const styles = {
@@ -700,24 +701,7 @@ function RLL() {
 
     // Function to fetch neurons directly from SNS
     const fetchNeuronsFromSns = async () => {
-        if (!identity) return [];
-        
-        try {
-            const snsGovActor = createSnsGovernanceActor(snsGovernanceCanisterId, {
-              agentOptions: {
-                  identity,
-              },
-          });
-            const result = await snsGovActor.list_neurons({
-                of_principal: [identity.getPrincipal()],
-                limit: 100,
-                start_page_at: []
-            });
-            return result.neurons;
-        } catch (error) {
-            console.error('Error fetching neurons from SNS:', error);
-            return [];
-        }
+        return await fetchUserNeurons(identity);
     };
 
     // Updated function to fetch hotkey neurons data
