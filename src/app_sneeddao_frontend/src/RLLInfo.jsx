@@ -3266,21 +3266,22 @@ function RLLInfo() {
                                                         }
                                                     </div>
                                                 </div>
-                                                {/* Footer with total USD value - Other Tokens */}
-                                                <div style={{
-                                                    marginTop: '15px',
-                                                    paddingTop: '15px',
-                                                    borderTop: '1px solid #9b59b6'
-                                                }}>
-                                                    <div style={{ color: '#9b59b6', marginBottom: '5px' }}>Total Value:</div>
-                                                    <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
-                                                        ${formatUSD(getOtherTokensUSDTotal())}
-                                                    </div>
-                                                </div>
                                             </>
                                         )}
                                     </>
                                 )}
+
+                                {/* Footer with total - always visible */}
+                                <div style={{
+                                    marginTop: '15px',
+                                    paddingTop: '15px',
+                                    borderTop: '1px solid #9b59b6'
+                                }}>
+                                    <div style={{ color: '#9b59b6', marginBottom: '5px' }}>Total Value:</div>
+                                    <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
+                                        ${formatUSD(getOtherTokensUSDTotal())}
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Other Positions */}
