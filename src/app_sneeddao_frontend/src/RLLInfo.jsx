@@ -3293,14 +3293,22 @@ function RLLInfo() {
                                                             (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.token1Amount, 8, 'ICP'))})
                                                         </span>
                                                     </div>
-                                                    <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token0Amount) / 1e8).toFixed(4)} CLOWN</div>
+                                                    <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token0Amount) / 1e8).toFixed(4)} CLOWN
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.token0Amount, 8, 'CLOWN'))})
+                                                        </span>
+                                                    </div>
                                                     <div style={{ marginTop: '5px' }}>Unclaimed Rewards:</div>
                                                     <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed1) / 1e8).toFixed(4)} ICP
                                                         <span style={{ color: '#888', marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.tokensOwed1, 8, 'ICP'))})
                                                         </span>
                                                     </div>
-                                                    <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed0) / 1e8).toFixed(4)} CLOWN</div>
+                                                    <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed0) / 1e8).toFixed(4)} CLOWN
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.tokensOwed0, 8, 'CLOWN'))})
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}
