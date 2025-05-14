@@ -803,7 +803,7 @@ function RLL() {
 
                 // Check the TransferResult variant
                 if ('Ok' in claim_results) {
-                    // Refresh all relevant data
+                    // Only refresh data and show success notification if the claim was successful
                     console.log('Claim successful, refreshing data...');
                     const [balances, claims] = await Promise.all([
                         rllActor.balances_of_hotkey(),
@@ -818,21 +818,24 @@ function RLL() {
                         type: 'success',
                         message: `Successfully claimed ${formatBalance(balance, token.decimals)} ${token.symbol}`
                     });
-                } else if ('Err' in claim_results) {
+                } else if (claim_results.Err) {
                     // Handle specific transfer errors
                     const error = claim_results.Err;
                     let errorMessage = '';
                     
-                    if ('InsufficientFunds' in error) {
-                        errorMessage = `Insufficient funds. Available balance: ${formatBalance(error.InsufficientFunds.balance, token.decimals)} ${token.symbol}`;
-                    } else if ('BadFee' in error) {
-                        errorMessage = `Incorrect fee. Expected: ${formatBalance(error.BadFee.expected_fee, token.decimals)} ${token.symbol}`;
-                    } else if ('GenericError' in error) {
+                    if (error.InsufficientFunds) {
+                        const availableBalance = error.InsufficientFunds.balance;
+                        errorMessage = `Insufficient funds. Available balance: ${formatBalance(availableBalance, token.decimals)} ${token.symbol}`;
+                    } else if (error.BadFee) {
+                        const expectedFee = error.BadFee.expected_fee;
+                        errorMessage = `Incorrect fee. Expected: ${formatBalance(expectedFee, token.decimals)} ${token.symbol}`;
+                    } else if (error.GenericError) {
                         errorMessage = error.GenericError.message;
                     } else {
                         errorMessage = `Transfer failed: ${Object.keys(error)[0]}`;
                     }
                     
+                    console.error('Claim failed:', errorMessage);
                     setNotification({
                         type: 'error',
                         message: `Failed to claim ${token.symbol}: ${errorMessage}`
