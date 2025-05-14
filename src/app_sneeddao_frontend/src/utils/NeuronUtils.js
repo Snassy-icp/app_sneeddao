@@ -26,13 +26,17 @@ const getOwnerPrincipals = (neuron) => {
     return Array.from(owners);
 };
 
-// Helper function to get neuron ID as string
-const getNeuronId = (neuron) => {
-    if (!neuron.id || !neuron.id.id) return null;
-    // Convert the Blob to hex string for consistent comparison
-    return Array.from(neuron.id.id)
+// Helper function to convert Uint8Array to hex string
+const uint8ArrayToHex = (array) => {
+    return Array.from(array)
         .map(b => b.toString(16).padStart(2, '0'))
         .join('');
+};
+
+// Helper function to get neuron ID as string
+const getNeuronId = (neuron) => {
+    if (!neuron.id || !neuron.id[0] || !neuron.id[0].id) return null;
+    return uint8ArrayToHex(neuron.id[0].id);
 };
 
 export const fetchUserNeurons = async (identity) => {
@@ -85,7 +89,6 @@ export const fetchUserNeurons = async (identity) => {
             }
         }
         
-        // Convert map values back to array
         return Array.from(neuronsMap.values());
     } catch (error) {
         console.error('Error fetching neurons from SNS:', error);
