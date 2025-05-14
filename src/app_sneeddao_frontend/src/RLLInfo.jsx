@@ -2601,6 +2601,44 @@ function RLLInfo() {
         return total;
     };
 
+    // Calculate total USD value for other tokens
+    const getOtherTokensUSDTotal = () => {
+        let total = 0;
+        
+        // Add DeFi Canister token balances
+        Object.entries(defiKnownTokens)
+            .filter(([id]) => id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai')
+            .forEach(([tokenId, tokenInfo]) => {
+                const balance = defiTokenBalances[tokenId.toString()];
+                if (balance) {
+                    const usdValue = getUSDValue(balance, tokenInfo.decimals, tokenInfo.symbol);
+                    if (!isNaN(usdValue)) {
+                        total += usdValue;
+                    }
+                }
+            });
+        
+        return total;
+    };
+
+    // Calculate total USD value for other positions
+    const getOtherPositionsUSDTotal = () => {
+        let total = 0;
+        
+        // Add ICP/CLOWN position
+        if (otherLpPositions['ICP/CLOWN'].position) {
+            const pos = otherLpPositions['ICP/CLOWN'].position;
+            // Add ICP value
+            total += getUSDValue(pos.token1Amount || 0, 8, 'ICP');
+            total += getUSDValue(pos.tokensOwed1 || 0, 8, 'ICP');
+            // Add CLOWN value
+            total += getUSDValue(pos.token0Amount || 0, 8, 'CLOWN');
+            total += getUSDValue(pos.tokensOwed0 || 0, 8, 'CLOWN');
+        }
+        
+        return total;
+    };
+
     return (
         <div className='page-container'>
             <header className="site-header">
@@ -3228,6 +3266,17 @@ function RLLInfo() {
                                                         }
                                                     </div>
                                                 </div>
+                                                {/* Footer with total USD value - Other Tokens */}
+                                                <div style={{
+                                                    marginTop: '15px',
+                                                    paddingTop: '15px',
+                                                    borderTop: '1px solid #9b59b6'
+                                                }}>
+                                                    <div style={{ color: '#9b59b6', marginBottom: '5px' }}>Total Value:</div>
+                                                    <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
+                                                        ${formatUSD(getOtherTokensUSDTotal())}
+                                                    </div>
+                                                </div>
                                             </>
                                         )}
                                     </>
@@ -3242,16 +3291,15 @@ function RLLInfo() {
                                 border: '1px solid #9b59b6',
                                 marginBottom: '20px'
                             }}>
-                                <h3 
+                                <h3 style={{ 
+                                    color: '#9b59b6', 
+                                    marginTop: 0, 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '8px',
+                                    cursor: 'pointer' 
+                                }}
                                     onClick={() => toggleSection('otherPositions')}
-                                    style={{ 
-                                        color: '#9b59b6', 
-                                        marginTop: 0, 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
-                                        gap: '8px',
-                                        cursor: 'pointer' 
-                                    }}
                                 >
                                     <span style={{ 
                                         display: 'inline-block',
@@ -3268,6 +3316,7 @@ function RLLInfo() {
                                         i
                                     </span>
                                 </h3>
+
                                 {expandedSections.otherPositions && (
                                     <>
                                         {otherLpPositions['ICP/CLOWN'].loading ? (
@@ -3277,40 +3326,54 @@ function RLLInfo() {
                                         ) : otherLpPositions['ICP/CLOWN'].error ? (
                                             <div style={{ color: '#e74c3c' }}>Error loading ICP/CLOWN position: {otherLpPositions['ICP/CLOWN'].error}</div>
                                         ) : otherLpPositions['ICP/CLOWN'].position && (
-                                            <div style={{
-                                                marginBottom: '15px',
-                                                padding: '10px',
-                                                backgroundColor: '#2a2a2a',
-                                                borderRadius: '4px'
-                                            }}>
-                                                <div style={{ color: '#3498db', marginBottom: '8px', fontWeight: 'bold' }}>
-                                                    ICP/CLOWN Position #168
+                                            <>
+                                                <div style={{
+                                                    marginBottom: '15px',
+                                                    padding: '10px',
+                                                    backgroundColor: '#2a2a2a',
+                                                    borderRadius: '4px'
+                                                }}>
+                                                    <div style={{ color: '#3498db', marginBottom: '8px', fontWeight: 'bold' }}>
+                                                        ICP/CLOWN Position #168
+                                                    </div>
+                                                    <div style={{ marginLeft: '10px' }}>
+                                                        <div>Current Position:</div>
+                                                        <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token1Amount) / 1e8).toFixed(4)} ICP
+                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.token1Amount, 8, 'ICP'))})
+                                                            </span>
+                                                        </div>
+                                                        <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token0Amount) / 1e8).toFixed(4)} CLOWN
+                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.token0Amount, 8, 'CLOWN'))})
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ marginTop: '5px' }}>Unclaimed Rewards:</div>
+                                                        <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed1) / 1e8).toFixed(4)} ICP
+                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.tokensOwed1, 8, 'ICP'))})
+                                                            </span>
+                                                        </div>
+                                                        <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed0) / 1e8).toFixed(4)} CLOWN
+                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.tokensOwed0, 8, 'CLOWN'))})
+                                                            </span>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div style={{ marginLeft: '10px' }}>
-                                                    <div>Current Position:</div>
-                                                    <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token1Amount) / 1e8).toFixed(4)} ICP
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                            (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.token1Amount, 8, 'ICP'))})
-                                                        </span>
-                                                    </div>
-                                                    <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token0Amount) / 1e8).toFixed(4)} CLOWN
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                            (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.token0Amount, 8, 'CLOWN'))})
-                                                        </span>
-                                                    </div>
-                                                    <div style={{ marginTop: '5px' }}>Unclaimed Rewards:</div>
-                                                    <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed1) / 1e8).toFixed(4)} ICP
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                            (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.tokensOwed1, 8, 'ICP'))})
-                                                        </span>
-                                                    </div>
-                                                    <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed0) / 1e8).toFixed(4)} CLOWN
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                            (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.tokensOwed0, 8, 'CLOWN'))})
-                                                        </span>
+
+                                                {/* Footer with total USD value - Other Positions */}
+                                                <div style={{
+                                                    marginTop: '15px',
+                                                    paddingTop: '15px',
+                                                    borderTop: '1px solid #9b59b6'
+                                                }}>
+                                                    <div style={{ color: '#9b59b6', marginBottom: '5px' }}>Total Value:</div>
+                                                    <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
+                                                        ${formatUSD(getOtherPositionsUSDTotal())}
                                                     </div>
                                                 </div>
-                                            </div>
+                                            </>
                                         )}
                                     </>
                                 )}
