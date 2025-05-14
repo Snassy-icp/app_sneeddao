@@ -2729,6 +2729,12 @@ function RLLInfo() {
                                         cursor: 'pointer' 
                                     }}
                                 >
+                                    <span style={{ 
+                                        display: 'inline-block',
+                                        transform: `rotate(${expandedSections.icpAssets ? '90deg' : '0deg'})`,
+                                        transition: 'transform 0.2s ease',
+                                        marginRight: '4px'
+                                    }}>▸</span>
                                     ICP Assets
                                     <span 
                                         style={styles.infoIcon} 
@@ -2874,6 +2880,12 @@ function RLLInfo() {
                                         cursor: 'pointer' 
                                     }}
                                 >
+                                    <span style={{ 
+                                        display: 'inline-block',
+                                        transform: `rotate(${expandedSections.sneedAssets ? '90deg' : '0deg'})`,
+                                        transition: 'transform 0.2s ease',
+                                        marginRight: '4px'
+                                    }}>▸</span>
                                     SNEED Assets
                                     <span 
                                         style={styles.infoIcon} 
@@ -2984,6 +2996,12 @@ function RLLInfo() {
                                         cursor: 'pointer' 
                                     }}
                                 >
+                                    <span style={{ 
+                                        display: 'inline-block',
+                                        transform: `rotate(${expandedSections.otherTokens ? '90deg' : '0deg'})`,
+                                        transition: 'transform 0.2s ease',
+                                        marginRight: '4px'
+                                    }}>▸</span>
                                     Other Tokens
                                     <span 
                                         style={styles.infoIcon} 
@@ -3106,6 +3124,12 @@ function RLLInfo() {
                                         cursor: 'pointer' 
                                     }}
                                 >
+                                    <span style={{ 
+                                        display: 'inline-block',
+                                        transform: `rotate(${expandedSections.otherPositions ? '90deg' : '0deg'})`,
+                                        transition: 'transform 0.2s ease',
+                                        marginRight: '4px'
+                                    }}>▸</span>
                                     Other Positions
                                     <span 
                                         style={styles.infoIcon} 
