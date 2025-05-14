@@ -1925,10 +1925,14 @@ function RLL() {
                                         <span>Failed:</span>
                                         <span style={{ color: '#e74c3c' }}>{eventStats.all_time.claims.failed.toString()}</span>
                                     </div>
-                                    <div style={styles.statusItem}>
-                                        <span>Pending:</span>
-                                        <span style={{ color: '#f1c40f' }}>{eventStats.all_time.claims.pending.toString()}</span>
-                                    </div>
+                                    {(eventStats.all_time.claims.total - eventStats.all_time.claims.successful - eventStats.all_time.claims.failed) > 0 && (
+                                        <div style={styles.statusItem}>
+                                            <span>Pending:</span>
+                                            <span style={{ color: '#f1c40f' }}>
+                                                {(eventStats.all_time.claims.total - eventStats.all_time.claims.successful - eventStats.all_time.claims.failed).toString()}
+                                            </span>
+                                        </div>
+                                    )}
                                     <div style={styles.statusItem}>
                                         <span>Unique Users:</span>
                                         <span>{eventStats.all_time.claims.unique_users.toString()}</span>
@@ -1986,10 +1990,14 @@ function RLL() {
                                         <span>Failed:</span>
                                         <span style={{ color: '#e74c3c' }}>{eventStats.last_24h.claims.failed.toString()}</span>
                                     </div>
-                                    <div style={styles.statusItem}>
-                                        <span>Pending:</span>
-                                        <span style={{ color: '#f1c40f' }}>{eventStats.last_24h.claims.pending.toString()}</span>
-                                    </div>
+                                    {(eventStats.last_24h.claims.total - eventStats.last_24h.claims.successful - eventStats.last_24h.claims.failed) > 0 && (
+                                        <div style={styles.statusItem}>
+                                            <span>Pending:</span>
+                                            <span style={{ color: '#f1c40f' }}>
+                                                {(eventStats.last_24h.claims.total - eventStats.last_24h.claims.successful - eventStats.last_24h.claims.failed).toString()}
+                                            </span>
+                                        </div>
+                                    )}
                                     <div style={styles.statusItem}>
                                         <span>Unique Users:</span>
                                         <span>{eventStats.last_24h.claims.unique_users.toString()}</span>

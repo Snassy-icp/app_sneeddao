@@ -358,38 +358,38 @@ export const idlFactory = ({ IDL }) => {
             'all_time' : IDL.Record({
               'claims' : IDL.Record({
                 'total' : IDL.Nat,
-                'total_amount' : IDL.Nat,
                 'pending' : IDL.Nat,
+                'per_token' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat)),
                 'unique_users' : IDL.Nat,
                 'successful' : IDL.Nat,
                 'failed' : IDL.Nat,
               }),
               'server_distributions' : IDL.Record({
                 'total' : IDL.Nat,
-                'total_amount' : IDL.Nat,
+                'per_token' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat)),
               }),
               'user_distributions' : IDL.Record({
                 'total' : IDL.Nat,
-                'total_amount' : IDL.Nat,
+                'per_token' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat)),
                 'unique_users' : IDL.Nat,
               }),
             }),
             'last_24h' : IDL.Record({
               'claims' : IDL.Record({
                 'total' : IDL.Nat,
-                'total_amount' : IDL.Nat,
                 'pending' : IDL.Nat,
+                'per_token' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat)),
                 'unique_users' : IDL.Nat,
                 'successful' : IDL.Nat,
                 'failed' : IDL.Nat,
               }),
               'server_distributions' : IDL.Record({
                 'total' : IDL.Nat,
-                'total_amount' : IDL.Nat,
+                'per_token' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat)),
               }),
               'user_distributions' : IDL.Record({
                 'total' : IDL.Nat,
-                'total_amount' : IDL.Nat,
+                'per_token' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat)),
                 'unique_users' : IDL.Nat,
               }),
             }),

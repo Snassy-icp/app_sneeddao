@@ -149,19 +149,29 @@ type SneedRLL =
            record {
              failed: nat;
              pending: nat;
+             per_token: vec record {
+                              principal;
+                              nat;
+                            };
              successful: nat;
              total: nat;
-             total_amount: nat;
              unique_users: nat;
            };
-          server_distributions: record {
-                                  total: nat;
-                                  total_amount: nat;
-                                };
+          server_distributions:
+           record {
+             per_token: vec record {
+                              principal;
+                              nat;
+                            };
+             total: nat;
+           };
           user_distributions:
            record {
+             per_token: vec record {
+                              principal;
+                              nat;
+                            };
              total: nat;
-             total_amount: nat;
              unique_users: nat;
            };
         };
@@ -171,19 +181,29 @@ type SneedRLL =
            record {
              failed: nat;
              pending: nat;
+             per_token: vec record {
+                              principal;
+                              nat;
+                            };
              successful: nat;
              total: nat;
-             total_amount: nat;
              unique_users: nat;
            };
-          server_distributions: record {
-                                  total: nat;
-                                  total_amount: nat;
-                                };
+          server_distributions:
+           record {
+             per_token: vec record {
+                              principal;
+                              nat;
+                            };
+             total: nat;
+           };
           user_distributions:
            record {
+             per_token: vec record {
+                              principal;
+                              nat;
+                            };
              total: nat;
-             total_amount: nat;
              unique_users: nat;
            };
         };
