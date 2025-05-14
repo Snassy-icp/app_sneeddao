@@ -141,6 +141,7 @@ type SneedRLL =
        proposal_ids: vec nat64;
        total_count: nat;
      }) query;
+   get_error_claim_events: () -> (Result_1) query;
    get_event_statistics: () ->
     (record {
        all_time:
@@ -255,6 +256,7 @@ type SneedRLL =
                                          principal;
                                          nat;
                                        }) query;
+   get_unmatched_pending_claims: () -> (Result_1) query;
    get_user_distribution_events: () -> (vec UserDistributionEvent) query;
    get_user_distributions: (principal) -> (vec record {
                                                  principal;
@@ -308,6 +310,11 @@ type SneedRLL =
    stop_token_balance_check: () -> (Result);
    stop_wallet_token_check: () -> (Result);
    total_balance: (principal) -> (nat) query;
+ };
+type Result_1 = 
+ variant {
+   err: text;
+   ok: vec ClaimEvent;
  };
 type Result = 
  variant {

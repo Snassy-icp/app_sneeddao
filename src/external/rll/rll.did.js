@@ -232,6 +232,10 @@ export const idlFactory = ({ IDL }) => {
     'timestamp' : IDL.Int,
     'amount' : IDL.Nat,
   });
+  const Result_1 = IDL.Variant({
+    'ok' : IDL.Vec(ClaimEvent),
+    'err' : IDL.Text,
+  });
   const TokenMetadata = IDL.Record({
     'fee' : IDL.Nat,
     'decimals' : IDL.Nat8,
@@ -351,6 +355,7 @@ export const idlFactory = ({ IDL }) => {
         ],
         ['query'],
       ),
+    'get_error_claim_events' : IDL.Func([], [Result_1], ['query']),
     'get_event_statistics' : IDL.Func(
         [],
         [
@@ -479,6 +484,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
         ['query'],
       ),
+    'get_unmatched_pending_claims' : IDL.Func([], [Result_1], ['query']),
     'get_user_distribution_events' : IDL.Func(
         [],
         [IDL.Vec(UserDistributionEvent)],
