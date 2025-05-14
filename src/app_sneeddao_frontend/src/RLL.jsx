@@ -388,6 +388,8 @@ function RLL() {
     const [newMinAmount, setNewMinAmount] = useState('');
     const [newMaxAmount, setNewMaxAmount] = useState('');
     const [selectedToken, setSelectedToken] = useState(null);
+    const [eventStats, setEventStats] = useState(null);
+    const [loadingEventStats, setLoadingEventStats] = useState(true);
 
     // New state for hotkey neurons
     const [hotkeyNeurons, setHotkeyNeurons] = useState({
@@ -1049,6 +1051,34 @@ function RLL() {
             setIsAdmin(false);
         }
     }, [identity]);
+
+    useEffect(() => {
+        const fetchEventStats = async () => {
+            try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+                
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: { agent }
+                });
+
+                const stats = await rllActor.get_event_statistics();
+                console.log('Event statistics:', stats);
+                setEventStats(stats);
+            } catch (error) {
+                console.error('Error fetching event statistics:', error);
+            } finally {
+                setLoadingEventStats(false);
+            }
+        };
+
+        fetchEventStats();
+        // Refresh every minute
+        const interval = setInterval(fetchEventStats, 60000);
+        return () => clearInterval(interval);
+    }, []);
 
     return (
         <div className='page-container'>
@@ -1827,6 +1857,145 @@ function RLL() {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    )}
+                </section>
+
+                <section style={styles.section}>
+                    <h2 style={styles.heading}>
+                        Event Statistics
+                        <span 
+                            style={styles.infoIcon} 
+                            title="Overview of all RLL events including distributions and claims"
+                        >
+                            i
+                        </span>
+                    </h2>
+                    {loadingEventStats ? (
+                        <div style={styles.spinner} />
+                    ) : eventStats && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                            {/* All Time Stats */}
+                            <div style={{ backgroundColor: '#3a3a3a', padding: '20px', borderRadius: '8px' }}>
+                                <h3 style={{ color: '#3498db', marginBottom: '15px' }}>All Time Statistics</h3>
+                                
+                                <div style={{ marginBottom: '20px' }}>
+                                    <h4 style={{ color: '#2ecc71', marginBottom: '10px' }}>Server Distributions</h4>
+                                    <div style={styles.statusItem}>
+                                        <span>Total Count:</span>
+                                        <span>{eventStats.all_time.server_distributions.total.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Total Amount:</span>
+                                        <span>{eventStats.all_time.server_distributions.total_amount.toString()}</span>
+                                    </div>
+                                </div>
+
+                                <div style={{ marginBottom: '20px' }}>
+                                    <h4 style={{ color: '#e74c3c', marginBottom: '10px' }}>User Distributions</h4>
+                                    <div style={styles.statusItem}>
+                                        <span>Total Count:</span>
+                                        <span>{eventStats.all_time.user_distributions.total.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Total Amount:</span>
+                                        <span>{eventStats.all_time.user_distributions.total_amount.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Unique Users:</span>
+                                        <span>{eventStats.all_time.user_distributions.unique_users.toString()}</span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h4 style={{ color: '#f1c40f', marginBottom: '10px' }}>Claims</h4>
+                                    <div style={styles.statusItem}>
+                                        <span>Total Count:</span>
+                                        <span>{eventStats.all_time.claims.total.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Total Amount:</span>
+                                        <span>{eventStats.all_time.claims.total_amount.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Successful:</span>
+                                        <span style={{ color: '#2ecc71' }}>{eventStats.all_time.claims.successful.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Failed:</span>
+                                        <span style={{ color: '#e74c3c' }}>{eventStats.all_time.claims.failed.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Pending:</span>
+                                        <span style={{ color: '#f1c40f' }}>{eventStats.all_time.claims.pending.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Unique Users:</span>
+                                        <span>{eventStats.all_time.claims.unique_users.toString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Last 24h Stats */}
+                            <div style={{ backgroundColor: '#3a3a3a', padding: '20px', borderRadius: '8px' }}>
+                                <h3 style={{ color: '#3498db', marginBottom: '15px' }}>Last 24 Hours</h3>
+                                
+                                <div style={{ marginBottom: '20px' }}>
+                                    <h4 style={{ color: '#2ecc71', marginBottom: '10px' }}>Server Distributions</h4>
+                                    <div style={styles.statusItem}>
+                                        <span>Total Count:</span>
+                                        <span>{eventStats.last_24h.server_distributions.total.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Total Amount:</span>
+                                        <span>{eventStats.last_24h.server_distributions.total_amount.toString()}</span>
+                                    </div>
+                                </div>
+
+                                <div style={{ marginBottom: '20px' }}>
+                                    <h4 style={{ color: '#e74c3c', marginBottom: '10px' }}>User Distributions</h4>
+                                    <div style={styles.statusItem}>
+                                        <span>Total Count:</span>
+                                        <span>{eventStats.last_24h.user_distributions.total.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Total Amount:</span>
+                                        <span>{eventStats.last_24h.user_distributions.total_amount.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Unique Users:</span>
+                                        <span>{eventStats.last_24h.user_distributions.unique_users.toString()}</span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h4 style={{ color: '#f1c40f', marginBottom: '10px' }}>Claims</h4>
+                                    <div style={styles.statusItem}>
+                                        <span>Total Count:</span>
+                                        <span>{eventStats.last_24h.claims.total.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Total Amount:</span>
+                                        <span>{eventStats.last_24h.claims.total_amount.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Successful:</span>
+                                        <span style={{ color: '#2ecc71' }}>{eventStats.last_24h.claims.successful.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Failed:</span>
+                                        <span style={{ color: '#e74c3c' }}>{eventStats.last_24h.claims.failed.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Pending:</span>
+                                        <span style={{ color: '#f1c40f' }}>{eventStats.last_24h.claims.pending.toString()}</span>
+                                    </div>
+                                    <div style={styles.statusItem}>
+                                        <span>Unique Users:</span>
+                                        <span>{eventStats.last_24h.claims.unique_users.toString()}</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </section>
