@@ -2621,16 +2621,21 @@ function RLLInfo() {
         }
 
         // Add RLL Distribution balances
-        reconciliationData.forEach(rllBalance => {
-            // Find token info in knownTokens array
-            const tokenInfo = knownTokens.find(([id]) => id.toString() === rllBalance.token_id.toString())?.[1];
-            if (tokenInfo) {
-                const usdValue = getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol);
-                if (!isNaN(usdValue)) {
-                    total += usdValue;
+        reconciliationData
+            .filter(rllBalance => 
+                rllBalance.token_id.toString() !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && 
+                rllBalance.token_id.toString() !== 'hvgxa-wqaaa-aaaaq-aacia-cai'
+            )
+            .forEach(rllBalance => {
+                // Find token info in knownTokens array
+                const tokenInfo = knownTokens.find(([id]) => id.toString() === rllBalance.token_id.toString())?.[1];
+                if (tokenInfo) {
+                    const usdValue = getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol);
+                    if (!isNaN(usdValue)) {
+                        total += usdValue;
+                    }
                 }
-            }
-        });
+            });
         
         return total;
     };
