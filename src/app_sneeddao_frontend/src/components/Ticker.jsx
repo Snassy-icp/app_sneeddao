@@ -1,39 +1,21 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import './Ticker.css';
 
 const Ticker = ({ text = '' }) => {
-  const containerRef = useRef(null);
-  const [numCopies, setNumCopies] = useState(1);
-  
-  useEffect(() => {
-    const updateNumCopies = () => {
-      if (!containerRef.current || !text) return;
-      
-      // Calculate how many copies we need to fill the screen width plus one extra
-      // to ensure smooth continuous scrolling
-      const containerWidth = containerRef.current.offsetWidth;
-      const singleTextWidth = text.length * 10; // Assuming 10px per character with monospace font
-      const copiesNeeded = Math.max(1, Math.ceil(containerWidth / singleTextWidth) + 1);
-      
-      setNumCopies(copiesNeeded);
-    };
-
-    // Update on mount and when window resizes
-    updateNumCopies();
-    window.addEventListener('resize', updateNumCopies);
-    
-    return () => window.removeEventListener('resize', updateNumCopies);
-  }, [text]);
-
   if (!text) return null;
 
   return (
-    <div className="ticker-container" ref={containerRef}>
-      <div className="ticker-content">
-        {Array(numCopies).fill(text).map((text, index) => (
-          <span key={index} className="ticker-text">{text}</span>
-        ))}
+    <div className="scroll-container">
+      <div data-first className="scroll">
+        <span className="ticker-text">{text}</span>
       </div>
+      <div className="scroll">
+        <span className="ticker-text">{text}</span>
+      </div>
+      <div data-last className="scroll">
+        <span className="ticker-text">{text}</span>
+      </div>
+      <div className="fade" />
     </div>
   );
 };
