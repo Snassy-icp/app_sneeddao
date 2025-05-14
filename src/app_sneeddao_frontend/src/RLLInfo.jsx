@@ -2620,7 +2620,8 @@ function RLLInfo() {
 
         // Add RLL Distribution balances
         reconciliationData.forEach(rllBalance => {
-            const tokenInfo = defiKnownTokens[rllBalance.token_id.toString()];
+            // Find token info in knownTokens array
+            const tokenInfo = knownTokens.find(([id]) => id.toString() === rllBalance.token_id.toString())?.[1];
             if (tokenInfo) {
                 const usdValue = getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol);
                 if (!isNaN(usdValue)) {
