@@ -1,5 +1,4 @@
-import { createSnsGovernanceActor } from '../declarations/sns_governance';
-import { snsGovernanceCanisterId } from '../constants';
+import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 
 export const fetchUserNeurons = async (identity) => {
     if (!identity) return [];
