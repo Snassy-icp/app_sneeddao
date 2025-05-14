@@ -390,6 +390,10 @@ function RLL() {
     const [selectedToken, setSelectedToken] = useState(null);
     const [eventStats, setEventStats] = useState(null);
     const [loadingEventStats, setLoadingEventStats] = useState(true);
+    const [errorClaims, setErrorClaims] = useState([]);
+    const [unmatchedPendingClaims, setUnmatchedPendingClaims] = useState([]);
+    const [loadingErrorClaims, setLoadingErrorClaims] = useState(true);
+    const [loadingUnmatchedClaims, setLoadingUnmatchedClaims] = useState(true);
 
     // New state for hotkey neurons
     const [hotkeyNeurons, setHotkeyNeurons] = useState({
@@ -1079,6 +1083,48 @@ function RLL() {
         const interval = setInterval(fetchEventStats, 60000);
         return () => clearInterval(interval);
     }, []);
+
+    useEffect(() => {
+        const fetchErrorAndUnmatchedClaims = async () => {
+            if (!isAdmin) return;
+            
+            try {
+                const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+                
+                setLoadingErrorClaims(true);
+                setLoadingUnmatchedClaims(true);
+                
+                const [errorResult, unmatchedResult] = await Promise.all([
+                    rllActor.get_error_claim_events(),
+                    rllActor.get_unmatched_pending_claims()
+                ]);
+
+                if ('ok' in errorResult) {
+                    setErrorClaims(errorResult.ok);
+                } else {
+                    console.error('Error fetching error claims:', errorResult.err);
+                }
+
+                if ('ok' in unmatchedResult) {
+                    setUnmatchedPendingClaims(unmatchedResult.ok);
+                } else {
+                    console.error('Error fetching unmatched claims:', unmatchedResult.err);
+                }
+            } catch (error) {
+                console.error('Error fetching claims data:', error);
+            } finally {
+                setLoadingErrorClaims(false);
+                setLoadingUnmatchedClaims(false);
+            }
+        };
+
+        if (isAdmin && identity) {
+            fetchErrorAndUnmatchedClaims();
+            // Refresh every minute
+            const interval = setInterval(fetchErrorAndUnmatchedClaims, 60000);
+            return () => clearInterval(interval);
+        }
+    }, [isAdmin, identity]);
 
     const formatTokenAmount = (amount, tokenId) => {
         const token = tokens.find(t => t.ledger_id.toString() === tokenId.toString());
@@ -1800,6 +1846,81 @@ function RLL() {
                                     </button>
                                 </div>
                             </div>
+                        </section>
+
+                        <section style={styles.section}>
+                            <h2 style={styles.heading}>
+                                Error Claims & Unmatched Pending Claims
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="List of claims that encountered errors or are pending without matches"
+                                >
+                                    i
+                                </span>
+                            </h2>
+                            {loadingErrorClaims || loadingUnmatchedClaims ? (
+                                <div style={styles.spinner} />
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
+                                    {/* Error Claims */}
+                                    <div>
+                                        <h3 style={{ color: '#e74c3c', marginBottom: '15px' }}>Error Claims</h3>
+                                        {errorClaims.length > 0 ? (
+                                            <div style={styles.eventList}>
+                                                {errorClaims.map((event, index) => (
+                                                    <div key={index} style={styles.eventItem}>
+                                                        <div style={styles.eventHeader}>
+                                                            <span>Sequence: {event.sequence_number.toString()}</span>
+                                                            <span>{formatNanoTimestamp(event.timestamp)}</span>
+                                                        </div>
+                                                        <div style={styles.eventDetails}>
+                                                            <span>Token: {getTokenSymbol(event.token_id)}</span>
+                                                            <span>Amount: {formatTokenAmount(event.amount, event.token_id)}</span>
+                                                            <span>Fee: {formatTokenAmount(event.fee, event.token_id)}</span>
+                                                            <span>Hotkey: {event.hotkey.toString()}</span>
+                                                            {event.error_message && (
+                                                                <span style={{ color: '#e74c3c' }}>
+                                                                    Error: {event.error_message[0]}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p>No error claims found</p>
+                                        )}
+                                    </div>
+
+                                    {/* Unmatched Pending Claims */}
+                                    <div>
+                                        <h3 style={{ color: '#f1c40f', marginBottom: '15px' }}>Unmatched Pending Claims</h3>
+                                        {unmatchedPendingClaims.length > 0 ? (
+                                            <div style={styles.eventList}>
+                                                {unmatchedPendingClaims.map((event, index) => (
+                                                    <div key={index} style={styles.eventItem}>
+                                                        <div style={styles.eventHeader}>
+                                                            <span>Sequence: {event.sequence_number.toString()}</span>
+                                                            <span>{formatNanoTimestamp(event.timestamp)}</span>
+                                                        </div>
+                                                        <div style={styles.eventDetails}>
+                                                            <span>Token: {getTokenSymbol(event.token_id)}</span>
+                                                            <span>Amount: {formatTokenAmount(event.amount, event.token_id)}</span>
+                                                            <span>Fee: {formatTokenAmount(event.fee, event.token_id)}</span>
+                                                            <span>Hotkey: {event.hotkey.toString()}</span>
+                                                            {event.tx_index && event.tx_index.length > 0 && (
+                                                                <span>Transaction ID: {event.tx_index[0].toString()}</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p>No unmatched pending claims found</p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </section>
                     </>
                 )}
