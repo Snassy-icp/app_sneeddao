@@ -2606,17 +2606,19 @@ function RLLInfo() {
         let total = 0;
         
         // Add DeFi Canister token balances
-        Object.entries(defiKnownTokens)
-            .filter(([id]) => id !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id !== 'hvgxa-wqaaa-aaaaq-aacia-cai')
-            .forEach(([tokenId, tokenInfo]) => {
-                const balance = defiTokenBalances[tokenId.toString()];
-                if (balance) {
-                    const usdValue = getUSDValue(balance, tokenInfo.decimals, tokenInfo.symbol);
-                    if (!isNaN(usdValue)) {
-                        total += usdValue;
+        if (Array.isArray(defiKnownTokens)) {
+            defiKnownTokens
+                .filter(([id]) => id.toString() !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && id.toString() !== 'hvgxa-wqaaa-aaaaq-aacia-cai')
+                .forEach(([tokenId, tokenInfo]) => {
+                    const balance = defiTokenBalances[tokenId.toString()];
+                    if (balance) {
+                        const usdValue = getUSDValue(balance, tokenInfo.decimals, tokenInfo.symbol);
+                        if (!isNaN(usdValue)) {
+                            total += usdValue;
+                        }
                     }
-                }
-            });
+                });
+        }
 
         // Add RLL Distribution balances
         reconciliationData.forEach(rllBalance => {
