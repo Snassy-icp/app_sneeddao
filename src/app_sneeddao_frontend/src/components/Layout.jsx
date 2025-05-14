@@ -3,7 +3,7 @@ import { Outlet } from 'react-router-dom';
 import Ticker from './Ticker';
 import './Layout.css';
 import { Actor } from '@dfinity/agent';
-import { idlFactory as sneedLedgerIDL } from '../external/icrc1_ledger/icrc1_ledger.did.js';
+import { idlFactory as sneedLedgerIDL } from '../../../external/icrc1_ledger/icrc1_ledger.did.js';
 import { get_token_conversion_rates } from '../utils/TokenUtils';
 import { Principal } from '@dfinity/principal';
 
