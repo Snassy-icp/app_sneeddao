@@ -23,8 +23,9 @@ const Layout = ({ children }) => {
           return;
         }
 
-        const icpPrice = rates.ICP;
-        const sneedPrice = rates.SNEED;
+        const icpPrice = rates.ICP;  // ICP/USD
+        const sneedPriceUSD = rates.SNEED;  // SNEED/USD
+        const sneedPriceICP = sneedPriceUSD / icpPrice;  // SNEED/ICP = SNEED/USD ÷ ICP/USD
 
         console.log('Creating SNEED ledger actor...');
         const sneedLedgerActor = await createSneedLedgerActor(Principal.fromText('hvgxa-wqaaa-aaaaq-aacia-cai'));
@@ -35,16 +36,15 @@ const Layout = ({ children }) => {
         const totalSupply = Number(supply) / Math.pow(10, 8); // Assuming 8 decimals for SNEED
 
         // Calculate values
-        const sneedPriceUSD = sneedPrice * icpPrice;
-        const sneedMarketCapICP = totalSupply * sneedPrice;
-        const sneedMarketCapUSD = sneedMarketCapICP * icpPrice;
+        const sneedMarketCapICP = totalSupply * sneedPriceICP;
+        const sneedMarketCapUSD = totalSupply * sneedPriceUSD;
 
         const formatUSD = (value) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         const formatICP = (value) => value.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 
         const text = [
           `ICP/USD: ${formatUSD(icpPrice)}`,
-          `SNEED/ICP: ${formatICP(sneedPrice)} ICP`,
+          `SNEED/ICP: ${formatICP(sneedPriceICP)} ICP`,
           `SNEED/USD: ${formatUSD(sneedPriceUSD)}`,
           `SNEED Market Cap: ${formatICP(sneedMarketCapICP)} ICP (${formatUSD(sneedMarketCapUSD)})`
         ].join('  •  ');
