@@ -2761,7 +2761,7 @@ function RLLInfo() {
                                                             href="https://dashboard.internetcomputer.org/account/580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             Treasury:
                                                         </a>
@@ -2779,7 +2779,7 @@ function RLLInfo() {
                                                             href="https://dashboard.internetcomputer.org/neuron/4000934039483276792"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             8 Year Neuron:
                                                         </a>
@@ -2797,7 +2797,7 @@ function RLLInfo() {
                                                             href="https://info.icpswap.com/swap-scan/positions?pair=osyzs-xiaaa-aaaag-qc76q-cai"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             ICP/SNEED LP:
                                                         </a>
@@ -2819,7 +2819,16 @@ function RLLInfo() {
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>DeFi Canister:</div>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                        <a 
+                                                            href="https://dashboard.internetcomputer.org/canister/ok64y-uiaaa-aaaag-qdcbq-cai"
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                        >
+                                                            DeFi Canister:
+                                                        </a>
+                                                    </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(defiBalances.icp) / 1e8).toFixed(4)} ICP
                                                         <span style={{ color: '#888', marginLeft: '8px' }}>
@@ -2833,7 +2842,7 @@ function RLLInfo() {
                                                             href="https://app.sneeddao.com/rll"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             RLL Distribution:
                                                         </a>
@@ -2847,7 +2856,16 @@ function RLLInfo() {
                                                 </div>
                                                 {vectorInfo['SNEED Buyback Vector']?.[0]?.[0]?.sources?.[0]?.balance && (
                                                     <div style={{ marginBottom: '15px' }}>
-                                                        <div style={{ color: '#888', marginBottom: '5px' }}>Buyback Vector:</div>
+                                                        <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                            <a 
+                                                                href="https://beta.icpcoins.com/#/vector/modify/togwv-zqaaa-aaaal-qr7aa-cai/exchange/18"
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            >
+                                                                Buyback Vector:
+                                                            </a>
+                                                        </div>
                                                         <div style={{ fontSize: '1.1em' }}>
                                                             {(Number(vectorInfo['SNEED Buyback Vector'][0][0].sources[0].balance) / 1e8).toFixed(4)} ICP
                                                             <span style={{ color: '#888', marginLeft: '8px' }}>
@@ -2856,6 +2874,15 @@ function RLLInfo() {
                                                         </div>
                                                     </div>
                                                 )}
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ color: '#888', marginBottom: '5px' }}>Other Pools:</div>
+                                                    <div style={{ fontSize: '1.1em' }}>
+                                                        {(Number(getOtherPoolsIcpTotal()) / 1e8).toFixed(4)} ICP
+                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            (${formatUSD(getUSDValue(getOtherPoolsIcpTotal(), 8, 'ICP'))})
+                                                        </span>
+                                                    </div>
+                                                </div>                                                
                                             </>
                                         )}
                                     </>
@@ -2944,7 +2971,7 @@ function RLLInfo() {
                                                             href="https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai/account/fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             Treasury:
                                                         </a>
@@ -2962,7 +2989,7 @@ function RLLInfo() {
                                                             href="https://info.icpswap.com/swap-scan/positions?pair=osyzs-xiaaa-aaaag-qc76q-cai"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             ICP/SNEED LP:
                                                         </a>
@@ -2998,7 +3025,7 @@ function RLLInfo() {
                                                             href="https://app.sneeddao.com/rll"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#888', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             RLL Distribution:
                                                         </a>
