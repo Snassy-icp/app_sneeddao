@@ -3,7 +3,7 @@ import { Outlet } from 'react-router-dom';
 import Ticker from './Ticker';
 import './Layout.css';
 import { Actor } from '@dfinity/agent';
-import { idlFactory as sneedLedgerIDL } from '../../../external/icrc1_ledger/icrc1_ledger.did.js';
+import { createActor as createSneedLedgerActor } from '../../../external/icrc1_ledger';
 import { get_token_conversion_rates } from '../utils/TokenUtils';
 import { Principal } from '@dfinity/principal';
 
@@ -27,10 +27,7 @@ const Layout = ({ children }) => {
         const sneedPrice = rates.SNEED;
 
         console.log('Creating SNEED ledger actor...');
-        const sneedLedgerActor = await Actor.createActor(sneedLedgerIDL, {
-          agent: window.ic.agent,
-          canisterId: Principal.fromText('hvgxa-wqaaa-aaaaq-aacia-cai'),
-        });
+        const sneedLedgerActor = await createSneedLedgerActor(Principal.fromText('hvgxa-wqaaa-aaaaq-aacia-cai'));
 
         console.log('Fetching total supply...');
         const supply = await sneedLedgerActor.icrc1_total_supply();
