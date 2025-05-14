@@ -351,6 +351,52 @@ export const idlFactory = ({ IDL }) => {
         ],
         ['query'],
       ),
+    'get_event_statistics' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'all_time' : IDL.Record({
+              'claims' : IDL.Record({
+                'total' : IDL.Nat,
+                'total_amount' : IDL.Nat,
+                'pending' : IDL.Nat,
+                'unique_users' : IDL.Nat,
+                'successful' : IDL.Nat,
+                'failed' : IDL.Nat,
+              }),
+              'server_distributions' : IDL.Record({
+                'total' : IDL.Nat,
+                'total_amount' : IDL.Nat,
+              }),
+              'user_distributions' : IDL.Record({
+                'total' : IDL.Nat,
+                'total_amount' : IDL.Nat,
+                'unique_users' : IDL.Nat,
+              }),
+            }),
+            'last_24h' : IDL.Record({
+              'claims' : IDL.Record({
+                'total' : IDL.Nat,
+                'total_amount' : IDL.Nat,
+                'pending' : IDL.Nat,
+                'unique_users' : IDL.Nat,
+                'successful' : IDL.Nat,
+                'failed' : IDL.Nat,
+              }),
+              'server_distributions' : IDL.Record({
+                'total' : IDL.Nat,
+                'total_amount' : IDL.Nat,
+              }),
+              'user_distributions' : IDL.Record({
+                'total' : IDL.Nat,
+                'total_amount' : IDL.Nat,
+                'unique_users' : IDL.Nat,
+              }),
+            }),
+          }),
+        ],
+        ['query'],
+      ),
     'get_highest_closed_proposal_id' : IDL.Func([], [IDL.Nat64], ['query']),
     'get_hotkey_voting_power' : IDL.Func(
         [IDL.Vec(Neuron)],

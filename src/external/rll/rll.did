@@ -141,6 +141,53 @@ type SneedRLL =
        proposal_ids: vec nat64;
        total_count: nat;
      }) query;
+   get_event_statistics: () ->
+    (record {
+       all_time:
+        record {
+          claims:
+           record {
+             failed: nat;
+             pending: nat;
+             successful: nat;
+             total: nat;
+             total_amount: nat;
+             unique_users: nat;
+           };
+          server_distributions: record {
+                                  total: nat;
+                                  total_amount: nat;
+                                };
+          user_distributions:
+           record {
+             total: nat;
+             total_amount: nat;
+             unique_users: nat;
+           };
+        };
+       last_24h:
+        record {
+          claims:
+           record {
+             failed: nat;
+             pending: nat;
+             successful: nat;
+             total: nat;
+             total_amount: nat;
+             unique_users: nat;
+           };
+          server_distributions: record {
+                                  total: nat;
+                                  total_amount: nat;
+                                };
+          user_distributions:
+           record {
+             total: nat;
+             total_amount: nat;
+             unique_users: nat;
+           };
+        };
+     }) query;
    get_highest_closed_proposal_id: () -> (nat64) query;
    get_hotkey_voting_power: (vec Neuron) ->
     (record {
