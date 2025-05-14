@@ -1080,6 +1080,17 @@ function RLL() {
         return () => clearInterval(interval);
     }, []);
 
+    const formatTokenAmount = (amount, tokenId) => {
+        const token = tokens.find(t => t.ledger_id.toString() === tokenId.toString());
+        if (!token) return amount.toString();
+        return (Number(amount) / Math.pow(10, token.decimals)).toFixed(token.decimals);
+    };
+
+    const getTokenSymbol = (tokenId) => {
+        const token = tokens.find(t => t.ledger_id.toString() === tokenId.toString());
+        return token ? token.symbol : tokenId.toString().slice(0, 10) + '...';
+    };
+
     return (
         <div className='page-container'>
             <Header />
@@ -1866,12 +1877,12 @@ function RLL() {
                         Event Statistics
                         <span 
                             style={styles.infoIcon} 
-                            title="Overview of all RLL events including distributions and claims"
+                            title="Overview of all RLL events including distributions and claims per token"
                         >
                             i
                         </span>
                     </h2>
-                    {loadingEventStats ? (
+                    {loadingEventStats || loadingTokens ? (
                         <div style={styles.spinner} />
                     ) : eventStats && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
@@ -1885,10 +1896,12 @@ function RLL() {
                                         <span>Total Count:</span>
                                         <span>{eventStats.all_time.server_distributions.total.toString()}</span>
                                     </div>
-                                    <div style={styles.statusItem}>
-                                        <span>Total Amount:</span>
-                                        <span>{eventStats.all_time.server_distributions.total_amount.toString()}</span>
-                                    </div>
+                                    {eventStats.all_time.server_distributions.per_token.map(([tokenId, amount]) => (
+                                        <div key={tokenId.toString()} style={styles.statusItem}>
+                                            <span>{getTokenSymbol(tokenId)}:</span>
+                                            <span>{formatTokenAmount(amount, tokenId)}</span>
+                                        </div>
+                                    ))}
                                 </div>
 
                                 <div style={{ marginBottom: '20px' }}>
@@ -1897,10 +1910,12 @@ function RLL() {
                                         <span>Total Count:</span>
                                         <span>{eventStats.all_time.user_distributions.total.toString()}</span>
                                     </div>
-                                    <div style={styles.statusItem}>
-                                        <span>Total Amount:</span>
-                                        <span>{eventStats.all_time.user_distributions.total_amount.toString()}</span>
-                                    </div>
+                                    {eventStats.all_time.user_distributions.per_token.map(([tokenId, amount]) => (
+                                        <div key={tokenId.toString()} style={styles.statusItem}>
+                                            <span>{getTokenSymbol(tokenId)}:</span>
+                                            <span>{formatTokenAmount(amount, tokenId)}</span>
+                                        </div>
+                                    ))}
                                     <div style={styles.statusItem}>
                                         <span>Unique Users:</span>
                                         <span>{eventStats.all_time.user_distributions.unique_users.toString()}</span>
@@ -1913,10 +1928,12 @@ function RLL() {
                                         <span>Total Count:</span>
                                         <span>{eventStats.all_time.claims.total.toString()}</span>
                                     </div>
-                                    <div style={styles.statusItem}>
-                                        <span>Total Amount:</span>
-                                        <span>{eventStats.all_time.claims.total_amount.toString()}</span>
-                                    </div>
+                                    {eventStats.all_time.claims.per_token.map(([tokenId, amount]) => (
+                                        <div key={tokenId.toString()} style={styles.statusItem}>
+                                            <span>{getTokenSymbol(tokenId)}:</span>
+                                            <span>{formatTokenAmount(amount, tokenId)}</span>
+                                        </div>
+                                    ))}
                                     <div style={styles.statusItem}>
                                         <span>Successful:</span>
                                         <span style={{ color: '#2ecc71' }}>{eventStats.all_time.claims.successful.toString()}</span>
@@ -1950,10 +1967,12 @@ function RLL() {
                                         <span>Total Count:</span>
                                         <span>{eventStats.last_24h.server_distributions.total.toString()}</span>
                                     </div>
-                                    <div style={styles.statusItem}>
-                                        <span>Total Amount:</span>
-                                        <span>{eventStats.last_24h.server_distributions.total_amount.toString()}</span>
-                                    </div>
+                                    {eventStats.last_24h.server_distributions.per_token.map(([tokenId, amount]) => (
+                                        <div key={tokenId.toString()} style={styles.statusItem}>
+                                            <span>{getTokenSymbol(tokenId)}:</span>
+                                            <span>{formatTokenAmount(amount, tokenId)}</span>
+                                        </div>
+                                    ))}
                                 </div>
 
                                 <div style={{ marginBottom: '20px' }}>
@@ -1962,10 +1981,12 @@ function RLL() {
                                         <span>Total Count:</span>
                                         <span>{eventStats.last_24h.user_distributions.total.toString()}</span>
                                     </div>
-                                    <div style={styles.statusItem}>
-                                        <span>Total Amount:</span>
-                                        <span>{eventStats.last_24h.user_distributions.total_amount.toString()}</span>
-                                    </div>
+                                    {eventStats.last_24h.user_distributions.per_token.map(([tokenId, amount]) => (
+                                        <div key={tokenId.toString()} style={styles.statusItem}>
+                                            <span>{getTokenSymbol(tokenId)}:</span>
+                                            <span>{formatTokenAmount(amount, tokenId)}</span>
+                                        </div>
+                                    ))}
                                     <div style={styles.statusItem}>
                                         <span>Unique Users:</span>
                                         <span>{eventStats.last_24h.user_distributions.unique_users.toString()}</span>
@@ -1978,10 +1999,12 @@ function RLL() {
                                         <span>Total Count:</span>
                                         <span>{eventStats.last_24h.claims.total.toString()}</span>
                                     </div>
-                                    <div style={styles.statusItem}>
-                                        <span>Total Amount:</span>
-                                        <span>{eventStats.last_24h.claims.total_amount.toString()}</span>
-                                    </div>
+                                    {eventStats.last_24h.claims.per_token.map(([tokenId, amount]) => (
+                                        <div key={tokenId.toString()} style={styles.statusItem}>
+                                            <span>{getTokenSymbol(tokenId)}:</span>
+                                            <span>{formatTokenAmount(amount, tokenId)}</span>
+                                        </div>
+                                    ))}
                                     <div style={styles.statusItem}>
                                         <span>Successful:</span>
                                         <span style={{ color: '#2ecc71' }}>{eventStats.last_24h.claims.successful.toString()}</span>
