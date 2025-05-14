@@ -870,10 +870,14 @@ function RLL() {
     };
 
     // Add this function to get the latest status from a group of events
+    // Priority order: Success > Failed > Pending > Unknown
+    // Success takes highest priority as it's a final positive state
+    // Failed takes priority over Pending as it's a final negative state
+    // Pending is shown only if there are no final states
     const getGroupStatus = (events) => {
         if (events.some(e => 'Success' in e.status)) return 'Success';
-        if (events.some(e => 'Pending' in e.status)) return 'Pending';
         if (events.some(e => 'Failed' in e.status)) return 'Failed';
+        if (events.some(e => 'Pending' in e.status)) return 'Pending';
         return 'Unknown';
     };
 
