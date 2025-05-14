@@ -6,5 +6,5 @@
 
 .app-content {
   flex: 1;
-  padding-top: 40px; /* Same as ticker height */
+  padding-top: 10px; /* Reduced from 40px */
 } 
