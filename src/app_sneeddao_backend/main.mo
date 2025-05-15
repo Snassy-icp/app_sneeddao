@@ -5,6 +5,7 @@ import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
 import Nat8 "mo:base/Nat8";
 import Text "mo:base/Text";
+import Array "mo:base/Array";
 
 import T "Types";
 
@@ -215,6 +216,49 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       };
     };
   };
+
+  public shared ({ caller }) func send_tokens(icrc1_ledger_canister_id: Principal, amount: Nat, to: Principal) : async T.TransferResult {
+    assert(is_admin(caller));
+
+        let from_subaccount = PrincipalToSubaccount(to);
+
+        let transfer_args : T.TransferArgs = {
+            from_subaccount = ?from_subaccount;
+            to = {
+                owner = to;
+                subaccount = null;
+            };
+            amount = amount;
+            fee = null;
+            memo = null;
+            created_at_time = null;
+        };
+
+
+        let icrc1_ledger_canister = actor (Principal.toText(icrc1_ledger_canister_id)) : actor {
+            icrc1_transfer(args : T.TransferArgs) : async T.TransferResult;
+        };  
+
+        await icrc1_ledger_canister.icrc1_transfer(transfer_args);
+  };
+
+  private func PrincipalToSubaccount(p : Principal) : [Nat8] {
+    //let a = List.nil<Nat8>();
+    let pa = Principal.toBlob(p);
+    let size = pa.size();
+    let arr_size = if (size < 31) { 31; } else { size; };
+    let a = Array.init<Nat8>(arr_size + 1, 0);
+    a[0] := Nat8.fromNat(size);
+
+    var pos = 1;
+    for (x in pa.vals()) {
+      a[pos] := x;
+      pos := pos + 1;
+    };
+
+    Array.freeze(a);
+  };
+
 
   // save state to stable arrays
   system func preupgrade() {

@@ -21,6 +21,45 @@ module {
         token1 : [(Text, TokenMetaValue)];
     };
 
+    public type Subaccount = [Nat8];
+    public type Balance = Nat;
+    public type TxIndex = Nat;
+    public type Timestamp = Nat64;
+
+
+    public type Account = {
+        owner: Principal;
+        subaccount: ?Subaccount;
+    };
+    
+    public type TransferArgs = {
+        from_subaccount : ?Subaccount;
+        to : Account;
+        amount : Balance;
+        fee : ?Balance;
+        memo : ?Blob;
+        created_at_time : ?Nat64;
+    };
+
+    public type TransferResult = {
+        #Ok : TxIndex;
+        #Err : TransferError;
+    };
+
+    public type TimeError = {
+        #TooOld;
+        #CreatedInFuture : { ledger_time : Timestamp };
+    };
+
+    public type TransferError = TimeError or {
+        #BadFee : { expected_fee : Balance };
+        #BadBurn : { min_burn_amount : Balance };
+        #InsufficientFunds : { balance : Balance };
+        #Duplicate : { duplicate_of : TxIndex };
+        #TemporarilyUnavailable;
+        #GenericError : { error_code : Nat; message : Text };
+    };
+
     public type SwapRunnerTokenMetadata = {
         decimals: ?Nat8;
         fee: ?Nat;
