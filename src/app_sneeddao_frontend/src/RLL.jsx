@@ -771,6 +771,24 @@ function RLL() {
         console.log('Setting up claim action...');
         console.log('Current auth state:', { isAuthenticated, hasIdentity: !!identity });
         
+        // Check if balance is 0
+        if (balance <= 0n) {
+            setNotification({
+                type: 'error',
+                message: `No ${token.symbol} rewards available to claim`
+            });
+            return;
+        }
+
+        // Check if balance is less than or equal to fee
+        if (balance <= token.fee) {
+            setNotification({
+                type: 'error',
+                message: `Your ${token.symbol} rewards (${formatBalance(balance, token.decimals)} ${token.symbol}) are less than the transaction fee (${formatBalance(token.fee, token.decimals)} ${token.symbol}). Please wait until you have accumulated more rewards before claiming.`
+            });
+            return;
+        }
+        
         // Store a direct function that will be executed when confirmed
         setConfirmAction(async () => {
             console.log('Executing claim action...');
@@ -812,7 +830,7 @@ function RLL() {
                         errorMessage = `Insufficient funds. Available balance: ${formatBalance(availableBalance, token.decimals)} ${token.symbol}`;
                     } else if (error.BadFee) {
                         const expectedFee = error.BadFee.expected_fee;
-                        errorMessage = `Incorrect fee. Expected: ${formatBalance(expectedFee, token.decimals)} ${token.symbol}`;
+                        errorMessage = `Your ${token.symbol} rewards are less than the transaction fee (${formatBalance(expectedFee, token.decimals)} ${token.symbol}). Please wait until you have accumulated more rewards before claiming.`;
                     } else if (error.GenericError) {
                         errorMessage = error.GenericError.message;
                     } else {
