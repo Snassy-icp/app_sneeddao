@@ -58,6 +58,17 @@
         }
       }
     },
+    "sns_root": {
+      "type": "custom",
+      "candid": "src/external/sns_root/sns_root.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "fp274-iaaaa-aaaaq-aacha-cai"
+        }
+      }
+    },
     "nns_gov": {
       "type": "custom",
       "candid": "src/external/nns_gov/nns_gov.did",

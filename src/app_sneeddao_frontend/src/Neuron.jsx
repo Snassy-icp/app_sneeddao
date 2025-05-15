@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
+import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { useAuth } from './AuthContext';
 import Header from './components/Header';
 import './Wallet.css';
+import { fetchAndCacheSnsData, getSnsById, getAllSnses } from './utils/SnsUtils';
 
 function Neuron() {
     const { isAuthenticated, identity } = useAuth();
@@ -11,27 +12,65 @@ function Neuron() {
     const navigate = useNavigate();
     const [neuronIdInput, setNeuronIdInput] = useState(searchParams.get('neuronid') || '');
     const [currentNeuronId, setCurrentNeuronId] = useState(searchParams.get('neuronid') || '');
+    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || '');
+    const [snsList, setSnsList] = useState([]);
     const [neuronData, setNeuronData] = useState(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [loadingSnses, setLoadingSnses] = useState(true);
+
+    // Fetch SNS data on component mount
+    useEffect(() => {
+        async function loadSnsData() {
+            setLoadingSnses(true);
+            try {
+                const data = await fetchAndCacheSnsData(identity);
+                setSnsList(data);
+                
+                // If no SNS is selected but we have SNSes, select the first one
+                if (!selectedSnsRoot && data.length > 0) {
+                    setSelectedSnsRoot(data[0].rootCanisterId);
+                    setSearchParams(prev => {
+                        prev.set('sns', data[0].rootCanisterId);
+                        return prev;
+                    });
+                }
+            } catch (err) {
+                console.error('Error loading SNS data:', err);
+                setError('Failed to load SNS list');
+            } finally {
+                setLoadingSnses(false);
+            }
+        }
+
+        if (isAuthenticated) {
+            loadSnsData();
+        }
+    }, [isAuthenticated, identity]);
 
     useEffect(() => {
-        if (currentNeuronId) {
+        if (currentNeuronId && selectedSnsRoot) {
             fetchNeuronData();
         }
-    }, [currentNeuronId]);
+    }, [currentNeuronId, selectedSnsRoot]);
 
     const fetchNeuronData = async () => {
         setLoading(true);
         setError('');
         try {
-            const snsGovActor = createSnsGovernanceActor(snsGovernanceCanisterId, {
+            const selectedSns = getSnsById(selectedSnsRoot);
+            if (!selectedSns) {
+                setError('Selected SNS not found');
+                return;
+            }
+
+            const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
                 agentOptions: {
                     identity,
                 },
             });
 
-            // Convert neuron ID string to expected format
+            // Convert the neuron ID string to a byte array
             const neuronIdBytes = new TextEncoder().encode(currentNeuronId);
             const neuronIdArg = {
                 neuron_id: [{ id: Array.from(neuronIdBytes) }]
@@ -62,26 +101,55 @@ function Neuron() {
             return;
         }
 
+        if (!selectedSnsRoot) {
+            setError('Please select an SNS');
+            return;
+        }
+
         // Update URL and trigger search
-        setSearchParams({ neuronid: neuronIdInput });
+        setSearchParams({ neuronid: neuronIdInput, sns: selectedSnsRoot });
         setCurrentNeuronId(neuronIdInput);
+    };
+
+    const handleSnsChange = (e) => {
+        const newSnsRoot = e.target.value;
+        setSelectedSnsRoot(newSnsRoot);
+        setSearchParams(prev => {
+            prev.set('sns', newSnsRoot);
+            if (currentNeuronId) {
+                prev.set('neuronid', currentNeuronId);
+            }
+            return prev;
+        });
     };
 
     const formatE8s = (e8s) => {
         return (Number(e8s) / 100000000).toFixed(8);
     };
 
-    const getDissolveState = (dissolveState) => {
-        if (!dissolveState) return 'Not dissolving';
-        if ('DissolveDelaySeconds' in dissolveState) {
-            return `Dissolve delay: ${Math.floor(dissolveState.DissolveDelaySeconds / (24 * 60 * 60))} days`;
+    const getDissolveState = (neuron) => {
+        if (!neuron.dissolve_state?.[0]) return 'Unknown';
+        
+        if ('DissolveDelaySeconds' in neuron.dissolve_state[0]) {
+            const seconds = Number(neuron.dissolve_state[0].DissolveDelaySeconds);
+            const days = Math.floor(seconds / (24 * 60 * 60));
+            return `Locked for ${days} days`;
         }
-        if ('WhenDissolvedTimestampSeconds' in dissolveState) {
-            const dissolveDate = new Date(Number(dissolveState.WhenDissolvedTimestampSeconds) * 1000);
-            return `Dissolving until: ${dissolveDate.toLocaleString()}`;
+        
+        if ('WhenDissolvedTimestampSeconds' in neuron.dissolve_state[0]) {
+            const dissolveTime = Number(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds);
+            const now = Math.floor(Date.now() / 1000);
+            if (dissolveTime <= now) {
+                return 'Dissolved';
+            }
+            const daysLeft = Math.floor((dissolveTime - now) / (24 * 60 * 60));
+            return `Dissolving (${daysLeft} days left)`;
         }
-        return 'Unknown dissolve state';
+        
+        return 'Unknown';
     };
+
+    const selectedSns = getSnsById(selectedSnsRoot);
 
     return (
         <div className='page-container'>
@@ -90,37 +158,69 @@ function Neuron() {
                 <h1 style={{ color: '#ffffff' }}>Neuron Details</h1>
                 
                 <section style={{ backgroundColor: '#2a2a2a', borderRadius: '8px', padding: '20px', marginTop: '20px' }}>
-                    <form onSubmit={handleSearch} style={{ display: 'flex', alignItems: 'center', marginBottom: '20px', gap: '10px' }}>
-                        <input
-                            type="text"
-                            value={neuronIdInput}
-                            onChange={(e) => setNeuronIdInput(e.target.value)}
-                            placeholder="Enter Neuron ID"
-                            style={{
-                                backgroundColor: '#3a3a3a',
-                                border: '1px solid #4a4a4a',
-                                borderRadius: '4px',
-                                color: '#ffffff',
-                                padding: '8px 12px',
-                                width: '100%',
-                                maxWidth: '500px',
-                                fontSize: '14px'
-                            }}
-                        />
-                        <button 
-                            type="submit" 
-                            style={{
-                                backgroundColor: '#3498db',
-                                color: '#ffffff',
-                                border: 'none',
-                                borderRadius: '4px',
-                                padding: '8px 16px',
-                                cursor: 'pointer',
-                                fontSize: '14px'
-                            }}
-                        >
-                            Search
-                        </button>
+                    <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <select
+                                value={selectedSnsRoot}
+                                onChange={handleSnsChange}
+                                style={{
+                                    backgroundColor: '#3a3a3a',
+                                    border: '1px solid #4a4a4a',
+                                    borderRadius: '4px',
+                                    color: '#ffffff',
+                                    padding: '8px 12px',
+                                    fontSize: '14px',
+                                    flex: '1'
+                                }}
+                                disabled={loadingSnses}
+                            >
+                                {loadingSnses ? (
+                                    <option>Loading SNSes...</option>
+                                ) : (
+                                    <>
+                                        <option value="">Select an SNS</option>
+                                        {snsList.map(sns => (
+                                            <option key={sns.rootCanisterId} value={sns.rootCanisterId}>
+                                                {sns.name}
+                                            </option>
+                                        ))}
+                                    </>
+                                )}
+                            </select>
+                        </div>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <input
+                                type="text"
+                                value={neuronIdInput}
+                                onChange={(e) => setNeuronIdInput(e.target.value)}
+                                placeholder="Enter Neuron ID"
+                                style={{
+                                    backgroundColor: '#3a3a3a',
+                                    border: '1px solid #4a4a4a',
+                                    borderRadius: '4px',
+                                    color: '#ffffff',
+                                    padding: '8px 12px',
+                                    width: '100%',
+                                    fontSize: '14px'
+                                }}
+                            />
+                            <button 
+                                type="submit" 
+                                style={{
+                                    backgroundColor: '#3498db',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '8px 16px',
+                                    cursor: 'pointer',
+                                    fontSize: '14px',
+                                    whiteSpace: 'nowrap'
+                                }}
+                            >
+                                Search
+                            </button>
+                        </div>
                     </form>
                     {error && <div style={{ color: '#e74c3c', marginTop: '10px' }}>{error}</div>}
 
@@ -134,14 +234,12 @@ function Neuron() {
                         <div style={{ color: '#ffffff' }}>
                             <h2>Neuron Information</h2>
                             <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px', marginTop: '10px' }}>
-                                <p><strong>Stake:</strong> {formatE8s(neuronData.cached_neuron_stake_e8s)} SNS tokens</p>
-                                <p><strong>Created:</strong> {new Date(Number(neuronData.created_timestamp_seconds) * 1000).toLocaleString()}</p>
-                                <p><strong>Dissolve State:</strong> {getDissolveState(neuronData.dissolve_state?.[0])}</p>
-                                <p><strong>Maturity:</strong> {formatE8s(neuronData.maturity_e8s_equivalent)}</p>
-                                <p><strong>Staked Maturity:</strong> {formatE8s(neuronData.staked_maturity_e8s_equivalent?.[0] || 0)}</p>
-                                <p><strong>Age Since:</strong> {new Date(Number(neuronData.aging_since_timestamp_seconds) * 1000).toLocaleString()}</p>
-                                <p><strong>Auto Stake Maturity:</strong> {neuronData.auto_stake_maturity?.[0] ? 'Yes' : 'No'}</p>
-                                <p><strong>Voting Power Multiplier:</strong> {(Number(neuronData.voting_power_percentage_multiplier) / 100).toFixed(2)}x</p>
+                                <p><strong>SNS:</strong> {selectedSns?.name || 'Unknown SNS'}</p>
+                                <p><strong>Stake:</strong> {formatE8s(neuronData.cached_neuron_stake_e8s)} {selectedSns?.name || 'SNS'}</p>
+                                <p><strong>Created:</strong> {new Date(Number(neuronData.created_timestamp_seconds || 0) * 1000).toLocaleString()}</p>
+                                <p><strong>Dissolve State:</strong> {getDissolveState(neuronData)}</p>
+                                <p><strong>Maturity:</strong> {formatE8s(neuronData.maturity_e8s_equivalent)} {selectedSns?.name || 'SNS'}</p>
+                                <p><strong>Voting Power Multiplier:</strong> {(Number(neuronData.voting_power_percentage_multiplier || 0) / 100).toFixed(2)}x</p>
                             </div>
                         </div>
                     )}
