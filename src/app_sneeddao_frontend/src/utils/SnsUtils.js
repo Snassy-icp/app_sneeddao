@@ -86,10 +86,10 @@ export async function fetchAndCacheSnsData(identity) {
                     const canisterInfo = await snsRootActor.list_sns_canisters({});
                     console.log('Canister info for', rootCanisterId, ':', canisterInfo); // Debug log
 
-                    // Get canister IDs safely
-                    const governanceId = safeGetCanisterId(canisterInfo.governance_canister_id);
-                    const ledgerId = safeGetCanisterId(canisterInfo.ledger_canister_id);
-                    const swapId = safeGetCanisterId(canisterInfo.swap_canister_id);
+                    // Get canister IDs safely - updated property names to match response structure
+                    const governanceId = safeGetCanisterId(canisterInfo.governance);
+                    const ledgerId = safeGetCanisterId(canisterInfo.ledger);
+                    const swapId = safeGetCanisterId(canisterInfo.swap);
 
                     if (!governanceId || !ledgerId) {
                         console.error('Missing required canister IDs for SNS:', rootCanisterId, {
