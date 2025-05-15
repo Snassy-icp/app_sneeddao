@@ -10,6 +10,8 @@ import TokenLocksOverview from './TokenLocksOverview';
 import RLL from './RLL';
 import RLLInfo from './RLLInfo';
 import ScanWallet from './ScanWallet';
+import Neuron from './Neuron';
+import Proposal from './Proposal';
 import { AuthProvider } from './AuthContext';
 import Layout from './components/Layout';
 
@@ -30,6 +32,8 @@ function App() {
             <Route path="/tokenlock" element={<TokenLock />} />
             <Route path="/positionlock" element={<PositionLock />} />
             <Route path="/tokenlocksoverview" element={<TokenLocksOverview />} />
+            <Route path="/neuron" element={<Neuron />} />
+            <Route path="/proposal" element={<Proposal />} />
           </Routes>
         </Layout>
       </Router>
