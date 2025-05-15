@@ -76,12 +76,12 @@ function Proposal() {
     };
 
     const getProposalStatus = (data) => {
-        const now = Date.now() / 1000;
+        const now = BigInt(Math.floor(Date.now() / 1000));
         
-        if (data.executed_timestamp_seconds > 0) return 'Executed';
-        if (data.failed_timestamp_seconds > 0) return 'Failed';
-        if (data.decided_timestamp_seconds > 0) return 'Decided';
-        if (data.proposal_creation_timestamp_seconds + data.initial_voting_period_seconds > now) {
+        if (BigInt(data.executed_timestamp_seconds) > 0n) return 'Executed';
+        if (BigInt(data.failed_timestamp_seconds) > 0n) return 'Failed';
+        if (BigInt(data.decided_timestamp_seconds) > 0n) return 'Decided';
+        if (BigInt(data.proposal_creation_timestamp_seconds) + BigInt(data.initial_voting_period_seconds) > now) {
             return 'Open for Voting';
         }
         return 'Unknown';

@@ -86,7 +86,7 @@ function Wallet() {
             if (symbol.toLowerCase() == "icp" && logo == "") { logo = "icp_symbol.svg"; }
 
             const subaccount = principalToSubAccount(identity.getPrincipal()); 
-            const balance_backend = await ledgerActor.icrc1_balance_of({ owner: Principal.fromText(backendCanisterId), subaccount: [subaccount] });
+            const balance_backend = await ledgerActor.icrc1_balance_of({ owner: Principal.fromText(sneedLockCanisterId), subaccount: [subaccount] });
 
             var locked = BigInt(0);
             if (summed_locks[icrc1_ledger]) {
@@ -634,7 +634,7 @@ function Wallet() {
 
         if (bigIntAmountSendToBackend > 0) {
             const principal_subaccount = principalToSubAccount(identity.getPrincipal());
-            const recipientPrincipal = Principal.fromText(backendCanisterId);
+            const recipientPrincipal = Principal.fromText(sneedLockCanisterId);
             const resultSend = await ledgerActor.icrc1_transfer({
                 to: { owner: recipientPrincipal, subaccount: [principal_subaccount] },
                 fee: [],
@@ -686,7 +686,7 @@ function Wallet() {
             if (await sneedLockActor.claim_position(position.swapCanisterId, position.id)) {
                 result = await swapActor.transferPosition(
                     identity.getPrincipal(), 
-                    Principal.fromText(backendCanisterId), 
+                    Principal.fromText(sneedLockCanisterId), 
                     position.id);
 
                 if (!result["err"]) {
