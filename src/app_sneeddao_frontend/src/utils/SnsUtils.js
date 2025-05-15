@@ -12,19 +12,26 @@ export async function fetchAndCacheSnsData(identity) {
     }
 
     try {
-
         // Fetch deployed SNSes
-        const nnsSnsWActor = createNnsSnsWActor('qaa6y-5yaaa-aaaaa-aaafa-cai');
-        const deployedSnses = await nnsSnsWActor.list_deployed_snses();
+        const nnsSnsWActor = createNnsSnsWActor('qaa6y-5yaaa-aaaaa-aaafa-cai', {
+            agentOptions: {
+                identity,
+            },
+        });
+
+        // Call list_deployed_snses with the required empty record argument
+        const deployedSnses = await nnsSnsWActor.list_deployed_snses({});
 
         // Fetch canister info for each SNS
         const snsDataPromises = deployedSnses.map(async (sns) => {
             const rootCanisterId = sns.root_canister_id[0].toText();
             const snsRootActor = createSnsRootActor(rootCanisterId, {
-                agentOptions: { agent }
+                agentOptions: {
+                    identity,
+                },
             });
             
-            const canisterInfo = await snsRootActor.list_sns_canisters();
+            const canisterInfo = await snsRootActor.list_sns_canisters({});
             
             return {
                 rootCanisterId,
