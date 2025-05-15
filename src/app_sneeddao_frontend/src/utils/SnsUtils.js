@@ -20,34 +20,47 @@ export async function fetchAndCacheSnsData(identity) {
         });
 
         // Call list_deployed_snses with the required empty record argument
-        const deployedSnses = await nnsSnsWActor.list_deployed_snses({});
+        const response = await nnsSnsWActor.list_deployed_snses({});
+        
+        // The response should have a "instances" field containing the array of SNS instances
+        const deployedSnses = response?.instances || [];
+        console.log('Deployed SNSes:', deployedSnses); // Debug log
 
         // Fetch canister info for each SNS
         const snsDataPromises = deployedSnses.map(async (sns) => {
-            const rootCanisterId = sns.root_canister_id[0].toText();
-            const snsRootActor = createSnsRootActor(rootCanisterId, {
-                agentOptions: {
-                    identity,
-                },
-            });
-            
-            const canisterInfo = await snsRootActor.list_sns_canisters({});
-            
-            return {
-                rootCanisterId,
-                name: sns.metadata?.[0]?.name?.[0] || 'Unknown SNS',
-                description: sns.metadata?.[0]?.description?.[0] || '',
-                logo: sns.metadata?.[0]?.logo?.[0] || '',
-                canisters: {
-                    governance: canisterInfo.governance_canister_id[0]?.toText(),
-                    ledger: canisterInfo.ledger_canister_id[0]?.toText(),
-                    root: rootCanisterId,
-                    swap: canisterInfo.swap_canister_id[0]?.toText()
-                }
-            };
+            try {
+                const rootCanisterId = sns.root_canister_id[0].toText();
+                console.log('Processing SNS with root canister:', rootCanisterId); // Debug log
+                
+                const snsRootActor = createSnsRootActor(rootCanisterId, {
+                    agentOptions: {
+                        identity,
+                    },
+                });
+                
+                const canisterInfo = await snsRootActor.list_sns_canisters({});
+                console.log('Canister info for', rootCanisterId, ':', canisterInfo); // Debug log
+                
+                return {
+                    rootCanisterId,
+                    name: sns.metadata?.[0]?.name?.[0] || 'Unknown SNS',
+                    description: sns.metadata?.[0]?.description?.[0] || '',
+                    logo: sns.metadata?.[0]?.logo?.[0] || '',
+                    canisters: {
+                        governance: canisterInfo.governance_canister_id[0]?.toText(),
+                        ledger: canisterInfo.ledger_canister_id[0]?.toText(),
+                        root: rootCanisterId,
+                        swap: canisterInfo.swap_canister_id[0]?.toText()
+                    }
+                };
+            } catch (err) {
+                console.error('Error processing SNS:', err);
+                return null;
+            }
         });
 
-        const snsData = await Promise.all(snsDataPromises);
+        const snsData = (await Promise.all(snsDataPromises)).filter(Boolean);
+        console.log('Final SNS data:', snsData); // Debug log
         
         // Cache the data
         cacheSnsData(snsData);
