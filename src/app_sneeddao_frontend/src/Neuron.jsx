@@ -22,13 +22,17 @@ function Neuron() {
     // Fetch SNS data on component mount
     useEffect(() => {
         async function loadSnsData() {
+            console.log('Starting loadSnsData in Neuron component...'); // Debug log
             setLoadingSnses(true);
             try {
+                console.log('Calling fetchAndCacheSnsData...'); // Debug log
                 const data = await fetchAndCacheSnsData(identity);
+                console.log('Received SNS data:', data); // Debug log
                 setSnsList(data);
                 
                 // If no SNS is selected but we have SNSes, select the first one
                 if (!selectedSnsRoot && data.length > 0) {
+                    console.log('Setting default SNS:', data[0]); // Debug log
                     setSelectedSnsRoot(data[0].rootCanisterId);
                     setSearchParams(prev => {
                         prev.set('sns', data[0].rootCanisterId);
@@ -44,7 +48,10 @@ function Neuron() {
         }
 
         if (isAuthenticated) {
+            console.log('User is authenticated, loading SNS data...'); // Debug log
             loadSnsData();
+        } else {
+            console.log('User is not authenticated'); // Debug log
         }
     }, [isAuthenticated, identity]);
 
