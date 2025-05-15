@@ -76,15 +76,25 @@ function Proposal() {
     };
 
     const getProposalStatus = (data) => {
-        const now = BigInt(Math.floor(Date.now() / 1000));
-        
-        if (BigInt(data.executed_timestamp_seconds) > 0n) return 'Executed';
-        if (BigInt(data.failed_timestamp_seconds) > 0n) return 'Failed';
-        if (BigInt(data.decided_timestamp_seconds) > 0n) return 'Decided';
-        if (BigInt(data.proposal_creation_timestamp_seconds) + BigInt(data.initial_voting_period_seconds) > now) {
-            return 'Open for Voting';
+        try {
+            const now = BigInt(Math.floor(Date.now() / 1000));
+            const executed = BigInt(data.executed_timestamp_seconds || 0);
+            const failed = BigInt(data.failed_timestamp_seconds || 0);
+            const decided = BigInt(data.decided_timestamp_seconds || 0);
+            const created = BigInt(data.proposal_creation_timestamp_seconds || 0);
+            const votingPeriod = BigInt(data.initial_voting_period_seconds || 0);
+            
+            if (executed > 0n) return 'Executed';
+            if (failed > 0n) return 'Failed';
+            if (decided > 0n) return 'Decided';
+            if (created + votingPeriod > now) {
+                return 'Open for Voting';
+            }
+            return 'Unknown';
+        } catch (err) {
+            console.error('Error in getProposalStatus:', err);
+            return 'Unknown';
         }
-        return 'Unknown';
     };
 
     return (
@@ -142,8 +152,8 @@ function Proposal() {
                                 <p><strong>Summary:</strong> {proposalData.proposal?.[0]?.summary || 'No summary'}</p>
                                 <p><strong>URL:</strong> <a href={proposalData.proposal?.[0]?.url} target="_blank" rel="noopener noreferrer" style={{ color: '#3498db' }}>{proposalData.proposal?.[0]?.url}</a></p>
                                 <p><strong>Status:</strong> {getProposalStatus(proposalData)}</p>
-                                <p><strong>Created:</strong> {new Date(Number(proposalData.proposal_creation_timestamp_seconds) * 1000).toLocaleString()}</p>
-                                <p><strong>Voting Period:</strong> {Math.floor(proposalData.initial_voting_period_seconds / (24 * 60 * 60))} days</p>
+                                <p><strong>Created:</strong> {new Date(Number(proposalData.proposal_creation_timestamp_seconds || 0) * 1000).toLocaleString()}</p>
+                                <p><strong>Voting Period:</strong> {Math.floor(Number(proposalData.initial_voting_period_seconds || 0) / (24 * 60 * 60))} days</p>
                                 
                                 {proposalData.latest_tally?.[0] && (
                                     <div style={{ marginTop: '20px' }}>
@@ -151,7 +161,7 @@ function Proposal() {
                                         <p><strong>Yes Votes:</strong> {formatE8s(proposalData.latest_tally[0].yes)} SNS</p>
                                         <p><strong>No Votes:</strong> {formatE8s(proposalData.latest_tally[0].no)} SNS</p>
                                         <p><strong>Total Eligible:</strong> {formatE8s(proposalData.latest_tally[0].total)} SNS</p>
-                                        <p><strong>Last Updated:</strong> {new Date(Number(proposalData.latest_tally[0].timestamp_seconds) * 1000).toLocaleString()}</p>
+                                        <p><strong>Last Updated:</strong> {new Date(Number(proposalData.latest_tally[0].timestamp_seconds || 0) * 1000).toLocaleString()}</p>
                                     </div>
                                 )}
                             </div>

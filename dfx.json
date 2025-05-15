@@ -68,7 +68,19 @@
           "ic": "rrkah-fqaaa-aaaaa-aaaaq-cai"
         }
       }
+    },
+    "nns_snsw": {
+      "type": "custom",
+      "candid": "src/external/nns_snsw/nns_snsw.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "qaa6y-5yaaa-aaaaa-aaafa-cai"
+        }
+      }
     }
+
   },
   "defaults": {
     "build": {
