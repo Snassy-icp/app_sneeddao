@@ -1,15 +1,33 @@
 import { createActor as createNnsSnsWActor } from 'external/nns_snsw';
 import { createActor as createSnsRootActor } from 'external/sns_root';
+import { Principal } from '@dfinity/principal';
 
 const SNS_CACHE_KEY = 'sns_data_cache';
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
 
 // Helper function to safely get canister ID
 function safeGetCanisterId(canisterIdArray) {
-    if (Array.isArray(canisterIdArray) && canisterIdArray.length > 0 && canisterIdArray[0]) {
-        return canisterIdArray[0].toText();
+    try {
+        if (Array.isArray(canisterIdArray) && canisterIdArray.length > 0 && canisterIdArray[0]) {
+            // Check if it's already a string
+            if (typeof canisterIdArray[0] === 'string') {
+                return canisterIdArray[0];
+            }
+            // Check if it's a Principal with toText method
+            if (typeof canisterIdArray[0].toText === 'function') {
+                return canisterIdArray[0].toText();
+            }
+            // If it has an _arr property (Principal internal representation)
+            if (canisterIdArray[0]._arr) {
+                return Principal.fromUint8Array(canisterIdArray[0]._arr).toText();
+            }
+        }
+        console.warn('Invalid canister ID array:', canisterIdArray);
+        return null;
+    } catch (err) {
+        console.error('Error extracting canister ID:', err);
+        return null;
     }
-    return null;
 }
 
 export async function fetchAndCacheSnsData(identity) {
@@ -32,11 +50,9 @@ export async function fetchAndCacheSnsData(identity) {
         });
 
         console.log('Calling list_deployed_snses...'); // Debug log
-        // Call list_deployed_snses with the required empty record argument
         const response = await nnsSnsWActor.list_deployed_snses({});
         console.log('Raw response from list_deployed_snses:', response); // Debug log
         
-        // The response should have a "instances" field containing the array of SNS instances
         const deployedSnses = response?.instances || [];
         console.log('Deployed SNSes:', deployedSnses); // Debug log
         
@@ -59,52 +75,61 @@ export async function fetchAndCacheSnsData(identity) {
                 
                 console.log('Processing SNS with root canister:', rootCanisterId); // Debug log
                 
-                const snsRootActor = createSnsRootActor(rootCanisterId, {
-                    agentOptions: {
-                        identity,
-                    },
-                });
-                
-                console.log('Calling list_sns_canisters for', rootCanisterId); // Debug log
-                const canisterInfo = await snsRootActor.list_sns_canisters({});
-                console.log('Canister info for', rootCanisterId, ':', canisterInfo); // Debug log
-                
-                // Get metadata safely
-                const metadata = sns.metadata?.[0] || {};
-                console.log('SNS metadata:', metadata); // Debug log
-                const name = metadata.name?.[0] || 'Unknown SNS';
-                const description = metadata.description?.[0] || '';
-                const logo = metadata.logo?.[0] || '';
-
-                // Get canister IDs safely
-                const governanceId = safeGetCanisterId(canisterInfo.governance_canister_id);
-                const ledgerId = safeGetCanisterId(canisterInfo.ledger_canister_id);
-                const swapId = safeGetCanisterId(canisterInfo.swap_canister_id);
-
-                if (!governanceId || !ledgerId) {
-                    console.error('Missing required canister IDs for SNS:', rootCanisterId, {
-                        governanceId,
-                        ledgerId,
-                        swapId
+                try {
+                    const snsRootActor = createSnsRootActor(rootCanisterId, {
+                        agentOptions: {
+                            identity,
+                        },
                     });
-                    return null;
-                }
-                
-                const snsData = {
-                    rootCanisterId,
-                    name,
-                    description,
-                    logo,
-                    canisters: {
-                        governance: governanceId,
-                        ledger: ledgerId,
-                        root: rootCanisterId,
-                        swap: swapId
+                    
+                    console.log('Calling list_sns_canisters for', rootCanisterId); // Debug log
+                    const canisterInfo = await snsRootActor.list_sns_canisters({});
+                    console.log('Canister info for', rootCanisterId, ':', canisterInfo); // Debug log
+
+                    // Get canister IDs safely
+                    const governanceId = safeGetCanisterId(canisterInfo.governance_canister_id);
+                    const ledgerId = safeGetCanisterId(canisterInfo.ledger_canister_id);
+                    const swapId = safeGetCanisterId(canisterInfo.swap_canister_id);
+
+                    if (!governanceId || !ledgerId) {
+                        console.error('Missing required canister IDs for SNS:', rootCanisterId, {
+                            governanceId,
+                            ledgerId,
+                            swapId
+                        });
+                        return null;
                     }
-                };
-                
-                console.log('Successfully processed SNS:', snsData); // Debug log
-                return snsData;
+
+                    // Get metadata safely
+                    const metadata = sns.metadata?.[0] || {};
+                    console.log('SNS metadata:', metadata); // Debug log
+                    const name = metadata.name?.[0] || rootCanisterId;
+                    const description = metadata.description?.[0] || '';
+                    const logo = metadata.logo?.[0] || '';
+                    
+                    const snsData = {
+                        rootCanisterId,
+                        name,
+                        description,
+                        logo,
+                        canisters: {
+                            governance: governanceId,
+                            ledger: ledgerId,
+                            root: rootCanisterId,
+                            swap: swapId
+                        }
+                    };
+                    
+                    console.log('Successfully processed SNS:', snsData); // Debug log
+                    return snsData;
+                } catch (err) {
+                    // Skip SNSes that aren't properly installed yet
+                    if (err.message?.includes('no Wasm module')) {
+                        console.log(`Skipping uninstalled SNS ${rootCanisterId}`);
+                        return null;
+                    }
+                    throw err;
+                }
             } catch (err) {
                 console.error('Error processing SNS:', err);
                 return null;
@@ -115,7 +140,7 @@ export async function fetchAndCacheSnsData(identity) {
         const snsData = (await Promise.all(snsDataPromises)).filter(Boolean);
         console.log('Final SNS data:', snsData); // Debug log
         
-        // Cache the data
+        // Cache the data only if we have valid results
         if (snsData.length > 0) {
             console.log('Caching SNS data...'); // Debug log
             cacheSnsData(snsData);
