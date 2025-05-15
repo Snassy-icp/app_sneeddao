@@ -2659,6 +2659,43 @@ function RLLInfo() {
         return total;
     };
 
+    // Calculate non-ICP USD value for other positions (for grand total)
+    const getOtherPositionsNonIcpUSDTotal = () => {
+        let total = 0;
+        
+        // Add ICP/CLOWN position (only CLOWN part)
+        if (otherLpPositions['ICP/CLOWN'].position) {
+            const pos = otherLpPositions['ICP/CLOWN'].position;
+            // Add only CLOWN value
+            total += getUSDValue(pos.token0Amount || 0, 8, 'CLOWN');
+            total += getUSDValue(pos.tokensOwed0 || 0, 8, 'CLOWN');
+        }
+        
+        return total;
+    };
+
+    // Calculate total ICP USD value including other positions
+    const getTotalIcpUSDValue = () => {
+        return getUSDValue(treasuryBalances.icp, 8, 'ICP') +
+               getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
+               getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
+               getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
+               getUSDValue(defiBalances.icp, 8, 'ICP') +
+               // Add ICP from Other Positions
+               (otherLpPositions['ICP/CLOWN'].position ? (
+                   getUSDValue(otherLpPositions['ICP/CLOWN'].position.token1Amount || 0, 8, 'ICP') +
+                   getUSDValue(otherLpPositions['ICP/CLOWN'].position.tokensOwed1 || 0, 8, 'ICP')
+               ) : 0);
+    };
+
+    // Calculate total SNEED USD value
+    const getTotalSneedUSDValue = () => {
+        return getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
+               getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
+               getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
+               getUSDValue(defiBalances.sneed, 8, 'SNEED');
+    };
+
     return (
         <div className='page-container'>
             <Header />
@@ -2736,17 +2773,10 @@ function RLLInfo() {
                                 ) : (
                                     <div style={{ fontSize: '1.6em', fontWeight: 'bold' }}>
                                         ${formatUSD(
-                                            // ICP total in USD
-                                            getUSDValue(treasuryBalances.icp, 8, 'ICP') +
-                                            getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
-                                            getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
-                                            getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
-                                            getUSDValue(defiBalances.icp, 8, 'ICP') +
-                                            // SNEED total in USD
-                                            getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
-                                            getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
-                                            getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +
-                                            getUSDValue(defiBalances.sneed, 8, 'SNEED')
+                                            getTotalIcpUSDValue() +      // All ICP including Other Positions
+                                            getTotalSneedUSDValue() +    // All SNEED
+                                            getOtherPositionsNonIcpUSDTotal() + // Non-ICP values from Other Positions
+                                            getOtherTokensUSDTotal()     // Other tokens
                                         )}
                                     </div>
                                 )}
@@ -2781,7 +2811,7 @@ function RLLInfo() {
                                     ICP Assets
                                     <span 
                                         style={styles.infoIcon} 
-                                        title="All ICP holdings across Treasury, Neurons, LP positions, DeFi canister, and other protocols"
+                                        title="All ICP holdings across Treasury, Neurons, LP positions, DeFi canister, and other protocols (including ICP from Other Positions)"
                                         onClick={e => e.stopPropagation()}
                                     >
                                         i
