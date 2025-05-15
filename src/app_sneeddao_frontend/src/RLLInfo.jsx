@@ -2674,18 +2674,37 @@ function RLLInfo() {
         return total;
     };
 
-    // Calculate total ICP USD value including other positions
+    // Calculate total ICP USD value including other positions and vectors
     const getTotalIcpUSDValue = () => {
-        return getUSDValue(treasuryBalances.icp, 8, 'ICP') +
-               getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
-               getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
-               getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
-               getUSDValue(defiBalances.icp, 8, 'ICP') +
-               // Add ICP from Other Positions
-               (otherLpPositions['ICP/CLOWN'].position ? (
-                   getUSDValue(otherLpPositions['ICP/CLOWN'].position.token1Amount || 0, 8, 'ICP') +
-                   getUSDValue(otherLpPositions['ICP/CLOWN'].position.tokensOwed1 || 0, 8, 'ICP')
-               ) : 0);
+        let total = 
+            getUSDValue(treasuryBalances.icp, 8, 'ICP') +
+            getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
+            getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP') +
+            getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP') +
+            getUSDValue(defiBalances.icp, 8, 'ICP');
+
+        // Add ICP from Other Positions
+        if (otherLpPositions['ICP/CLOWN'].position) {
+            total += getUSDValue(otherLpPositions['ICP/CLOWN'].position.token1Amount || 0, 8, 'ICP') +
+                     getUSDValue(otherLpPositions['ICP/CLOWN'].position.tokensOwed1 || 0, 8, 'ICP');
+        }
+
+        // Add ICP from vectors
+        Object.entries(vectorInfo).forEach(([vectorName, vectorData]) => {
+            if (vectorData && vectorData.length > 0 && vectorData[0] && vectorData[0][0]) {
+                const info = vectorData[0][0];
+                // Add balances from sources
+                if (info.sources) {
+                    info.sources.forEach(source => {
+                        if (source.endpoint.ic.ledger.toString() === 'ryjl3-tyaaa-aaaaa-aaaba-cai') { // ICP ledger
+                            total += getUSDValue(source.balance, 8, 'ICP');
+                        }
+                    });
+                }
+            }
+        });
+
+        return total;
     };
 
     // Calculate total SNEED USD value
