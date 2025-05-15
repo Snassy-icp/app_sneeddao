@@ -12,15 +12,9 @@ export async function fetchAndCacheSnsData(identity) {
     }
 
     try {
-        const agent = new HttpAgent({
-            host: 'https://ic0.app'
-        });
-        await agent.fetchRootKey();
 
         // Fetch deployed SNSes
-        const nnsSnsWActor = createNnsSnsWActor('qaa6y-5yaaa-aaaaa-aaafa-cai', {
-            agentOptions: { agent }
-        });
+        const nnsSnsWActor = createNnsSnsWActor('qaa6y-5yaaa-aaaaa-aaafa-cai');
         const deployedSnses = await nnsSnsWActor.list_deployed_snses();
 
         // Fetch canister info for each SNS
