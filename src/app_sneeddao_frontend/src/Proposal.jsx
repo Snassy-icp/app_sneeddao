@@ -670,7 +670,7 @@ function Proposal() {
                                                     </select>
                                                 </div>
                                             </div>
-                                            {filterAndSortVotes(votingHistory).map(([principal, ballot], index) => (
+                                            {filterAndSortVotes(votingHistory).map(([neuronId, ballot], index) => (
                                                 <div 
                                                     key={index}
                                                     style={{
@@ -687,7 +687,7 @@ function Proposal() {
                                                         marginBottom: '4px',
                                                         fontFamily: 'monospace'
                                                     }}>
-                                                        {formatNeuronIdLink(principal, selectedSnsRoot)}
+                                                        {formatNeuronIdLink(neuronId, selectedSnsRoot)}
                                                     </div>
                                                     <div style={{ 
                                                         display: 'flex',

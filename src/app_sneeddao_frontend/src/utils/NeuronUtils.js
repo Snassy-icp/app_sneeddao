@@ -43,9 +43,14 @@ const getNeuronId = (neuron) => {
 
 export const formatNeuronIdLink = (neuronId, snsRoot) => {
     if (!neuronId) return 'Unknown';
-    const hexId = Array.from(neuronId).map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    // Convert the neuron ID to a hex string if it's a byte array
+    const displayId = Array.isArray(neuronId) || neuronId instanceof Uint8Array 
+        ? Array.from(neuronId).map(b => b.toString(16).padStart(2, '0')).join('')
+        : neuronId;
+
     return React.createElement(Link, {
-        to: `/neuron?neuronid=${hexId}&sns=${snsRoot}`,
+        to: `/neuron?neuronid=${displayId}&sns=${snsRoot}`,
         style: {
             color: '#3498db',
             textDecoration: 'none',
@@ -53,7 +58,7 @@ export const formatNeuronIdLink = (neuronId, snsRoot) => {
         },
         onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
         onMouseLeave: (e) => e.target.style.textDecoration = 'none'
-    }, hexId);
+    }, displayId);
 };
 
 export const fetchUserNeurons = async (identity) => {
