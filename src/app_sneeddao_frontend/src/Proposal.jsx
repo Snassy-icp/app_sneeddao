@@ -4,7 +4,7 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { useAuth } from './AuthContext';
 import Header from './components/Header';
 import './Wallet.css';
-import { fetchAndCacheSnsData, getSnsById, getAllSnses } from './utils/SnsUtils';
+import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
 
 function Proposal() {
     const { isAuthenticated, identity } = useAuth();
@@ -198,6 +198,25 @@ function Proposal() {
                                     </>
                                 )}
                             </select>
+                            <button
+                                onClick={async () => {
+                                    setLoadingSnses(true);
+                                    clearSnsCache();
+                                    await loadSnsData();
+                                }}
+                                style={{
+                                    backgroundColor: '#3498db',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '14px'
+                                }}
+                                disabled={loadingSnses}
+                            >
+                                🔄 Refresh SNS List
+                            </button>
                         </div>
                         
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

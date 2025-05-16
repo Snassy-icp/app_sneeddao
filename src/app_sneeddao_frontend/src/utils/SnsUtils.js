@@ -196,4 +196,9 @@ export function getSnsById(rootCanisterId) {
 
 export function getAllSnses() {
     return getCachedSnsData() || [];
+}
+
+export function clearSnsCache() {
+    console.log('Clearing SNS cache...'); // Debug log
+    localStorage.removeItem(SNS_CACHE_KEY);
 } 
