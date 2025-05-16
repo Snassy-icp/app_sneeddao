@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FaWallet } from 'react-icons/fa';
+import { FaWallet, FaBars, FaTimes } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
@@ -8,18 +8,38 @@ import PrincipalBox from '../PrincipalBox';
 function Header({ showTotalValue }) {
     const location = useLocation();
     const { isAuthenticated, identity, login, logout } = useAuth();
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+    const toggleMenu = () => {
+        setIsMenuOpen(!isMenuOpen);
+    };
 
     return (
         <header className="site-header">
-            <div style={headerStyles.logoContainer}>
-                <div className="logo">
-                    <Link to="/wallet">
-                        <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+                <button
+                    onClick={toggleMenu}
+                    style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        marginRight: '20px',
+                        padding: '8px'
+                    }}
+                >
+                    {isMenuOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
+                </button>
+                <div style={headerStyles.logoContainer}>
+                    <div className="logo">
+                        <Link to="/wallet">
+                            <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
+                        </Link>
+                    </div>
+                    <Link to="/rll" style={headerStyles.rllLogo}>
+                        RLL
                     </Link>
                 </div>
-                <Link to="/rll" style={headerStyles.rllLogo}>
-                    RLL
-                </Link>
             </div>
             {showTotalValue && <h4>Total Value: ${showTotalValue}</h4>}
             <div className="header-right">
@@ -61,6 +81,73 @@ function Header({ showTotalValue }) {
                     </button>
                 )}
             </div>
+            {isMenuOpen && (
+                <div style={{
+                    position: 'fixed',
+                    top: '60px',
+                    left: '0',
+                    backgroundColor: '#2a2a2a',
+                    width: '250px',
+                    padding: '20px',
+                    boxShadow: '2px 0 5px rgba(0,0,0,0.2)',
+                    zIndex: 1000
+                }}>
+                    <nav style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '15px'
+                    }}>
+                        <Link 
+                            to="/wallet"
+                            style={{
+                                color: '#fff',
+                                textDecoration: 'none',
+                                padding: '10px',
+                                borderRadius: '4px',
+                                transition: 'background-color 0.2s',
+                                ':hover': {
+                                    backgroundColor: '#3a3a3a'
+                                }
+                            }}
+                            onClick={toggleMenu}
+                        >
+                            Wallet
+                        </Link>
+                        <Link 
+                            to="/wallet"
+                            style={{
+                                color: '#fff',
+                                textDecoration: 'none',
+                                padding: '10px',
+                                borderRadius: '4px',
+                                transition: 'background-color 0.2s',
+                                ':hover': {
+                                    backgroundColor: '#3a3a3a'
+                                }
+                            }}
+                            onClick={toggleMenu}
+                        >
+                            SneedLock
+                        </Link>
+                        <Link 
+                            to="/rll"
+                            style={{
+                                color: '#fff',
+                                textDecoration: 'none',
+                                padding: '10px',
+                                borderRadius: '4px',
+                                transition: 'background-color 0.2s',
+                                ':hover': {
+                                    backgroundColor: '#3a3a3a'
+                                }
+                            }}
+                            onClick={toggleMenu}
+                        >
+                            Rewards
+                        </Link>
+                    </nav>
+                </div>
+            )}
         </header>
     );
 }
