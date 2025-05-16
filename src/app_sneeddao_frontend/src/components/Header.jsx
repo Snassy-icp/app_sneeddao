@@ -74,81 +74,94 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
 
     return (
         <header className="site-header">
-            <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    marginBottom: '8px',
-                }}>
-                    <button
-                        onClick={toggleMenu}
-                        style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#fff',
-                            cursor: 'pointer',
-                            padding: '8px'
-                        }}
-                    >
-                        {isMenuOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
-                    </button>
-                    <div style={{ 
-                        color: '#fff',
-                        fontSize: '24px',
-                        fontWeight: 'bold',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        cursor: 'pointer'
+            <div style={{ display: 'flex', alignItems: 'flex-start', flex: 1, gap: '15px' }}>
+                <img
+                    src="sneed_logo.png"
+                    alt="Sneed Logo"
+                    style={{
+                        width: '52px',
+                        height: '52px',
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                        marginTop: '8px'
                     }}
-                    onClick={() => navigate(menuSections[activeSection].defaultPath)}>
-                        {menuSections[activeSection].icon}
-                        {menuSections[activeSection].displayName}
-                    </div>
-                </div>
-                <div style={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    marginLeft: '52px'
-                }}>
-                    <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                        {menuSections[activeSection].subMenu.map((item) => (
-                            <Link
-                                key={item.name}
-                                to={item.path}
-                                style={{
-                                    color: location.pathname === item.path ? '#3498db' : '#888',
-                                    textDecoration: 'none',
-                                    fontSize: '16px',
-                                    fontWeight: location.pathname === item.path ? 'bold' : 'normal',
-                                    position: 'relative',
-                                    paddingBottom: '4px'
-                                }}
-                            >
-                                {item.name}
-                                {location.pathname === item.path && (
-                                    <div style={{
-                                        position: 'absolute',
-                                        bottom: 0,
-                                        left: 0,
-                                        width: '100%',
-                                        height: '2px',
-                                        background: '#3498db',
-                                        borderRadius: '2px'
-                                    }} />
-                                )}
-                            </Link>
-                        ))}
-                        {showTotalValue && (
-                            <div style={{ 
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, marginLeft: '37px' }}>
+                    <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        marginBottom: '8px',
+                    }}>
+                        <button
+                            onClick={toggleMenu}
+                            style={{
+                                background: 'none',
+                                border: 'none',
                                 color: '#fff',
-                                fontSize: '16px',
-                                fontWeight: 'bold',
-                                marginLeft: '20px'
-                            }}>
-                                Total Value: ${showTotalValue}
-                            </div>
-                        )}
+                                cursor: 'pointer',
+                                padding: '8px',
+                                paddingLeft: 0
+                            }}
+                        >
+                            {isMenuOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
+                        </button>
+                        <div style={{ 
+                            color: '#fff',
+                            fontSize: '24px',
+                            fontWeight: 'bold',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            cursor: 'pointer'
+                        }}
+                        onClick={() => navigate(menuSections[activeSection].defaultPath)}>
+                            {menuSections[activeSection].icon}
+                            {menuSections[activeSection].displayName}
+                        </div>
+                    </div>
+                    <div style={{ 
+                        display: 'flex',
+                        alignItems: 'center'
+                    }}>
+                        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                            {menuSections[activeSection].subMenu.map((item) => (
+                                <Link
+                                    key={item.name}
+                                    to={item.path}
+                                    style={{
+                                        color: location.pathname === item.path ? '#3498db' : '#888',
+                                        textDecoration: 'none',
+                                        fontSize: '16px',
+                                        fontWeight: location.pathname === item.path ? 'bold' : 'normal',
+                                        position: 'relative',
+                                        paddingBottom: '4px'
+                                    }}
+                                >
+                                    {item.name}
+                                    {location.pathname === item.path && (
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: 0,
+                                            left: 0,
+                                            width: '100%',
+                                            height: '2px',
+                                            background: '#3498db',
+                                            borderRadius: '2px'
+                                        }} />
+                                    )}
+                                </Link>
+                            ))}
+                            {showTotalValue && (
+                                <div style={{ 
+                                    color: '#fff',
+                                    fontSize: '16px',
+                                    fontWeight: 'bold',
+                                    marginLeft: '20px'
+                                }}>
+                                    Total Value: ${showTotalValue}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
