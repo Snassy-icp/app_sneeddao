@@ -6,7 +6,7 @@ import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
 import SnsDropdown from './SnsDropdown';
 
-function Header({ showTotalValue, showSnsDropdown }) {
+function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
     const location = useLocation();
     const navigate = useNavigate();
     const { isAuthenticated, identity, login, logout } = useAuth();
@@ -153,7 +153,7 @@ function Header({ showTotalValue, showSnsDropdown }) {
                 </div>
             </div>
             <div className="header-right" style={{ display: 'flex', alignItems: 'center' }}>
-                {showSnsDropdown && <SnsDropdown />}
+                {showSnsDropdown && <SnsDropdown onSnsChange={onSnsChange} />}
                 {isAuthenticated ? (
                     <PrincipalBox 
                         principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { fetchAndCacheSnsData, clearSnsCache } from '../utils/SnsUtils';
 
-function SnsDropdown() {
+function SnsDropdown({ onSnsChange }) {
     const { identity } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
@@ -59,6 +59,9 @@ function SnsDropdown() {
             return prev;
         });
         setIsOpen(false);
+        if (onSnsChange) {
+            onSnsChange(snsRoot);
+        }
     };
 
     const getSelectedSns = () => {

@@ -123,16 +123,11 @@ function Proposal() {
         setCurrentProposalId(proposalIdInput);
     };
 
-    const handleSnsChange = (e) => {
-        const newSnsRoot = e.target.value;
+    const handleSnsChange = (newSnsRoot) => {
         setSelectedSnsRoot(newSnsRoot);
-        setSearchParams(prev => {
-            prev.set('sns', newSnsRoot);
-            if (currentProposalId) {
-                prev.set('proposalid', currentProposalId);
-            }
-            return prev;
-        });
+        if (currentProposalId) {
+            fetchProposalData(); // This will fetch the proposal data for the new SNS
+        }
     };
 
     const formatE8s = (e8s) => {
@@ -371,7 +366,7 @@ function Proposal() {
 
     return (
         <div className='page-container'>
-            <Header showSnsDropdown={true} />
+            <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             <main className="wallet-container">
                 <h1 style={{ color: '#ffffff' }}>Proposal Details</h1>
                 
