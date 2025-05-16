@@ -124,7 +124,10 @@ function Proposal() {
     };
 
     const handleSnsChange = async (newSnsRoot) => {
-        // First update the URL and state
+        setProposalData(null); // Clear immediately
+        setSelectedSnsRoot(newSnsRoot);
+        
+        // Update URL params
         setSearchParams(prev => {
             prev.set('sns', newSnsRoot);
             if (currentProposalId) {
@@ -132,16 +135,42 @@ function Proposal() {
             }
             return prev;
         });
-        
-        // Wait for state update
-        await new Promise(resolve => {
-            setSelectedSnsRoot(newSnsRoot);
-            resolve();
-        });
 
-        // Then fetch the proposal data if we have a proposal ID
+        // Fetch with the new SNS root
         if (currentProposalId) {
-            await fetchProposalData();
+            const selectedSns = getSnsById(newSnsRoot); // Use newSnsRoot directly instead of state
+            if (!selectedSns) {
+                setError('Selected SNS not found');
+                return;
+            }
+
+            setLoading(true);
+            setError('');
+            try {
+                const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                    agentOptions: {
+                        identity,
+                    },
+                });
+
+                const proposalIdArg = {
+                    proposal_id: [{ id: BigInt(currentProposalId) }]
+                };
+
+                const response = await snsGovActor.get_proposal(proposalIdArg);
+                if (response?.result?.[0]?.Proposal) {
+                    setProposalData(response.result[0].Proposal);
+                } else if (response?.result?.[0]?.Error) {
+                    setError(response.result[0].Error.error_message);
+                } else {
+                    setError('Proposal not found');
+                }
+            } catch (err) {
+                console.error('Error fetching proposal data:', err);
+                setError('Failed to fetch proposal data');
+            } finally {
+                setLoading(false);
+            }
         }
     };
 
@@ -428,7 +457,7 @@ function Proposal() {
                         </div>
                     )}
 
-                    {proposalData && !loading && (
+                    {proposalData && !loading && !error && (
                         <div style={{ color: '#ffffff' }}>
                             <h2>Proposal Information</h2>
                             <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px', marginTop: '10px' }}>
