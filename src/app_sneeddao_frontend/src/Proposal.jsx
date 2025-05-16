@@ -161,6 +161,22 @@ function Proposal() {
         }
     };
 
+    // Helper function to calculate voting percentages
+    const calculateVotingPercentages = (tally) => {
+        if (!tally) return { yesPercent: 0, noPercent: 0 };
+        const total = Number(tally.total);
+        if (total === 0) return { yesPercent: 0, noPercent: 0 };
+        
+        const yesPercent = (Number(tally.yes) / total) * 100;
+        const noPercent = (Number(tally.no) / total) * 100;
+        return { yesPercent, noPercent };
+    };
+
+    // Helper function to check if proposal is critical
+    const isCriticalProposal = (data) => {
+        return data?.minimum_yes_proportion_of_total?.basis_points?.[0] === 6700n; // 67% threshold
+    };
+
     // Helper function to convert HTML breaks to Markdown
     const convertHtmlToMarkdown = (text) => {
         if (!text) return '';
@@ -168,6 +184,128 @@ function Proposal() {
     };
 
     const selectedSns = getSnsById(selectedSnsRoot);
+
+    // VotingBar component
+    const VotingBar = ({ proposalData }) => {
+        if (!proposalData?.latest_tally?.[0]) return null;
+        
+        const tally = proposalData.latest_tally[0];
+        const { yesPercent, noPercent } = calculateVotingPercentages(tally);
+        const isCritical = isCriticalProposal(proposalData);
+        const threshold = isCritical ? 67 : 50;
+        
+        return (
+            <div style={{ marginTop: '20px' }}>
+                <h3>Voting Results</h3>
+                <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
+                    <div style={{ color: '#2ecc71' }}>Yes: {yesPercent.toFixed(3)}%</div>
+                    <div style={{ color: '#e74c3c' }}>No: {noPercent.toFixed(3)}%</div>
+                </div>
+                
+                {/* Voting bar container */}
+                <div style={{ 
+                    position: 'relative',
+                    height: '24px',
+                    backgroundColor: '#34495e',
+                    borderRadius: '12px',
+                    overflow: 'hidden'
+                }}>
+                    {/* Yes votes (green) */}
+                    <div style={{
+                        position: 'absolute',
+                        left: 0,
+                        height: '100%',
+                        width: `${yesPercent}%`,
+                        backgroundColor: '#2ecc71',
+                        transition: 'width 0.3s ease'
+                    }} />
+                    
+                    {/* No votes (red) */}
+                    <div style={{
+                        position: 'absolute',
+                        right: 0,
+                        height: '100%',
+                        width: `${noPercent}%`,
+                        backgroundColor: '#e74c3c',
+                        transition: 'width 0.3s ease'
+                    }} />
+                    
+                    {/* Threshold marker */}
+                    {isCritical && (
+                        <>
+                            {/* 67% marker */}
+                            <div style={{
+                                position: 'absolute',
+                                left: '67%',
+                                height: '32px',
+                                width: '2px',
+                                backgroundColor: '#f1c40f',
+                                top: '-4px'
+                            }} />
+                            {/* Thumbmark */}
+                            <div style={{
+                                position: 'absolute',
+                                left: '67%',
+                                transform: 'translateX(-50%)',
+                                top: '-20px',
+                                color: '#f1c40f',
+                                fontSize: '16px'
+                            }}>•</div>
+                        </>
+                    )}
+                    
+                    {/* Current position marker */}
+                    <div style={{
+                        position: 'absolute',
+                        left: `${yesPercent}%`,
+                        height: '32px',
+                        width: '2px',
+                        backgroundColor: '#3498db',
+                        top: '-4px'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        left: `${yesPercent}%`,
+                        transform: 'translateX(-50%)',
+                        top: '-20px',
+                        color: '#3498db',
+                        fontSize: '16px'
+                    }}>•</div>
+                </div>
+                
+                {/* Voting information */}
+                <div style={{ marginTop: '25px', fontSize: '14px', color: '#bdc3c7' }}>
+                    <p>There are {isCritical ? 'two' : ''} ways {isCritical ? 'a critical' : 'a'} proposal can be decided:</p>
+                    
+                    <ol style={{ paddingLeft: '20px' }}>
+                        <li style={{ marginBottom: '10px' }}>
+                            <strong>Immediate {isCritical ? 'supermajority' : 'majority'} decision</strong> <span style={{ fontSize: '12px' }}>ℹ️</span>
+                            <p style={{ margin: '5px 0', color: '#95a5a6' }}>
+                                {isCritical ? 
+                                    'A critical proposal is immediately adopted or rejected if, before the voting period ends, more than 67% of the total voting power votes Yes, or at least 33% votes No, respectively (indicated by •).' :
+                                    'A proposal is immediately adopted or rejected if, before the voting period ends, more than half of the total voting power votes Yes, or at least half votes No, respectively (indicated by •).'}
+                            </p>
+                        </li>
+                        <li>
+                            <strong>Standard {isCritical ? 'supermajority' : 'majority'} decision</strong> <span style={{ fontSize: '12px' }}>ℹ️</span>
+                            <p style={{ margin: '5px 0', color: '#95a5a6' }}>
+                                {isCritical ?
+                                    'At the end of the voting period, a critical proposal is adopted if more than 67% of the votes cast are Yes votes, provided these votes represent at least 3% of the total voting power (indicated by •). Otherwise, it is rejected. Before a proposal is decided, the voting period can be extended in order to "wait for quiet". Such voting period extensions occur when a proposal\'s voting results turn from either a Yes majority to a No majority or vice versa.' :
+                                    'At the end of the voting period, a proposal is adopted if more than half of the votes cast are Yes votes, provided these votes represent at least 3% of the total voting power (indicated by •). Otherwise, it is rejected. Before a proposal is decided, the voting period can be extended in order to "wait for quiet". Such voting period extensions occur when a proposal\'s voting results turn from either a Yes majority to a No majority or vice versa.'}
+                            </p>
+                        </li>
+                    </ol>
+                </div>
+                
+                <div style={{ marginTop: '15px', fontSize: '14px', color: '#bdc3c7' }}>
+                    <p><strong>Yes Votes:</strong> {formatE8s(tally.yes)} VP</p>
+                    <p><strong>No Votes:</strong> {formatE8s(tally.no)} VP</p>
+                    <p><strong>Total Eligible:</strong> {formatE8s(tally.total)} VP</p>
+                    <p><strong>Last Updated:</strong> {new Date(Number(tally.timestamp_seconds || 0) * 1000).toLocaleString()}</p>
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div className='page-container'>
@@ -288,15 +426,7 @@ function Proposal() {
                                 <p><strong>Created:</strong> {new Date(Number(proposalData.proposal_creation_timestamp_seconds || 0) * 1000).toLocaleString()}</p>
                                 <p><strong>Voting Period:</strong> {Math.floor(Number(proposalData.initial_voting_period_seconds || 0) / (24 * 60 * 60))} days</p>
                                 
-                                {proposalData.latest_tally?.[0] && (
-                                    <div style={{ marginTop: '20px' }}>
-                                        <h3>Latest Tally</h3>
-                                        <p><strong>Yes Votes:</strong> {formatE8s(proposalData.latest_tally[0].yes)} VP</p>
-                                        <p><strong>No Votes:</strong> {formatE8s(proposalData.latest_tally[0].no)} VP</p>
-                                        <p><strong>Total Eligible:</strong> {formatE8s(proposalData.latest_tally[0].total)} VP</p>
-                                        <p><strong>Last Updated:</strong> {new Date(Number(proposalData.latest_tally[0].timestamp_seconds || 0) * 1000).toLocaleString()}</p>
-                                    </div>
-                                )}
+                                {proposalData.latest_tally?.[0] && <VotingBar proposalData={proposalData} />}
                             </div>
                         </div>
                     )}
