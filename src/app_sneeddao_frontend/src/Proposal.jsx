@@ -161,6 +161,12 @@ function Proposal() {
         }
     };
 
+    // Helper function to convert HTML breaks to Markdown
+    const convertHtmlToMarkdown = (text) => {
+        if (!text) return '';
+        return text.replace(/<br>/g, '\n\n');
+    };
+
     const selectedSns = getSnsById(selectedSnsRoot);
 
     return (
@@ -273,7 +279,9 @@ function Proposal() {
                                     borderRadius: '4px',
                                     marginTop: '5px'
                                 }}>
-                                    <ReactMarkdown>{proposalData.proposal?.[0]?.summary || 'No summary'}</ReactMarkdown>
+                                    <ReactMarkdown>
+                                        {convertHtmlToMarkdown(proposalData.proposal?.[0]?.summary || 'No summary')}
+                                    </ReactMarkdown>
                                 </div></p>
                                 <p><strong>URL:</strong> <a href={proposalData.proposal?.[0]?.url} target="_blank" rel="noopener noreferrer" style={{ color: '#3498db' }}>{proposalData.proposal?.[0]?.url}</a></p>
                                 <p><strong>Status:</strong> {getProposalStatus(proposalData)}</p>
