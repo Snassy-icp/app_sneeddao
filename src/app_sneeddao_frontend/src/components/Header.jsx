@@ -4,8 +4,9 @@ import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding } from 'react-ico
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
+import SnsDropdown from './SnsDropdown';
 
-function Header({ showTotalValue }) {
+function Header({ showTotalValue, showSnsDropdown }) {
     const location = useLocation();
     const navigate = useNavigate();
     const { isAuthenticated, identity, login, logout } = useAuth();
@@ -74,7 +75,12 @@ function Header({ showTotalValue }) {
     return (
         <header className="site-header">
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    marginBottom: '8px',
+                    gap: '20px'
+                }}>
                     <button
                         onClick={toggleMenu}
                         style={{
@@ -82,7 +88,6 @@ function Header({ showTotalValue }) {
                             border: 'none',
                             color: '#fff',
                             cursor: 'pointer',
-                            marginRight: '20px',
                             padding: '8px'
                         }}
                     >
@@ -101,6 +106,9 @@ function Header({ showTotalValue }) {
                         {menuSections[activeSection].icon}
                         {menuSections[activeSection].displayName}
                     </div>
+                    {showSnsDropdown && (
+                        <SnsDropdown />
+                    )}
                 </div>
                 <div style={{ 
                     display: 'flex',

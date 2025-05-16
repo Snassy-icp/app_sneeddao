@@ -371,61 +371,12 @@ function Proposal() {
 
     return (
         <div className='page-container'>
-            <Header />
+            <Header showSnsDropdown={true} />
             <main className="wallet-container">
                 <h1 style={{ color: '#ffffff' }}>Proposal Details</h1>
                 
                 <section style={{ backgroundColor: '#2a2a2a', borderRadius: '8px', padding: '20px', marginTop: '20px' }}>
                     <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <select
-                                value={selectedSnsRoot}
-                                onChange={handleSnsChange}
-                                style={{
-                                    backgroundColor: '#3a3a3a',
-                                    border: '1px solid #4a4a4a',
-                                    borderRadius: '4px',
-                                    color: '#ffffff',
-                                    padding: '8px 12px',
-                                    fontSize: '14px',
-                                    flex: '1'
-                                }}
-                                disabled={loadingSnses}
-                            >
-                                {loadingSnses ? (
-                                    <option>Loading SNSes...</option>
-                                ) : (
-                                    <>
-                                        <option value="">Select an SNS</option>
-                                        {snsList.map(sns => (
-                                            <option key={sns.rootCanisterId} value={sns.rootCanisterId}>
-                                                {sns.name}
-                                            </option>
-                                        ))}
-                                    </>
-                                )}
-                            </select>
-                            <button
-                                onClick={async () => {
-                                    setLoadingSnses(true);
-                                    clearSnsCache();
-                                    await loadSnsData();
-                                }}
-                                style={{
-                                    backgroundColor: '#3498db',
-                                    color: '#ffffff',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '8px 12px',
-                                    cursor: 'pointer',
-                                    fontSize: '14px'
-                                }}
-                                disabled={loadingSnses}
-                            >
-                                🔄 Refresh SNS List
-                            </button>
-                        </div>
-                        
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <input
                                 type="text"

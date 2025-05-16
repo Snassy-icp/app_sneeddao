@@ -1,10 +1,10 @@
 import React from 'react';
 import Header from './Header';
 
-function ComingSoon({ title }) {
+function ComingSoon({ title, showSnsDropdown }) {
     return (
         <div className='page-container'>
-            <Header />
+            <Header showSnsDropdown={showSnsDropdown} />
             <main className="wallet-container">
                 <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>{title}</h1>
                 <div style={{
