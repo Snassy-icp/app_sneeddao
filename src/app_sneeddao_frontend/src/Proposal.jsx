@@ -11,9 +11,10 @@ function Proposal() {
     const { isAuthenticated, identity } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
+    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
     const [proposalIdInput, setProposalIdInput] = useState(searchParams.get('proposalid') || '');
     const [currentProposalId, setCurrentProposalId] = useState(searchParams.get('proposalid') || '');
-    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || '');
+    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || SNEED_SNS_ROOT);
     const [snsList, setSnsList] = useState([]);
     const [proposalData, setProposalData] = useState(null);
     const [error, setError] = useState('');
@@ -31,12 +32,11 @@ function Proposal() {
                 console.log('Received SNS data:', data); // Debug log
                 setSnsList(data);
                 
-                // If no SNS is selected but we have SNSes, select the first one
-                if (!selectedSnsRoot && data.length > 0) {
-                    console.log('Setting default SNS:', data[0]); // Debug log
-                    setSelectedSnsRoot(data[0].rootCanisterId);
+                // If no SNS is selected in the URL, set it to Sneed
+                if (!searchParams.get('sns')) {
+                    console.log('Setting default SNS to Sneed:', SNEED_SNS_ROOT); // Debug log
                     setSearchParams(prev => {
-                        prev.set('sns', data[0].rootCanisterId);
+                        prev.set('sns', SNEED_SNS_ROOT);
                         return prev;
                     });
                 }
