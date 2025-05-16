@@ -555,28 +555,35 @@ function Proposal() {
                                                         padding: '10px',
                                                         backgroundColor: '#2a2a2a',
                                                         marginBottom: '10px',
-                                                        borderRadius: '4px',
-                                                        display: 'flex',
-                                                        justifyContent: 'space-between',
-                                                        alignItems: 'center'
+                                                        borderRadius: '4px'
                                                     }}
                                                 >
-                                                    <div>
-                                                        <div style={{ fontSize: '14px', color: '#888' }}>Voter</div>
-                                                        <div style={{ wordBreak: 'break-all' }}>{principal}</div>
+                                                    <div style={{ 
+                                                        wordBreak: 'break-all',
+                                                        color: '#888',
+                                                        fontSize: '14px',
+                                                        marginBottom: '4px'
+                                                    }}>
+                                                        {principal}
                                                     </div>
-                                                    <div style={{ textAlign: 'right' }}>
-                                                        <div style={{ fontSize: '14px', color: '#888' }}>Vote</div>
+                                                    <div style={{ 
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                        color: '#888',
+                                                        fontSize: '14px'
+                                                    }}>
                                                         <div style={{ 
-                                                            color: ballot.vote === 1 ? '#2ecc71' : ballot.vote === 2 ? '#e74c3c' : '#ffffff'
+                                                            color: ballot.vote === 1 ? '#2ecc71' : ballot.vote === 2 ? '#e74c3c' : '#ffffff',
+                                                            fontWeight: 'bold'
                                                         }}>
                                                             {formatVote(ballot.vote)}
                                                         </div>
-                                                        <div style={{ fontSize: '12px', color: '#888' }}>
+                                                        <div>
                                                             {new Date(Number(ballot.cast_timestamp_seconds) * 1000).toLocaleString()}
                                                         </div>
-                                                        <div style={{ fontSize: '12px', color: '#888' }}>
-                                                            Power: {formatE8s(ballot.voting_power)}
+                                                        <div>
+                                                            {formatE8s(ballot.voting_power)} VP
                                                         </div>
                                                     </div>
                                                 </div>
