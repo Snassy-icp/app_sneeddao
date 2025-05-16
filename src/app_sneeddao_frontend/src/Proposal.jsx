@@ -123,10 +123,25 @@ function Proposal() {
         setCurrentProposalId(proposalIdInput);
     };
 
-    const handleSnsChange = (newSnsRoot) => {
-        setSelectedSnsRoot(newSnsRoot);
+    const handleSnsChange = async (newSnsRoot) => {
+        // First update the URL and state
+        setSearchParams(prev => {
+            prev.set('sns', newSnsRoot);
+            if (currentProposalId) {
+                prev.set('proposalid', currentProposalId);
+            }
+            return prev;
+        });
+        
+        // Wait for state update
+        await new Promise(resolve => {
+            setSelectedSnsRoot(newSnsRoot);
+            resolve();
+        });
+
+        // Then fetch the proposal data if we have a proposal ID
         if (currentProposalId) {
-            fetchProposalData(); // This will fetch the proposal data for the new SNS
+            await fetchProposalData();
         }
     };
 
