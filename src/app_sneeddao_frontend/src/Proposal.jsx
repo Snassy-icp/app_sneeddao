@@ -411,24 +411,6 @@ function Proposal() {
         );
     };
 
-    // Add this new function to fetch voting history
-    const fetchVotingHistory = async (proposalId) => {
-        try {
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            const ballots = await rllActor.get_proposal_ballots(BigInt(proposalId));
-            setVotingHistory(ballots);
-        } catch (err) {
-            console.error('Error fetching voting history:', err);
-        }
-    };
-
-    // Modify useEffect to fetch voting history for Sneed proposals
-    useEffect(() => {
-        if (currentProposalId && selectedSnsRoot === SNEED_SNS_ROOT) {
-            fetchVotingHistory(currentProposalId);
-        }
-    }, [currentProposalId, selectedSnsRoot]);
-
     // Add helper function to format vote
     const formatVote = (voteNumber) => {
         switch (voteNumber) {
@@ -440,6 +422,27 @@ function Proposal() {
                 return 'Unknown';
         }
     };
+
+    // Modify the fetch voting history to be a fallback for Sneed
+    const fetchRllVotingHistory = async (proposalId) => {
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            const ballots = await rllActor.get_proposal_ballots(BigInt(proposalId));
+            setVotingHistory(ballots);
+        } catch (err) {
+            console.error('Error fetching RLL voting history:', err);
+            setVotingHistory([]); // Set empty array on error
+        }
+    };
+
+    // Effect to handle fallback to RLL for Sneed when no ballots found
+    useEffect(() => {
+        if (proposalData && selectedSnsRoot === SNEED_SNS_ROOT && (!proposalData.ballots || proposalData.ballots.length === 0)) {
+            fetchRllVotingHistory(currentProposalId);
+        } else if (proposalData && proposalData.ballots) {
+            setVotingHistory(proposalData.ballots);
+        }
+    }, [proposalData, selectedSnsRoot, currentProposalId]);
 
     return (
         <div className='page-container'>
@@ -515,8 +518,8 @@ function Proposal() {
                                 {proposalData.latest_tally?.[0] && <VotingBar proposalData={proposalData} />}
                             </div>
 
-                            {/* Add voting history section for Sneed only */}
-                            {selectedSnsRoot === SNEED_SNS_ROOT && (
+                            {/* Modified voting history section to show for any SNS with ballots */}
+                            {votingHistory && votingHistory.length > 0 && (
                                 <div style={{ marginTop: '20px' }}>
                                     <div 
                                         onClick={() => setIsVotingHistoryExpanded(!isVotingHistoryExpanded)}
@@ -539,7 +542,7 @@ function Proposal() {
                                         <h3 style={{ margin: 0 }}>Voting History</h3>
                                     </div>
                                     
-                                    {isVotingHistoryExpanded && votingHistory && (
+                                    {isVotingHistoryExpanded && (
                                         <div style={{ 
                                             backgroundColor: '#3a3a3a',
                                             padding: '15px',
