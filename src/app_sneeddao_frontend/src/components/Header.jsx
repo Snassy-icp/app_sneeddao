@@ -108,39 +108,50 @@ function Header({ showTotalValue, showSnsDropdown }) {
                 </div>
                 <div style={{ 
                     display: 'flex',
-                    gap: '20px',
+                    alignItems: 'center',
                     marginLeft: '52px'
                 }}>
-                    {menuSections[activeSection].subMenu.map((item) => (
-                        <Link
-                            key={item.name}
-                            to={item.path}
-                            style={{
-                                color: location.pathname === item.path ? '#3498db' : '#888',
-                                textDecoration: 'none',
+                    <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                        {menuSections[activeSection].subMenu.map((item) => (
+                            <Link
+                                key={item.name}
+                                to={item.path}
+                                style={{
+                                    color: location.pathname === item.path ? '#3498db' : '#888',
+                                    textDecoration: 'none',
+                                    fontSize: '16px',
+                                    fontWeight: location.pathname === item.path ? 'bold' : 'normal',
+                                    position: 'relative',
+                                    paddingBottom: '4px'
+                                }}
+                            >
+                                {item.name}
+                                {location.pathname === item.path && (
+                                    <div style={{
+                                        position: 'absolute',
+                                        bottom: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        height: '2px',
+                                        background: '#3498db',
+                                        borderRadius: '2px'
+                                    }} />
+                                )}
+                            </Link>
+                        ))}
+                        {showTotalValue && (
+                            <div style={{ 
+                                color: '#fff',
                                 fontSize: '16px',
-                                fontWeight: location.pathname === item.path ? 'bold' : 'normal',
-                                position: 'relative',
-                                paddingBottom: '4px'
-                            }}
-                        >
-                            {item.name}
-                            {location.pathname === item.path && (
-                                <div style={{
-                                    position: 'absolute',
-                                    bottom: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    height: '2px',
-                                    background: '#3498db',
-                                    borderRadius: '2px'
-                                }} />
-                            )}
-                        </Link>
-                    ))}
+                                fontWeight: 'bold',
+                                marginLeft: '20px'
+                            }}>
+                                Total Value: ${showTotalValue}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
-            {showTotalValue && <h4>Total Value: ${showTotalValue}</h4>}
             <div className="header-right" style={{ display: 'flex', alignItems: 'center' }}>
                 {showSnsDropdown && <SnsDropdown />}
                 {isAuthenticated ? (
