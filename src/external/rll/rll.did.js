@@ -441,6 +441,27 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_neuron_import_status' : IDL.Func([], [Result], ['query']),
+    'get_neuron_voting_history' : IDL.Func(
+        [IDL.Vec(IDL.Nat8)],
+        [
+          IDL.Vec(
+            IDL.Record({
+              'vote' : IDL.Int32,
+              'proposal_title' : IDL.Opt(IDL.Text),
+              'proposal_id' : IDL.Nat64,
+              'timestamp' : IDL.Nat64,
+              'proposal_action' : IDL.Nat64,
+              'voting_power' : IDL.Nat64,
+            })
+          ),
+        ],
+        ['query'],
+      ),
+    'get_proposal_ballots' : IDL.Func(
+        [IDL.Nat64],
+        [IDL.Vec(IDL.Tuple(IDL.Text, Ballot))],
+        ['query'],
+      ),
     'get_proposal_import_status' : IDL.Func([], [Result], ['query']),
     'get_token_balance_check_status' : IDL.Func(
         [],
@@ -508,6 +529,30 @@ export const idlFactory = ({ IDL }) => {
     'get_user_token_distribution_events' : IDL.Func(
         [IDL.Principal, IDL.Principal],
         [IDL.Vec(UserDistributionEvent)],
+        ['query'],
+      ),
+    'get_user_voting_history' : IDL.Func(
+        [IDL.Principal],
+        [
+          IDL.Vec(
+            IDL.Record({
+              'vote' : IDL.Int32,
+              'proposal_title' : IDL.Opt(IDL.Text),
+              'proposal_id' : IDL.Nat64,
+              'timestamp' : IDL.Nat64,
+              'proposal_action' : IDL.Nat64,
+              'neuron_votes' : IDL.Vec(
+                IDL.Record({
+                  'vote' : IDL.Int32,
+                  'timestamp' : IDL.Nat64,
+                  'voting_power' : IDL.Nat64,
+                  'neuron_id' : IDL.Text,
+                })
+              ),
+              'voting_power' : IDL.Nat64,
+            })
+          ),
+        ],
         ['query'],
       ),
     'get_wallet_known_tokens' : IDL.Func(

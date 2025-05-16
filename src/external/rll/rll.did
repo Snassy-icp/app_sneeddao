@@ -238,6 +238,20 @@ type SneedRLL =
        next_scheduled: opt int;
      }) query;
    get_neuron_import_status: () -> (Result) query;
+   get_neuron_voting_history: (blob) ->
+    (vec
+      record {
+        proposal_action: nat64;
+        proposal_id: nat64;
+        proposal_title: opt text;
+        timestamp: nat64;
+        vote: int32;
+        voting_power: nat64;
+      }) query;
+   get_proposal_ballots: (nat64) -> (vec record {
+                                           text;
+                                           Ballot;
+                                         }) query;
    get_proposal_import_status: () -> (Result) query;
    get_token_balance_check_status: () ->
     (record {
@@ -267,6 +281,24 @@ type SneedRLL =
    get_user_token_distribution: (principal, principal) -> (nat) query;
    get_user_token_distribution_events: (principal, principal) ->
     (vec UserDistributionEvent) query;
+   get_user_voting_history: (principal) ->
+    (vec
+      record {
+        neuron_votes:
+         vec
+          record {
+            neuron_id: text;
+            timestamp: nat64;
+            vote: int32;
+            voting_power: nat64;
+          };
+        proposal_action: nat64;
+        proposal_id: nat64;
+        proposal_title: opt text;
+        timestamp: nat64;
+        vote: int32;
+        voting_power: nat64;
+      }) query;
    get_wallet_known_tokens: (principal) ->
     (vec record {
            principal;
