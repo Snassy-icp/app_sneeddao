@@ -197,9 +197,29 @@ function Proposal() {
         return (
             <div style={{ marginTop: '20px' }}>
                 <h3>Voting Results</h3>
-                <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between' }}>
-                    <div style={{ color: '#2ecc71' }}>Yes: {yesPercent.toFixed(3)}%</div>
-                    <div style={{ color: '#e74c3c' }}>No: {noPercent.toFixed(3)}%</div>
+                <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ color: '#2ecc71' }}>
+                        <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Yes: {yesPercent.toFixed(3)}%</span>
+                        <br />
+                        <span style={{ fontSize: '14px', opacity: 0.9 }}>{formatE8s(tally.yes)} VP</span>
+                    </div>
+                    <div style={{ color: '#e74c3c', textAlign: 'right' }}>
+                        <span style={{ fontSize: '16px', fontWeight: 'bold' }}>No: {noPercent.toFixed(3)}%</span>
+                        <br />
+                        <span style={{ fontSize: '14px', opacity: 0.9 }}>{formatE8s(tally.no)} VP</span>
+                    </div>
+                </div>
+                
+                {/* Total eligible votes */}
+                <div style={{ 
+                    marginBottom: '15px',
+                    textAlign: 'center',
+                    fontSize: '14px',
+                    color: '#bdc3c7'
+                }}>
+                    <span>Total Eligible: {formatE8s(tally.total)} VP</span>
+                    <br />
+                    <span>Last Updated: {new Date(Number(tally.timestamp_seconds || 0) * 1000).toLocaleString()}</span>
                 </div>
                 
                 {/* Voting bar container */}
@@ -208,7 +228,8 @@ function Proposal() {
                     height: '24px',
                     backgroundColor: '#34495e',
                     borderRadius: '12px',
-                    overflow: 'hidden'
+                    overflow: 'hidden',
+                    marginBottom: '30px' // Space for the markers below
                 }}>
                     {/* Yes votes (green) */}
                     <div style={{
@@ -230,10 +251,10 @@ function Proposal() {
                         transition: 'width 0.3s ease'
                     }} />
                     
-                    {/* Threshold marker */}
-                    {isCritical && (
+                    {/* Pass threshold marker */}
+                    {isCritical ? (
                         <>
-                            {/* 67% marker */}
+                            {/* 67% marker for critical proposals */}
                             <div style={{
                                 position: 'absolute',
                                 left: '67%',
@@ -242,10 +263,46 @@ function Proposal() {
                                 backgroundColor: '#f1c40f',
                                 top: '-4px'
                             }} />
-                            {/* Thumbmark */}
                             <div style={{
                                 position: 'absolute',
                                 left: '67%',
+                                transform: 'translateX(-50%)',
+                                top: '-20px',
+                                color: '#f1c40f',
+                                fontSize: '16px'
+                            }}>•</div>
+                            {/* 33% fail marker for critical proposals */}
+                            <div style={{
+                                position: 'absolute',
+                                left: '33%',
+                                height: '32px',
+                                width: '2px',
+                                backgroundColor: '#e67e22',
+                                top: '-4px'
+                            }} />
+                            <div style={{
+                                position: 'absolute',
+                                left: '33%',
+                                transform: 'translateX(-50%)',
+                                top: '-20px',
+                                color: '#e67e22',
+                                fontSize: '16px'
+                            }}>•</div>
+                        </>
+                    ) : (
+                        <>
+                            {/* 50% marker for regular proposals */}
+                            <div style={{
+                                position: 'absolute',
+                                left: '50%',
+                                height: '32px',
+                                width: '2px',
+                                backgroundColor: '#f1c40f',
+                                top: '-4px'
+                            }} />
+                            <div style={{
+                                position: 'absolute',
+                                left: '50%',
                                 transform: 'translateX(-50%)',
                                 top: '-20px',
                                 color: '#f1c40f',
@@ -295,13 +352,6 @@ function Proposal() {
                             </p>
                         </li>
                     </ol>
-                </div>
-                
-                <div style={{ marginTop: '15px', fontSize: '14px', color: '#bdc3c7' }}>
-                    <p><strong>Yes Votes:</strong> {formatE8s(tally.yes)} VP</p>
-                    <p><strong>No Votes:</strong> {formatE8s(tally.no)} VP</p>
-                    <p><strong>Total Eligible:</strong> {formatE8s(tally.total)} VP</p>
-                    <p><strong>Last Updated:</strong> {new Date(Number(tally.timestamp_seconds || 0) * 1000).toLocaleString()}</p>
                 </div>
             </div>
         );
