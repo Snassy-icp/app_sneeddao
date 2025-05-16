@@ -8,7 +8,8 @@ function SnsDropdown() {
     const [searchParams, setSearchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
     const [loadingSnses, setLoadingSnses] = useState(true);
-    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || '');
+    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
+    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || SNEED_SNS_ROOT);
 
     const loadSnsData = async () => {
         setLoadingSnses(true);
@@ -16,12 +17,11 @@ function SnsDropdown() {
             const data = await fetchAndCacheSnsData(identity);
             setSnsList(data);
             
-            // If no SNS is selected but we have SNSes, select the first one
-            if (!selectedSnsRoot && data.length > 0) {
-                const defaultSns = data[0].rootCanisterId;
-                setSelectedSnsRoot(defaultSns);
+            // If no SNS is selected in the URL, set it to Sneed
+            if (!searchParams.get('sns')) {
+                setSelectedSnsRoot(SNEED_SNS_ROOT);
                 setSearchParams(prev => {
-                    prev.set('sns', defaultSns);
+                    prev.set('sns', SNEED_SNS_ROOT);
                     return prev;
                 });
             }
