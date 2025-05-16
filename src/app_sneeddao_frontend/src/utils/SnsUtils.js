@@ -96,11 +96,11 @@ export async function fetchAndCacheSnsData(identity) {
                     const metadataResponse = await governanceActor.get_metadata({});
                     console.log('Metadata response:', metadataResponse); // Debug log
 
-                    const metadata = metadataResponse?.metadata?.[0] || {};
-                    const name = metadata.name || rootCanisterId;
-                    const description = metadata.description || '';
-                    const url = metadata.url || '';
-                    const logo = metadata.logo || '';
+                    // Extract metadata, handling the direct response structure
+                    const name = metadataResponse?.name?.[0] || `SNS ${rootCanisterId.slice(0, 8)}...`;
+                    const description = metadataResponse?.description?.[0] || '';
+                    const url = metadataResponse?.url?.[0] || '';
+                    const logo = metadataResponse?.logo?.[0] || '';
                     
                     const snsData = {
                         rootCanisterId,
