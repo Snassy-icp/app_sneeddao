@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FaWallet, FaBars, FaTimes, FaLock, FaTrophy } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -7,6 +7,7 @@ import PrincipalBox from '../PrincipalBox';
 
 function Header({ showTotalValue }) {
     const location = useLocation();
+    const navigate = useNavigate();
     const { isAuthenticated, identity, login, logout } = useAuth();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [activeSection, setActiveSection] = useState(() => {
@@ -46,6 +47,8 @@ function Header({ showTotalValue }) {
     const handleSectionClick = (section) => {
         setActiveSection(section);
         toggleMenu();
+        const firstSubMenuItem = menuSections[section].subMenu[0];
+        navigate(firstSubMenuItem.path);
     };
 
     return (
