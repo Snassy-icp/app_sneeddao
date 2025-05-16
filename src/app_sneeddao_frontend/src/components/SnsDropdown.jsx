@@ -86,11 +86,12 @@ function SnsDropdown() {
                     cursor: loadingSnses ? 'wait' : 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
-                    userSelect: 'none'
+                    justifyContent: 'flex-start',
+                    userSelect: 'none',
+                    minWidth: '250px'
                 }}
             >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
                     {loadingSnses ? (
                         <span>Loading SNSes...</span>
                     ) : (
@@ -103,18 +104,20 @@ function SnsDropdown() {
                                         width: '20px', 
                                         height: '20px',
                                         borderRadius: '50%',
-                                        objectFit: 'cover'
+                                        objectFit: 'cover',
+                                        flexShrink: 0
                                     }} 
                                 />
                             )}
-                            <span>{getSelectedSns().name}</span>
+                            <span style={{ flex: 1 }}>{getSelectedSns().name}</span>
                         </>
                     )}
                 </div>
                 <span style={{ 
                     marginLeft: '8px',
                     transform: isOpen ? 'rotate(180deg)' : 'none',
-                    transition: 'transform 0.2s ease'
+                    transition: 'transform 0.2s ease',
+                    flexShrink: 0
                 }}>▼</span>
             </div>
 
@@ -123,7 +126,6 @@ function SnsDropdown() {
                     position: 'absolute',
                     top: '100%',
                     left: '0',
-                    right: '0',
                     backgroundColor: '#2a2a2a',
                     border: '1px solid #4a4a4a',
                     borderRadius: '4px',
@@ -131,7 +133,8 @@ function SnsDropdown() {
                     maxHeight: '300px',
                     overflowY: 'auto',
                     zIndex: 1000,
-                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                    minWidth: '250px'
                 }}>
                     {snsList.map(sns => (
                         <div
@@ -146,9 +149,13 @@ function SnsDropdown() {
                                 color: '#ffffff',
                                 backgroundColor: selectedSnsRoot === sns.rootCanisterId ? '#3498db' : 'transparent',
                                 transition: 'background-color 0.2s ease',
-                                ':hover': {
-                                    backgroundColor: selectedSnsRoot === sns.rootCanisterId ? '#3498db' : '#3a3a3a'
-                                }
+                                width: '100%'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = selectedSnsRoot === sns.rootCanisterId ? '#3498db' : '#3a3a3a';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = selectedSnsRoot === sns.rootCanisterId ? '#3498db' : 'transparent';
                             }}
                         >
                             {sns.logo && (
@@ -159,11 +166,12 @@ function SnsDropdown() {
                                         width: '20px', 
                                         height: '20px',
                                         borderRadius: '50%',
-                                        objectFit: 'cover'
+                                        objectFit: 'cover',
+                                        flexShrink: 0
                                     }} 
                                 />
                             )}
-                            <span>{sns.name}</span>
+                            <span style={{ flex: 1 }}>{sns.name}</span>
                         </div>
                     ))}
                 </div>
