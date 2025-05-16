@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FaWallet, FaBars, FaTimes } from 'react-icons/fa';
+import { FaWallet, FaBars, FaTimes, FaLock, FaTrophy } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
@@ -86,11 +86,13 @@ function Header({ showTotalValue }) {
                     position: 'fixed',
                     top: '60px',
                     left: '0',
-                    backgroundColor: '#2a2a2a',
+                    background: 'linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%)',
                     width: '250px',
                     padding: '20px',
-                    boxShadow: '2px 0 5px rgba(0,0,0,0.2)',
-                    zIndex: 1000
+                    boxShadow: '2px 0 15px rgba(0,0,0,0.3)',
+                    zIndex: 1000,
+                    borderRight: '1px solid rgba(255,255,255,0.1)',
+                    backdropFilter: 'blur(10px)'
                 }}>
                     <nav style={{
                         display: 'flex',
@@ -102,31 +104,55 @@ function Header({ showTotalValue }) {
                             style={{
                                 color: '#fff',
                                 textDecoration: 'none',
-                                padding: '10px',
-                                borderRadius: '4px',
-                                transition: 'background-color 0.2s',
-                                ':hover': {
-                                    backgroundColor: '#3a3a3a'
-                                }
+                                padding: '12px 16px',
+                                borderRadius: '8px',
+                                transition: 'all 0.2s ease',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                background: 'linear-gradient(to right, rgba(52, 152, 219, 0.1), rgba(52, 152, 219, 0))',
+                                border: '1px solid rgba(52, 152, 219, 0.2)',
+                                fontSize: '16px'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(52, 152, 219, 0.2), rgba(52, 152, 219, 0.1))';
+                                e.currentTarget.style.transform = 'translateX(5px)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(52, 152, 219, 0.1), rgba(52, 152, 219, 0))';
+                                e.currentTarget.style.transform = 'translateX(0)';
                             }}
                             onClick={toggleMenu}
                         >
+                            <FaWallet size={18} />
                             Wallet
                         </Link>
                         <Link 
-                            to="/wallet"
+                            to="/dashboard"
                             style={{
                                 color: '#fff',
                                 textDecoration: 'none',
-                                padding: '10px',
-                                borderRadius: '4px',
-                                transition: 'background-color 0.2s',
-                                ':hover': {
-                                    backgroundColor: '#3a3a3a'
-                                }
+                                padding: '12px 16px',
+                                borderRadius: '8px',
+                                transition: 'all 0.2s ease',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                background: 'linear-gradient(to right, rgba(155, 89, 182, 0.1), rgba(155, 89, 182, 0))',
+                                border: '1px solid rgba(155, 89, 182, 0.2)',
+                                fontSize: '16px'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(155, 89, 182, 0.2), rgba(155, 89, 182, 0.1))';
+                                e.currentTarget.style.transform = 'translateX(5px)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(155, 89, 182, 0.1), rgba(155, 89, 182, 0))';
+                                e.currentTarget.style.transform = 'translateX(0)';
                             }}
                             onClick={toggleMenu}
                         >
+                            <FaLock size={18} />
                             SneedLock
                         </Link>
                         <Link 
@@ -134,15 +160,27 @@ function Header({ showTotalValue }) {
                             style={{
                                 color: '#fff',
                                 textDecoration: 'none',
-                                padding: '10px',
-                                borderRadius: '4px',
-                                transition: 'background-color 0.2s',
-                                ':hover': {
-                                    backgroundColor: '#3a3a3a'
-                                }
+                                padding: '12px 16px',
+                                borderRadius: '8px',
+                                transition: 'all 0.2s ease',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                background: 'linear-gradient(to right, rgba(46, 204, 113, 0.1), rgba(46, 204, 113, 0))',
+                                border: '1px solid rgba(46, 204, 113, 0.2)',
+                                fontSize: '16px'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(46, 204, 113, 0.2), rgba(46, 204, 113, 0.1))';
+                                e.currentTarget.style.transform = 'translateX(5px)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(46, 204, 113, 0.1), rgba(46, 204, 113, 0))';
+                                e.currentTarget.style.transform = 'translateX(0)';
                             }}
                             onClick={toggleMenu}
                         >
+                            <FaTrophy size={18} />
                             Rewards
                         </Link>
                     </nav>
