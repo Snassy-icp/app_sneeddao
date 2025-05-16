@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { fetchAndCacheSnsData, clearSnsCache } from '../utils/SnsUtils';
@@ -8,8 +8,22 @@ function SnsDropdown() {
     const [searchParams, setSearchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
     const [loadingSnses, setLoadingSnses] = useState(true);
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef(null);
     const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
     const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || SNEED_SNS_ROOT);
+
+    useEffect(() => {
+        // Close dropdown when clicking outside
+        const handleClickOutside = (event) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                setIsOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const loadSnsData = async () => {
         setLoadingSnses(true);
@@ -38,20 +52,30 @@ function SnsDropdown() {
         }
     }, [identity]);
 
-    const handleSnsChange = (e) => {
-        const newSnsRoot = e.target.value;
-        setSelectedSnsRoot(newSnsRoot);
+    const handleSnsChange = (snsRoot) => {
+        setSelectedSnsRoot(snsRoot);
         setSearchParams(prev => {
-            prev.set('sns', newSnsRoot);
+            prev.set('sns', snsRoot);
             return prev;
         });
+        setIsOpen(false);
+    };
+
+    const getSelectedSns = () => {
+        return snsList.find(sns => sns.rootCanisterId === selectedSnsRoot) || { name: 'Select an SNS', logo: '' };
     };
 
     return (
-        <div style={{ display: 'flex', alignItems: 'center', marginRight: '15px' }}>
-            <select
-                value={selectedSnsRoot}
-                onChange={handleSnsChange}
+        <div 
+            ref={dropdownRef}
+            style={{ 
+                position: 'relative',
+                marginRight: '15px',
+                minWidth: '200px'
+            }}
+        >
+            <div
+                onClick={() => !loadingSnses && setIsOpen(!isOpen)}
                 style={{
                     backgroundColor: '#3a3a3a',
                     border: '1px solid #4a4a4a',
@@ -59,23 +83,91 @@ function SnsDropdown() {
                     color: '#ffffff',
                     padding: '8px 12px',
                     fontSize: '14px',
-                    minWidth: '150px'
+                    cursor: loadingSnses ? 'wait' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    userSelect: 'none'
                 }}
-                disabled={loadingSnses}
             >
-                {loadingSnses ? (
-                    <option>Loading SNSes...</option>
-                ) : (
-                    <>
-                        <option value="">Select an SNS</option>
-                        {snsList.map(sns => (
-                            <option key={sns.rootCanisterId} value={sns.rootCanisterId}>
-                                {sns.name}
-                            </option>
-                        ))}
-                    </>
-                )}
-            </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {loadingSnses ? (
+                        <span>Loading SNSes...</span>
+                    ) : (
+                        <>
+                            {getSelectedSns().logo && (
+                                <img 
+                                    src={getSelectedSns().logo} 
+                                    alt={getSelectedSns().name}
+                                    style={{ 
+                                        width: '20px', 
+                                        height: '20px',
+                                        borderRadius: '50%',
+                                        objectFit: 'cover'
+                                    }} 
+                                />
+                            )}
+                            <span>{getSelectedSns().name}</span>
+                        </>
+                    )}
+                </div>
+                <span style={{ 
+                    marginLeft: '8px',
+                    transform: isOpen ? 'rotate(180deg)' : 'none',
+                    transition: 'transform 0.2s ease'
+                }}>▼</span>
+            </div>
+
+            {isOpen && !loadingSnses && (
+                <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: '0',
+                    right: '0',
+                    backgroundColor: '#2a2a2a',
+                    border: '1px solid #4a4a4a',
+                    borderRadius: '4px',
+                    marginTop: '4px',
+                    maxHeight: '300px',
+                    overflowY: 'auto',
+                    zIndex: 1000,
+                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                }}>
+                    {snsList.map(sns => (
+                        <div
+                            key={sns.rootCanisterId}
+                            onClick={() => handleSnsChange(sns.rootCanisterId)}
+                            style={{
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                color: '#ffffff',
+                                backgroundColor: selectedSnsRoot === sns.rootCanisterId ? '#3498db' : 'transparent',
+                                transition: 'background-color 0.2s ease',
+                                ':hover': {
+                                    backgroundColor: selectedSnsRoot === sns.rootCanisterId ? '#3498db' : '#3a3a3a'
+                                }
+                            }}
+                        >
+                            {sns.logo && (
+                                <img 
+                                    src={sns.logo} 
+                                    alt={sns.name}
+                                    style={{ 
+                                        width: '20px', 
+                                        height: '20px',
+                                        borderRadius: '50%',
+                                        objectFit: 'cover'
+                                    }} 
+                                />
+                            )}
+                            <span>{sns.name}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
