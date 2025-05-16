@@ -7,6 +7,7 @@ import Header from './components/Header';
 import ReactMarkdown from 'react-markdown';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
+import { formatNeuronIdLink } from './utils/NeuronUtils';
 
 function Proposal() {
     const { isAuthenticated, identity } = useAuth();
@@ -533,7 +534,7 @@ function Proposal() {
                                 <p><strong>SNS:</strong> {selectedSns?.name || 'Unknown SNS'}</p>
                                 <p><strong>Topic:</strong> {getTopicName(proposalData)}</p>
                                 <p><strong>Title:</strong> {proposalData.proposal?.[0]?.title || 'No title'}</p>
-                                <p><strong>Proposer Neuron:</strong> {proposalData.proposer?.[0]?.id ? formatNeuronId(proposalData.proposer[0].id) : 'Unknown'}</p>
+                                <p><strong>Proposer Neuron:</strong> {proposalData.proposer?.[0]?.id ? formatNeuronIdLink(proposalData.proposer[0].id, selectedSnsRoot) : 'Unknown'}</p>
                                 <p><strong>Summary:</strong> <div style={{ 
                                     backgroundColor: '#2a2a2a', 
                                     padding: '10px', 
@@ -683,9 +684,10 @@ function Proposal() {
                                                         wordBreak: 'break-all',
                                                         color: '#888',
                                                         fontSize: '14px',
-                                                        marginBottom: '4px'
+                                                        marginBottom: '4px',
+                                                        fontFamily: 'monospace'
                                                     }}>
-                                                        {principal}
+                                                        {formatNeuronIdLink(principal, selectedSnsRoot)}
                                                     </div>
                                                     <div style={{ 
                                                         display: 'flex',

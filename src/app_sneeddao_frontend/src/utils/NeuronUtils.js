@@ -1,5 +1,7 @@
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 import { Principal } from '@dfinity/principal';
+import React from 'react';
+import { Link } from 'react-router-dom';
 
 // Keep track of principals we've already fetched neurons for
 const fetchedPrincipals = new Set();
@@ -37,6 +39,21 @@ const uint8ArrayToHex = (array) => {
 const getNeuronId = (neuron) => {
     if (!neuron.id || !neuron.id[0] || !neuron.id[0].id) return null;
     return uint8ArrayToHex(neuron.id[0].id);
+};
+
+export const formatNeuronIdLink = (neuronId, snsRoot) => {
+    if (!neuronId) return 'Unknown';
+    const hexId = Array.from(neuronId).map(b => b.toString(16).padStart(2, '0')).join('');
+    return React.createElement(Link, {
+        to: `/neuron?neuronid=${hexId}&sns=${snsRoot}`,
+        style: {
+            color: '#3498db',
+            textDecoration: 'none',
+            fontFamily: 'monospace'
+        },
+        onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
+        onMouseLeave: (e) => e.target.style.textDecoration = 'none'
+    }, hexId);
 };
 
 export const fetchUserNeurons = async (identity) => {
