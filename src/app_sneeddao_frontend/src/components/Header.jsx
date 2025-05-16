@@ -9,57 +9,110 @@ function Header({ showTotalValue }) {
     const location = useLocation();
     const { isAuthenticated, identity, login, logout } = useAuth();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [activeSection, setActiveSection] = useState(() => {
+        if (location.pathname === '/rll' || location.pathname === '/rll_info') return 'Rewards';
+        if (location.pathname === '/dashboard') return 'SneedLock';
+        return 'Wallet';
+    });
+
+    const menuSections = {
+        'Wallet': {
+            icon: <FaWallet size={18} />,
+            subMenu: [
+                { name: 'Tokens', path: '/wallet' },
+                { name: 'Positions', path: '/wallet' }
+            ]
+        },
+        'SneedLock': {
+            icon: <FaLock size={18} />,
+            subMenu: [
+                { name: 'My Locks', path: '/wallet' },
+                { name: 'Dashboard', path: '/dashboard' }
+            ]
+        },
+        'Rewards': {
+            icon: <FaTrophy size={18} />,
+            subMenu: [
+                { name: 'Claim', path: '/rll' },
+                { name: 'Dashboard', path: '/rll_info' }
+            ]
+        }
+    };
 
     const toggleMenu = () => {
         setIsMenuOpen(!isMenuOpen);
     };
 
+    const handleSectionClick = (section) => {
+        setActiveSection(section);
+        toggleMenu();
+    };
+
     return (
         <header className="site-header">
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-                <button
-                    onClick={toggleMenu}
-                    style={{
-                        background: 'none',
-                        border: 'none',
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                    <button
+                        onClick={toggleMenu}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#fff',
+                            cursor: 'pointer',
+                            marginRight: '20px',
+                            padding: '8px'
+                        }}
+                    >
+                        {isMenuOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
+                    </button>
+                    <div style={{ 
                         color: '#fff',
-                        cursor: 'pointer',
-                        marginRight: '20px',
-                        padding: '8px'
-                    }}
-                >
-                    {isMenuOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
-                </button>
-                <div style={headerStyles.logoContainer}>
-                    <div className="logo">
-                        <Link to="/wallet">
-                            <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
-                        </Link>
+                        fontSize: '24px',
+                        fontWeight: 'bold',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px'
+                    }}>
+                        {menuSections[activeSection].icon}
+                        {activeSection}
                     </div>
-                    <Link to="/rll" style={headerStyles.rllLogo}>
-                        RLL
-                    </Link>
+                </div>
+                <div style={{ 
+                    display: 'flex',
+                    gap: '20px',
+                    marginLeft: '52px'
+                }}>
+                    {menuSections[activeSection].subMenu.map((item) => (
+                        <Link
+                            key={item.name}
+                            to={item.path}
+                            style={{
+                                color: location.pathname === item.path ? '#3498db' : '#888',
+                                textDecoration: 'none',
+                                fontSize: '16px',
+                                fontWeight: location.pathname === item.path ? 'bold' : 'normal',
+                                position: 'relative',
+                                paddingBottom: '4px'
+                            }}
+                        >
+                            {item.name}
+                            {location.pathname === item.path && (
+                                <div style={{
+                                    position: 'absolute',
+                                    bottom: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    height: '2px',
+                                    background: '#3498db',
+                                    borderRadius: '2px'
+                                }} />
+                            )}
+                        </Link>
+                    ))}
                 </div>
             </div>
             {showTotalValue && <h4>Total Value: ${showTotalValue}</h4>}
             <div className="header-right">
-                {location.pathname === '/rll' && (
-                    <Link to="/rll_info" className="help-link" style={{ marginRight: '10px' }}>Info</Link>
-                )}
-                <Link to="/help" className="help-link">Help</Link>
-                <Link 
-                    to="/wallet" 
-                    style={{ 
-                        marginLeft: '15px',
-                        marginRight: '15px',
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        textDecoration: 'none'
-                    }}
-                >
-                    <FaWallet size={20} />
-                </Link>
                 {isAuthenticated ? (
                     <PrincipalBox 
                         principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
@@ -99,90 +152,43 @@ function Header({ showTotalValue }) {
                         flexDirection: 'column',
                         gap: '15px'
                     }}>
-                        <Link 
-                            to="/wallet"
-                            style={{
-                                color: '#fff',
-                                textDecoration: 'none',
-                                padding: '12px 16px',
-                                borderRadius: '8px',
-                                transition: 'all 0.2s ease',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '12px',
-                                background: 'linear-gradient(to right, rgba(52, 152, 219, 0.1), rgba(52, 152, 219, 0))',
-                                border: '1px solid rgba(52, 152, 219, 0.2)',
-                                fontSize: '16px'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(52, 152, 219, 0.2), rgba(52, 152, 219, 0.1))';
-                                e.currentTarget.style.transform = 'translateX(5px)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(52, 152, 219, 0.1), rgba(52, 152, 219, 0))';
-                                e.currentTarget.style.transform = 'translateX(0)';
-                            }}
-                            onClick={toggleMenu}
-                        >
-                            <FaWallet size={18} />
-                            Wallet
-                        </Link>
-                        <Link 
-                            to="/dashboard"
-                            style={{
-                                color: '#fff',
-                                textDecoration: 'none',
-                                padding: '12px 16px',
-                                borderRadius: '8px',
-                                transition: 'all 0.2s ease',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '12px',
-                                background: 'linear-gradient(to right, rgba(155, 89, 182, 0.1), rgba(155, 89, 182, 0))',
-                                border: '1px solid rgba(155, 89, 182, 0.2)',
-                                fontSize: '16px'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(155, 89, 182, 0.2), rgba(155, 89, 182, 0.1))';
-                                e.currentTarget.style.transform = 'translateX(5px)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(155, 89, 182, 0.1), rgba(155, 89, 182, 0))';
-                                e.currentTarget.style.transform = 'translateX(0)';
-                            }}
-                            onClick={toggleMenu}
-                        >
-                            <FaLock size={18} />
-                            SneedLock
-                        </Link>
-                        <Link 
-                            to="/rll"
-                            style={{
-                                color: '#fff',
-                                textDecoration: 'none',
-                                padding: '12px 16px',
-                                borderRadius: '8px',
-                                transition: 'all 0.2s ease',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '12px',
-                                background: 'linear-gradient(to right, rgba(46, 204, 113, 0.1), rgba(46, 204, 113, 0))',
-                                border: '1px solid rgba(46, 204, 113, 0.2)',
-                                fontSize: '16px'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(46, 204, 113, 0.2), rgba(46, 204, 113, 0.1))';
-                                e.currentTarget.style.transform = 'translateX(5px)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(46, 204, 113, 0.1), rgba(46, 204, 113, 0))';
-                                e.currentTarget.style.transform = 'translateX(0)';
-                            }}
-                            onClick={toggleMenu}
-                        >
-                            <FaTrophy size={18} />
-                            Rewards
-                        </Link>
+                        {Object.entries(menuSections).map(([section, { icon }]) => (
+                            <button 
+                                key={section}
+                                onClick={() => handleSectionClick(section)}
+                                style={{
+                                    color: '#fff',
+                                    textDecoration: 'none',
+                                    padding: '12px 16px',
+                                    borderRadius: '8px',
+                                    transition: 'all 0.2s ease',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '12px',
+                                    background: section === activeSection 
+                                        ? 'linear-gradient(to right, rgba(52, 152, 219, 0.2), rgba(52, 152, 219, 0.1))'
+                                        : 'linear-gradient(to right, rgba(52, 152, 219, 0.1), rgba(52, 152, 219, 0))',
+                                    border: '1px solid rgba(52, 152, 219, 0.2)',
+                                    fontSize: '16px',
+                                    cursor: 'pointer',
+                                    width: '100%',
+                                    textAlign: 'left'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = 'linear-gradient(to right, rgba(52, 152, 219, 0.2), rgba(52, 152, 219, 0.1))';
+                                    e.currentTarget.style.transform = 'translateX(5px)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = section === activeSection
+                                        ? 'linear-gradient(to right, rgba(52, 152, 219, 0.2), rgba(52, 152, 219, 0.1))'
+                                        : 'linear-gradient(to right, rgba(52, 152, 219, 0.1), rgba(52, 152, 219, 0))';
+                                    e.currentTarget.style.transform = 'translateX(0)';
+                                }}
+                            >
+                                {icon}
+                                {section}
+                            </button>
+                        ))}
                     </nav>
                 </div>
             )}
