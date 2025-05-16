@@ -174,7 +174,14 @@ function Proposal() {
 
     // Helper function to check if proposal is critical
     const isCriticalProposal = (data) => {
-        return data?.minimum_yes_proportion_of_total?.basis_points?.[0] === 6700n; // 67% threshold
+        return data?.minimum_yes_proportion_of_total?.basis_points?.[0] === 6700; // 67% threshold for critical proposals
+    };
+
+    // Helper function to calculate standard majority threshold
+    const calculateStandardMajorityThreshold = (tally) => {
+        if (!tally) return 0;
+        // 3% of total voting power
+        return (Number(tally.total) * 0.03);
     };
 
     // Helper function to convert HTML breaks to Markdown
@@ -192,7 +199,8 @@ function Proposal() {
         const tally = proposalData.latest_tally[0];
         const { yesPercent, noPercent } = calculateVotingPercentages(tally);
         const isCritical = isCriticalProposal(proposalData);
-        const threshold = isCritical ? 67 : 50;
+        const standardMajorityThreshold = calculateStandardMajorityThreshold(tally);
+        const standardMajorityPercent = (standardMajorityThreshold / Number(tally.total)) * 100;
         
         return (
             <div style={{ marginTop: '20px' }}>
@@ -310,6 +318,24 @@ function Proposal() {
                             }}>•</div>
                         </>
                     )}
+
+                    {/* Standard majority threshold marker (3% of total voting power) */}
+                    <div style={{
+                        position: 'absolute',
+                        left: `${standardMajorityPercent}%`,
+                        height: '32px',
+                        width: '2px',
+                        backgroundColor: '#9b59b6',
+                        top: '-4px'
+                    }} />
+                    <div style={{
+                        position: 'absolute',
+                        left: `${standardMajorityPercent}%`,
+                        transform: 'translateX(-50%)',
+                        top: '-20px',
+                        color: '#9b59b6',
+                        fontSize: '16px'
+                    }}>•</div>
                     
                     {/* Current position marker */}
                     <div style={{
