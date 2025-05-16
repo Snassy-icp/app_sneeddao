@@ -291,9 +291,9 @@ function Proposal() {
                                 {proposalData.latest_tally?.[0] && (
                                     <div style={{ marginTop: '20px' }}>
                                         <h3>Latest Tally</h3>
-                                        <p><strong>Yes Votes:</strong> {formatE8s(proposalData.latest_tally[0].yes)} {selectedSns?.name || 'SNS'}</p>
-                                        <p><strong>No Votes:</strong> {formatE8s(proposalData.latest_tally[0].no)} {selectedSns?.name || 'SNS'}</p>
-                                        <p><strong>Total Eligible:</strong> {formatE8s(proposalData.latest_tally[0].total)} {selectedSns?.name || 'SNS'}</p>
+                                        <p><strong>Yes Votes:</strong> {formatE8s(proposalData.latest_tally[0].yes)} VP</p>
+                                        <p><strong>No Votes:</strong> {formatE8s(proposalData.latest_tally[0].no)} VP</p>
+                                        <p><strong>Total Eligible:</strong> {formatE8s(proposalData.latest_tally[0].total)} VP</p>
                                         <p><strong>Last Updated:</strong> {new Date(Number(proposalData.latest_tally[0].timestamp_seconds || 0) * 1000).toLocaleString()}</p>
                                     </div>
                                 )}
