@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { useAuth } from './AuthContext';
 import Header from './components/Header';
+import ReactMarkdown from 'react-markdown';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
 
@@ -266,7 +267,14 @@ function Proposal() {
                             <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px', marginTop: '10px' }}>
                                 <p><strong>SNS:</strong> {selectedSns?.name || 'Unknown SNS'}</p>
                                 <p><strong>Title:</strong> {proposalData.proposal?.[0]?.title || 'No title'}</p>
-                                <p><strong>Summary:</strong> <span dangerouslySetInnerHTML={{ __html: proposalData.proposal?.[0]?.summary || 'No summary' }} /></p>
+                                <p><strong>Summary:</strong> <div style={{ 
+                                    backgroundColor: '#2a2a2a', 
+                                    padding: '10px', 
+                                    borderRadius: '4px',
+                                    marginTop: '5px'
+                                }}>
+                                    <ReactMarkdown>{proposalData.proposal?.[0]?.summary || 'No summary'}</ReactMarkdown>
+                                </div></p>
                                 <p><strong>URL:</strong> <a href={proposalData.proposal?.[0]?.url} target="_blank" rel="noopener noreferrer" style={{ color: '#3498db' }}>{proposalData.proposal?.[0]?.url}</a></p>
                                 <p><strong>Status:</strong> {getProposalStatus(proposalData)}</p>
                                 <p><strong>Created:</strong> {new Date(Number(proposalData.proposal_creation_timestamp_seconds || 0) * 1000).toLocaleString()}</p>
