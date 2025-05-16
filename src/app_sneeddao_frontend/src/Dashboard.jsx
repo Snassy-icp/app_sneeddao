@@ -5,6 +5,8 @@ import { toJsonString, formatAmount } from './utils/StringUtils';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
 import Header from './components/Header';
 import { Link } from 'react-router-dom';
+import { Principal } from '@dfinity/principal';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 
 function Dashboard() {
     const { identity } = useAuth();
@@ -12,6 +14,7 @@ function Dashboard() {
     const [positionLocks, setPositionLocks] = useState([]);
     const [positionDetails, setPositionDetails] = useState({});
     const [loading, setLoading] = useState(true);
+    const [tokenSymbols, setTokenSymbols] = useState({});
 
     const swapCanisterCache = { };
 
@@ -20,6 +23,21 @@ function Dashboard() {
             fetchDashboardData();
         }
     }, [identity]);
+
+    const fetchTokenSymbol = async (tokenId) => {
+        try {
+            const ledgerActor = createLedgerActor(tokenId, { agentOptions: { identity } });
+            const metadata = await ledgerActor.icrc1_metadata();
+            const symbolEntry = metadata.find(entry => entry[0] === 'symbol');
+            if (symbolEntry) {
+                return symbolEntry[1].Text;
+            }
+            return tokenId.toText();
+        } catch (error) {
+            console.error(`Error fetching symbol for token ${tokenId.toText()}:`, error);
+            return tokenId.toText();
+        }
+    };
 
     async function fetchPositionDetails(swapCanisterId) {
         const swapActor = createIcpSwapActor(swapCanisterId, { agentOptions: { identity } });
@@ -66,6 +84,16 @@ function Dashboard() {
             // Fetch token locks
             const allTokenLocks = await sneedLockActor.get_all_token_locks();
             setTokenLocks(allTokenLocks);
+
+            // Fetch token symbols
+            const symbols = {};
+            for (const lock of allTokenLocks) {
+                const tokenId = lock[0];
+                if (!symbols[tokenId.toText()]) {
+                    symbols[tokenId.toText()] = await fetchTokenSymbol(tokenId);
+                }
+            }
+            setTokenSymbols(symbols);
         
             // Fetch position locks
             const allPositionLocks = await sneedLockActor.get_all_position_locks();
@@ -148,9 +176,15 @@ function Dashboard() {
                                                 </Link>
                                             </div>
                                             <div style={{ color: '#888' }}>
-                                                <p style={{ margin: '5px 0' }}><strong>Token ID:</strong> {lock[0].toText()}</p>
-                                                <p style={{ margin: '5px 0' }}><strong>Amount:</strong> {formatAmount(lock[1], 8)}</p>
-                                                <p style={{ margin: '5px 0' }}><strong>Unlock Date:</strong> {new Date(Number(lock[2]) / 1000000).toLocaleString()}</p>
+                                                <p style={{ margin: '5px 0' }}>
+                                                    <strong>Token:</strong> {tokenSymbols[lock[0].toText()] || lock[0].toText()}
+                                                </p>
+                                                <p style={{ margin: '5px 0' }}>
+                                                    <strong>Amount:</strong> {formatAmount(lock[1], 8)} {tokenSymbols[lock[0].toText()]}
+                                                </p>
+                                                <p style={{ margin: '5px 0' }}>
+                                                    <strong>Unlock Date:</strong> {new Date(Number(lock[2]) / 1000000).toLocaleString()}
+                                                </p>
                                             </div>
                                         </div>
                                     ))}
