@@ -429,6 +429,12 @@ function Proposal() {
         }
     };
 
+    // Add helper function to format neuron ID
+    const formatNeuronId = (neuronId) => {
+        if (!neuronId) return 'Unknown';
+        return Array.from(neuronId).map(b => b.toString(16).padStart(2, '0')).join('');
+    };
+
     // Modify the fetch voting history to be a fallback for Sneed
     const fetchRllVotingHistory = async (proposalId) => {
         try {
@@ -527,6 +533,7 @@ function Proposal() {
                                 <p><strong>SNS:</strong> {selectedSns?.name || 'Unknown SNS'}</p>
                                 <p><strong>Topic:</strong> {getTopicName(proposalData)}</p>
                                 <p><strong>Title:</strong> {proposalData.proposal?.[0]?.title || 'No title'}</p>
+                                <p><strong>Proposer Neuron:</strong> {proposalData.proposer?.[0]?.id ? formatNeuronId(proposalData.proposer[0].id) : 'Unknown'}</p>
                                 <p><strong>Summary:</strong> <div style={{ 
                                     backgroundColor: '#2a2a2a', 
                                     padding: '10px', 
