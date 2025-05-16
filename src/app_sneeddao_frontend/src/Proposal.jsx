@@ -273,15 +273,32 @@ function Proposal() {
                     
                     {/* Pass threshold marker */}
                     {isCritical ? (
-                        /* 67% marker for critical proposals */
-                        <div style={{
-                            position: 'absolute',
-                            left: '67%',
-                            height: '32px',
-                            width: '2px',
-                            backgroundColor: '#f1c40f',
-                            top: '-4px'
-                        }} />
+                        <>
+                            {/* 67% marker for critical proposals */}
+                            <div style={{
+                                position: 'absolute',
+                                left: '67%',
+                                height: '32px',
+                                width: '2px',
+                                backgroundColor: '#f1c40f',
+                                top: '-4px',
+                                cursor: 'help'
+                            }} 
+                            title="Critical Proposal Pass Threshold (67%): If this many votes are cast as 'Yes', the proposal will pass immediately"
+                            />
+                            {/* 20% marker for critical proposals */}
+                            <div style={{
+                                position: 'absolute',
+                                left: '20%',
+                                height: '32px',
+                                width: '2px',
+                                backgroundColor: '#e67e22',
+                                top: '-4px',
+                                cursor: 'help'
+                            }}
+                            title="Critical Proposal Minimum Total Threshold (20%): At least this much of total voting power must participate"
+                            />
+                        </>
                     ) : (
                         /* 50% marker for regular proposals */
                         <div style={{
@@ -290,8 +307,11 @@ function Proposal() {
                             height: '32px',
                             width: '2px',
                             backgroundColor: '#f1c40f',
-                            top: '-4px'
-                        }} />
+                            top: '-4px',
+                            cursor: 'help'
+                        }}
+                        title="Regular Proposal Threshold (50%): If more than half of the votes are 'Yes', the proposal will pass at the end of the voting period"
+                        />
                     )}
 
                     {/* Standard majority threshold marker (3% of total voting power) */}
@@ -301,8 +321,11 @@ function Proposal() {
                         height: '32px',
                         width: '2px',
                         backgroundColor: '#9b59b6',
-                        top: '-4px'
-                    }} />
+                        top: '-4px',
+                        cursor: 'help'
+                    }}
+                    title="Minimum Participation Threshold (3%): At least this much voting power must participate for the proposal to be valid"
+                    />
                     
                     {/* Current position marker */}
                     <div style={{
@@ -311,13 +334,16 @@ function Proposal() {
                         height: '32px',
                         width: '2px',
                         backgroundColor: '#3498db',
-                        top: '-4px'
-                    }} />
+                        top: '-4px',
+                        cursor: 'help'
+                    }}
+                    title={`Current Position (${yesPercent.toFixed(2)}%): Current percentage of 'Yes' votes`}
+                    />
                 </div>
                 
                 {/* Voting information */}
                 <div style={{ marginTop: '25px', fontSize: '14px', color: '#bdc3c7' }}>
-                    <p>There are {isCritical ? 'two' : ''} ways {isCritical ? 'a critical' : 'a'} proposal can be decided:</p>
+                    <p>There are two ways {isCritical ? 'a critical' : 'a'} proposal can be decided:</p>
                     
                     <ol style={{ paddingLeft: '20px' }}>
                         <li style={{ marginBottom: '10px' }}>
