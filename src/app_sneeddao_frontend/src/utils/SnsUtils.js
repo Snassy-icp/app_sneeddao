@@ -1,5 +1,5 @@
 import { createActor as createNnsSnsWActor } from 'external/nns_snsw';
-import { createActor as createSnsRootActor } from 'external/sns_root';
+import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { Principal } from '@dfinity/principal';
 
 const SNS_CACHE_KEY = 'sns_data_cache';
@@ -63,54 +63,50 @@ export async function fetchAndCacheSnsData(identity) {
 
         console.log(`Processing ${deployedSnses.length} SNS instances...`); // Debug log
 
-        // Fetch canister info for each SNS
+        // Process each SNS instance
         const snsDataPromises = deployedSnses.map(async (sns) => {
             try {
-                console.log('Processing SNS:', sns); // Debug log
+                // Extract all canister IDs
                 const rootCanisterId = safeGetCanisterId(sns.root_canister_id);
-                if (!rootCanisterId) {
-                    console.error('Invalid root canister ID for SNS:', sns);
+                const governanceId = safeGetCanisterId(sns.governance_canister_id);
+                const ledgerId = safeGetCanisterId(sns.ledger_canister_id);
+                const swapId = safeGetCanisterId(sns.swap_canister_id);
+
+                if (!rootCanisterId || !governanceId || !ledgerId) {
+                    console.error('Missing required canister IDs for SNS:', {
+                        rootCanisterId,
+                        governanceId,
+                        ledgerId,
+                        swapId
+                    });
                     return null;
                 }
-                
-                console.log('Processing SNS with root canister:', rootCanisterId); // Debug log
-                
+
+                console.log('Processing SNS with governance canister:', governanceId); // Debug log
+
                 try {
-                    const snsRootActor = createSnsRootActor(rootCanisterId, {
+                    // Create governance actor to get metadata
+                    const governanceActor = createSnsGovernanceActor(governanceId, {
                         agentOptions: {
                             identity,
                         },
                     });
-                    
-                    console.log('Calling list_sns_canisters for', rootCanisterId); // Debug log
-                    const canisterInfo = await snsRootActor.list_sns_canisters({});
-                    console.log('Canister info for', rootCanisterId, ':', canisterInfo); // Debug log
 
-                    // Get canister IDs safely - updated property names to match response structure
-                    const governanceId = safeGetCanisterId(canisterInfo.governance);
-                    const ledgerId = safeGetCanisterId(canisterInfo.ledger);
-                    const swapId = safeGetCanisterId(canisterInfo.swap);
+                    // Get metadata from governance canister
+                    const metadataResponse = await governanceActor.get_metadata({});
+                    console.log('Metadata response:', metadataResponse); // Debug log
 
-                    if (!governanceId || !ledgerId) {
-                        console.error('Missing required canister IDs for SNS:', rootCanisterId, {
-                            governanceId,
-                            ledgerId,
-                            swapId
-                        });
-                        return null;
-                    }
-
-                    // Get metadata safely
-                    const metadata = sns.metadata?.[0] || {};
-                    console.log('SNS metadata:', metadata); // Debug log
-                    const name = metadata.name?.[0] || rootCanisterId;
-                    const description = metadata.description?.[0] || '';
-                    const logo = metadata.logo?.[0] || '';
+                    const metadata = metadataResponse?.metadata?.[0] || {};
+                    const name = metadata.name || rootCanisterId;
+                    const description = metadata.description || '';
+                    const url = metadata.url || '';
+                    const logo = metadata.logo || '';
                     
                     const snsData = {
                         rootCanisterId,
                         name,
                         description,
+                        url,
                         logo,
                         canisters: {
                             governance: governanceId,
@@ -125,7 +121,7 @@ export async function fetchAndCacheSnsData(identity) {
                 } catch (err) {
                     // Skip SNSes that aren't properly installed yet
                     if (err.message?.includes('no Wasm module')) {
-                        console.log(`Skipping uninstalled SNS ${rootCanisterId}`);
+                        console.log(`Skipping uninstalled SNS ${governanceId}`);
                         return null;
                     }
                     throw err;
