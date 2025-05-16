@@ -48,7 +48,7 @@ function SnsDropdown() {
     };
 
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginRight: '15px' }}>
             <select
                 value={selectedSnsRoot}
                 onChange={handleSnsChange}
@@ -76,25 +76,6 @@ function SnsDropdown() {
                     </>
                 )}
             </select>
-            <button
-                onClick={async () => {
-                    setLoadingSnses(true);
-                    clearSnsCache();
-                    await loadSnsData();
-                }}
-                style={{
-                    backgroundColor: '#3498db',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '4px',
-                    padding: '8px 12px',
-                    cursor: 'pointer',
-                    fontSize: '14px'
-                }}
-                disabled={loadingSnses}
-            >
-                🔄
-            </button>
         </div>
     );
 }

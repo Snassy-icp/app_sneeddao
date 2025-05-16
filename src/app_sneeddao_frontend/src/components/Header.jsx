@@ -79,7 +79,6 @@ function Header({ showTotalValue, showSnsDropdown }) {
                     display: 'flex', 
                     alignItems: 'center', 
                     marginBottom: '8px',
-                    gap: '20px'
                 }}>
                     <button
                         onClick={toggleMenu}
@@ -106,9 +105,6 @@ function Header({ showTotalValue, showSnsDropdown }) {
                         {menuSections[activeSection].icon}
                         {menuSections[activeSection].displayName}
                     </div>
-                    {showSnsDropdown && (
-                        <SnsDropdown />
-                    )}
                 </div>
                 <div style={{ 
                     display: 'flex',
@@ -145,7 +141,8 @@ function Header({ showTotalValue, showSnsDropdown }) {
                 </div>
             </div>
             {showTotalValue && <h4>Total Value: ${showTotalValue}</h4>}
-            <div className="header-right">
+            <div className="header-right" style={{ display: 'flex', alignItems: 'center' }}>
+                {showSnsDropdown && <SnsDropdown />}
                 {isAuthenticated ? (
                     <PrincipalBox 
                         principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
