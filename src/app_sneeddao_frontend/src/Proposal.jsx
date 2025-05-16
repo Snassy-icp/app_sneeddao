@@ -266,7 +266,7 @@ function Proposal() {
                             <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px', marginTop: '10px' }}>
                                 <p><strong>SNS:</strong> {selectedSns?.name || 'Unknown SNS'}</p>
                                 <p><strong>Title:</strong> {proposalData.proposal?.[0]?.title || 'No title'}</p>
-                                <p><strong>Summary:</strong> {proposalData.proposal?.[0]?.summary || 'No summary'}</p>
+                                <p><strong>Summary:</strong> <span dangerouslySetInnerHTML={{ __html: proposalData.proposal?.[0]?.summary || 'No summary' }} /></p>
                                 <p><strong>URL:</strong> <a href={proposalData.proposal?.[0]?.url} target="_blank" rel="noopener noreferrer" style={{ color: '#3498db' }}>{proposalData.proposal?.[0]?.url}</a></p>
                                 <p><strong>Status:</strong> {getProposalStatus(proposalData)}</p>
                                 <p><strong>Created:</strong> {new Date(Number(proposalData.proposal_creation_timestamp_seconds || 0) * 1000).toLocaleString()}</p>

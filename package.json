@@ -18,9 +18,10 @@
   "dependencies": {
     "@dfinity/agent": "^2.0.0",
     "@dfinity/auth-client": "^2.0.0",
-    "@dfinity/utils": "^2.0.0",
     "@dfinity/ledger-icrc": "^2.0.0",
+    "@dfinity/utils": "^2.0.0",
     "@emotion/styled": "^11.14.0",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^6.26.0",
     "reactflow": "^11.11.4"
   }
