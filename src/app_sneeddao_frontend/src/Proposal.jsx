@@ -174,7 +174,19 @@ function Proposal() {
 
     // Helper function to check if proposal is critical
     const isCriticalProposal = (data) => {
-        return data?.minimum_yes_proportion_of_total?.basis_points?.[0] === 6700; // 67% threshold for critical proposals
+        console.log('Checking if proposal is critical:', {
+            exercisedProportion: data?.minimum_yes_proportion_of_exercised?.[0]?.basis_points?.[0],
+            totalProportion: data?.minimum_yes_proportion_of_total?.[0]?.basis_points?.[0]
+        });
+        return data?.minimum_yes_proportion_of_exercised?.[0]?.basis_points?.[0] === 6700n;
+    };
+
+    // Helper function to get topic name
+    const getTopicName = (data) => {
+        if (!data?.topic?.[0]) return 'Unknown';
+        // Get the first key of the topic object
+        const topicKey = Object.keys(data.topic[0])[0];
+        return topicKey || 'Unknown';
     };
 
     // Helper function to calculate standard majority threshold
@@ -486,6 +498,7 @@ function Proposal() {
                             <h2>Proposal Information</h2>
                             <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px', marginTop: '10px' }}>
                                 <p><strong>SNS:</strong> {selectedSns?.name || 'Unknown SNS'}</p>
+                                <p><strong>Topic:</strong> {getTopicName(proposalData)}</p>
                                 <p><strong>Title:</strong> {proposalData.proposal?.[0]?.title || 'No title'}</p>
                                 <p><strong>Summary:</strong> <div style={{ 
                                     backgroundColor: '#2a2a2a', 
