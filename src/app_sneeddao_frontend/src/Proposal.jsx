@@ -350,16 +350,16 @@ function Proposal() {
                             <strong>Immediate {isCritical ? 'supermajority' : 'majority'} decision</strong> <span style={{ fontSize: '12px' }}>ℹ️</span>
                             <p style={{ margin: '5px 0', color: '#95a5a6' }}>
                                 {isCritical ? 
-                                    'A critical proposal is immediately adopted or rejected if, before the voting period ends, more than 67% of the total voting power votes Yes, or at least 33% votes No, respectively (indicated by •).' :
-                                    'A proposal is immediately adopted or rejected if, before the voting period ends, more than half of the total voting power votes Yes, or at least half votes No, respectively (indicated by •).'}
+                                    'A critical proposal is immediately adopted or rejected if, before the voting period ends, more than 67% of the total voting power votes Yes (indicated by the yellow marker), or at least 33% votes No, respectively.' :
+                                    'A proposal is immediately adopted or rejected if, before the voting period ends, more than half of the total voting power votes Yes (indicated by the yellow marker), or at least half votes No, respectively.'}
                             </p>
                         </li>
                         <li>
                             <strong>Standard {isCritical ? 'supermajority' : 'majority'} decision</strong> <span style={{ fontSize: '12px' }}>ℹ️</span>
                             <p style={{ margin: '5px 0', color: '#95a5a6' }}>
                                 {isCritical ?
-                                    'At the end of the voting period, a critical proposal is adopted if more than 67% of the votes cast are Yes votes, provided these votes represent at least 3% of the total voting power (indicated by •). Otherwise, it is rejected. Before a proposal is decided, the voting period can be extended in order to "wait for quiet". Such voting period extensions occur when a proposal\'s voting results turn from either a Yes majority to a No majority or vice versa.' :
-                                    'At the end of the voting period, a proposal is adopted if more than half of the votes cast are Yes votes, provided these votes represent at least 3% of the total voting power (indicated by •). Otherwise, it is rejected. Before a proposal is decided, the voting period can be extended in order to "wait for quiet". Such voting period extensions occur when a proposal\'s voting results turn from either a Yes majority to a No majority or vice versa.'}
+                                    'At the end of the voting period, a critical proposal is adopted if more than 67% of the votes cast are Yes votes, provided these votes represent at least 3% of the total voting power (indicated by the purple marker). Otherwise, it is rejected. Before a proposal is decided, the voting period can be extended in order to "wait for quiet". Such voting period extensions occur when a proposal\'s voting results turn from either a Yes majority to a No majority or vice versa.' :
+                                    'At the end of the voting period, a proposal is adopted if more than half of the votes cast are Yes votes, provided these votes represent at least 3% of the total voting power (indicated by the purple marker). Otherwise, it is rejected. Before a proposal is decided, the voting period can be extended in order to "wait for quiet". Such voting period extensions occur when a proposal\'s voting results turn from either a Yes majority to a No majority or vice versa.'}
                             </p>
                         </li>
                     </ol>
