@@ -275,97 +275,137 @@ function Proposal() {
                     {isCritical ? (
                         <>
                             {/* 67% marker for critical proposals */}
-                            <div style={{
-                                position: 'absolute',
-                                left: '67%',
-                                height: '32px',
-                                width: '2px',
-                                backgroundColor: '#f1c40f',
-                                top: '-4px'
-                            }} />
-                            <div style={{
-                                position: 'absolute',
-                                left: '67%',
-                                transform: 'translateX(-50%)',
-                                top: '-20px',
-                                color: '#f1c40f',
-                                fontSize: '16px'
-                            }}>•</div>
+                            <div 
+                                style={{
+                                    position: 'absolute',
+                                    left: '67%',
+                                    height: '32px',
+                                    width: '2px',
+                                    backgroundColor: '#f1c40f',
+                                    top: '-4px',
+                                    cursor: 'help'
+                                }}
+                                title="Critical Proposal Pass Threshold (67%): If this many votes are cast as 'Yes', the proposal will pass immediately"
+                            />
+                            <div 
+                                style={{
+                                    position: 'absolute',
+                                    left: '67%',
+                                    transform: 'translateX(-50%)',
+                                    top: '-20px',
+                                    color: '#f1c40f',
+                                    fontSize: '16px',
+                                    cursor: 'help'
+                                }}
+                                title="Critical Proposal Pass Threshold (67%): If this many votes are cast as 'Yes', the proposal will pass immediately"
+                            >•</div>
                             {/* 33% fail marker for critical proposals */}
-                            <div style={{
-                                position: 'absolute',
-                                left: '33%',
-                                height: '32px',
-                                width: '2px',
-                                backgroundColor: '#e67e22',
-                                top: '-4px'
-                            }} />
-                            <div style={{
-                                position: 'absolute',
-                                left: '33%',
-                                transform: 'translateX(-50%)',
-                                top: '-20px',
-                                color: '#e67e22',
-                                fontSize: '16px'
-                            }}>•</div>
+                            <div 
+                                style={{
+                                    position: 'absolute',
+                                    left: '33%',
+                                    height: '32px',
+                                    width: '2px',
+                                    backgroundColor: '#e67e22',
+                                    top: '-4px',
+                                    cursor: 'help'
+                                }}
+                                title="Critical Proposal Fail Threshold (33%): If this many votes are cast as 'No', the proposal will fail immediately"
+                            />
+                            <div 
+                                style={{
+                                    position: 'absolute',
+                                    left: '33%',
+                                    transform: 'translateX(-50%)',
+                                    top: '-20px',
+                                    color: '#e67e22',
+                                    fontSize: '16px',
+                                    cursor: 'help'
+                                }}
+                                title="Critical Proposal Fail Threshold (33%): If this many votes are cast as 'No', the proposal will fail immediately"
+                            >•</div>
                         </>
                     ) : (
                         <>
                             {/* 50% marker for regular proposals */}
-                            <div style={{
-                                position: 'absolute',
-                                left: '50%',
-                                height: '32px',
-                                width: '2px',
-                                backgroundColor: '#f1c40f',
-                                top: '-4px'
-                            }} />
-                            <div style={{
-                                position: 'absolute',
-                                left: '50%',
-                                transform: 'translateX(-50%)',
-                                top: '-20px',
-                                color: '#f1c40f',
-                                fontSize: '16px'
-                            }}>•</div>
+                            <div 
+                                style={{
+                                    position: 'absolute',
+                                    left: '50%',
+                                    height: '32px',
+                                    width: '2px',
+                                    backgroundColor: '#f1c40f',
+                                    top: '-4px',
+                                    cursor: 'help'
+                                }}
+                                title="Regular Proposal Threshold (50%): If more than half of the votes are 'Yes', the proposal will pass at the end of the voting period"
+                            />
+                            <div 
+                                style={{
+                                    position: 'absolute',
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    top: '-20px',
+                                    color: '#f1c40f',
+                                    fontSize: '16px',
+                                    cursor: 'help'
+                                }}
+                                title="Regular Proposal Threshold (50%): If more than half of the votes are 'Yes', the proposal will pass at the end of the voting period"
+                            >•</div>
                         </>
                     )}
 
                     {/* Standard majority threshold marker (3% of total voting power) */}
-                    <div style={{
-                        position: 'absolute',
-                        left: `${standardMajorityPercent}%`,
-                        height: '32px',
-                        width: '2px',
-                        backgroundColor: '#9b59b6',
-                        top: '-4px'
-                    }} />
-                    <div style={{
-                        position: 'absolute',
-                        left: `${standardMajorityPercent}%`,
-                        transform: 'translateX(-50%)',
-                        top: '-20px',
-                        color: '#9b59b6',
-                        fontSize: '16px'
-                    }}>•</div>
+                    <div 
+                        style={{
+                            position: 'absolute',
+                            left: `${standardMajorityPercent}%`,
+                            height: '32px',
+                            width: '2px',
+                            backgroundColor: '#9b59b6',
+                            top: '-4px',
+                            cursor: 'help'
+                        }}
+                        title="Minimum Participation Threshold (3%): At least this much voting power must participate for the proposal to be valid"
+                    />
+                    <div 
+                        style={{
+                            position: 'absolute',
+                            left: `${standardMajorityPercent}%`,
+                            transform: 'translateX(-50%)',
+                            top: '-20px',
+                            color: '#9b59b6',
+                            fontSize: '16px',
+                            cursor: 'help'
+                        }}
+                        title="Minimum Participation Threshold (3%): At least this much voting power must participate for the proposal to be valid"
+                    >•</div>
                     
                     {/* Current position marker */}
-                    <div style={{
-                        position: 'absolute',
-                        left: `${yesPercent}%`,
-                        height: '32px',
-                        width: '2px',
-                        backgroundColor: '#3498db',
-                        top: '-4px'
-                    }} />
-                    <div style={{
-                        position: 'absolute',
-                        left: `${yesPercent}%`,
-                        transform: 'translateX(-50%)',
-                        top: '-20px',
-                        color: '#3498db',
-                        fontSize: '16px'
-                    }}>•</div>
+                    <div 
+                        style={{
+                            position: 'absolute',
+                            left: `${yesPercent}%`,
+                            height: '32px',
+                            width: '2px',
+                            backgroundColor: '#3498db',
+                            top: '-4px',
+                            cursor: 'help'
+                        }}
+                        title={`Current Position (${yesPercent.toFixed(2)}%): Current percentage of 'Yes' votes`}
+                    />
+                    <div 
+                        style={{
+                            position: 'absolute',
+                            left: `${yesPercent}%`,
+                            transform: 'translateX(-50%)',
+                            top: '-20px',
+                            color: '#3498db',
+                            fontSize: '16px',
+                            cursor: 'help'
+                        }}
+                        title={`Current Position (${yesPercent.toFixed(2)}%): Current percentage of 'Yes' votes`}
+                    >•</div>
                 </div>
                 
                 {/* Voting information */}
