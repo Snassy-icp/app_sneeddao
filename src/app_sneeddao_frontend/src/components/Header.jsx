@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaBars, FaTimes, FaLock, FaTrophy } from 'react-icons/fa';
+import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
@@ -11,31 +11,52 @@ function Header({ showTotalValue }) {
     const { isAuthenticated, identity, login, logout } = useAuth();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [activeSection, setActiveSection] = useState(() => {
-        if (location.pathname === '/rll' || location.pathname === '/rll_info') return 'Rewards';
-        if (location.pathname === '/dashboard') return 'SneedLock';
-        return 'Wallet';
+        const path = location.pathname;
+        if (['/dao', '/dao_info', '/rll_info', '/products', '/partners', '/proposals'].includes(path)) return 'DAO';
+        if (['/wallet'].includes(path)) return 'Wallet';
+        if (['/me', '/rll'].includes(path)) return 'Me';
+        if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
+        return 'DAO';
     });
 
     const menuSections = {
+        'DAO': {
+            icon: <FaBuilding size={18} />,
+            displayName: 'Sneed DAO',
+            defaultPath: '/dao',
+            subMenu: [
+                { name: 'DAO', path: '/dao' },
+                { name: 'Dashboard', path: '/dao_info' },
+                { name: 'Tokenomics', path: '/rll_info' },
+                { name: 'Products', path: '/products' },
+                { name: 'Partners', path: '/partners' },
+                { name: 'Proposals', path: '/proposals' }
+            ]
+        },
         'Wallet': {
             icon: <FaWallet size={18} />,
+            displayName: 'Sneed Wallet',
+            defaultPath: '/wallet',
             subMenu: [
-                { name: 'Tokens', path: '/wallet' },
-                { name: 'Positions', path: '/wallet' }
+                { name: 'Wallet', path: '/wallet' }
             ]
         },
-        'SneedLock': {
+        'Me': {
+            icon: <FaUser size={18} />,
+            displayName: 'Sneed Me',
+            defaultPath: '/me',
+            subMenu: [
+                { name: 'Me', path: '/me' },
+                { name: 'My Rewards', path: '/rll' }
+            ]
+        },
+        'Locks': {
             icon: <FaLock size={18} />,
+            displayName: 'Sneed Lock',
+            defaultPath: '/sneedlock',
             subMenu: [
-                { name: 'My Locks', path: '/wallet' },
-                { name: 'Dashboard', path: '/dashboard' }
-            ]
-        },
-        'Rewards': {
-            icon: <FaTrophy size={18} />,
-            subMenu: [
-                { name: 'Claim', path: '/rll' },
-                { name: 'Dashboard', path: '/rll_info' }
+                { name: 'Locks', path: '/sneedlock' },
+                { name: 'Dashboard', path: '/sneedlock_info' }
             ]
         }
     };
@@ -47,8 +68,7 @@ function Header({ showTotalValue }) {
     const handleSectionClick = (section) => {
         setActiveSection(section);
         toggleMenu();
-        const firstSubMenuItem = menuSections[section].subMenu[0];
-        navigate(firstSubMenuItem.path);
+        navigate(menuSections[section].defaultPath);
     };
 
     return (
@@ -74,10 +94,12 @@ function Header({ showTotalValue }) {
                         fontWeight: 'bold',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '10px'
-                    }}>
+                        gap: '10px',
+                        cursor: 'pointer'
+                    }}
+                    onClick={() => navigate(menuSections[activeSection].defaultPath)}>
                         {menuSections[activeSection].icon}
-                        {activeSection}
+                        {menuSections[activeSection].displayName}
                     </div>
                 </div>
                 <div style={{ 
@@ -155,7 +177,7 @@ function Header({ showTotalValue }) {
                         flexDirection: 'column',
                         gap: '15px'
                     }}>
-                        {Object.entries(menuSections).map(([section, { icon }]) => (
+                        {Object.entries(menuSections).map(([section, { icon, displayName }]) => (
                             <button 
                                 key={section}
                                 onClick={() => handleSectionClick(section)}
