@@ -15,6 +15,16 @@ import Proposal from './Proposal';
 import { AuthProvider } from './AuthContext';
 import Layout from './components/Layout';
 
+// Import new pages
+import Dao from './pages/Dao';
+import DaoInfo from './pages/DaoInfo';
+import Me from './pages/Me';
+import MeInfo from './pages/MeInfo';
+import Tokenomics from './pages/Tokenomics';
+import TokenomicsInfo from './pages/TokenomicsInfo';
+import Sneedlock from './pages/Sneedlock';
+import SneedlockInfo from './pages/SneedlockInfo';
+
 function App() {
   return (
     <AuthProvider>
@@ -34,6 +44,16 @@ function App() {
             <Route path="/tokenlocksoverview" element={<TokenLocksOverview />} />
             <Route path="/neuron" element={<Neuron />} />
             <Route path="/proposal" element={<Proposal />} />
+
+            {/* New routes */}
+            <Route path="/dao" element={<Dao />} />
+            <Route path="/dao_info" element={<DaoInfo />} />
+            <Route path="/me" element={<Me />} />
+            <Route path="/me_info" element={<MeInfo />} />
+            <Route path="/tokenomics" element={<Tokenomics />} />
+            <Route path="/tokenomics_info" element={<TokenomicsInfo />} />
+            <Route path="/sneedlock" element={<Sneedlock />} />
+            <Route path="/sneedlock_info" element={<SneedlockInfo />} />
           </Routes>
         </Layout>
       </Router>
