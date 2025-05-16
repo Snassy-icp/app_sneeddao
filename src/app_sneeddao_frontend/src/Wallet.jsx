@@ -66,6 +66,11 @@ function Wallet() {
             return;
         }
 
+        // Reset states and cache when component mounts
+        setTokens([]);
+        setLiquidityPositions([]);
+        Object.keys(known_icrc1_ledgers).forEach(key => delete known_icrc1_ledgers[key]);
+        
         fetchBalancesAndLocks();
         fetchLiquidityPositions();
     }, [isAuthenticated, navigate, refreshTrigger]);
@@ -186,7 +191,6 @@ function Wallet() {
     // Fetch the token balances and locks from the backend and update the state
     async function fetchBalancesAndLocks(single_refresh_ledger_canister_id) {
         setShowTokensSpinner(true);
-        //known_icrc1_ledgers = {};
         try {
             // retrieve all the summed locks from the backend first.
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
@@ -209,9 +213,8 @@ function Wallet() {
                 const ledger_id = ledger.toText();
                 if (!known_icrc1_ledgers[ledger_id]) {
                     known_icrc1_ledgers[ledger_id] = true;
-                    icrc1_ledgers[icrc1_ledgers.length] = ledger;
+                    icrc1_ledgers.push(ledger);
                 }
-                //icrc1_ledgers[icrc1_ledgers.length] = ledger;
             }
             
             var singleUpdatedToken = [];
@@ -222,18 +225,7 @@ function Wallet() {
                     token.ledger_canister_id.toText() === single_refresh_ledger_canister_id.toText() ? updatedToken : token
                 ));
                 singleUpdatedToken = [updatedToken];
-
-                /*const tokenToUpdate = icrc1_ledgers.find(ledger => ledger.toText() === single_refresh_ledger_canister_id.toText());
-                if (tokenToUpdate) {
-                    const updatedToken = await fetchTokenDetails(tokenToUpdate, summed_locks);
-                    setTokens(prevTokens => prevTokens.map(token => 
-                        token.ledger_canister_id.toText() === single_refresh_ledger_canister_id.toText() ? updatedToken : token
-                    ));
-                    singleUpdatedToken = [updatedToken];
-                }*/
             } else {
-                setTokens([]);
-
                 allUpdatedTokens = await Promise.all(icrc1_ledgers.map(async (icrc1_ledger) => {
                     const updatedToken = await fetchTokenDetails(icrc1_ledger, summed_locks);
                     setTokens(prevTokens => [...prevTokens, updatedToken]);
@@ -241,7 +233,7 @@ function Wallet() {
                 }));
             }
 
-            /*await*/ fetchLockDetails(single_refresh_ledger_canister_id ? singleUpdatedToken : allUpdatedTokens);
+            fetchLockDetails(single_refresh_ledger_canister_id ? singleUpdatedToken : allUpdatedTokens);
             fetchRewardDetails(single_refresh_ledger_canister_id);
 
         } catch (error) {
