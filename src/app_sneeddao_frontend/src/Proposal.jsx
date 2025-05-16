@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from './AuthContext';
 import Header from './components/Header';
 import ReactMarkdown from 'react-markdown';
@@ -20,6 +21,8 @@ function Proposal() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [loadingSnses, setLoadingSnses] = useState(true);
+    const [votingHistory, setVotingHistory] = useState(null);
+    const [isVotingHistoryExpanded, setIsVotingHistoryExpanded] = useState(false);
 
     // Fetch SNS data on component mount
     useEffect(() => {
@@ -408,6 +411,36 @@ function Proposal() {
         );
     };
 
+    // Add this new function to fetch voting history
+    const fetchVotingHistory = async (proposalId) => {
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            const ballots = await rllActor.get_proposal_ballots(BigInt(proposalId));
+            setVotingHistory(ballots);
+        } catch (err) {
+            console.error('Error fetching voting history:', err);
+        }
+    };
+
+    // Modify useEffect to fetch voting history for Sneed proposals
+    useEffect(() => {
+        if (currentProposalId && selectedSnsRoot === SNEED_SNS_ROOT) {
+            fetchVotingHistory(currentProposalId);
+        }
+    }, [currentProposalId, selectedSnsRoot]);
+
+    // Add helper function to format vote
+    const formatVote = (voteNumber) => {
+        switch (voteNumber) {
+            case 1:
+                return 'Yes';
+            case 2:
+                return 'No';
+            default:
+                return 'Unknown';
+        }
+    };
+
     return (
         <div className='page-container'>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
@@ -481,6 +514,74 @@ function Proposal() {
                                 
                                 {proposalData.latest_tally?.[0] && <VotingBar proposalData={proposalData} />}
                             </div>
+
+                            {/* Add voting history section for Sneed only */}
+                            {selectedSnsRoot === SNEED_SNS_ROOT && (
+                                <div style={{ marginTop: '20px' }}>
+                                    <div 
+                                        onClick={() => setIsVotingHistoryExpanded(!isVotingHistoryExpanded)}
+                                        style={{
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px',
+                                            padding: '10px',
+                                            backgroundColor: '#3a3a3a',
+                                            borderRadius: '6px',
+                                            marginBottom: isVotingHistoryExpanded ? '10px' : '0'
+                                        }}
+                                    >
+                                        <span style={{ 
+                                            transform: isVotingHistoryExpanded ? 'rotate(90deg)' : 'none',
+                                            transition: 'transform 0.3s ease',
+                                            display: 'inline-block'
+                                        }}>▶</span>
+                                        <h3 style={{ margin: 0 }}>Voting History</h3>
+                                    </div>
+                                    
+                                    {isVotingHistoryExpanded && votingHistory && (
+                                        <div style={{ 
+                                            backgroundColor: '#3a3a3a',
+                                            padding: '15px',
+                                            borderRadius: '6px'
+                                        }}>
+                                            {votingHistory.map(([principal, ballot], index) => (
+                                                <div 
+                                                    key={index}
+                                                    style={{
+                                                        padding: '10px',
+                                                        backgroundColor: '#2a2a2a',
+                                                        marginBottom: '10px',
+                                                        borderRadius: '4px',
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center'
+                                                    }}
+                                                >
+                                                    <div>
+                                                        <div style={{ fontSize: '14px', color: '#888' }}>Voter</div>
+                                                        <div style={{ wordBreak: 'break-all' }}>{principal}</div>
+                                                    </div>
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        <div style={{ fontSize: '14px', color: '#888' }}>Vote</div>
+                                                        <div style={{ 
+                                                            color: ballot.vote === 1 ? '#2ecc71' : ballot.vote === 2 ? '#e74c3c' : '#ffffff'
+                                                        }}>
+                                                            {formatVote(ballot.vote)}
+                                                        </div>
+                                                        <div style={{ fontSize: '12px', color: '#888' }}>
+                                                            {new Date(Number(ballot.cast_timestamp_seconds) * 1000).toLocaleString()}
+                                                        </div>
+                                                        <div style={{ fontSize: '12px', color: '#888' }}>
+                                                            Power: {formatE8s(ballot.voting_power)}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
                 </section>
