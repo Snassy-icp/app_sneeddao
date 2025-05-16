@@ -24,6 +24,9 @@ import Tokenomics from './pages/Tokenomics';
 import TokenomicsInfo from './pages/TokenomicsInfo';
 import Sneedlock from './pages/Sneedlock';
 import SneedlockInfo from './pages/SneedlockInfo';
+import Products from './pages/Products';
+import Partners from './pages/Partners';
+import Proposals from './pages/Proposals';
 
 function App() {
   return (
@@ -54,6 +57,9 @@ function App() {
             <Route path="/tokenomics_info" element={<TokenomicsInfo />} />
             <Route path="/sneedlock" element={<Sneedlock />} />
             <Route path="/sneedlock_info" element={<SneedlockInfo />} />
+            <Route path="/products" element={<Products />} />
+            <Route path="/partners" element={<Partners />} />
+            <Route path="/proposals" element={<Proposals />} />
           </Routes>
         </Layout>
       </Router>
