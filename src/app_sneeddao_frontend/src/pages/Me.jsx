@@ -363,27 +363,35 @@ export default function Me() {
                                                             >
                                                                 📋
                                                             </button>
-                                                            {hasHotkeyAccess && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setEditingName(neuronId);
-                                                                        setNameInput(displayName || '');
-                                                                    }}
-                                                                    style={{
-                                                                        background: 'none',
-                                                                        border: 'none',
-                                                                        padding: '4px',
-                                                                        cursor: 'pointer',
-                                                                        color: '#888',
-                                                                        display: 'flex',
-                                                                        alignItems: 'center'
-                                                                    }}
-                                                                    title="Edit neuron name"
-                                                                >
-                                                                    ✏️
-                                                                </button>
-                                                            )}
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setEditingName(neuronId);
+                                                                    setNameInput(displayName || '');
+                                                                }}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    padding: '4px',
+                                                                    cursor: 'pointer',
+                                                                    color: '#888',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center'
+                                                                }}
+                                                                title="Edit neuron name/nickname"
+                                                            >
+                                                                ✏️
+                                                            </button>
+                                                            <div
+                                                                style={{
+                                                                    color: '#888',
+                                                                    cursor: 'help',
+                                                                    fontSize: '14px'
+                                                                }}
+                                                                title="Names (blue) are public and visible to everyone, but can only be set if you have hotkey access. Nicknames (gray) are private and can be set for any neuron you can see."
+                                                            >
+                                                                ℹ️
+                                                            </div>
                                                         </div>
                                                         {editingName === neuronId && (
                                                             <div style={{ 
@@ -426,21 +434,23 @@ export default function Me() {
                                                                     >
                                                                         Set Nickname
                                                                     </button>
-                                                                    <button
-                                                                        onClick={() => handleNameSubmit(neuronId, false)}
-                                                                        style={{
-                                                                            backgroundColor: '#3498db',
-                                                                            color: '#ffffff',
-                                                                            border: 'none',
-                                                                            borderRadius: '4px',
-                                                                            padding: '8px 12px',
-                                                                            cursor: 'pointer',
-                                                                            whiteSpace: 'nowrap'
-                                                                        }}
-                                                                        title="Set as public name"
-                                                                    >
-                                                                        Set Name
-                                                                    </button>
+                                                                    {hasHotkeyAccess && (
+                                                                        <button
+                                                                            onClick={() => handleNameSubmit(neuronId, false)}
+                                                                            style={{
+                                                                                backgroundColor: '#3498db',
+                                                                                color: '#ffffff',
+                                                                                border: 'none',
+                                                                                borderRadius: '4px',
+                                                                                padding: '8px 12px',
+                                                                                cursor: 'pointer',
+                                                                                whiteSpace: 'nowrap'
+                                                                            }}
+                                                                            title="Set as public name"
+                                                                        >
+                                                                            Set Name
+                                                                        </button>
+                                                                    )}
                                                                     <button
                                                                         onClick={() => {
                                                                             setEditingName(null);
