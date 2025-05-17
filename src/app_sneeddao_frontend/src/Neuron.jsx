@@ -299,7 +299,7 @@ function Neuron() {
                                                 <div style={{ fontSize: '14px', color: '#888' }}>
                                                     <div>{vote.proposal_title || 'No title'}</div>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px' }}>
-                                                        <span>{new Date(Number(vote.timestamp) / 1000000).toLocaleString()}</span>
+                                                        <span>{new Date(Number(vote.timestamp)).toLocaleString()}</span>
                                                         <span>{formatE8s(vote.voting_power)} VP</span>
                                                     </div>
                                                 </div>
