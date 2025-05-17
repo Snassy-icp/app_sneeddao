@@ -44,11 +44,11 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_admins : [Principal] = [deployer.caller];
 
   // Stable storage for neuron names and nicknames
-  stable var stable_neuron_names : [(NeuronNameKey, Text)] = [];
+  stable var stable_neuron_names : [(NeuronNameKey, (Text, Bool))] = [];
   stable var stable_neuron_nicknames : [(Principal, [(NeuronNameKey, Text)])] = [];
 
   // Runtime hashmaps for neuron names and nicknames
-  var neuron_names = HashMap.HashMap<NeuronNameKey, Text>(100, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
+  var neuron_names = HashMap.HashMap<NeuronNameKey, (Text, Bool)>(100, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
     Principal.equal(k1.sns_root_canister_id, k2.sns_root_canister_id) and Blob.equal(k1.neuron_id.id, k2.neuron_id.id)
   }, func(k: NeuronNameKey) : Nat32 {
     let h1 = Principal.hash(k.sns_root_canister_id);
@@ -345,6 +345,15 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     false
   };
 
+  // Helper function to check if caller is authorized to verify names
+  private func can_verify_names(caller : Principal, sns_root_canister_id : Principal) : async Bool {
+    if (is_admin(caller)) { return true; };
+    
+    // Check if caller is the SNS governance canister for this root
+    let governance_canister_id = await get_sns_governance_canister(sns_root_canister_id);
+    Principal.equal(caller, governance_canister_id)
+  };
+
   // Neuron name management
   public shared ({ caller }) func set_neuron_name(sns_root_canister_id : Principal, neuron_id : NeuronId, name : Text) : async Result.Result<Text, Text> {
     if (Principal.isAnonymous(caller)) {
@@ -365,14 +374,20 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         return #err("Caller is not authorized to name this neuron");
       };
 
-      neuron_names.put(key, name);
+      // Keep verification status if it exists, otherwise set to false
+      let current_verified = switch (neuron_names.get(key)) {
+        case (?(_, verified)) { verified };
+        case null { false };
+      };
+      
+      neuron_names.put(key, (name, current_verified));
       #ok("Successfully set neuron name")
     } catch (e) {
       #err("Failed to verify neuron ownership: " # Error.message(e))
     }
   };
 
-  public query func get_neuron_name(sns_root_canister_id : Principal, neuron_id : NeuronId) : async ?Text {
+  public query func get_neuron_name(sns_root_canister_id : Principal, neuron_id : NeuronId) : async ?(Text, Bool) {
     let key : NeuronNameKey = {
       sns_root_canister_id;
       neuron_id;
@@ -380,8 +395,60 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     neuron_names.get(key)
   };
 
-  public query func get_all_neuron_names() : async [(NeuronNameKey, Text)] {
+  public query func get_all_neuron_names() : async [(NeuronNameKey, (Text, Bool))] {
     Iter.toArray(neuron_names.entries())
+  };
+
+  public shared ({ caller }) func verify_neuron_name(sns_root_canister_id : Principal, neuron_id : NeuronId) : async Result.Result<Text, Text> {
+    try {
+      let authorized = await can_verify_names(caller, sns_root_canister_id);
+      if (not authorized) {
+        return #err("Caller is not authorized to verify names");
+      };
+
+      let key : NeuronNameKey = {
+        sns_root_canister_id;
+        neuron_id;
+      };
+
+      switch (neuron_names.get(key)) {
+        case (?(name, _)) {
+          neuron_names.put(key, (name, true));
+          #ok("Successfully verified neuron name")
+        };
+        case null {
+          #err("No name found for this neuron")
+        };
+      }
+    } catch (e) {
+      #err("Failed to verify name: " # Error.message(e))
+    }
+  };
+
+  public shared ({ caller }) func unverify_neuron_name(sns_root_canister_id : Principal, neuron_id : NeuronId) : async Result.Result<Text, Text> {
+    try {
+      let authorized = await can_verify_names(caller, sns_root_canister_id);
+      if (not authorized) {
+        return #err("Caller is not authorized to unverify names");
+      };
+
+      let key : NeuronNameKey = {
+        sns_root_canister_id;
+        neuron_id;
+      };
+
+      switch (neuron_names.get(key)) {
+        case (?(name, _)) {
+          neuron_names.put(key, (name, false));
+          #ok("Successfully unverified neuron name")
+        };
+        case null {
+          #err("No name found for this neuron")
+        };
+      }
+    } catch (e) {
+      #err("Failed to unverify name: " # Error.message(e))
+    }
   };
 
   // Neuron nickname management

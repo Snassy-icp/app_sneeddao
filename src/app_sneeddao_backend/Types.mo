@@ -75,6 +75,7 @@ module {
         sns_root_canister_id : Principal;
         neuron_id : NeuronId;
         name : Text;
+        verified : Bool;
     };
 
     // Neuron nickname types
