@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
@@ -16,7 +16,8 @@ import {
 export default function Me() {
     const { identity } = useAuth();
     const navigate = useNavigate();
-    const [selectedSnsRoot, setSelectedSnsRoot] = useState('');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || '');
     const [snsList, setSnsList] = useState([]);
     const [neurons, setNeurons] = useState([]);
     const [error, setError] = useState(null);
@@ -69,26 +70,20 @@ export default function Me() {
         return groups;
     }, [neurons, identity]);
 
-    // Fetch SNS data and token metadata on component mount
+    // Fetch SNS data on component mount
     useEffect(() => {
         const fetchSnsData = async () => {
             try {
                 const data = await fetchAndCacheSnsData();
                 setSnsList(data);
-                // Default to Sneed SNS
-                const sneedSns = data.find(sns => sns.rootCanisterId === 'fp274-iaaaa-aaaaq-aacha-cai');
-                if (sneedSns) {
-                    setSelectedSnsRoot(sneedSns.rootCanisterId);
-                    // Fetch token metadata immediately for the default SNS
-                    if (identity) {
-                        const icrc1Actor = createIcrc1Actor(sneedSns.canisters.ledger, {
-                            agentOptions: { identity }
-                        });
-                        const metadata = await icrc1Actor.icrc1_metadata();
-                        const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
-                        if (symbolEntry && symbolEntry[1]) {
-                            setTokenSymbol(symbolEntry[1].Text);
-                        }
+                
+                // If no SNS is selected in URL, default to Sneed SNS
+                if (!searchParams.get('sns')) {
+                    const sneedSns = data.find(sns => sns.rootCanisterId === 'fp274-iaaaa-aaaaq-aacha-cai');
+                    if (sneedSns) {
+                        const newSnsRoot = sneedSns.rootCanisterId;
+                        setSelectedSnsRoot(newSnsRoot);
+                        setSearchParams({ sns: newSnsRoot });
                     }
                 }
             } catch (err) {
@@ -116,6 +111,16 @@ export default function Me() {
                 
                 const neuronsList = await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
                 setNeurons(neuronsList);
+
+                // Fetch token metadata for the selected SNS
+                const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
+                    agentOptions: { identity }
+                });
+                const metadata = await icrc1Actor.icrc1_metadata();
+                const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
+                if (symbolEntry && symbolEntry[1]) {
+                    setTokenSymbol(symbolEntry[1].Text);
+                }
             } catch (err) {
                 console.error('Error fetching neurons:', err);
                 setError('Failed to load neurons');
@@ -126,63 +131,9 @@ export default function Me() {
         fetchNeurons();
     }, [identity, selectedSnsRoot]);
 
-    // Update token metadata when selected SNS changes
-    useEffect(() => {
-        const fetchTokenMetadata = async () => {
-            if (!identity || !selectedSnsRoot) return;
-            
-            try {
-                const selectedSns = getSnsById(selectedSnsRoot);
-                if (!selectedSns) return;
-
-                console.log('Fetching metadata for SNS:', selectedSns);
-                const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
-                    agentOptions: { identity }
-                });
-
-                const metadata = await icrc1Actor.icrc1_metadata();
-                console.log('Received metadata:', metadata);
-                const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
-                console.log('Found symbol entry:', symbolEntry);
-                if (symbolEntry && symbolEntry[1]) {
-                    console.log('Setting token symbol to:', symbolEntry[1].Text);
-                    setTokenSymbol(symbolEntry[1].Text);
-                } else {
-                    console.log('No valid symbol found in metadata:', metadata);
-                }
-            } catch (err) {
-                console.error('Error fetching token metadata:', err);
-                setTokenSymbol('SNS'); // Fallback to SNS
-            }
-        };
-        fetchTokenMetadata();
-    }, [identity, selectedSnsRoot]);
-
-    const handleSnsChange = (e) => {
-        const newSnsRoot = e.target.value;
+    const handleSnsChange = (newSnsRoot) => {
         setSelectedSnsRoot(newSnsRoot);
-        // Fetch token metadata immediately when SNS changes
-        const selectedSns = getSnsById(newSnsRoot);
-        if (selectedSns && identity) {
-            console.log('SNS changed, fetching metadata for:', selectedSns);
-            const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
-                agentOptions: { identity }
-            });
-            icrc1Actor.icrc1_metadata().then(metadata => {
-                console.log('Received metadata after SNS change:', metadata);
-                const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
-                console.log('Found symbol entry after SNS change:', symbolEntry);
-                if (symbolEntry && symbolEntry[1]) {
-                    console.log('Setting token symbol after SNS change to:', symbolEntry[1].Text);
-                    setTokenSymbol(symbolEntry[1].Text);
-                } else {
-                    console.log('No valid symbol found in metadata after SNS change:', metadata);
-                }
-            }).catch(err => {
-                console.error('Error fetching token metadata after SNS change:', err);
-                setTokenSymbol('SNS');
-            });
-        }
+        setSearchParams({ sns: newSnsRoot });
     };
 
     const toggleGroup = (groupId) => {
