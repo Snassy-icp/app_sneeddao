@@ -218,13 +218,45 @@ function Proposals() {
                                             {proposal.proposal[0]?.title || 'No title'}
                                         </h4>
                                     </div>
-                                    <div style={{
-                                        padding: '5px 10px',
-                                        borderRadius: '4px',
-                                        backgroundColor: '#3a3a3a',
-                                        color: '#ffffff'
-                                    }}>
-                                        {getProposalStatus(proposal)}
+                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                        <a 
+                                            href={`https://nns.ic0.app/proposal/?u=${selectedSnsRoot}&proposal=${proposal.id[0].id.toString()}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                                padding: '5px 10px',
+                                                borderRadius: '4px',
+                                                backgroundColor: '#2c3e50',
+                                                color: '#ffffff',
+                                                textDecoration: 'none',
+                                                fontSize: '14px'
+                                            }}
+                                        >
+                                            NNS
+                                        </a>
+                                        <a 
+                                            href={`https://dashboard.internetcomputer.org/sns/${selectedSnsRoot}/proposal/${proposal.id[0].id.toString()}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                                padding: '5px 10px',
+                                                borderRadius: '4px',
+                                                backgroundColor: '#2c3e50',
+                                                color: '#ffffff',
+                                                textDecoration: 'none',
+                                                fontSize: '14px'
+                                            }}
+                                        >
+                                            Dashboard
+                                        </a>
+                                        <div style={{
+                                            padding: '5px 10px',
+                                            borderRadius: '4px',
+                                            backgroundColor: '#3a3a3a',
+                                            color: '#ffffff'
+                                        }}>
+                                            {getProposalStatus(proposal)}
+                                        </div>
                                     </div>
                                 </div>
                                 <div 
