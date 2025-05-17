@@ -294,15 +294,23 @@ export default function Me() {
                                                             <div style={{ color: '#888' }}>Voting Power</div>
                                                             <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
                                                         </div>
-                                                        {/* Temporary debugging info */}
+                                                        {/* Replace debug info with hotkey status */}
                                                         <div style={{ gridColumn: '1 / -1' }}>
-                                                            <div style={{ color: '#888' }}>Permissions</div>
-                                                            <div style={{ color: '#ffffff', fontSize: '12px', wordBreak: 'break-all' }}>
-                                                                {neuron.permissions.map((p, i) => (
-                                                                    <div key={i}>
-                                                                        {p.principal?.toString()}: [{p.permission_type.join(', ')}]
-                                                                    </div>
-                                                                ))}
+                                                            <div style={{ 
+                                                                color: '#888',
+                                                                fontSize: '14px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '5px'
+                                                            }}>
+                                                                {neuron.permissions.some(p => 
+                                                                    p.principal?.toString() === identity.getPrincipal().toString() &&
+                                                                    p.permission_type.includes(4) // Check for vote permission
+                                                                ) ? (
+                                                                    <>
+                                                                        <span style={{ color: '#2ecc71' }}>🔑 Hotkey Access</span>
+                                                                    </>
+                                                                ) : null}
                                                             </div>
                                                         </div>
                                                     </div>
