@@ -535,6 +535,55 @@ function Proposal() {
                                 <p><strong>Topic:</strong> {getTopicName(proposalData)}</p>
                                 <p><strong>Title:</strong> {proposalData.proposal?.[0]?.title || 'No title'}</p>
                                 <p><strong>Proposer Neuron:</strong> {proposalData.proposer?.[0]?.id ? formatNeuronIdLink(proposalData.proposer[0].id, selectedSnsRoot) : 'Unknown'}</p>
+                                <p><strong>External Links:</strong>{' '}
+                                    <span style={{ display: 'inline-flex', gap: '10px', marginLeft: '10px' }}>
+                                        <a 
+                                            href={`https://nns.ic0.app/proposal/?u=${selectedSnsRoot}&proposal=${currentProposalId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                                padding: '5px 10px',
+                                                borderRadius: '4px',
+                                                backgroundColor: '#2c3e50',
+                                                color: '#ffffff',
+                                                textDecoration: 'none',
+                                                fontSize: '14px'
+                                            }}
+                                        >
+                                            NNS
+                                        </a>
+                                        <a 
+                                            href={`https://dashboard.internetcomputer.org/sns/${selectedSnsRoot}/proposal/${currentProposalId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                                padding: '5px 10px',
+                                                borderRadius: '4px',
+                                                backgroundColor: '#2c3e50',
+                                                color: '#ffffff',
+                                                textDecoration: 'none',
+                                                fontSize: '14px'
+                                            }}
+                                        >
+                                            Dashboard
+                                        </a>
+                                        <a 
+                                            href={`https://ic-toolkit.app/sns-management/${selectedSnsRoot}/proposals/view/${currentProposalId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                                padding: '5px 10px',
+                                                borderRadius: '4px',
+                                                backgroundColor: '#2c3e50',
+                                                color: '#ffffff',
+                                                textDecoration: 'none',
+                                                fontSize: '14px'
+                                            }}
+                                        >
+                                            Toolkit
+                                        </a>
+                                    </span>
+                                </p>
                                 <p><strong>Summary:</strong> <div style={{ 
                                     backgroundColor: '#2a2a2a', 
                                     padding: '10px', 

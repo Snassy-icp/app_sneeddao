@@ -249,6 +249,21 @@ function Proposals() {
                                         >
                                             Dashboard
                                         </a>
+                                        <a 
+                                            href={`https://ic-toolkit.app/sns-management/${selectedSnsRoot}/proposals/view/${proposal.id[0].id.toString()}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                                padding: '5px 10px',
+                                                borderRadius: '4px',
+                                                backgroundColor: '#2c3e50',
+                                                color: '#ffffff',
+                                                textDecoration: 'none',
+                                                fontSize: '14px'
+                                            }}
+                                        >
+                                            Toolkit
+                                        </a>
                                         <div style={{
                                             padding: '5px 10px',
                                             borderRadius: '4px',
