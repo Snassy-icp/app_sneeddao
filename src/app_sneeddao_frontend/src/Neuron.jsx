@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from './AuthContext';
 import Header from './components/Header';
 import './Wallet.css';
@@ -15,9 +16,11 @@ function Neuron() {
     const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || '');
     const [snsList, setSnsList] = useState([]);
     const [neuronData, setNeuronData] = useState(null);
+    const [votingHistory, setVotingHistory] = useState(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [loadingSnses, setLoadingSnses] = useState(true);
+    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
 
     // Fetch SNS data on component mount
     useEffect(() => {
@@ -58,6 +61,10 @@ function Neuron() {
     useEffect(() => {
         if (currentNeuronId && selectedSnsRoot) {
             fetchNeuronData();
+            // If this is a Sneed neuron, also fetch its voting history
+            if (selectedSnsRoot === SNEED_SNS_ROOT) {
+                fetchVotingHistory();
+            }
         }
     }, [currentNeuronId, selectedSnsRoot]);
 
@@ -100,6 +107,24 @@ function Neuron() {
             setError('Failed to fetch neuron data');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchVotingHistory = async () => {
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            
+            // Convert the hex string neuron ID back to a byte array
+            const neuronIdBytes = new Uint8Array(
+                currentNeuronId.match(/.{1,2}/g)
+                    .map(byte => parseInt(byte, 16))
+            );
+            
+            const history = await rllActor.get_neuron_voting_history(Array.from(neuronIdBytes));
+            setVotingHistory(history);
+        } catch (err) {
+            console.error('Error fetching voting history:', err);
+            setVotingHistory([]);
         }
     };
 
@@ -162,6 +187,18 @@ function Neuron() {
 
     const selectedSns = getSnsById(selectedSnsRoot);
 
+    // Helper function to format vote
+    const formatVote = (voteNumber) => {
+        switch (voteNumber) {
+            case 1:
+                return 'Yes';
+            case 2:
+                return 'No';
+            default:
+                return 'Unknown';
+        }
+    };
+
     return (
         <div className='page-container'>
             <Header showSnsDropdown={true} />
@@ -222,6 +259,55 @@ function Neuron() {
                                 <p><strong>Maturity:</strong> {formatE8s(neuronData.maturity_e8s_equivalent)} {selectedSns?.name || 'SNS'}</p>
                                 <p><strong>Voting Power Multiplier:</strong> {(Number(neuronData.voting_power_percentage_multiplier || 0) / 100).toFixed(2)}x</p>
                             </div>
+
+                            {selectedSnsRoot === SNEED_SNS_ROOT && votingHistory && votingHistory.length > 0 && (
+                                <div style={{ marginTop: '20px' }}>
+                                    <h2>Voting History</h2>
+                                    <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px' }}>
+                                        {votingHistory.map((vote, index) => (
+                                            <div 
+                                                key={index}
+                                                style={{
+                                                    padding: '10px',
+                                                    backgroundColor: '#2a2a2a',
+                                                    marginBottom: '10px',
+                                                    borderRadius: '4px'
+                                                }}
+                                            >
+                                                <div style={{ 
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'center',
+                                                    marginBottom: '5px'
+                                                }}>
+                                                    <div>
+                                                        <strong>Proposal:</strong>{' '}
+                                                        <Link 
+                                                            to={`/proposal?proposalid=${vote.proposal_id}&sns=${selectedSnsRoot}`}
+                                                            style={{ color: '#3498db', textDecoration: 'none' }}
+                                                        >
+                                                            #{vote.proposal_id}
+                                                        </Link>
+                                                    </div>
+                                                    <div style={{ 
+                                                        color: vote.vote === 1 ? '#2ecc71' : vote.vote === 2 ? '#e74c3c' : '#ffffff',
+                                                        fontWeight: 'bold'
+                                                    }}>
+                                                        {formatVote(vote.vote)}
+                                                    </div>
+                                                </div>
+                                                <div style={{ fontSize: '14px', color: '#888' }}>
+                                                    <div>{vote.proposal_title || 'No title'}</div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px' }}>
+                                                        <span>{new Date(Number(vote.timestamp) / 1000000).toLocaleString()}</span>
+                                                        <span>{formatE8s(vote.voting_power)} VP</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                 </section>
