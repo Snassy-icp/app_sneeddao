@@ -103,16 +103,50 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
         ? getNeuronDisplayNameFn(displayId, snsRoot)
         : window.getNeuronDisplayName?.(displayId, snsRoot);
 
-    return React.createElement(Link, {
-        to: `/neuron?neuronid=${displayId}&sns=${snsRoot}`,
+    // Create truncated ID display (first 6 and last 6 chars)
+    const truncatedId = `${displayId.slice(0, 6)}...${displayId.slice(-6)}`;
+
+    // Create container div for link and copy button
+    return React.createElement('div', {
         style: {
-            color: '#3498db',
-            textDecoration: 'none',
-            fontFamily: 'monospace'
-        },
-        onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
-        onMouseLeave: (e) => e.target.style.textDecoration = 'none'
-    }, displayName || displayId);
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px'
+        }
+    }, [
+        // Link with name and truncated ID
+        React.createElement(Link, {
+            key: 'link',
+            to: `/neuron?neuronid=${displayId}&sns=${snsRoot}`,
+            style: {
+                color: '#3498db',
+                textDecoration: 'none',
+                fontFamily: 'monospace'
+            },
+            title: displayId,
+            onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
+            onMouseLeave: (e) => e.target.style.textDecoration = 'none'
+        }, displayName ? `${displayName} (${truncatedId})` : truncatedId),
+        
+        // Copy button
+        React.createElement('button', {
+            key: 'copy',
+            onClick: (e) => {
+                e.preventDefault();
+                navigator.clipboard.writeText(displayId);
+            },
+            style: {
+                background: 'none',
+                border: 'none',
+                padding: '4px',
+                cursor: 'pointer',
+                color: '#888',
+                display: 'flex',
+                alignItems: 'center'
+            },
+            title: 'Copy neuron ID to clipboard'
+        }, '📋')
+    ]);
 };
 
 // Create a React link component for a proposal ID
