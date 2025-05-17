@@ -98,6 +98,9 @@ export const formatNeuronIdLink = (neuronId, snsRoot) => {
         ? uint8ArrayToHex(neuronId)
         : neuronId;
 
+    // Get the display name from the naming context
+    const displayName = window.getNeuronDisplayName?.(displayId, snsRoot);
+
     return React.createElement(Link, {
         to: `/neuron?neuronid=${displayId}&sns=${snsRoot}`,
         style: {
@@ -107,7 +110,7 @@ export const formatNeuronIdLink = (neuronId, snsRoot) => {
         },
         onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
         onMouseLeave: (e) => e.target.style.textDecoration = 'none'
-    }, displayId);
+    }, displayName || displayId);
 };
 
 // Create a React link component for a proposal ID

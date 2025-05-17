@@ -1,3 +1,4 @@
+import React from 'react';
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import Login from './Login';
 import Wallet from './Wallet';
@@ -13,6 +14,7 @@ import ScanWallet from './ScanWallet';
 import Neuron from './Neuron';
 import Proposal from './Proposal';
 import { AuthProvider } from './AuthContext';
+import { NamingProvider, useNaming } from './NamingContext';
 import Layout from './components/Layout';
 
 // Import new pages
@@ -28,40 +30,57 @@ import Products from './pages/Products';
 import Partners from './pages/Partners';
 import Proposals from './pages/Proposals';
 
+// Component to set up global naming function
+function GlobalNamingSetup() {
+    const { getNeuronDisplayName } = useNaming();
+    
+    React.useEffect(() => {
+        window.getNeuronDisplayName = getNeuronDisplayName;
+        return () => {
+            delete window.getNeuronDisplayName;
+        };
+    }, [getNeuronDisplayName]);
+    
+    return null;
+}
+
 function App() {
   return (
     <AuthProvider>
       <Router>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Login />} />
-            <Route path="/wallet" element={<Wallet />} />
-            <Route path="/doc" element={<Doc />} />
-            <Route path="/help" element={<Help />} />
-            <Route path="/rll" element={<RLL />} />
-            <Route path="/rll_info" element={<RLLInfo />} />
-            <Route path="/scan_wallet" element={<ScanWallet />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/tokenlock" element={<TokenLock />} />
-            <Route path="/positionlock" element={<PositionLock />} />
-            <Route path="/tokenlocksoverview" element={<TokenLocksOverview />} />
-            <Route path="/neuron" element={<Neuron />} />
-            <Route path="/proposal" element={<Proposal />} />
+        <NamingProvider>
+          <GlobalNamingSetup />
+          <Layout>
+            <Routes>
+              <Route path="/" element={<Login />} />
+              <Route path="/wallet" element={<Wallet />} />
+              <Route path="/doc" element={<Doc />} />
+              <Route path="/help" element={<Help />} />
+              <Route path="/rll" element={<RLL />} />
+              <Route path="/rll_info" element={<RLLInfo />} />
+              <Route path="/scan_wallet" element={<ScanWallet />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/tokenlock" element={<TokenLock />} />
+              <Route path="/positionlock" element={<PositionLock />} />
+              <Route path="/tokenlocksoverview" element={<TokenLocksOverview />} />
+              <Route path="/neuron" element={<Neuron />} />
+              <Route path="/proposal" element={<Proposal />} />
 
-            {/* New routes */}
-            <Route path="/dao" element={<Dao />} />
-            <Route path="/dao_info" element={<DaoInfo />} />
-            <Route path="/me" element={<Me />} />
-            <Route path="/me_info" element={<MeInfo />} />
-            <Route path="/tokenomics" element={<Tokenomics />} />
-            <Route path="/tokenomics_info" element={<TokenomicsInfo />} />
-            <Route path="/sneedlock" element={<Sneedlock />} />
-            <Route path="/sneedlock_info" element={<SneedlockInfo />} />
-            <Route path="/products" element={<Products />} />
-            <Route path="/partners" element={<Partners />} />
-            <Route path="/proposals" element={<Proposals />} />
-          </Routes>
-        </Layout>
+              {/* New routes */}
+              <Route path="/dao" element={<Dao />} />
+              <Route path="/dao_info" element={<DaoInfo />} />
+              <Route path="/me" element={<Me />} />
+              <Route path="/me_info" element={<MeInfo />} />
+              <Route path="/tokenomics" element={<Tokenomics />} />
+              <Route path="/tokenomics_info" element={<TokenomicsInfo />} />
+              <Route path="/sneedlock" element={<Sneedlock />} />
+              <Route path="/sneedlock_info" element={<SneedlockInfo />} />
+              <Route path="/products" element={<Products />} />
+              <Route path="/partners" element={<Partners />} />
+              <Route path="/proposals" element={<Proposals />} />
+            </Routes>
+          </Layout>
+        </NamingProvider>
       </Router>
     </AuthProvider>
   );

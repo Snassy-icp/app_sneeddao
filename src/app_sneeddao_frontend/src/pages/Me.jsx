@@ -20,6 +20,7 @@ import {
     getAllNeuronNames,
     getAllNeuronNicknames
 } from '../utils/BackendUtils';
+import { useNaming } from '../NamingContext';
 
 export default function Me() {
     const { identity } = useAuth();
@@ -33,10 +34,11 @@ export default function Me() {
     const [loadingSnses, setLoadingSnses] = useState(true);
     const [expandedGroups, setExpandedGroups] = useState(new Set(['self'])); // Default expand self group
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
-    const [neuronNames, setNeuronNames] = useState(new Map());
-    const [neuronNicknames, setNeuronNicknames] = useState(new Map());
     const [editingName, setEditingName] = useState(null);
     const [nameInput, setNameInput] = useState('');
+    
+    // Get naming context
+    const { neuronNames, neuronNicknames, fetchAllNames } = useNaming();
 
     // Group neurons by owner
     const groupedNeurons = React.useMemo(() => {
@@ -143,43 +145,6 @@ export default function Me() {
         fetchNeurons();
     }, [identity, selectedSnsRoot]);
 
-    // Fetch neuron names and nicknames
-    useEffect(() => {
-        const fetchNames = async () => {
-            if (!identity || !selectedSnsRoot) return;
-
-            try {
-                // Fetch all public names
-                const names = await getAllNeuronNames(identity);
-                if (names) {
-                    const namesMap = new Map();
-                    names.forEach(([key, name]) => {
-                        if (key.sns_root_canister_id.toString() === selectedSnsRoot) {
-                            namesMap.set(uint8ArrayToHex(key.neuron_id.id), name);
-                        }
-                    });
-                    setNeuronNames(namesMap);
-                }
-
-                // Fetch user's nicknames
-                const nicknames = await getAllNeuronNicknames(identity);
-                if (nicknames) {
-                    const nicknamesMap = new Map();
-                    nicknames.forEach(([key, nickname]) => {
-                        if (key.sns_root_canister_id.toString() === selectedSnsRoot) {
-                            nicknamesMap.set(uint8ArrayToHex(key.neuron_id.id), nickname);
-                        }
-                    });
-                    setNeuronNicknames(nicknamesMap);
-                }
-            } catch (err) {
-                console.error('Error fetching neuron names:', err);
-            }
-        };
-
-        fetchNames();
-    }, [identity, selectedSnsRoot]);
-
     const handleSnsChange = (newSnsRoot) => {
         setSelectedSnsRoot(newSnsRoot);
         setSearchParams({ sns: newSnsRoot });
@@ -206,12 +171,8 @@ export default function Me() {
                 await setNeuronName(identity, selectedSnsRoot, neuronId, nameInput);
 
             if ('ok' in response) {
-                // Update local state
-                if (isNickname) {
-                    setNeuronNicknames(prev => new Map(prev).set(neuronId, nameInput));
-                } else {
-                    setNeuronNames(prev => new Map(prev).set(neuronId, nameInput));
-                }
+                // Refresh global names
+                await fetchAllNames();
             } else {
                 setError(response.err);
             }
@@ -222,6 +183,13 @@ export default function Me() {
             setEditingName(null);
             setNameInput('');
         }
+    };
+
+    const getDisplayName = (neuronId) => {
+        const mapKey = `${selectedSnsRoot}:${neuronId}`;
+        const publicName = neuronNames.get(mapKey);
+        const nickname = neuronNicknames.get(mapKey);
+        return { publicName, nickname };
     };
 
     if (!identity) {
@@ -312,8 +280,7 @@ export default function Me() {
                                                 p.permission_type.includes(4)
                                             );
 
-                                            const publicName = neuronNames.get(neuronId);
-                                            const nickname = neuronNicknames.get(neuronId);
+                                            const { publicName, nickname } = getDisplayName(neuronId);
                                             const displayName = publicName || nickname;
 
                                             return (
