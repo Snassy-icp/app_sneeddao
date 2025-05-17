@@ -12,6 +12,14 @@ import {
     uint8ArrayToHex,
     getOwnerPrincipals
 } from '../utils/NeuronUtils';
+import {
+    setNeuronName,
+    setNeuronNickname,
+    getNeuronName,
+    getNeuronNickname,
+    getAllNeuronNames,
+    getAllNeuronNicknames
+} from '../utils/BackendUtils';
 
 export default function Me() {
     const { identity } = useAuth();
@@ -25,6 +33,10 @@ export default function Me() {
     const [loadingSnses, setLoadingSnses] = useState(true);
     const [expandedGroups, setExpandedGroups] = useState(new Set(['self'])); // Default expand self group
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
+    const [neuronNames, setNeuronNames] = useState(new Map());
+    const [neuronNicknames, setNeuronNicknames] = useState(new Map());
+    const [editingName, setEditingName] = useState(null);
+    const [nameInput, setNameInput] = useState('');
 
     // Group neurons by owner
     const groupedNeurons = React.useMemo(() => {
@@ -131,6 +143,43 @@ export default function Me() {
         fetchNeurons();
     }, [identity, selectedSnsRoot]);
 
+    // Fetch neuron names and nicknames
+    useEffect(() => {
+        const fetchNames = async () => {
+            if (!identity || !selectedSnsRoot) return;
+
+            try {
+                // Fetch all public names
+                const names = await getAllNeuronNames(identity);
+                if (names) {
+                    const namesMap = new Map();
+                    names.forEach(([key, name]) => {
+                        if (key.sns_root_canister_id.toString() === selectedSnsRoot) {
+                            namesMap.set(uint8ArrayToHex(key.neuron_id.id), name);
+                        }
+                    });
+                    setNeuronNames(namesMap);
+                }
+
+                // Fetch user's nicknames
+                const nicknames = await getAllNeuronNicknames(identity);
+                if (nicknames) {
+                    const nicknamesMap = new Map();
+                    nicknames.forEach(([key, nickname]) => {
+                        if (key.sns_root_canister_id.toString() === selectedSnsRoot) {
+                            nicknamesMap.set(uint8ArrayToHex(key.neuron_id.id), nickname);
+                        }
+                    });
+                    setNeuronNicknames(nicknamesMap);
+                }
+            } catch (err) {
+                console.error('Error fetching neuron names:', err);
+            }
+        };
+
+        fetchNames();
+    }, [identity, selectedSnsRoot]);
+
     const handleSnsChange = (newSnsRoot) => {
         setSelectedSnsRoot(newSnsRoot);
         setSearchParams({ sns: newSnsRoot });
@@ -146,6 +195,33 @@ export default function Me() {
             }
             return newSet;
         });
+    };
+
+    const handleNameSubmit = async (neuronId, isNickname = false) => {
+        if (!nameInput.trim()) return;
+
+        try {
+            const response = isNickname ?
+                await setNeuronNickname(identity, selectedSnsRoot, neuronId, nameInput) :
+                await setNeuronName(identity, selectedSnsRoot, neuronId, nameInput);
+
+            if ('ok' in response) {
+                // Update local state
+                if (isNickname) {
+                    setNeuronNicknames(prev => new Map(prev).set(neuronId, nameInput));
+                } else {
+                    setNeuronNames(prev => new Map(prev).set(neuronId, nameInput));
+                }
+            } else {
+                setError(response.err);
+            }
+        } catch (err) {
+            console.error('Error setting neuron name:', err);
+            setError('Failed to set neuron name');
+        } finally {
+            setEditingName(null);
+            setNameInput('');
+        }
     };
 
     if (!identity) {
@@ -228,12 +304,21 @@ export default function Me() {
                                         gap: '20px'
                                     }}>
                                         {group.neurons.map((neuron) => {
-                                            const neuronId = neuron.id[0]?.id;
+                                            const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
                                             if (!neuronId) return null;
+
+                                            const hasHotkeyAccess = neuron.permissions.some(p => 
+                                                p.principal?.toString() === identity.getPrincipal().toString() &&
+                                                p.permission_type.includes(4)
+                                            );
+
+                                            const publicName = neuronNames.get(neuronId);
+                                            const nickname = neuronNicknames.get(neuronId);
+                                            const displayName = publicName || nickname;
 
                                             return (
                                                 <div
-                                                    key={uint8ArrayToHex(neuronId)}
+                                                    key={neuronId}
                                                     style={{
                                                         backgroundColor: '#2a2a2a',
                                                         borderRadius: '8px',
@@ -252,19 +337,18 @@ export default function Me() {
                                                                 }}
                                                                 title={formatNeuronIdLink(neuron.id[0]?.id, selectedSnsRoot)}
                                                             >
-                                                                {(() => {
-                                                                    const id = uint8ArrayToHex(neuron.id[0]?.id);
-                                                                    if (!id) return 'Unknown';
-                                                                    return `${id.slice(0, 8)}...${id.slice(-8)}`;
-                                                                })()}
+                                                                {displayName ? (
+                                                                    <span style={{ color: publicName ? '#3498db' : '#95a5a6' }}>
+                                                                        {displayName}
+                                                                    </span>
+                                                                ) : (
+                                                                    `${neuronId.slice(0, 8)}...${neuronId.slice(-8)}`
+                                                                )}
                                                             </div>
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    const id = uint8ArrayToHex(neuron.id[0]?.id);
-                                                                    if (id) {
-                                                                        navigator.clipboard.writeText(id);
-                                                                    }
+                                                                    navigator.clipboard.writeText(neuronId);
                                                                 }}
                                                                 style={{
                                                                     background: 'none',
@@ -279,7 +363,95 @@ export default function Me() {
                                                             >
                                                                 📋
                                                             </button>
+                                                            {hasHotkeyAccess && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setEditingName(neuronId);
+                                                                        setNameInput(displayName || '');
+                                                                    }}
+                                                                    style={{
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        padding: '4px',
+                                                                        cursor: 'pointer',
+                                                                        color: '#888',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center'
+                                                                    }}
+                                                                    title="Edit neuron name"
+                                                                >
+                                                                    ✏️
+                                                                </button>
+                                                            )}
                                                         </div>
+                                                        {editingName === neuronId && (
+                                                            <div style={{ 
+                                                                marginTop: '10px',
+                                                                display: 'flex',
+                                                                gap: '10px',
+                                                                alignItems: 'center'
+                                                            }}>
+                                                                <input
+                                                                    type="text"
+                                                                    value={nameInput}
+                                                                    onChange={(e) => setNameInput(e.target.value)}
+                                                                    placeholder="Enter neuron name"
+                                                                    style={{
+                                                                        backgroundColor: '#3a3a3a',
+                                                                        border: '1px solid #4a4a4a',
+                                                                        borderRadius: '4px',
+                                                                        color: '#ffffff',
+                                                                        padding: '8px',
+                                                                        flex: 1
+                                                                    }}
+                                                                />
+                                                                <button
+                                                                    onClick={() => handleNameSubmit(neuronId, true)}
+                                                                    style={{
+                                                                        backgroundColor: '#95a5a6',
+                                                                        color: '#ffffff',
+                                                                        border: 'none',
+                                                                        borderRadius: '4px',
+                                                                        padding: '8px',
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                    title="Set as private nickname"
+                                                                >
+                                                                    Set Nickname
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleNameSubmit(neuronId, false)}
+                                                                    style={{
+                                                                        backgroundColor: '#3498db',
+                                                                        color: '#ffffff',
+                                                                        border: 'none',
+                                                                        borderRadius: '4px',
+                                                                        padding: '8px',
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                    title="Set as public name"
+                                                                >
+                                                                    Set Name
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setEditingName(null);
+                                                                        setNameInput('');
+                                                                    }}
+                                                                    style={{
+                                                                        backgroundColor: '#e74c3c',
+                                                                        color: '#ffffff',
+                                                                        border: 'none',
+                                                                        borderRadius: '4px',
+                                                                        padding: '8px',
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
+                                                        )}
                                                         <div style={{ 
                                                             fontSize: '24px',
                                                             fontWeight: 'bold',
