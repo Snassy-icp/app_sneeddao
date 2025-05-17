@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
+import ReactMarkdown from 'react-markdown';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
 import { formatProposalIdLink } from '../utils/NeuronUtils';
 
@@ -141,6 +142,12 @@ function Proposals() {
         }
     };
 
+    // Helper function to convert HTML breaks to Markdown
+    const convertHtmlToMarkdown = (text) => {
+        if (!text) return '';
+        return text.replace(/<br>/g, '\n\n');
+    };
+
     return (
         <div className='page-container'>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
@@ -204,9 +211,17 @@ function Proposals() {
                                         {getProposalStatus(proposal)}
                                     </div>
                                 </div>
-                                <p style={{ color: '#888', margin: '0 0 10px 0' }}>
-                                    {proposal.proposal[0]?.summary || 'No summary'}
-                                </p>
+                                <div style={{ 
+                                    backgroundColor: '#2a2a2a', 
+                                    padding: '10px', 
+                                    borderRadius: '4px',
+                                    color: '#888', 
+                                    margin: '0 0 10px 0'
+                                }}>
+                                    <ReactMarkdown>
+                                        {convertHtmlToMarkdown(proposal.proposal[0]?.summary || 'No summary')}
+                                    </ReactMarkdown>
+                                </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: '14px' }}>
                                     <span>Created: {new Date(Number(proposal.proposal_creation_timestamp_seconds) * 1000).toLocaleString()}</span>
                                     <span>Voting Period: {Math.floor(Number(proposal.initial_voting_period_seconds) / (24 * 60 * 60))} days</span>
