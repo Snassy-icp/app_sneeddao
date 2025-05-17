@@ -702,9 +702,11 @@ function Proposal() {
                                                         }}>
                                                             {formatVote(ballot.vote)}
                                                         </div>
-                                                        <div>
-                                                            {new Date(Number(ballot.cast_timestamp_seconds) * 1000).toLocaleString()}
-                                                        </div>
+                                                        {ballot.vote !== 0 && (
+                                                            <div>
+                                                                {new Date(Number(ballot.cast_timestamp_seconds) * 1000).toLocaleString()}
+                                                            </div>
+                                                        )}
                                                         <div>
                                                             {formatE8s(ballot.voting_power)} VP
                                                         </div>
