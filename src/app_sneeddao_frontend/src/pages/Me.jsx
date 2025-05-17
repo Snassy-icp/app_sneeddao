@@ -8,7 +8,8 @@ import {
     formatE8s, 
     getDissolveState, 
     formatNeuronIdLink,
-    uint8ArrayToHex
+    uint8ArrayToHex,
+    getOwnerPrincipals
 } from '../utils/NeuronUtils';
 
 export default function Me() {
@@ -20,7 +21,58 @@ export default function Me() {
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
     const [loadingSnses, setLoadingSnses] = useState(true);
-    const [isNeuronsExpanded, setIsNeuronsExpanded] = useState(true);
+    const [expandedGroups, setExpandedGroups] = useState(new Set(['self'])); // Default expand self group
+
+    // Group neurons by owner
+    const groupedNeurons = React.useMemo(() => {
+        const groups = new Map();
+        const userPrincipal = identity?.getPrincipal().toString();
+        
+        // Initialize groups
+        groups.set('self', { 
+            title: 'My Neurons', 
+            neurons: [],
+            totalStake: BigInt(0)
+        });
+        groups.set('hotkey', { 
+            title: 'Hotkey Neurons', 
+            neurons: [],
+            totalStake: BigInt(0)
+        });
+        groups.set('other', { 
+            title: 'Other Controlled Neurons', 
+            neurons: [],
+            totalStake: BigInt(0)
+        });
+
+        neurons.forEach(neuron => {
+            const owners = getOwnerPrincipals(neuron);
+            const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
+            
+            if (owners.includes(userPrincipal)) {
+                groups.get('self').neurons.push(neuron);
+                groups.get('self').totalStake += stake;
+            } else if (neuron.permissions.some(p => 
+                p.principal?.toString() === userPrincipal && 
+                p.permission_type.includes(1) // Vote permission
+            )) {
+                groups.get('hotkey').neurons.push(neuron);
+                groups.get('hotkey').totalStake += stake;
+            } else {
+                groups.get('other').neurons.push(neuron);
+                groups.get('other').totalStake += stake;
+            }
+        });
+
+        // Remove empty groups
+        for (const [key, group] of groups) {
+            if (group.neurons.length === 0) {
+                groups.delete(key);
+            }
+        }
+
+        return groups;
+    }, [neurons, identity]);
 
     // Fetch SNS data on component mount
     useEffect(() => {
@@ -72,6 +124,18 @@ export default function Me() {
         setSelectedSnsRoot(e.target.value);
     };
 
+    const toggleGroup = (groupId) => {
+        setExpandedGroups(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(groupId)) {
+                newSet.delete(groupId);
+            } else {
+                newSet.add(groupId);
+            }
+            return newSet;
+        });
+    };
+
     if (!identity) {
         return (
             <div className='page-container'>
@@ -115,90 +179,101 @@ export default function Me() {
                     </div>
                 ) : (
                     <div>
-                        <div style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'center',
-                            marginBottom: '20px'
-                        }}>
-                            <h2 style={{ color: '#ffffff', margin: 0 }}>
-                                {neurons.length} Neuron{neurons.length !== 1 ? 's' : ''}
-                            </h2>
-                            <button
-                                onClick={() => setIsNeuronsExpanded(!isNeuronsExpanded)}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    color: '#3498db',
-                                    cursor: 'pointer',
-                                    fontSize: '14px'
-                                }}
-                            >
-                                {isNeuronsExpanded ? 'Collapse All' : 'Expand All'}
-                            </button>
-                        </div>
-                        
-                        <div style={{ 
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                            gap: '20px'
-                        }}>
-                            {neurons.map((neuron) => {
-                                const neuronId = neuron.id[0]?.id;
-                                if (!neuronId) return null;
-
-                                return (
-                                    <div
-                                        key={uint8ArrayToHex(neuronId)}
-                                        style={{
-                                            backgroundColor: '#2a2a2a',
-                                            borderRadius: '8px',
-                                            padding: '20px',
-                                            border: '1px solid #3a3a3a'
-                                        }}
-                                    >
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ marginBottom: '5px' }}>
-                                                {formatNeuronIdLink(neuronId, selectedSnsRoot)}
-                                            </div>
-                                            <div style={{ 
-                                                fontSize: '24px',
-                                                fontWeight: 'bold',
-                                                color: '#3498db'
-                                            }}>
-                                                {formatE8s(neuron.cached_neuron_stake_e8s)} SNS
-                                            </div>
-                                        </div>
-
-                                        <div style={{ 
-                                            display: 'grid',
-                                            gridTemplateColumns: '1fr 1fr',
-                                            gap: '15px',
-                                            fontSize: '14px'
-                                        }}>
-                                            <div>
-                                                <div style={{ color: '#888' }}>Created</div>
-                                                <div style={{ color: '#ffffff' }}>
-                                                    {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div style={{ color: '#888' }}>Dissolve State</div>
-                                                <div style={{ color: '#ffffff' }}>{getDissolveState(neuron)}</div>
-                                            </div>
-                                            <div>
-                                                <div style={{ color: '#888' }}>Maturity</div>
-                                                <div style={{ color: '#ffffff' }}>{formatE8s(neuron.maturity_e8s_equivalent)} SNS</div>
-                                            </div>
-                                            <div>
-                                                <div style={{ color: '#888' }}>Voting Power</div>
-                                                <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
-                                            </div>
-                                        </div>
+                        {Array.from(groupedNeurons.entries()).map(([groupId, group]) => (
+                            <div key={groupId} style={{ marginBottom: '30px' }}>
+                                <div 
+                                    onClick={() => toggleGroup(groupId)}
+                                    style={{
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        padding: '15px',
+                                        backgroundColor: '#2a2a2a',
+                                        borderRadius: '8px',
+                                        marginBottom: '15px'
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <span style={{ 
+                                            transform: expandedGroups.has(groupId) ? 'rotate(90deg)' : 'none',
+                                            transition: 'transform 0.3s ease',
+                                            display: 'inline-block'
+                                        }}>▶</span>
+                                        <h2 style={{ margin: 0, color: '#ffffff' }}>
+                                            {group.title} ({group.neurons.length})
+                                        </h2>
                                     </div>
-                                );
-                            })}
-                        </div>
+                                    <div style={{ color: '#3498db', fontSize: '18px', fontWeight: 'bold' }}>
+                                        {formatE8s(group.totalStake)} SNS
+                                    </div>
+                                </div>
+
+                                {expandedGroups.has(groupId) && (
+                                    <div style={{ 
+                                        display: 'grid',
+                                        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                                        gap: '20px'
+                                    }}>
+                                        {group.neurons.map((neuron) => {
+                                            const neuronId = neuron.id[0]?.id;
+                                            if (!neuronId) return null;
+
+                                            return (
+                                                <div
+                                                    key={uint8ArrayToHex(neuronId)}
+                                                    style={{
+                                                        backgroundColor: '#2a2a2a',
+                                                        borderRadius: '8px',
+                                                        padding: '20px',
+                                                        border: '1px solid #3a3a3a'
+                                                    }}
+                                                >
+                                                    <div style={{ marginBottom: '15px' }}>
+                                                        <div style={{ marginBottom: '5px' }}>
+                                                            {formatNeuronIdLink(neuronId, selectedSnsRoot)}
+                                                        </div>
+                                                        <div style={{ 
+                                                            fontSize: '24px',
+                                                            fontWeight: 'bold',
+                                                            color: '#3498db'
+                                                        }}>
+                                                            {formatE8s(neuron.cached_neuron_stake_e8s)} SNS
+                                                        </div>
+                                                    </div>
+
+                                                    <div style={{ 
+                                                        display: 'grid',
+                                                        gridTemplateColumns: '1fr 1fr',
+                                                        gap: '15px',
+                                                        fontSize: '14px'
+                                                    }}>
+                                                        <div>
+                                                            <div style={{ color: '#888' }}>Created</div>
+                                                            <div style={{ color: '#ffffff' }}>
+                                                                {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
+                                                            </div>
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ color: '#888' }}>Dissolve State</div>
+                                                            <div style={{ color: '#ffffff' }}>{getDissolveState(neuron)}</div>
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ color: '#888' }}>Maturity</div>
+                                                            <div style={{ color: '#ffffff' }}>{formatE8s(neuron.maturity_e8s_equivalent)} SNS</div>
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ color: '#888' }}>Voting Power</div>
+                                                            <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
                     </div>
                 )}
             </main>
