@@ -6,7 +6,8 @@ import { useAuth } from './AuthContext';
 import Header from './components/Header';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
-import { formatProposalIdLink } from './utils/NeuronUtils';
+import { formatProposalIdLink, uint8ArrayToHex } from './utils/NeuronUtils';
+import { useNaming } from './NamingContext';
 
 function Neuron() {
     const { isAuthenticated, identity } = useAuth();
@@ -28,6 +29,17 @@ function Neuron() {
     const [hideNotVoted, setHideNotVoted] = useState(false);
     // Add sort state
     const [sortBy, setSortBy] = useState('proposalId');
+    
+    // Get naming context
+    const { neuronNames, neuronNicknames } = useNaming();
+
+    // Helper function to get display name
+    const getDisplayName = (neuronId) => {
+        const mapKey = `${selectedSnsRoot}:${neuronId}`;
+        const publicName = neuronNames.get(mapKey);
+        const nickname = neuronNicknames.get(mapKey);
+        return { publicName, nickname };
+    };
 
     // Add filter and sort function
     const filterAndSortVotes = (votes) => {
@@ -283,6 +295,65 @@ function Neuron() {
                         <div style={{ color: '#ffffff' }}>
                             <h2>Neuron Information</h2>
                             <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px', marginTop: '10px' }}>
+                                <div style={{ marginBottom: '15px' }}>
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '10px',
+                                        marginBottom: '10px'
+                                    }}>
+                                        <div style={{ 
+                                            fontFamily: 'monospace',
+                                            fontSize: '16px',
+                                            color: '#888'
+                                        }}>
+                                            {currentNeuronId}
+                                            <button
+                                                onClick={() => navigator.clipboard.writeText(currentNeuronId)}
+                                                style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    padding: '4px',
+                                                    cursor: 'pointer',
+                                                    color: '#888',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    marginLeft: '8px'
+                                                }}
+                                                title="Copy neuron ID to clipboard"
+                                            >
+                                                📋
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {(() => {
+                                        const { publicName, nickname } = getDisplayName(currentNeuronId);
+                                        return (
+                                            <>
+                                                {publicName && (
+                                                    <div style={{ 
+                                                        color: '#3498db',
+                                                        fontSize: '18px',
+                                                        fontWeight: 'bold',
+                                                        marginBottom: '5px'
+                                                    }}>
+                                                        {publicName}
+                                                    </div>
+                                                )}
+                                                {nickname && (
+                                                    <div style={{ 
+                                                        color: '#95a5a6',
+                                                        fontSize: '16px',
+                                                        fontStyle: 'italic',
+                                                        marginBottom: '5px'
+                                                    }}>
+                                                        {nickname}
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </div>
                                 <p><strong>SNS:</strong> {selectedSns?.name || 'Unknown SNS'}</p>
                                 <p><strong>Stake:</strong> {formatE8s(neuronData.cached_neuron_stake_e8s)} {selectedSns?.name || 'SNS'}</p>
                                 <p><strong>Created:</strong> {new Date(Number(neuronData.created_timestamp_seconds || 0) * 1000).toLocaleString()}</p>
