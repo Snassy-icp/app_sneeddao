@@ -6,7 +6,7 @@ import { useAuth } from './AuthContext';
 import Header from './components/Header';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
-import { formatProposalIdLink, uint8ArrayToHex } from './utils/NeuronUtils';
+import { formatProposalIdLink, uint8ArrayToHex, getNeuronColor } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 import { setNeuronNickname } from './utils/BackendUtils';
 

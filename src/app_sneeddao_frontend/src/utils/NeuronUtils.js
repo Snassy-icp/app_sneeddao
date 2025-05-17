@@ -90,7 +90,7 @@ export const formatVote = (voteNumber) => {
 };
 
 // Helper function to generate a consistent color from a neuron ID
-const getNeuronColor = (neuronId) => {
+export const getNeuronColor = (neuronId) => {
     // Simple hash function that sums char codes multiplied by position
     let hash = 0;
     for (let i = 0; i < neuronId.length; i++) {
@@ -144,32 +144,63 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
             style: {
                 color: neuronColor,
                 textDecoration: 'none',
-                fontFamily: 'monospace'
+                fontFamily: 'monospace',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
             },
             title: displayId,
             onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
             onMouseLeave: (e) => e.target.style.textDecoration = 'none'
-        }, name || nickname ? (
-            React.createElement('span', null, [
-                React.createElement('span', { 
-                    key: 'name',
-                    style: { color: neuronColor }
-                }, name || nickname),
-                isVerified && name && React.createElement('span', {
+        }, [
+            // If there's a name, show it with verification badge
+            name && React.createElement('span', {
+                key: 'name-container',
+                style: {
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    color: neuronColor,
+                    fontWeight: 'bold'
+                }
+            }, [
+                name,
+                isVerified && React.createElement('span', {
                     key: 'verified',
                     style: { 
-                        marginLeft: '4px',
-                        fontSize: '14px',
-                        cursor: 'help'
+                        backgroundColor: '#2ecc71',
+                        color: '#ffffff',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        cursor: 'help',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '2px'
                     },
-                    title: 'Verified name'
-                }, '✓'),
-                React.createElement('span', { 
-                    key: 'id',
-                    style: { color: neuronColor, opacity: 0.8 }
-                }, ` (${truncatedId})`)
-            ])
-        ) : truncatedId),
+                    title: 'Verified neuron name'
+                }, ['✓', React.createElement('span', { style: { fontSize: '10px' }}, 'VERIFIED')])
+            ]),
+            
+            // If there's a nickname and it's different from the name, show it
+            nickname && (!name || nickname !== name) && React.createElement('span', {
+                key: 'nickname',
+                style: {
+                    color: neuronColor,
+                    fontStyle: 'italic'
+                }
+            }, `(${nickname})`),
+            
+            // Always show the truncated ID
+            React.createElement('span', {
+                key: 'id',
+                style: {
+                    color: neuronColor,
+                    opacity: 0.7
+                }
+            }, `[${truncatedId}]`)
+        ]),
         
         // Copy button
         React.createElement('button', {
