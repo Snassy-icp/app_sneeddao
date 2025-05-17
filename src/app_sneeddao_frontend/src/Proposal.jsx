@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
 import { formatNeuronIdLink } from './utils/NeuronUtils';
+import { useNaming } from './NamingContext';
 
 function Proposal() {
     const { isAuthenticated, identity } = useAuth();
@@ -30,6 +31,9 @@ function Proposal() {
     const [hideNotVoted, setHideNotVoted] = useState(false);
     // Add sort state
     const [sortBy, setSortBy] = useState('date');
+
+    // Get naming context
+    const { getNeuronDisplayName } = useNaming();
 
     // Fetch SNS data on component mount
     useEffect(() => {
@@ -534,7 +538,7 @@ function Proposal() {
                                 <p><strong>SNS:</strong> {selectedSns?.name || 'Unknown SNS'}</p>
                                 <p><strong>Topic:</strong> {getTopicName(proposalData)}</p>
                                 <p><strong>Title:</strong> {proposalData.proposal?.[0]?.title || 'No title'}</p>
-                                <p><strong>Proposer Neuron:</strong> {proposalData.proposer?.[0]?.id ? formatNeuronIdLink(proposalData.proposer[0].id, selectedSnsRoot) : 'Unknown'}</p>
+                                <p><strong>Proposer Neuron:</strong> {proposalData.proposer?.[0]?.id ? formatNeuronIdLink(proposalData.proposer[0].id, selectedSnsRoot, getNeuronDisplayName) : 'Unknown'}</p>
                                 <p><strong>External Links:</strong>{' '}
                                     <span style={{ display: 'inline-flex', gap: '10px', marginLeft: '10px' }}>
                                         <a 
@@ -736,7 +740,7 @@ function Proposal() {
                                                         marginBottom: '4px',
                                                         fontFamily: 'monospace'
                                                     }}>
-                                                        {formatNeuronIdLink(neuronId, selectedSnsRoot)}
+                                                        {formatNeuronIdLink(neuronId, selectedSnsRoot, getNeuronDisplayName)}
                                                     </div>
                                                     <div style={{ 
                                                         display: 'flex',

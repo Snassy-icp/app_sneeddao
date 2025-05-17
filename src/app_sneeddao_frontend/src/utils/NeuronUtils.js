@@ -90,7 +90,7 @@ export const formatVote = (voteNumber) => {
 };
 
 // Create a React link component for a neuron ID
-export const formatNeuronIdLink = (neuronId, snsRoot) => {
+export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) => {
     if (!neuronId) return 'Unknown';
     
     // Convert the neuron ID to a hex string if it's a byte array
@@ -98,8 +98,10 @@ export const formatNeuronIdLink = (neuronId, snsRoot) => {
         ? uint8ArrayToHex(neuronId)
         : neuronId;
 
-    // Get the display name from the naming context
-    const displayName = window.getNeuronDisplayName?.(displayId, snsRoot);
+    // Get the display name from either the provided function or the global one
+    const displayName = getNeuronDisplayNameFn 
+        ? getNeuronDisplayNameFn(displayId, snsRoot)
+        : window.getNeuronDisplayName?.(displayId, snsRoot);
 
     return React.createElement(Link, {
         to: `/neuron?neuronid=${displayId}&sns=${snsRoot}`,
