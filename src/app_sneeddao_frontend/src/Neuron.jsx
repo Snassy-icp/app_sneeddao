@@ -26,15 +26,30 @@ function Neuron() {
     const [hideYes, setHideYes] = useState(false);
     const [hideNo, setHideNo] = useState(false);
     const [hideNotVoted, setHideNotVoted] = useState(false);
+    // Add sort state
+    const [sortBy, setSortBy] = useState('proposalId');
 
-    // Add filter function
-    const filterVotes = (votes) => {
+    // Add filter and sort function
+    const filterAndSortVotes = (votes) => {
         if (!votes) return [];
-        return votes.filter(vote => {
+        const filtered = votes.filter(vote => {
             if (vote.vote === 1 && hideYes) return false;
             if (vote.vote === 2 && hideNo) return false;
             if (vote.vote !== 1 && vote.vote !== 2 && hideNotVoted) return false;
             return true;
+        });
+
+        return filtered.sort((a, b) => {
+            switch (sortBy) {
+                case 'proposalId':
+                    return Number(b.proposal_id) - Number(a.proposal_id);
+                case 'date':
+                    return Number(b.timestamp) - Number(a.timestamp);
+                case 'votingPower':
+                    return Number(b.voting_power) - Number(a.voting_power);
+                default:
+                    return 0;
+            }
         });
     };
 
@@ -288,52 +303,87 @@ function Neuron() {
                                             backgroundColor: '#2a2a2a',
                                             borderRadius: '4px',
                                             flexWrap: 'wrap',
-                                            alignItems: 'center'
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between'
                                         }}>
-                                            <label style={{ 
-                                                display: 'flex', 
-                                                alignItems: 'center', 
-                                                gap: '8px',
-                                                color: '#2ecc71',
-                                                cursor: 'pointer'
+                                            <div style={{
+                                                display: 'flex',
+                                                gap: '20px',
+                                                alignItems: 'center'
                                             }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={hideYes}
-                                                    onChange={(e) => setHideYes(e.target.checked)}
-                                                />
-                                                Hide Yes
-                                            </label>
-                                            <label style={{ 
-                                                display: 'flex', 
-                                                alignItems: 'center', 
-                                                gap: '8px',
-                                                color: '#e74c3c',
-                                                cursor: 'pointer'
+                                                <label style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '8px',
+                                                    color: '#2ecc71',
+                                                    cursor: 'pointer'
+                                                }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={hideYes}
+                                                        onChange={(e) => setHideYes(e.target.checked)}
+                                                    />
+                                                    Hide Yes
+                                                </label>
+                                                <label style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '8px',
+                                                    color: '#e74c3c',
+                                                    cursor: 'pointer'
+                                                }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={hideNo}
+                                                        onChange={(e) => setHideNo(e.target.checked)}
+                                                    />
+                                                    Hide No
+                                                </label>
+                                                <label style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '8px',
+                                                    color: '#888',
+                                                    cursor: 'pointer'
+                                                }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={hideNotVoted}
+                                                        onChange={(e) => setHideNotVoted(e.target.checked)}
+                                                    />
+                                                    Hide Not Voted
+                                                </label>
+                                            </div>
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px'
                                             }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={hideNo}
-                                                    onChange={(e) => setHideNo(e.target.checked)}
-                                                />
-                                                Hide No
-                                            </label>
-                                            <label style={{ 
-                                                display: 'flex', 
-                                                alignItems: 'center', 
-                                                gap: '8px',
-                                                color: '#888',
-                                                cursor: 'pointer'
-                                            }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={hideNotVoted}
-                                                    onChange={(e) => setHideNotVoted(e.target.checked)}
-                                                />
-                                                Hide Not Voted
-                                            </label>
+                                                <label style={{
+                                                    color: '#888',
+                                                    fontSize: '14px'
+                                                }}>
+                                                    Sort by:
+                                                </label>
+                                                <select
+                                                    value={sortBy}
+                                                    onChange={(e) => setSortBy(e.target.value)}
+                                                    style={{
+                                                        backgroundColor: '#3a3a3a',
+                                                        color: '#fff',
+                                                        border: '1px solid #4a4a4a',
+                                                        borderRadius: '4px',
+                                                        padding: '4px 8px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    <option value="proposalId">Proposal ID</option>
+                                                    <option value="date">Date</option>
+                                                    <option value="votingPower">Voting Power</option>
+                                                </select>
+                                            </div>
                                         </div>
-                                        {filterVotes(votingHistory).map((vote, index) => (
+                                        {filterAndSortVotes(votingHistory).map((vote, index) => (
                                             <div 
                                                 key={index}
                                                 style={{
