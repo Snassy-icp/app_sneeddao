@@ -15,7 +15,7 @@ import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCan
 import PrincipalBox from './PrincipalBox';
 import { headerStyles } from './styles/HeaderStyles';
 import Header from './components/Header';
-import { fetchUserNeurons } from './utils/NeuronUtils';
+import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 
 // Styles
 const styles = {
@@ -701,7 +701,8 @@ function RLL() {
 
     // Function to fetch neurons directly from SNS
     const fetchNeuronsFromSns = async () => {
-        return await fetchUserNeurons(identity);
+        const sneedGovernanceCanisterId = 'fi3zi-fyaaa-aaaaq-aachq-cai'; // Sneed governance canister
+        return await fetchUserNeuronsForSns(identity, sneedGovernanceCanisterId);
     };
 
     // Updated function to fetch hotkey neurons data
