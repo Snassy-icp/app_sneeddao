@@ -67,5 +67,25 @@ module {
         name: ?Text;
         standard: Text;
         symbol: ?Text;
-    };    
+    };
+
+    // Neuron name types
+    public type NeuronId = Blob;
+    public type NeuronName = {
+        sns_root_canister_id: Principal;
+        neuron_id: NeuronId;
+        name: Text;
+    };
+
+    // Neuron nickname types
+    public type NeuronNickname = {
+        sns_root_canister_id: Principal;
+        neuron_id: NeuronId;
+        nickname: Text;
+    };
+
+    public type NeuronNameKey = {
+        sns_root_canister_id: Principal;
+        neuron_id: NeuronId;
+    };
 };
