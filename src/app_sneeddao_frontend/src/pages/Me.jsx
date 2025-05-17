@@ -389,8 +389,8 @@ export default function Me() {
                                                             <div style={{ 
                                                                 marginTop: '10px',
                                                                 display: 'flex',
-                                                                gap: '10px',
-                                                                alignItems: 'center'
+                                                                flexDirection: 'column',
+                                                                gap: '10px'
                                                             }}>
                                                                 <input
                                                                     type="text"
@@ -403,53 +403,62 @@ export default function Me() {
                                                                         borderRadius: '4px',
                                                                         color: '#ffffff',
                                                                         padding: '8px',
-                                                                        flex: 1
+                                                                        width: '100%'
                                                                     }}
                                                                 />
-                                                                <button
-                                                                    onClick={() => handleNameSubmit(neuronId, true)}
-                                                                    style={{
-                                                                        backgroundColor: '#95a5a6',
-                                                                        color: '#ffffff',
-                                                                        border: 'none',
-                                                                        borderRadius: '4px',
-                                                                        padding: '8px',
-                                                                        cursor: 'pointer'
-                                                                    }}
-                                                                    title="Set as private nickname"
-                                                                >
-                                                                    Set Nickname
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handleNameSubmit(neuronId, false)}
-                                                                    style={{
-                                                                        backgroundColor: '#3498db',
-                                                                        color: '#ffffff',
-                                                                        border: 'none',
-                                                                        borderRadius: '4px',
-                                                                        padding: '8px',
-                                                                        cursor: 'pointer'
-                                                                    }}
-                                                                    title="Set as public name"
-                                                                >
-                                                                    Set Name
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setEditingName(null);
-                                                                        setNameInput('');
-                                                                    }}
-                                                                    style={{
-                                                                        backgroundColor: '#e74c3c',
-                                                                        color: '#ffffff',
-                                                                        border: 'none',
-                                                                        borderRadius: '4px',
-                                                                        padding: '8px',
-                                                                        cursor: 'pointer'
-                                                                    }}
-                                                                >
-                                                                    Cancel
-                                                                </button>
+                                                                <div style={{
+                                                                    display: 'flex',
+                                                                    gap: '8px',
+                                                                    justifyContent: 'flex-end'
+                                                                }}>
+                                                                    <button
+                                                                        onClick={() => handleNameSubmit(neuronId, true)}
+                                                                        style={{
+                                                                            backgroundColor: '#95a5a6',
+                                                                            color: '#ffffff',
+                                                                            border: 'none',
+                                                                            borderRadius: '4px',
+                                                                            padding: '8px 12px',
+                                                                            cursor: 'pointer',
+                                                                            whiteSpace: 'nowrap'
+                                                                        }}
+                                                                        title="Set as private nickname"
+                                                                    >
+                                                                        Set Nickname
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleNameSubmit(neuronId, false)}
+                                                                        style={{
+                                                                            backgroundColor: '#3498db',
+                                                                            color: '#ffffff',
+                                                                            border: 'none',
+                                                                            borderRadius: '4px',
+                                                                            padding: '8px 12px',
+                                                                            cursor: 'pointer',
+                                                                            whiteSpace: 'nowrap'
+                                                                        }}
+                                                                        title="Set as public name"
+                                                                    >
+                                                                        Set Name
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setEditingName(null);
+                                                                            setNameInput('');
+                                                                        }}
+                                                                        style={{
+                                                                            backgroundColor: '#e74c3c',
+                                                                            color: '#ffffff',
+                                                                            border: 'none',
+                                                                            borderRadius: '4px',
+                                                                            padding: '8px 12px',
+                                                                            cursor: 'pointer',
+                                                                            whiteSpace: 'nowrap'
+                                                                        }}
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                         )}
                                                         <div style={{ 
