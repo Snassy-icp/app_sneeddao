@@ -49,10 +49,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
 
   // Runtime hashmaps for neuron names and nicknames
   var neuron_names = HashMap.HashMap<NeuronNameKey, Text>(100, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
-    Principal.equal(k1.sns_root_canister_id, k2.sns_root_canister_id) and Blob.equal(k1.neuron_id, k2.neuron_id)
+    Principal.equal(k1.sns_root_canister_id, k2.sns_root_canister_id) and Blob.equal(k1.neuron_id.id, k2.neuron_id.id)
   }, func(k: NeuronNameKey) : Nat32 {
     let h1 = Principal.hash(k.sns_root_canister_id);
-    let h2 = Blob.hash(k.neuron_id);
+    let h2 = Blob.hash(k.neuron_id.id);
     h1 ^ h2
   });
 
@@ -285,17 +285,21 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // Helper function to get SNS governance canister from root canister
   private func get_sns_governance_canister(sns_root_canister_id : Principal) : async Principal {
     let sns_root = actor (Principal.toText(sns_root_canister_id)) : actor {
-      get_sns_canisters_summary : shared query () -> async {
-        root : Principal;
-        governance : Principal;
-        ledger : Principal;
+      list_sns_canisters : ({}) -> async {
+        root : ?Principal;
+        governance : ?Principal;
+        ledger : ?Principal;
         swap : ?Principal;
-        archive : [Principal];
         index : ?Principal;
+        dapps : [Principal];
+        archives : [Principal];
       };
     };
-    let summary = await sns_root.get_sns_canisters_summary();
-    summary.governance
+    let canisters = await sns_root.list_sns_canisters({});
+    switch (canisters.governance) {
+      case (?governance) { governance };
+      case null { throw Error.reject("Could not find governance canister") };
+    }
   };
 
   // Helper function to check if caller owns a neuron
@@ -303,29 +307,42 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     if (is_admin(caller)) { return true; };
 
     let sns_governance = actor (Principal.toText(sns_governance_canister_id)) : actor {
-      get_neuron : shared query (args : { neuron_id : ?{ id : Blob } }) -> async { result : ?{ #Error : { error_message : Text }; #Neuron : { permissions : [{ permission_type : [Int32]; principal : ?Principal }] } } };
+      list_neurons : shared query ({
+        of_principal : ?Principal;
+        limit : Nat32;
+        start_page_at : ?NeuronId;
+      }) -> async {
+        neurons : [{
+          id : ?NeuronId;
+          controller : ?Principal;
+        }];
+      };
     };
 
-    let response = await sns_governance.get_neuron({ neuron_id = ?{ id = neuron_id } });
+    let response = await sns_governance.list_neurons({
+      of_principal = ?caller;
+      limit = 100;
+      start_page_at = null;
+    });
     
-    switch (response.result) {
-      case (null) { false };
-      case (?#Error(_)) { false };
-      case (?#Neuron(neuron)) {
-        // Check if caller has permissions on this neuron
-        for (permission in neuron.permissions.vals()) {
-          switch (permission.principal) {
-            case (?p) {
-              if (Principal.equal(p, caller) and permission.permission_type.size() > 7) {
-                return true;
+    for (neuron in response.neurons.vals()) {
+      switch (neuron.id) {
+        case (?id) {
+          if (Blob.equal(id.id, neuron_id.id)) {
+            switch (neuron.controller) {
+              case (?controller) {
+                if (Principal.equal(controller, caller)) {
+                  return true;
+                };
               };
+              case null {};
             };
-            case (null) { };
           };
         };
-        false
+        case null {};
       };
-    }
+    };
+    false
   };
 
   // Neuron name management
@@ -383,10 +400,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       case (?existing) { existing };
       case (null) {
         let new_map = HashMap.HashMap<NeuronNameKey, Text>(10, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
-          Principal.equal(k1.sns_root_canister_id, k2.sns_root_canister_id) and Blob.equal(k1.neuron_id, k2.neuron_id)
+          Principal.equal(k1.sns_root_canister_id, k2.sns_root_canister_id) and Blob.equal(k1.neuron_id.id, k2.neuron_id.id)
         }, func(k: NeuronNameKey) : Nat32 {
           let h1 = Principal.hash(k.sns_root_canister_id);
-          let h2 = Blob.hash(k.neuron_id);
+          let h2 = Blob.hash(k.neuron_id.id);
           h1 ^ h2
         });
         neuron_nicknames.put(caller, new_map);
@@ -500,10 +517,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       // Restore neuron nicknames
       for ((user, nicknames) in stable_neuron_nicknames.vals()) {
         let user_map = HashMap.HashMap<NeuronNameKey, Text>(10, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
-          Principal.equal(k1.sns_root_canister_id, k2.sns_root_canister_id) and Blob.equal(k1.neuron_id, k2.neuron_id)
+          Principal.equal(k1.sns_root_canister_id, k2.sns_root_canister_id) and Blob.equal(k1.neuron_id.id, k2.neuron_id.id)
         }, func(k: NeuronNameKey) : Nat32 {
           let h1 = Principal.hash(k.sns_root_canister_id);
-          let h2 = Blob.hash(k.neuron_id);
+          let h2 = Blob.hash(k.neuron_id.id);
           h1 ^ h2
         });
         for ((key, nickname) in nicknames.vals()) {
