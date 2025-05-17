@@ -9,12 +9,14 @@ export function NamingProvider({ children }) {
     const { identity } = useAuth();
     const [neuronNames, setNeuronNames] = useState(new Map());
     const [neuronNicknames, setNeuronNicknames] = useState(new Map());
+    const [verifiedNames, setVerifiedNames] = useState(new Map());
     const [loading, setLoading] = useState(true);
 
     const fetchAllNames = async () => {
         if (!identity) {
             setNeuronNames(new Map());
             setNeuronNicknames(new Map());
+            setVerifiedNames(new Map());
             setLoading(false);
             return;
         }
@@ -28,15 +30,18 @@ export function NamingProvider({ children }) {
 
             // Process names
             const namesMap = new Map();
+            const verifiedMap = new Map();
             if (names) {
                 names.forEach(([key, name]) => {
                     const neuronId = uint8ArrayToHex(key.neuron_id.id);
                     const snsRoot = key.sns_root_canister_id.toString();
                     const mapKey = `${snsRoot}:${neuronId}`;
-                    namesMap.set(mapKey, name);
+                    namesMap.set(mapKey, name.name);
+                    verifiedMap.set(mapKey, name.verified);
                 });
             }
             setNeuronNames(namesMap);
+            setVerifiedNames(verifiedMap);
 
             // Process nicknames
             const nicknamesMap = new Map();
@@ -66,21 +71,16 @@ export function NamingProvider({ children }) {
         const mapKey = `${snsRoot}:${neuronId}`;
         const name = neuronNames.get(mapKey);
         const nickname = neuronNicknames.get(mapKey);
+        const isVerified = verifiedNames.get(mapKey);
         
-        if (name && nickname) {
-            return `${name} (${nickname})`;
-        } else if (name) {
-            return name;
-        } else if (nickname) {
-            return nickname;
-        }
-        return null;
+        return { name, nickname, isVerified };
     };
 
     return (
         <NamingContext.Provider value={{
             neuronNames,
             neuronNicknames,
+            verifiedNames,
             loading,
             fetchAllNames,
             getNeuronDisplayName

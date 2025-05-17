@@ -35,14 +35,15 @@ function Neuron() {
     const [nicknameInput, setNicknameInput] = useState('');
     
     // Get naming context
-    const { neuronNames, neuronNicknames, fetchAllNames } = useNaming();
+    const { neuronNames, neuronNicknames, verifiedNames, fetchAllNames } = useNaming();
 
     // Helper function to get display name
     const getDisplayName = (neuronId) => {
         const mapKey = `${selectedSnsRoot}:${neuronId}`;
-        const publicName = neuronNames.get(mapKey);
+        const name = neuronNames.get(mapKey);
         const nickname = neuronNicknames.get(mapKey);
-        return { publicName, nickname };
+        const isVerified = verifiedNames.get(mapKey);
+        return { name, nickname, isVerified };
     };
 
     // Add filter and sort function
@@ -352,17 +353,46 @@ function Neuron() {
                                         </div>
                                     </div>
                                     {(() => {
-                                        const { publicName, nickname } = getDisplayName(currentNeuronId);
+                                        const { name, nickname, isVerified } = getDisplayName(currentNeuronId);
+                                        const neuronColor = getNeuronColor(currentNeuronId);
                                         return (
                                             <>
-                                                {publicName && (
+                                                {name && (
                                                     <div style={{ 
-                                                        color: '#3498db',
-                                                        fontSize: '18px',
-                                                        fontWeight: 'bold',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
                                                         marginBottom: '5px'
                                                     }}>
-                                                        {publicName}
+                                                        <span style={{ 
+                                                            color: neuronColor,
+                                                            fontSize: '18px',
+                                                            fontWeight: 'bold'
+                                                        }}>
+                                                            {name}
+                                                        </span>
+                                                        {isVerified && (
+                                                            <span 
+                                                                style={{ 
+                                                                    fontSize: '14px',
+                                                                    cursor: 'help'
+                                                                }}
+                                                                title="Verified name"
+                                                            >
+                                                                ✓
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {nickname && (
+                                                    <div style={{ 
+                                                        color: neuronColor,
+                                                        fontSize: '16px',
+                                                        fontStyle: 'italic',
+                                                        opacity: 0.8,
+                                                        marginBottom: '5px'
+                                                    }}>
+                                                        {nickname}
                                                     </div>
                                                 )}
                                                 <div style={{ 
@@ -433,15 +463,6 @@ function Neuron() {
                                                         </div>
                                                     ) : (
                                                         <>
-                                                            {nickname && (
-                                                                <div style={{ 
-                                                                    color: '#95a5a6',
-                                                                    fontSize: '16px',
-                                                                    fontStyle: 'italic'
-                                                                }}>
-                                                                    {nickname}
-                                                                </div>
-                                                            )}
                                                             {isAuthenticated && (
                                                                 <button
                                                                     onClick={() => {

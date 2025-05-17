@@ -119,9 +119,9 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
         : neuronId;
 
     // Get the display name from either the provided function or the global one
-    const displayName = getNeuronDisplayNameFn 
+    const { name, nickname, isVerified } = getNeuronDisplayNameFn 
         ? getNeuronDisplayNameFn(displayId, snsRoot)
-        : window.getNeuronDisplayName?.(displayId, snsRoot);
+        : window.getNeuronDisplayName?.(displayId, snsRoot) || {};
 
     // Create truncated ID display (first 6 and last 6 chars)
     const truncatedId = `${displayId.slice(0, 6)}...${displayId.slice(-6)}`;
@@ -142,19 +142,31 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
             key: 'link',
             to: `/neuron?neuronid=${displayId}&sns=${snsRoot}`,
             style: {
-                color: displayName ? '#3498db' : neuronColor,
+                color: neuronColor,
                 textDecoration: 'none',
                 fontFamily: 'monospace'
             },
             title: displayId,
             onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
             onMouseLeave: (e) => e.target.style.textDecoration = 'none'
-        }, displayName ? (
+        }, name || nickname ? (
             React.createElement('span', null, [
-                React.createElement('span', { key: 'name' }, displayName),
+                React.createElement('span', { 
+                    key: 'name',
+                    style: { color: neuronColor }
+                }, name || nickname),
+                isVerified && name && React.createElement('span', {
+                    key: 'verified',
+                    style: { 
+                        marginLeft: '4px',
+                        fontSize: '14px',
+                        cursor: 'help'
+                    },
+                    title: 'Verified name'
+                }, '✓'),
                 React.createElement('span', { 
                     key: 'id',
-                    style: { color: neuronColor }
+                    style: { color: neuronColor, opacity: 0.8 }
                 }, ` (${truncatedId})`)
             ])
         ) : truncatedId),

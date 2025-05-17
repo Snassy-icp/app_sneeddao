@@ -38,7 +38,7 @@ export default function Me() {
     const [nameInput, setNameInput] = useState('');
     
     // Get naming context
-    const { neuronNames, neuronNicknames, fetchAllNames } = useNaming();
+    const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames } = useNaming();
 
     // Group neurons by owner
     const groupedNeurons = React.useMemo(() => {
@@ -187,9 +187,10 @@ export default function Me() {
 
     const getDisplayName = (neuronId) => {
         const mapKey = `${selectedSnsRoot}:${neuronId}`;
-        const publicName = neuronNames.get(mapKey);
+        const name = neuronNames.get(mapKey);
         const nickname = neuronNicknames.get(mapKey);
-        return { publicName, nickname };
+        const isVerified = verifiedNames.get(mapKey);
+        return { name, nickname, isVerified };
     };
 
     if (!identity) {
@@ -280,8 +281,8 @@ export default function Me() {
                                                 p.permission_type.includes(4)
                                             );
 
-                                            const { publicName, nickname } = getDisplayName(neuronId);
-                                            const displayName = publicName || nickname;
+                                            const { name, nickname, isVerified } = getDisplayName(neuronId);
+                                            const displayName = name || nickname;
 
                                             return (
                                                 <div
@@ -304,12 +305,39 @@ export default function Me() {
                                                                 }}
                                                                 title={formatNeuronIdLink(neuron.id[0]?.id, selectedSnsRoot)}
                                                             >
-                                                                {displayName ? (
-                                                                    <span style={{ color: publicName ? '#3498db' : '#95a5a6' }}>
-                                                                        {displayName}
-                                                                    </span>
-                                                                ) : (
-                                                                    `${neuronId.slice(0, 8)}...${neuronId.slice(-8)}`
+                                                                {name && (
+                                                                    <div style={{ 
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        color: '#3498db',
+                                                                        fontSize: '18px',
+                                                                        fontWeight: 'bold',
+                                                                        marginBottom: '5px'
+                                                                    }}>
+                                                                        {name}
+                                                                        {isVerified && (
+                                                                            <span 
+                                                                                style={{ 
+                                                                                    fontSize: '14px',
+                                                                                    cursor: 'help'
+                                                                                }}
+                                                                                title="Verified name"
+                                                                            >
+                                                                                ✓
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                {nickname && !name && (
+                                                                    <div style={{ 
+                                                                        color: '#95a5a6',
+                                                                        fontSize: '16px',
+                                                                        fontStyle: 'italic',
+                                                                        marginBottom: '5px'
+                                                                    }}>
+                                                                        {nickname}
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                             <button
