@@ -23,6 +23,9 @@ function Proposals() {
     const [hasMoreProposals, setHasMoreProposals] = useState(true);
     const [lastProposalId, setLastProposalId] = useState(null);
 
+    // Add state to track expanded summaries
+    const [expandedSummaries, setExpandedSummaries] = useState(new Set());
+
     // Fetch SNS data on component mount
     useEffect(() => {
         async function loadSnsData() {
@@ -148,6 +151,19 @@ function Proposals() {
         return text.replace(/<br>/g, '\n\n');
     };
 
+    // Add toggle function for summaries
+    const toggleSummary = (proposalId) => {
+        setExpandedSummaries(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(proposalId)) {
+                newSet.delete(proposalId);
+            } else {
+                newSet.add(proposalId);
+            }
+            return newSet;
+        });
+    };
+
     return (
         <div className='page-container'>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
@@ -211,17 +227,40 @@ function Proposals() {
                                         {getProposalStatus(proposal)}
                                     </div>
                                 </div>
-                                <div style={{ 
-                                    backgroundColor: '#2a2a2a', 
-                                    padding: '10px', 
-                                    borderRadius: '4px',
-                                    color: '#888', 
-                                    margin: '0 0 10px 0'
-                                }}>
-                                    <ReactMarkdown>
-                                        {convertHtmlToMarkdown(proposal.proposal[0]?.summary || 'No summary')}
-                                    </ReactMarkdown>
+                                <div 
+                                    onClick={() => toggleSummary(proposal.id[0].id.toString())}
+                                    style={{
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                        padding: '10px',
+                                        backgroundColor: '#3a3a3a',
+                                        borderRadius: '6px',
+                                        marginBottom: expandedSummaries.has(proposal.id[0].id.toString()) ? '10px' : '0',
+                                        color: '#888'
+                                    }}
+                                >
+                                    <span style={{ 
+                                        transform: expandedSummaries.has(proposal.id[0].id.toString()) ? 'rotate(90deg)' : 'none',
+                                        transition: 'transform 0.3s ease',
+                                        display: 'inline-block'
+                                    }}>▶</span>
+                                    <span>Summary</span>
                                 </div>
+                                {expandedSummaries.has(proposal.id[0].id.toString()) && (
+                                    <div style={{ 
+                                        backgroundColor: '#3a3a3a', 
+                                        padding: '15px', 
+                                        borderRadius: '6px',
+                                        color: '#888', 
+                                        margin: '0 0 10px 0'
+                                    }}>
+                                        <ReactMarkdown>
+                                            {convertHtmlToMarkdown(proposal.proposal[0]?.summary || 'No summary')}
+                                        </ReactMarkdown>
+                                    </div>
+                                )}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: '14px' }}>
                                     <span>Created: {new Date(Number(proposal.proposal_creation_timestamp_seconds) * 1000).toLocaleString()}</span>
                                     <span>Voting Period: {Math.floor(Number(proposal.initial_voting_period_seconds) / (24 * 60 * 60))} days</span>
