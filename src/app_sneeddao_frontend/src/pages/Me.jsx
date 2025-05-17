@@ -29,9 +29,9 @@ export default function Me() {
                 const data = await fetchAndCacheSnsData();
                 setSnsList(data);
                 // Default to Sneed SNS
-                const sneedSns = data.find(sns => sns.name === 'Sneed');
+                const sneedSns = data.find(sns => sns.rootCanisterId === 'fp274-iaaaa-aaaaq-aacha-cai');
                 if (sneedSns) {
-                    setSelectedSnsRoot(sneedSns.root_canister_id);
+                    setSelectedSnsRoot(sneedSns.rootCanisterId);
                 }
             } catch (err) {
                 console.error('Error fetching SNS data:', err);
@@ -56,7 +56,7 @@ export default function Me() {
                     throw new Error('Selected SNS not found');
                 }
                 
-                const neuronsList = await fetchUserNeuronsForSns(identity, selectedSns.governance_canister_id);
+                const neuronsList = await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
                 setNeurons(neuronsList);
             } catch (err) {
                 console.error('Error fetching neurons:', err);
