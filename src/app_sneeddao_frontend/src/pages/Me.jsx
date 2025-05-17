@@ -223,8 +223,43 @@ export default function Me() {
                                                     }}
                                                 >
                                                     <div style={{ marginBottom: '15px' }}>
-                                                        <div style={{ marginBottom: '5px' }}>
-                                                            {formatNeuronIdLink(neuronId, selectedSnsRoot)}
+                                                        <div style={{ marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <div 
+                                                                style={{ 
+                                                                    display: 'flex', 
+                                                                    alignItems: 'center',
+                                                                    fontFamily: 'monospace',
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                                title={formatNeuronIdLink(neuron.id[0]?.id, selectedSnsRoot)}
+                                                            >
+                                                                {(() => {
+                                                                    const id = uint8ArrayToHex(neuron.id[0]?.id);
+                                                                    if (!id) return 'Unknown';
+                                                                    return `${id.slice(0, 8)}...${id.slice(-8)}`;
+                                                                })()}
+                                                            </div>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const id = uint8ArrayToHex(neuron.id[0]?.id);
+                                                                    if (id) {
+                                                                        navigator.clipboard.writeText(id);
+                                                                    }
+                                                                }}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    padding: '4px',
+                                                                    cursor: 'pointer',
+                                                                    color: '#888',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center'
+                                                                }}
+                                                                title="Copy neuron ID to clipboard"
+                                                            >
+                                                                📋
+                                                            </button>
                                                         </div>
                                                         <div style={{ 
                                                             fontSize: '24px',
