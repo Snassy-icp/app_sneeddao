@@ -6,6 +6,7 @@ import { useAuth } from './AuthContext';
 import Header from './components/Header';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
+import { formatProposalIdLink } from './utils/NeuronUtils';
 
 function Neuron() {
     const { isAuthenticated, identity } = useAuth();
@@ -282,12 +283,7 @@ function Neuron() {
                                                 }}>
                                                     <div>
                                                         <strong>Proposal:</strong>{' '}
-                                                        <Link 
-                                                            to={`/proposal?proposalid=${vote.proposal_id}&sns=${selectedSnsRoot}`}
-                                                            style={{ color: '#3498db', textDecoration: 'none' }}
-                                                        >
-                                                            #{vote.proposal_id}
-                                                        </Link>
+                                                        {formatProposalIdLink(vote.proposal_id, selectedSnsRoot)}
                                                     </div>
                                                     <div style={{ 
                                                         color: vote.vote === 1 ? '#2ecc71' : vote.vote === 2 ? '#e74c3c' : '#ffffff',

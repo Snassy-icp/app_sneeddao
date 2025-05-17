@@ -61,6 +61,21 @@ export const formatNeuronIdLink = (neuronId, snsRoot) => {
     }, displayId);
 };
 
+export const formatProposalIdLink = (proposalId, snsRoot) => {
+    if (!proposalId) return 'Unknown';
+    
+    return React.createElement(Link, {
+        to: `/proposal?proposalid=${proposalId}&sns=${snsRoot}`,
+        style: {
+            color: '#3498db',
+            textDecoration: 'none',
+            fontFamily: 'monospace'
+        },
+        onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
+        onMouseLeave: (e) => e.target.style.textDecoration = 'none'
+    }, `#${proposalId}`);
+};
+
 export const fetchUserNeurons = async (identity) => {
     if (!identity) return [];
     
