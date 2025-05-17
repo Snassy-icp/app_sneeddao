@@ -226,7 +226,7 @@ function Neuron() {
             case 2:
                 return 'No';
             default:
-                return 'Unknown';
+                return 'Not Voted';
         }
     };
 
