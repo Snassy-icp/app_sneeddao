@@ -77,8 +77,12 @@ function Neuron() {
                 },
             });
 
-            // Convert the neuron ID string to a byte array
-            const neuronIdBytes = new TextEncoder().encode(currentNeuronId);
+            // Convert the hex string neuron ID back to a byte array
+            const neuronIdBytes = new Uint8Array(
+                currentNeuronId.match(/.{1,2}/g)
+                    .map(byte => parseInt(byte, 16))
+            );
+            
             const neuronIdArg = {
                 neuron_id: [{ id: Array.from(neuronIdBytes) }]
             };
