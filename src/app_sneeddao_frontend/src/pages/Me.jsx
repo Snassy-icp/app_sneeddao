@@ -27,49 +27,42 @@ export default function Me() {
     const groupedNeurons = React.useMemo(() => {
         const groups = new Map();
         const userPrincipal = identity?.getPrincipal().toString();
-        
-        // Initialize groups
-        groups.set('self', { 
-            title: 'My Neurons', 
-            neurons: [],
-            totalStake: BigInt(0)
-        });
-        groups.set('hotkey', { 
-            title: 'Hotkey Neurons', 
-            neurons: [],
-            totalStake: BigInt(0)
-        });
-        groups.set('other', { 
-            title: 'Other Controlled Neurons', 
-            neurons: [],
-            totalStake: BigInt(0)
-        });
 
+        // First, group neurons by their owner
+        const neuronsByOwner = new Map();
         neurons.forEach(neuron => {
-            const owners = getOwnerPrincipals(neuron);
-            const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
-            
-            if (owners.includes(userPrincipal)) {
-                groups.get('self').neurons.push(neuron);
-                groups.get('self').totalStake += stake;
-            } else if (neuron.permissions.some(p => 
-                p.principal?.toString() === userPrincipal && 
-                p.permission_type.includes(1) // Vote permission
-            )) {
-                groups.get('hotkey').neurons.push(neuron);
-                groups.get('hotkey').totalStake += stake;
-            } else {
-                groups.get('other').neurons.push(neuron);
-                groups.get('other').totalStake += stake;
+            // Find the owner (principal with most permissions)
+            const ownerPrincipals = getOwnerPrincipals(neuron);
+            if (ownerPrincipals.length > 0) {
+                const owner = ownerPrincipals[0]; // Take the first owner
+                if (!neuronsByOwner.has(owner)) {
+                    neuronsByOwner.set(owner, []);
+                }
+                neuronsByOwner.get(owner).push(neuron);
             }
         });
 
-        // Remove empty groups
-        for (const [key, group] of groups) {
-            if (group.neurons.length === 0) {
-                groups.delete(key);
+        // Now, if the user has any permissions on any neuron owned by a principal,
+        // add all neurons from that owner to the group
+        neuronsByOwner.forEach((ownerNeurons, owner) => {
+            // Check if user has permissions on any neuron from this owner
+            const hasAccess = ownerNeurons.some(neuron => 
+                neuron.permissions.some(p => p.principal?.toString() === userPrincipal)
+            );
+
+            if (hasAccess) {
+                const totalStake = ownerNeurons.reduce(
+                    (sum, n) => sum + BigInt(n.cached_neuron_stake_e8s || 0), 
+                    BigInt(0)
+                );
+
+                groups.set(owner, {
+                    title: owner === userPrincipal ? 'My Neurons' : `Neurons owned by ${owner}`,
+                    neurons: ownerNeurons,
+                    totalStake
+                });
             }
-        }
+        });
 
         return groups;
     }, [neurons, identity]);
@@ -265,6 +258,17 @@ export default function Me() {
                                                         <div>
                                                             <div style={{ color: '#888' }}>Voting Power</div>
                                                             <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
+                                                        </div>
+                                                        {/* Temporary debugging info */}
+                                                        <div style={{ gridColumn: '1 / -1' }}>
+                                                            <div style={{ color: '#888' }}>Permissions</div>
+                                                            <div style={{ color: '#ffffff', fontSize: '12px', wordBreak: 'break-all' }}>
+                                                                {neuron.permissions.map((p, i) => (
+                                                                    <div key={i}>
+                                                                        {p.principal?.toString()}: [{p.permission_type.join(', ')}]
+                                                                    </div>
+                                                                ))}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
