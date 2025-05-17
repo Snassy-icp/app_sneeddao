@@ -8,6 +8,7 @@ import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
 import { formatProposalIdLink, uint8ArrayToHex } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
+import { setNeuronNickname } from './utils/BackendUtils';
 
 function Neuron() {
     const { isAuthenticated, identity } = useAuth();
@@ -29,9 +30,12 @@ function Neuron() {
     const [hideNotVoted, setHideNotVoted] = useState(false);
     // Add sort state
     const [sortBy, setSortBy] = useState('proposalId');
+    // Add nickname editing states
+    const [isEditingNickname, setIsEditingNickname] = useState(false);
+    const [nicknameInput, setNicknameInput] = useState('');
     
     // Get naming context
-    const { neuronNames, neuronNicknames } = useNaming();
+    const { neuronNames, neuronNicknames, fetchAllNames } = useNaming();
 
     // Helper function to get display name
     const getDisplayName = (neuronId) => {
@@ -242,6 +246,27 @@ function Neuron() {
         }
     };
 
+    // Add handleNicknameSubmit function
+    const handleNicknameSubmit = async () => {
+        if (!nicknameInput.trim() || !identity || !currentNeuronId) return;
+
+        try {
+            const response = await setNeuronNickname(identity, selectedSnsRoot, currentNeuronId, nicknameInput);
+            if ('ok' in response) {
+                // Refresh global names
+                await fetchAllNames();
+            } else {
+                setError(response.err);
+            }
+        } catch (err) {
+            console.error('Error setting neuron nickname:', err);
+            setError('Failed to set neuron nickname');
+        } finally {
+            setIsEditingNickname(false);
+            setNicknameInput('');
+        }
+    };
+
     return (
         <div className='page-container'>
             <Header showSnsDropdown={true} />
@@ -340,16 +365,106 @@ function Neuron() {
                                                         {publicName}
                                                     </div>
                                                 )}
-                                                {nickname && (
-                                                    <div style={{ 
-                                                        color: '#95a5a6',
-                                                        fontSize: '16px',
-                                                        fontStyle: 'italic',
-                                                        marginBottom: '5px'
-                                                    }}>
-                                                        {nickname}
-                                                    </div>
-                                                )}
+                                                <div style={{ 
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '10px',
+                                                    marginBottom: '5px'
+                                                }}>
+                                                    {isEditingNickname ? (
+                                                        <div style={{ 
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            gap: '10px',
+                                                            width: '100%'
+                                                        }}>
+                                                            <input
+                                                                type="text"
+                                                                value={nicknameInput}
+                                                                onChange={(e) => setNicknameInput(e.target.value)}
+                                                                placeholder="Enter nickname"
+                                                                style={{
+                                                                    backgroundColor: '#2a2a2a',
+                                                                    border: '1px solid #4a4a4a',
+                                                                    borderRadius: '4px',
+                                                                    color: '#ffffff',
+                                                                    padding: '8px',
+                                                                    width: '100%',
+                                                                    fontSize: '14px'
+                                                                }}
+                                                            />
+                                                            <div style={{
+                                                                display: 'flex',
+                                                                gap: '8px',
+                                                                justifyContent: 'flex-end'
+                                                            }}>
+                                                                <button
+                                                                    onClick={handleNicknameSubmit}
+                                                                    style={{
+                                                                        backgroundColor: '#95a5a6',
+                                                                        color: '#ffffff',
+                                                                        border: 'none',
+                                                                        borderRadius: '4px',
+                                                                        padding: '8px 12px',
+                                                                        cursor: 'pointer',
+                                                                        whiteSpace: 'nowrap'
+                                                                    }}
+                                                                >
+                                                                    Save
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setIsEditingNickname(false);
+                                                                        setNicknameInput('');
+                                                                    }}
+                                                                    style={{
+                                                                        backgroundColor: '#e74c3c',
+                                                                        color: '#ffffff',
+                                                                        border: 'none',
+                                                                        borderRadius: '4px',
+                                                                        padding: '8px 12px',
+                                                                        cursor: 'pointer',
+                                                                        whiteSpace: 'nowrap'
+                                                                    }}
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            {nickname && (
+                                                                <div style={{ 
+                                                                    color: '#95a5a6',
+                                                                    fontSize: '16px',
+                                                                    fontStyle: 'italic'
+                                                                }}>
+                                                                    {nickname}
+                                                                </div>
+                                                            )}
+                                                            {isAuthenticated && (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setIsEditingNickname(true);
+                                                                        setNicknameInput(nickname || '');
+                                                                    }}
+                                                                    style={{
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        padding: '4px',
+                                                                        cursor: 'pointer',
+                                                                        color: '#888',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center'
+                                                                    }}
+                                                                    title={nickname ? "Edit nickname" : "Add nickname"}
+                                                                >
+                                                                    ✏️
+                                                                </button>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </div>
                                             </>
                                         );
                                     })()}
