@@ -89,6 +89,26 @@ export const formatVote = (voteNumber) => {
     }
 };
 
+// Helper function to generate a consistent color from a neuron ID
+const getNeuronColor = (neuronId) => {
+    // Simple hash function that sums char codes multiplied by position
+    let hash = 0;
+    for (let i = 0; i < neuronId.length; i++) {
+        hash = ((hash << 5) - hash) + neuronId.charCodeAt(i);
+        hash = hash & hash; // Convert to 32-bit integer
+    }
+
+    // Generate HSL color with:
+    // - Hue: full range (0-360) for maximum distinction
+    // - Saturation: 60-80% for good color without being too bright
+    // - Lightness: 45-65% for good contrast on both dark and light backgrounds
+    const hue = Math.abs(hash % 360);
+    const saturation = 70 + (Math.abs((hash >> 8) % 11)); // 70-80%
+    const lightness = 55 + (Math.abs((hash >> 16) % 11)); // 55-65%
+
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+};
+
 // Create a React link component for a neuron ID
 export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) => {
     if (!neuronId) return 'Unknown';
@@ -106,6 +126,9 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
     // Create truncated ID display (first 6 and last 6 chars)
     const truncatedId = `${displayId.slice(0, 6)}...${displayId.slice(-6)}`;
 
+    // Get consistent color for this neuron ID
+    const neuronColor = getNeuronColor(displayId);
+
     // Create container div for link and copy button
     return React.createElement('div', {
         style: {
@@ -119,14 +142,22 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
             key: 'link',
             to: `/neuron?neuronid=${displayId}&sns=${snsRoot}`,
             style: {
-                color: '#3498db',
+                color: displayName ? '#3498db' : neuronColor,
                 textDecoration: 'none',
                 fontFamily: 'monospace'
             },
             title: displayId,
             onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
             onMouseLeave: (e) => e.target.style.textDecoration = 'none'
-        }, displayName ? `${displayName} (${truncatedId})` : truncatedId),
+        }, displayName ? (
+            React.createElement('span', null, [
+                React.createElement('span', { key: 'name' }, displayName),
+                React.createElement('span', { 
+                    key: 'id',
+                    style: { color: neuronColor }
+                }, ` (${truncatedId})`)
+            ])
+        ) : truncatedId),
         
         // Copy button
         React.createElement('button', {
