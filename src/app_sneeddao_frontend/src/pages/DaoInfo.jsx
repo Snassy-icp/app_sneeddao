@@ -471,7 +471,8 @@ function DaoInfo() {
                                         </h3>
                                         <div style={{
                                             display: 'flex',
-                                            gap: '20px',
+                                            flexDirection: 'column',
+                                            gap: '10px',
                                             color: '#888'
                                         }}>
                                             <div>
@@ -491,7 +492,7 @@ function DaoInfo() {
                                 <div style={styles.grid}>
                                     <div style={styles.card}>
                                         <div style={styles.metric}>
-                                            ${formatUSD(tokenomics.price)}
+                                            {formatUSD(tokenomics.price)}
                                             <div style={{ fontSize: '0.7em', color: '#888' }}>
                                                 {formatNumber(tokenomics.priceIcp)} ICP
                                             </div>
@@ -500,7 +501,7 @@ function DaoInfo() {
                                     </div>
                                     <div style={styles.card}>
                                         <div style={styles.metric}>
-                                            ${formatUSD(tokenomics.marketCap)}
+                                            {formatUSD(tokenomics.marketCap)}
                                             <div style={{ fontSize: '0.7em', color: '#888' }}>
                                                 {formatNumber(tokenomics.marketCapIcp)} ICP
                                             </div>
@@ -512,16 +513,16 @@ function DaoInfo() {
                                         <div style={styles.label}>Total Supply</div>
                                     </div>
                                     <div style={styles.card}>
-                                        <div style={styles.metric}>${formatUSD(tokenomics.totalAssets.totalUsd)}</div>
+                                        <div style={styles.metric}>{formatUSD(tokenomics.totalAssets.totalUsd)}</div>
                                         <div style={styles.label}>Total Assets (USD)</div>
                                     </div>
                                     <div style={styles.card}>
                                         <div style={styles.metric}>{formatNumber(tokenomics.totalAssets.icp / 1e8)} ICP</div>
-                                        <div style={styles.label}>ICP Holdings (${formatUSD(getUSDValue(tokenomics.totalAssets.icp, 8, 'ICP'))})</div>
+                                        <div style={styles.label}>ICP Holdings ({formatUSD(getUSDValue(tokenomics.totalAssets.icp, 8, 'ICP'))})</div>
                                     </div>
                                     <div style={styles.card}>
                                         <div style={styles.metric}>{formatNumber(tokenomics.totalAssets.sneed / 1e8)} SNEED</div>
-                                        <div style={styles.label}>SNEED Holdings (${formatUSD(getUSDValue(tokenomics.totalAssets.sneed, 8, 'SNEED'))})</div>
+                                        <div style={styles.label}>SNEED Holdings ({formatUSD(getUSDValue(tokenomics.totalAssets.sneed, 8, 'SNEED'))})</div>
                                     </div>
                                     <div style={styles.card}>
                                         <div style={styles.metric}>{formatNumber(tokenomics.totalRewardsDistributed / 1e8)}</div>
