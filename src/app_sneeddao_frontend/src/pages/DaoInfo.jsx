@@ -301,8 +301,18 @@ function DaoInfo() {
                     // Get reconciliation data using the balances
                     const reconciliationData = await rllActor.balance_reconciliation_from_balances(balances);
 
-                    // Get LP positions
-                    const lpPositions = await rllActor.get_lp_positions();
+                    // Get DeFi wallet tokens and balances
+                    const defiKnownTokens = await rllActor.get_wallet_known_tokens(Principal.fromText("ok64y-uiaaa-aaaag-qdcbq-cai"));
+                    const defiTokenBalances = await Promise.all(defiKnownTokens.map(async ([tokenId]) => {
+                        const ledgerActor = createLedgerActor(tokenId.toString(), {
+                            agentOptions: { agent }
+                        });
+                        const balance = await ledgerActor.icrc1_balance_of({
+                            owner: Principal.fromText("ok64y-uiaaa-aaaag-qdcbq-cai"),
+                            subaccount: []
+                        });
+                        return [tokenId.toString(), balance];
+                    }));
 
                     // Process total distributions with metadata
                     let tokenDistributions = {};
@@ -329,7 +339,7 @@ function DaoInfo() {
                     // Calculate total assets using the utility function
                     const assetsData = calculateTotalAssetsValue(
                         reconciliationData,
-                        lpPositions || [], // Handle case where lpPositions is null
+                        [], // No LP positions
                         [], // No other LP positions
                         conversionRates
                     );
