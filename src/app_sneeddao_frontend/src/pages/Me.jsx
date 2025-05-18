@@ -22,6 +22,7 @@ import {
 } from '../utils/BackendUtils';
 import { useNaming } from '../NamingContext';
 import { Link } from 'react-router-dom';
+import ConfirmationModal from '../ConfirmationModal';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -46,6 +47,9 @@ export default function Me() {
     const [nameInput, setNameInput] = useState('');
     const [inputError, setInputError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [confirmAction, setConfirmAction] = useState(null);
+    const [confirmMessage, setConfirmMessage] = useState('');
     
     // Get naming context
     const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames } = useNaming();
@@ -195,22 +199,51 @@ export default function Me() {
 
         if (!nameInput.trim()) return;
 
+        if (!isNickname) {
+            // Show confirmation dialog for public names
+            setConfirmAction(() => async () => {
+                setIsSubmitting(true);
+                try {
+                    const response = await setNeuronName(identity, selectedSnsRoot, neuronId, nameInput);
+                    if ('ok' in response) {
+                        await fetchAllNames();
+                        setInputError('');
+                    } else {
+                        setError(response.err);
+                    }
+                } catch (err) {
+                    console.error('Error setting neuron name:', err);
+                    setError('Failed to set neuron name');
+                } finally {
+                    setIsSubmitting(false);
+                    setEditingName(null);
+                    setNameInput('');
+                }
+            });
+            setConfirmMessage(
+                "You are about to set a public name for this neuron. Please note:\n\n" +
+                "• This name will be visible to everyone\n" +
+                "• Only set a name if you want to help others track your neuron\n" +
+                "• Inappropriate names can result in a user ban\n\n" +
+                "Are you sure you want to proceed?"
+            );
+            setShowConfirmModal(true);
+            return;
+        }
+
+        // For nicknames, proceed without confirmation
         setIsSubmitting(true);
         try {
-            const response = isNickname ?
-                await setNeuronNickname(identity, selectedSnsRoot, neuronId, nameInput) :
-                await setNeuronName(identity, selectedSnsRoot, neuronId, nameInput);
-
+            const response = await setNeuronNickname(identity, selectedSnsRoot, neuronId, nameInput);
             if ('ok' in response) {
-                // Refresh global names
                 await fetchAllNames();
                 setInputError('');
             } else {
                 setError(response.err);
             }
         } catch (err) {
-            console.error('Error setting neuron name:', err);
-            setError('Failed to set neuron name');
+            console.error('Error setting neuron nickname:', err);
+            setError('Failed to set neuron nickname');
         } finally {
             setIsSubmitting(false);
             setEditingName(null);
@@ -628,6 +661,13 @@ export default function Me() {
                 )}
             </main>
             <style>{spinKeyframes}</style>
+            <ConfirmationModal
+                show={showConfirmModal}
+                onClose={() => setShowConfirmModal(false)}
+                onSubmit={confirmAction}
+                message={confirmMessage}
+                doAwait={true}
+            />
         </div>
     );
 } 
