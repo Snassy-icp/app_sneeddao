@@ -128,26 +128,18 @@ function DaoInfo() {
     useEffect(() => {
         const fetchConversionRates = async () => {
             try {
-                const neutriniteActor = createNeutriniteDappActor('wedc6-xiaaa-aaaaq-aabaq-cai', {
-                    agentOptions: { identity }
+                // For now, we'll use the rates from the ticker
+                setConversionRates({
+                    'ICP': 5.07,
+                    'SNEED': 77.29
                 });
-                const latestWalletTokens = await neutriniteActor.get_latest_wallet_tokens();
-                const rates = {};
-                latestWalletTokens.forEach(token => {
-                    if (token.symbol.endsWith('/USD')) {
-                        rates[token.symbol.replace('/USD', '')] = Number(token.price) / Math.pow(10, 8);
-                    }
-                });
-                setConversionRates(rates);
             } catch (err) {
                 console.error('Error fetching conversion rates:', err);
             }
         };
 
-        if (identity) {
-            fetchConversionRates();
-        }
-    }, [identity]);
+        fetchConversionRates();
+    }, []);
 
     const getUSDValue = (amount, decimals, symbol) => {
         return (amount / Math.pow(10, decimals)) * (conversionRates[symbol] || 0);
@@ -192,8 +184,9 @@ function DaoInfo() {
                     include_topics: []
                 });
 
-                // Get latest distribution info
-                const latestDistribution = await rllActor.get_latest_distribution_info();
+                // Get total distributions for each token
+                const totalDistributions = await rllActor.get_total_distributions();
+                const distributionsMap = new Map(totalDistributions.map(([principal, amount]) => [principal.toString(), amount]));
                 
                 // Get treasury balances
                 const treasuryBalances = await rllActor.get_treasury_balances();
@@ -215,6 +208,9 @@ function DaoInfo() {
                     }
                 });
 
+                // Get main loop status for latest distribution info
+                const mainLoopStatus = await rllActor.get_main_loop_status();
+
                 // Update state
                 setDaoMetrics({
                     memberCount: listNeuronsResponse.neurons.length,
@@ -230,10 +226,10 @@ function DaoInfo() {
                         icp: Number(icpBalance),
                         sneed: Number(sneedBalance)
                     },
-                    totalRewardsDistributed: latestDistribution.total_rewards_e8s,
+                    totalRewardsDistributed: distributionsMap.get('zfcdd-tqaaa-aaaaq-aaaga-cai') || 0, // SNEED distributions
                     latestDistribution: {
-                        round: Number(latestDistribution.round),
-                        timestamp: Number(latestDistribution.timestamp_seconds)
+                        round: 0, // This info is not directly available
+                        timestamp: Number(mainLoopStatus.last_cycle_ended || 0)
                     }
                 });
             } catch (err) {
