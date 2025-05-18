@@ -489,23 +489,77 @@ function Proposal() {
                 <h1 style={{ color: '#ffffff' }}>Proposal Details</h1>
                 
                 <section style={{ backgroundColor: '#2a2a2a', borderRadius: '8px', padding: '20px', marginTop: '20px' }}>
-                    <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <input
-                                type="text"
-                                value={proposalIdInput}
-                                onChange={(e) => setProposalIdInput(e.target.value)}
-                                placeholder="Enter Proposal ID"
-                                style={{
-                                    backgroundColor: '#3a3a3a',
-                                    border: '1px solid #4a4a4a',
-                                    borderRadius: '4px',
-                                    color: '#ffffff',
-                                    padding: '8px 12px',
-                                    width: '100%',
-                                    fontSize: '14px'
+                    <div style={{ 
+                        display: 'grid',
+                        gridTemplateColumns: '1fr minmax(auto, 500px) 1fr',
+                        gap: '20px',
+                        alignItems: 'center',
+                        marginBottom: '20px'
+                    }}>
+                        <div style={{ justifySelf: 'start' }}>
+                            <button 
+                                onClick={() => {
+                                    const prevId = Number(currentProposalId) - 1;
+                                    if (prevId >= 1) {
+                                        setProposalIdInput(prevId.toString());
+                                        setSearchParams({ proposalid: prevId.toString(), sns: selectedSnsRoot });
+                                        setCurrentProposalId(prevId.toString());
+                                    }
                                 }}
-                            />
+                                style={{
+                                    backgroundColor: '#2c3e50',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '8px 16px',
+                                    cursor: Number(currentProposalId) > 1 ? 'pointer' : 'not-allowed',
+                                    opacity: Number(currentProposalId) > 1 ? 1 : 0.5,
+                                    fontSize: '14px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                }}
+                                disabled={Number(currentProposalId) <= 1}
+                            >
+                                <span style={{ fontSize: '18px' }}>←</span>
+                                Previous
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSearch} style={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            width: '100%'
+                        }}>
+                            <div style={{ 
+                                flex: 1,
+                                position: 'relative',
+                                display: 'flex',
+                                alignItems: 'center'
+                            }}>
+                                <span style={{
+                                    position: 'absolute',
+                                    left: '12px',
+                                    color: '#888',
+                                    fontSize: '14px'
+                                }}>#</span>
+                                <input
+                                    type="text"
+                                    value={proposalIdInput}
+                                    onChange={(e) => setProposalIdInput(e.target.value)}
+                                    placeholder="Proposal ID"
+                                    style={{
+                                        backgroundColor: '#3a3a3a',
+                                        border: '1px solid #4a4a4a',
+                                        borderRadius: '4px',
+                                        color: '#ffffff',
+                                        padding: '8px 12px 8px 26px',
+                                        width: '100%',
+                                        fontSize: '14px'
+                                    }}
+                                />
+                            </div>
                             <button 
                                 type="submit" 
                                 style={{
@@ -516,14 +570,42 @@ function Proposal() {
                                     padding: '8px 16px',
                                     cursor: 'pointer',
                                     fontSize: '14px',
-                                    whiteSpace: 'nowrap'
+                                    whiteSpace: 'nowrap',
+                                    minWidth: '80px'
                                 }}
                             >
                                 Search
                             </button>
+                        </form>
+
+                        <div style={{ justifySelf: 'end' }}>
+                            <button 
+                                onClick={() => {
+                                    const nextId = Number(currentProposalId) + 1;
+                                    setProposalIdInput(nextId.toString());
+                                    setSearchParams({ proposalid: nextId.toString(), sns: selectedSnsRoot });
+                                    setCurrentProposalId(nextId.toString());
+                                }}
+                                style={{
+                                    backgroundColor: '#2c3e50',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '8px 16px',
+                                    cursor: 'pointer',
+                                    fontSize: '14px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                }}
+                            >
+                                Next
+                                <span style={{ fontSize: '18px' }}>→</span>
+                            </button>
                         </div>
-                    </form>
-                    {error && <div style={{ color: '#e74c3c', marginTop: '10px' }}>{error}</div>}
+                    </div>
+
+                    {error && <div style={{ color: '#e74c3c', marginBottom: '20px' }}>{error}</div>}
 
                     {loading && (
                         <div style={{ color: '#ffffff', textAlign: 'center', padding: '20px' }}>
