@@ -3,6 +3,7 @@ import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent } from '@dfinity/agent';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { createActor as createNeutriniteDappActor } from 'external/neutrinite_dapp';
@@ -249,6 +250,23 @@ function DaoInfo() {
                         agentOptions: { agent }
                     });
 
+                    const backendActor = createBackendActor(backendCanisterId, {
+                        agentOptions: { agent }
+                    });
+
+                    // Get whitelisted tokens first
+                    const whitelistedTokens = await backendActor.get_whitelisted_tokens();
+                    const tokenMetadata = {};
+
+                    // Use metadata from whitelisted tokens
+                    whitelistedTokens.forEach(token => {
+                        tokenMetadata[token.ledger_id.toString()] = {
+                            symbol: token.symbol,
+                            decimals: token.decimals,
+                            name: token.name || token.symbol
+                        };
+                    });
+
                     const [
                         totalDistributions,
                         mainLoopStatus,
@@ -261,11 +279,18 @@ function DaoInfo() {
                         sneedLedgerActor.icrc1_total_supply()
                     ]);
 
-                    // Process total distributions
+                    // Process total distributions with metadata
                     let tokenDistributions = {};
+                    let totalUsdValue = 0;
                     totalDistributions.forEach(([tokenId, amount]) => {
                         const tokenIdStr = tokenId.toString();
-                        tokenDistributions[tokenIdStr] = Number(amount);
+                        tokenDistributions[tokenIdStr] = {
+                            amount: Number(amount),
+                            metadata: tokenMetadata[tokenIdStr]
+                        };
+                        const symbol = tokenMetadata[tokenIdStr]?.symbol || tokenIdStr;
+                        const decimals = tokenMetadata[tokenIdStr]?.decimals || 8;
+                        totalUsdValue += getUSDValue(amount, decimals, symbol);
                     });
 
                     // Calculate prices and market cap
@@ -310,6 +335,7 @@ function DaoInfo() {
                             sneed: Number(totalSupply)
                         },
                         tokenDistributions,
+                        totalDistributionsUsd: totalUsdValue,
                         latestDistribution: {
                             round: eventStats?.all_time?.server_distributions?.total || 0,
                             timestamp: Number(mainLoopStatus.last_cycle_ended || 0)
@@ -531,11 +557,10 @@ function DaoInfo() {
                                     <div style={styles.card}>
                                         <div style={styles.metric}>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                                {Object.entries(tokenomics.tokenDistributions || {}).map(([tokenId, amount]) => {
-                                                    const isSneed = tokenId === 'hvgxa-wqaaa-aaaaq-aacia-cai';
-                                                    const isIcp = tokenId === 'ryjl3-tyaaa-aaaaa-aaaba-cai';
-                                                    const symbol = isSneed ? 'SNEED' : isIcp ? 'ICP' : tokenId;
-                                                    const decimals = 8; // Both ICP and SNEED use 8 decimals
+                                                {Object.entries(tokenomics.tokenDistributions || {}).map(([tokenId, data]) => {
+                                                    const { amount, metadata } = data;
+                                                    const symbol = metadata?.symbol || tokenId;
+                                                    const decimals = metadata?.decimals || 8;
                                                     const tokenAmount = formatNumber(amount / Math.pow(10, decimals));
                                                     const usdValue = getUSDValue(amount, decimals, symbol);
                                                     
@@ -548,6 +573,15 @@ function DaoInfo() {
                                                         </div>
                                                     );
                                                 })}
+                                                <div style={{ 
+                                                    borderTop: '1px solid #4a4a4a',
+                                                    paddingTop: '10px',
+                                                    marginTop: '5px',
+                                                    textAlign: 'center',
+                                                    color: '#3498db'
+                                                }}>
+                                                    {formatUSD(tokenomics.totalDistributionsUsd)}
+                                                </div>
                                             </div>
                                         </div>
                                         <div style={styles.label}>Total Rewards Distributed</div>
