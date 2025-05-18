@@ -404,19 +404,19 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         return #err("Anonymous caller not allowed");
     };
 
-    // Validate name format
-    if (not validate_name_text(name)) {
+    // Validate name format (unless it's empty)
+    if (name != "" and not validate_name_text(name)) {
         return #err("Name must be 1-32 characters long and contain only alphanumeric characters, spaces, hyphens, underscores, and dots");
-    };
-
-    // Check name uniqueness
-    if (not is_name_unique(sns_root_canister_id, name, ?neuron_id)) {
-        return #err("Name is already taken by another neuron");
     };
 
     let key : NeuronNameKey = {
         sns_root_canister_id;
         neuron_id;
+    };
+
+    // Check name uniqueness (only if setting a new name)
+    if (name != "" and not is_name_unique(sns_root_canister_id, name, ?neuron_id)) {
+        return #err("Name is already taken by another neuron");
     };
 
     // Get governance canister and check ownership
@@ -428,16 +428,22 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
             return #err("Caller is not authorized to name this neuron");
         };
 
-        // Keep verification status if it exists, otherwise set to false
-        let current_verified = switch (neuron_names.get(key)) {
-            case (?(_, verified)) { verified };
-            case null { false };
-        };
-        
-        neuron_names.put(key, (name, current_verified));
-        #ok("Successfully set neuron name")
+        if (name == "") {
+            // Remove the name if it exists
+            neuron_names.delete(key);
+            return #ok("Successfully removed neuron name");
+        } else {
+            // Keep verification status if it exists, otherwise set to false
+            let current_verified = switch (neuron_names.get(key)) {
+                case (?(_, verified)) { verified };
+                case null { false };
+            };
+            
+            neuron_names.put(key, (name, current_verified));
+            return #ok("Successfully set neuron name");
+        }
     } catch (e) {
-        #err("Failed to verify neuron ownership: " # Error.message(e))
+        return #err("Failed to verify neuron ownership: " # Error.message(e));
     }
   };
 
@@ -508,37 +514,48 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // Neuron nickname management
   public shared ({ caller }) func set_neuron_nickname(sns_root_canister_id : Principal, neuron_id : NeuronId, nickname : Text) : async Result.Result<Text, Text> {
     if (Principal.isAnonymous(caller)) {
-      return #err("Anonymous caller not allowed");
+        return #err("Anonymous caller not allowed");
     };
 
-    // Validate nickname format
-    if (not validate_name_text(nickname)) {
-      return #err("Nickname must be 1-32 characters long and contain only alphanumeric characters, spaces, hyphens, underscores, and dots");
+    // Validate nickname format (unless it's empty)
+    if (nickname != "" and not validate_name_text(nickname)) {
+        return #err("Nickname must be 1-32 characters long and contain only alphanumeric characters, spaces, hyphens, underscores, and dots");
     };
 
     let key : NeuronNameKey = {
-      sns_root_canister_id;
-      neuron_id;
+        sns_root_canister_id;
+        neuron_id;
     };
 
-    // Get or create user's nickname map
-    let user_nicknames = switch (neuron_nicknames.get(caller)) {
-      case (?existing) { existing };
-      case (null) {
-        let new_map = HashMap.HashMap<NeuronNameKey, Text>(10, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
-          Principal.equal(k1.sns_root_canister_id, k2.sns_root_canister_id) and Blob.equal(k1.neuron_id.id, k2.neuron_id.id)
-        }, func(k: NeuronNameKey) : Nat32 {
-          let h1 = Principal.hash(k.sns_root_canister_id);
-          let h2 = Blob.hash(k.neuron_id.id);
-          h1 ^ h2
-        });
-        neuron_nicknames.put(caller, new_map);
-        new_map
-      };
-    };
-
-    user_nicknames.put(key, nickname);
-    #ok("Successfully set neuron nickname")
+    if (nickname == "") {
+        // Get the user's nickname map
+        switch (neuron_nicknames.get(caller)) {
+            case (?user_map) {
+                // Remove the nickname if it exists
+                user_map.delete(key);
+            };
+            case null { /* No nicknames map exists, nothing to remove */ };
+        };
+        return #ok("Successfully removed neuron nickname");
+    } else {
+        // Get or create the user's nickname map
+        let user_map = switch (neuron_nicknames.get(caller)) {
+            case (?existing_map) { existing_map };
+            case null {
+                let new_map = HashMap.HashMap<NeuronNameKey, Text>(10, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
+                    k1.sns_root_canister_id == k2.sns_root_canister_id and k1.neuron_id.id == k2.neuron_id.id
+                }, func(k : NeuronNameKey) : Nat32 {
+                    Principal.hash(k.sns_root_canister_id) ^ Blob.hash(k.neuron_id.id)
+                });
+                neuron_nicknames.put(caller, new_map);
+                new_map
+            };
+        };
+        
+        // Set the nickname
+        user_map.put(key, nickname);
+        return #ok("Successfully set neuron nickname");
+    }
   };
 
   public query ({ caller }) func get_neuron_nickname(sns_root_canister_id : Principal, neuron_id : NeuronId) : async ?Text {
