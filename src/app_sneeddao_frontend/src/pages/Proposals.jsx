@@ -5,7 +5,7 @@ import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import ReactMarkdown from 'react-markdown';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
-import { formatProposalIdLink } from '../utils/NeuronUtils';
+import { formatProposalIdLink, formatNeuronIdLink } from '../utils/NeuronUtils';
 
 function Proposals() {
     const { isAuthenticated, identity } = useAuth();
@@ -211,14 +211,28 @@ function Proposals() {
                             >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                                     <div>
-                                        <h3 style={{ color: '#ffffff', margin: '0 0 5px 0' }}>
-                                            {formatProposalIdLink(proposal.id[0].id.toString(), selectedSnsRoot)}
-                                        </h3>
-                                        <h4 style={{ color: '#ffffff', margin: '0 0 10px 0' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
+                                            <h3 style={{ color: '#ffffff', margin: '0' }}>
+                                                {formatProposalIdLink(proposal.id[0].id.toString(), selectedSnsRoot)}
+                                            </h3>
+                                            <div style={{
+                                                padding: '4px 8px',
+                                                borderRadius: '4px',
+                                                backgroundColor: '#3a3a3a',
+                                                color: '#ffffff',
+                                                fontSize: '12px'
+                                            }}>
+                                                {getProposalStatus(proposal)}
+                                            </div>
+                                        </div>
+                                        <h4 style={{ color: '#ffffff', margin: '0 0 5px 0' }}>
                                             {proposal.proposal[0]?.title || 'No title'}
                                         </h4>
+                                        <div style={{ color: '#888', fontSize: '14px' }}>
+                                            Proposed by: {proposal.proposer?.[0]?.id ? formatNeuronIdLink(proposal.proposer[0].id, selectedSnsRoot) : 'Unknown'}
+                                        </div>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                                         <a 
                                             href={`https://nns.ic0.app/proposal/?u=${selectedSnsRoot}&proposal=${proposal.id[0].id.toString()}`}
                                             target="_blank"
@@ -264,14 +278,6 @@ function Proposals() {
                                         >
                                             Toolkit
                                         </a>
-                                        <div style={{
-                                            padding: '5px 10px',
-                                            borderRadius: '4px',
-                                            backgroundColor: '#3a3a3a',
-                                            color: '#ffffff'
-                                        }}>
-                                            {getProposalStatus(proposal)}
-                                        </div>
                                     </div>
                                 </div>
                                 <div 
