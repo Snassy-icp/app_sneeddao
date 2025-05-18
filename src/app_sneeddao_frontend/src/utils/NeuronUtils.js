@@ -164,23 +164,16 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
                     fontWeight: 'bold'
                 }
             }, [
-                name,
                 isVerified && React.createElement('span', {
                     key: 'verified',
                     style: { 
-                        backgroundColor: '#2ecc71',
-                        color: '#ffffff',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        fontWeight: 'bold',
+                        color: '#2ecc71',
                         cursor: 'help',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '2px'
+                        fontSize: '14px'
                     },
                     title: 'Verified neuron name'
-                }, ['✓', React.createElement('span', { style: { fontSize: '10px' }}, 'VERIFIED')])
+                }, '✓'),
+                name
             ]),
             
             // If there's a nickname and it's different from the name, show it
