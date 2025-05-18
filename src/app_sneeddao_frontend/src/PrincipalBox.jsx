@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import './PrincipalBox.css';
 
@@ -6,7 +6,20 @@ function PrincipalBox({ principalText, onLogout }) {
     const [showPopup, setShowPopup] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState('');
     const principalRef = useRef(null);
+    const popupRef = useRef(null);
     const { login } = useAuth();
+
+    // Add click outside handler
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (popupRef.current && !popupRef.current.contains(event.target)) {
+                setShowPopup(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const truncateString = (
       fullStr,
@@ -56,7 +69,7 @@ function PrincipalBox({ principalText, onLogout }) {
               {truncateString(principalText, 15, "...", 3, 3)}
           </button>
           {showPopup && (
-              <div className="principal-popup">
+              <div className="principal-popup" ref={popupRef}>
                   <h3>Your Principal ID</h3>
                   <div className="principal-display">
                       <textarea
