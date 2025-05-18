@@ -248,7 +248,7 @@ function DaoInfo() {
                         }),
                         rllActor.get_neuron_statistics()
                     ]);
-                    
+                    console.log("neuronStats", neuronStats);
                     // Count active neurons (not dissolved)
                     const activeNeurons = listNeuronsResponse.neurons.filter(neuron => {
                         if (!neuron.dissolve_state?.[0]) return false;
