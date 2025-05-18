@@ -14,9 +14,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
     const menuRef = useRef(null);
     const [activeSection, setActiveSection] = useState(() => {
         const path = location.pathname;
-        if (['/dao', '/dao_info', '/rll_info', '/products', '/partners', '/proposals'].includes(path)) return 'DAO';
+        if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/proposals'].includes(path)) return 'DAO';
         if (['/wallet'].includes(path)) return 'Wallet';
-        if (['/me', '/rll'].includes(path)) return 'Me';
+        if (['/me', '/rewards'].includes(path)) return 'Me';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
         return 'DAO';
     });

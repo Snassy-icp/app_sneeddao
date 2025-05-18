@@ -278,22 +278,24 @@ function Rewards() {
             fee: BigInt(10000) // Default fee of 0.0001 tokens
         };
 
+        console.log("balance", balance, "token.fee", token.fee);
         // Check if balance is less than or equal to fee
         if (balance <= token.fee) {
+            msg = `Your ${token.symbol} rewards (${formatBalance(balance, 8)} ${token.symbol}) are less than the transaction fee (${formatBalance(token.fee, 8)} ${token.symbol}). Please wait until you have accumulated more rewards before claiming.`    
+            console.error(msg);
             setNotification({
                 type: 'error',
-                message: `Your ${token.symbol} rewards (${formatBalance(balance, 8)} ${token.symbol}) are less than the transaction fee (${formatBalance(token.fee, 8)} ${token.symbol}). Please wait until you have accumulated more rewards before claiming.`
+                message: msg
             });
             return;
         }
 
         setClaimingTokens(prev => ({ ...prev, [tokenId.toString()]: true }));
         try {
-            const neurons = await fetchNeuronsFromSns();
             const rllActor = createRllActor(rllCanisterId, {
                 agentOptions: { identity }
             });
-            const claim_results = await rllActor.claim_hotkey_neuron_rewards(neurons, tokenId);
+            const claim_results = await rllActor.claim_full_balance_of_hotkey(tokenId, token.fee);
             
             // Check the result
             if ('Ok' in claim_results) {
@@ -302,6 +304,7 @@ function Rewards() {
                     message: `Successfully claimed ${formatBalance(balance, 8)} ${token.symbol}`
                 });
                 // Refresh balances
+                const neurons = await fetchNeuronsFromSns();
                 const newBalances = await rllActor.balances_of_hotkey_neurons(neurons);
                 setUserBalances(newBalances);
             } else {
