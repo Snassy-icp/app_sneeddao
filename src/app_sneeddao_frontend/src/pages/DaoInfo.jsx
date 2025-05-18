@@ -189,7 +189,7 @@ function DaoInfo() {
                 const distributionsMap = new Map(totalDistributions.map(([principal, amount]) => [principal.toString(), amount]));
                 
                 // Get treasury balances
-                const treasuryBalances = await rllActor.get_treasury_balances();
+                const treasuryBalances = await rllActor.all_token_balances();
                 
                 // Calculate total assets
                 let totalIcpUsd = 0;
