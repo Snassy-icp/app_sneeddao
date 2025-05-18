@@ -10,6 +10,7 @@ import Blob "mo:base/Blob";
 import Result "mo:base/Result";
 import Buffer "mo:base/Buffer";
 import Error "mo:base/Error";
+import Char "mo:base/Char";
 
 import T "Types";
 
@@ -354,36 +355,89 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     Principal.equal(caller, governance_canister_id)
   };
 
+  // Helper function to validate name text
+  private func validate_name_text(text : Text) : Bool {
+    let length = text.size();
+    if (length < 1 or length > 32) {
+        return false;
+    };
+    
+    for (char in text.chars()) {
+        let isAlphanumeric = (char >= 'a' and char <= 'z') or
+                            (char >= 'A' and char <= 'Z') or
+                            (char >= '0' and char <= '9');
+        let isSeparator = char == ' ' or char == '-' or char == '_' or char == '.';
+        
+        if (not (isAlphanumeric or isSeparator)) {
+            return false;
+        };
+    };
+    true
+  };
+
+  // Helper function to check if a name is unique
+  private func is_name_unique(sns_root_canister_id : Principal, name : Text, exclude_neuron : ?NeuronId) : Bool {
+    for ((key, (existing_name, _)) in neuron_names.entries()) {
+        if (Principal.equal(key.sns_root_canister_id, sns_root_canister_id) and 
+            Text.equal(existing_name, name)) {
+            // If we're excluding a neuron (e.g. when updating), check it's not that one
+            switch (exclude_neuron) {
+                case (?neuron_id) {
+                    if (Blob.equal(key.neuron_id.id, neuron_id.id)) {
+                        // Skip if this is the neuron we're updating
+                        return true;
+                    };
+                };
+                case null {};
+            };
+            // Found a match that's not our excluded neuron
+            return false;
+        };
+    };
+    // No matches found
+    true
+  };
+
   // Neuron name management
   public shared ({ caller }) func set_neuron_name(sns_root_canister_id : Principal, neuron_id : NeuronId, name : Text) : async Result.Result<Text, Text> {
     if (Principal.isAnonymous(caller)) {
-      return #err("Anonymous caller not allowed");
+        return #err("Anonymous caller not allowed");
+    };
+
+    // Validate name format
+    if (not validate_name_text(name)) {
+        return #err("Name must be 1-32 characters long and contain only alphanumeric characters, spaces, hyphens, underscores, and dots");
+    };
+
+    // Check name uniqueness
+    if (not is_name_unique(sns_root_canister_id, name, ?neuron_id)) {
+        return #err("Name is already taken by another neuron");
     };
 
     let key : NeuronNameKey = {
-      sns_root_canister_id;
-      neuron_id;
+        sns_root_canister_id;
+        neuron_id;
     };
 
     // Get governance canister and check ownership
     try {
-      let governance_canister_id = await get_sns_governance_canister(sns_root_canister_id);
-      let is_owner = await is_neuron_owner(caller, governance_canister_id, neuron_id);
-      
-      if (not is_owner) {
-        return #err("Caller is not authorized to name this neuron");
-      };
+        let governance_canister_id = await get_sns_governance_canister(sns_root_canister_id);
+        let is_owner = await is_neuron_owner(caller, governance_canister_id, neuron_id);
+        
+        if (not is_owner) {
+            return #err("Caller is not authorized to name this neuron");
+        };
 
-      // Keep verification status if it exists, otherwise set to false
-      let current_verified = switch (neuron_names.get(key)) {
-        case (?(_, verified)) { verified };
-        case null { false };
-      };
-      
-      neuron_names.put(key, (name, current_verified));
-      #ok("Successfully set neuron name")
+        // Keep verification status if it exists, otherwise set to false
+        let current_verified = switch (neuron_names.get(key)) {
+            case (?(_, verified)) { verified };
+            case null { false };
+        };
+        
+        neuron_names.put(key, (name, current_verified));
+        #ok("Successfully set neuron name")
     } catch (e) {
-      #err("Failed to verify neuron ownership: " # Error.message(e))
+        #err("Failed to verify neuron ownership: " # Error.message(e))
     }
   };
 
@@ -455,6 +509,11 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   public shared ({ caller }) func set_neuron_nickname(sns_root_canister_id : Principal, neuron_id : NeuronId, nickname : Text) : async Result.Result<Text, Text> {
     if (Principal.isAnonymous(caller)) {
       return #err("Anonymous caller not allowed");
+    };
+
+    // Validate nickname format
+    if (not validate_name_text(nickname)) {
+      return #err("Nickname must be 1-32 characters long and contain only alphanumeric characters, spaces, hyphens, underscores, and dots");
     };
 
     let key : NeuronNameKey = {
