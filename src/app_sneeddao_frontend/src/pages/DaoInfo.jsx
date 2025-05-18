@@ -262,21 +262,9 @@ function DaoInfo() {
                         neuronStats: {
                             totalNeurons: neuronStats.total_neurons,
                             activeNeurons: neuronStats.active_neurons,
-                            dissolveState: {
-                                notDissolving: neuronStats.not_dissolving,
-                                dissolving: neuronStats.dissolving,
-                                dissolved: neuronStats.dissolved
-                            },
-                            votingPower: {
-                                total: neuronStats.total_voting_power,
-                                min: neuronStats.min_voting_power,
-                                max: neuronStats.max_voting_power,
-                                avg: neuronStats.avg_voting_power
-                            },
-                            permissions: {
-                                totalHotkeys: neuronStats.total_hotkeys,
-                                multiHotkeyNeurons: neuronStats.multi_hotkey_neurons
-                            },
+                            dissolveState: neuronStats.dissolve_state,
+                            votingPower: neuronStats.voting_power,
+                            permissions: neuronStats.permissions,
                             totalStaked: neuronStats.total_stake
                         }
                     });
@@ -548,7 +536,7 @@ function DaoInfo() {
                                 </div>
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
-                                        {formatNumber(Number(daoMetrics.neuronStats.dissolveState.notDissolving))}
+                                        {formatNumber(Number(daoMetrics.neuronStats.dissolveState.not_dissolving))}
                                         <div style={{ fontSize: '0.7em', color: '#888' }}>Not Dissolving</div>
                                     </div>
                                     <div style={styles.label}>Dissolve State</div>
@@ -580,9 +568,9 @@ function DaoInfo() {
                                 </div>
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
-                                        {formatNumber(Number(daoMetrics.neuronStats.permissions.totalHotkeys))}
+                                        {formatNumber(Number(daoMetrics.neuronStats.permissions.total_hotkeys))}
                                         <div style={{ fontSize: '0.7em', color: '#888' }}>
-                                            Multi-hotkey: {formatNumber(Number(daoMetrics.neuronStats.permissions.multiHotkeyNeurons))}
+                                            Multi-hotkey: {formatNumber(Number(daoMetrics.neuronStats.permissions.multi_hotkey_neurons))}
                                         </div>
                                     </div>
                                     <div style={styles.label}>Hotkeys</div>
