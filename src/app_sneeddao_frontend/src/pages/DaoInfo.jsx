@@ -123,7 +123,27 @@ function DaoInfo() {
     const [daoMetrics, setDaoMetrics] = useState({
         memberCount: 0,
         activeNeurons: 0,
-        proposalCount: 0
+        proposalCount: 0,
+        neuronStats: {
+            totalNeurons: 0,
+            activeNeurons: 0,
+            dissolveState: {
+                notDissolving: 0,
+                dissolving: 0,
+                dissolved: 0
+            },
+            votingPower: {
+                total: 0,
+                min: 0,
+                max: 0,
+                avg: 0
+            },
+            permissions: {
+                totalHotkeys: 0,
+                multiHotkeyNeurons: 0
+            },
+            totalStaked: 0
+        }
     });
     const [tokenomics, setTokenomics] = useState({
         price: 0,
@@ -212,7 +232,7 @@ function DaoInfo() {
                 // Fetch metrics data
                 setLoading(prev => ({ ...prev, metrics: true }));
                 try {
-                    const [listNeuronsResponse, listProposalsResponse] = await Promise.all([
+                    const [listNeuronsResponse, listProposalsResponse, neuronStats] = await Promise.all([
                         snsGovActor.list_neurons({
                             limit: 0,
                             start_page_at: [],
@@ -225,7 +245,8 @@ function DaoInfo() {
                             include_reward_status: [],
                             include_status: [],
                             include_topics: []
-                        })
+                        }),
+                        rllActor.get_neuron_statistics()
                     ]);
                     
                     // Count active neurons (not dissolved)
@@ -237,7 +258,27 @@ function DaoInfo() {
                     setDaoMetrics({
                         memberCount: listNeuronsResponse.neurons.length,
                         activeNeurons: activeNeurons,
-                        proposalCount: listProposalsResponse.proposals.length
+                        proposalCount: listProposalsResponse.proposals.length,
+                        neuronStats: {
+                            totalNeurons: neuronStats.total_neurons,
+                            activeNeurons: neuronStats.active_neurons,
+                            dissolveState: {
+                                notDissolving: neuronStats.not_dissolving,
+                                dissolving: neuronStats.dissolving,
+                                dissolved: neuronStats.dissolved
+                            },
+                            votingPower: {
+                                total: neuronStats.total_voting_power,
+                                min: neuronStats.min_voting_power,
+                                max: neuronStats.max_voting_power,
+                                avg: neuronStats.avg_voting_power
+                            },
+                            permissions: {
+                                totalHotkeys: neuronStats.total_hotkeys,
+                                multiHotkeyNeurons: neuronStats.multi_hotkey_neurons
+                            },
+                            totalStaked: neuronStats.total_stake
+                        }
                     });
                 } catch (err) {
                     console.error('Error fetching metrics:', err);
@@ -498,12 +539,62 @@ function DaoInfo() {
                         ) : (
                             <div style={styles.grid}>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>{formatNumber(daoMetrics.memberCount)}</div>
-                                    <div style={styles.label}>Total Members</div>
+                                    <div style={styles.metric}>{formatNumber(daoMetrics.neuronStats.totalNeurons)}</div>
+                                    <div style={styles.label}>Total Neurons</div>
                                 </div>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>{formatNumber(daoMetrics.activeNeurons)}</div>
+                                    <div style={styles.metric}>{formatNumber(daoMetrics.neuronStats.activeNeurons)}</div>
                                     <div style={styles.label}>Active Neurons</div>
+                                </div>
+                                <div style={styles.card}>
+                                    <div style={styles.metric}>
+                                        {formatNumber(daoMetrics.neuronStats.dissolveState.notDissolving)}
+                                        <div style={{ fontSize: '0.7em', color: '#888' }}>Not Dissolving</div>
+                                    </div>
+                                    <div style={styles.label}>Dissolve State</div>
+                                </div>
+                                <div style={styles.card}>
+                                    <div style={styles.metric}>
+                                        {formatNumber(daoMetrics.neuronStats.dissolveState.dissolving)}
+                                        <div style={{ fontSize: '0.7em', color: '#888' }}>Dissolving</div>
+                                    </div>
+                                    <div style={styles.label}>Dissolve State</div>
+                                </div>
+                                <div style={styles.card}>
+                                    <div style={styles.metric}>
+                                        {formatNumber(daoMetrics.neuronStats.dissolveState.dissolved)}
+                                        <div style={{ fontSize: '0.7em', color: '#888' }}>Dissolved</div>
+                                    </div>
+                                    <div style={styles.label}>Dissolve State</div>
+                                </div>
+                                <div style={styles.card}>
+                                    <div style={styles.metric}>
+                                        {formatNumber(daoMetrics.neuronStats.votingPower.total)}
+                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                            Min: {formatNumber(daoMetrics.neuronStats.votingPower.min)}
+                                            {' | '}
+                                            Max: {formatNumber(daoMetrics.neuronStats.votingPower.max)}
+                                        </div>
+                                    </div>
+                                    <div style={styles.label}>Total Voting Power</div>
+                                </div>
+                                <div style={styles.card}>
+                                    <div style={styles.metric}>
+                                        {daoMetrics.neuronStats.permissions.totalHotkeys}
+                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                            Multi-hotkey: {daoMetrics.neuronStats.permissions.multiHotkeyNeurons}
+                                        </div>
+                                    </div>
+                                    <div style={styles.label}>Hotkeys</div>
+                                </div>
+                                <div style={styles.card}>
+                                    <div style={styles.metric}>
+                                        {formatNumber(Number(daoMetrics.neuronStats.totalStaked) / 1e8)} SNEED
+                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                            {((Number(daoMetrics.neuronStats.totalStaked) / Number(tokenomics.totalSupply)) * 100).toFixed(2)}% of supply
+                                        </div>
+                                    </div>
+                                    <div style={styles.label}>Total Staked</div>
                                 </div>
                                 <div style={styles.card}>
                                     <div style={styles.metric}>{formatNumber(daoMetrics.proposalCount)}</div>
