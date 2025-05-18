@@ -43,6 +43,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_principal_ledger_canisters : StablePrincipalLedgerCanisters = [];
   stable var stable_whitelisted_tokens : [WhitelistedToken] = [];
   stable var stable_admins : [Principal] = [deployer.caller];
+  stable var stable_blacklisted_words : [Text] = [];
 
   // Stable storage for neuron names and nicknames
   stable var stable_neuron_names : [(NeuronNameKey, (Text, Bool))] = [];
@@ -62,6 +63,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   var cached_token_meta : HashMap.HashMap<Principal, T.TokenMeta> = HashMap.HashMap<Principal, T.TokenMeta>(100, Principal.equal, Principal.hash);
   var whitelisted_tokens : HashMap.HashMap<Principal, WhitelistedToken> = HashMap.HashMap<Principal, WhitelistedToken>(10, Principal.equal, Principal.hash);
   var admins : HashMap.HashMap<Principal, Bool> = HashMap.HashMap<Principal, Bool>(10, Principal.equal, Principal.hash);
+
+  // Add after other runtime variables
+  var blacklisted_words = List.fromArray<Text>(stable_blacklisted_words);
 
   // ephemeral state
   let state : State = object { 
@@ -349,23 +353,33 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   };
 
   // Helper function to validate name text
-  private func validate_name_text(text : Text) : Bool {
-    let length = text.size();
-    if (length < 1 or length > 32) {
+  private func validate_name_text(text: Text) : Bool {
+    if (text.size() > 32) {
+      return false;
+    };
+
+    // Check if text contains any blacklisted words (case insensitive)
+    let lowercaseText = Text.toLowercase(text);
+    for (blacklistedWord in blacklisted_words.vals()) {
+      let lowercaseBlacklisted = Text.toLowercase(blacklistedWord);
+      if (Text.contains(lowercaseText, #pattern lowercaseBlacklisted)) {
         return false;
+      };
     };
-    
+
+    // Check characters
     for (char in text.chars()) {
-        let isAlphanumeric = (char >= 'a' and char <= 'z') or
-                            (char >= 'A' and char <= 'Z') or
-                            (char >= '0' and char <= '9');
-        let isSeparator = char == ' ' or char == '-' or char == '_' or char == '.' or char == '\'';
-        
-        if (not (isAlphanumeric or isSeparator)) {
-            return false;
-        };
+      let isAlphanumeric = (char >= 'a' and char <= 'z') or
+                          (char >= 'A' and char <= 'Z') or
+                          (char >= '0' and char <= '9');
+      let isSeparator = char == ' ' or char == '-' or char == '_' or char == '.' or char == '\'';
+      
+      if (not (isAlphanumeric or isSeparator)) {
+        return false;
+      };
     };
-    true
+
+    return true;
   };
 
   // Helper function to check if a name is unique
@@ -573,6 +587,36 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     }
   };
 
+  // Add after other admin functions
+  public shared ({ caller }) func add_blacklisted_word(word: Text) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+    let lowercaseWord = Text.toLowercase(word);
+    for (existingWord in blacklisted_words.vals()) {
+      if (Text.toLowercase(existingWord) == lowercaseWord) {
+        return #err("Word already blacklisted");
+      };
+    };
+    blacklisted_words := List.push(word, blacklisted_words);
+    #ok()
+  };
+
+  public shared ({ caller }) func remove_blacklisted_word(word: Text) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+    let lowercaseWord = Text.toLowercase(word);
+    blacklisted_words := List.filter(blacklisted_words, func(w: Text) : Bool {
+      Text.toLowercase(w) != lowercaseWord
+    });
+    #ok()
+  };
+
+  public query func get_blacklisted_words() : async [Text] {
+    List.toArray(blacklisted_words)
+  };
+
   // save state to stable arrays
   system func preupgrade() {
     /// stable_principal_swap_canisters
@@ -615,6 +659,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       nickname_entries.add((user, Iter.toArray(nicknames.entries())));
     };
     stable_neuron_nicknames := Buffer.toArray(nickname_entries);
+
+    // Save blacklisted words to stable storage
+    stable_blacklisted_words := List.toArray(blacklisted_words);
   };
 
   // initialize ephemeral state and empty stable arrays to save memory
@@ -665,6 +712,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         neuron_nicknames.put(user, user_map);
       };
       stable_neuron_nicknames := [];
+
+      // Restore blacklisted words from stable storage
+      blacklisted_words := List.fromArray(stable_blacklisted_words);
+      stable_blacklisted_words := [];
   };
 
 };
