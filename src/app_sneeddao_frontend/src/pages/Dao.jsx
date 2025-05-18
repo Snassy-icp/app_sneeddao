@@ -65,7 +65,40 @@ const styles = {
     strong: {
         color: '#3498db',
         fontWeight: 'bold',
-    }
+    },
+    linkSection: {
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '2rem',
+        marginBottom: '2rem',
+    },
+    linkGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '2rem',
+        marginTop: '1rem',
+    },
+    linkBox: {
+        backgroundColor: '#3a3a3a',
+        padding: '1.5rem',
+        borderRadius: '8px',
+    },
+    linkList: {
+        listStyle: 'none',
+        padding: 0,
+        margin: 0,
+    },
+    linkItem: {
+        marginBottom: '0.8rem',
+    },
+    link: {
+        color: '#3498db',
+        textDecoration: 'none',
+        fontSize: '1.1rem',
+        '&:hover': {
+            textDecoration: 'underline',
+        },
+    },
 };
 
 function Dao() {
@@ -157,6 +190,61 @@ function Dao() {
                     <p style={styles.paragraph}>
                         The future of Sneed DAO is 100% shaped by its decentralized community, which controls both the DAO treasury and the DAO dApps. Your voice matters in determining the direction and development of the platform.
                     </p>
+                </div>
+
+                <div style={styles.linkSection}>
+                    <h2 style={styles.subheading}>Further Links</h2>
+                    <div style={styles.linkGrid}>
+                        <div style={styles.linkBox}>
+                            <h3 style={{...styles.subheading, fontSize: '1.4rem'}}>Web3</h3>
+                            <ul style={styles.linkList}>
+                                <li style={styles.linkItem}>
+                                    <a href="https://icpswap.com" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                        ICPSwap
+                                    </a>
+                                </li>
+                                <li style={styles.linkItem}>
+                                    <a href="https://sonic.ooo" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                        Sonic
+                                    </a>
+                                </li>
+                                <li style={styles.linkItem}>
+                                    <a href="https://iclight.io" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                        ICLight
+                                    </a>
+                                </li>
+                                <li style={styles.linkItem}>
+                                    <a href="https://icpcoins.com" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                        ICPCoins
+                                    </a>
+                                </li>
+                                <li style={styles.linkItem}>
+                                    <a href="https://sneedscan.com" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                        SneedScan
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                        <div style={styles.linkBox}>
+                            <h3 style={{...styles.subheading, fontSize: '1.4rem'}}>Web2</h3>
+                            <ul style={styles.linkList}>
+                                <li style={styles.linkItem}>
+                                    <a href="https://coinmarketcap.com/currencies/sneed" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                        CoinMarketCap
+                                    </a>
+                                </li>
+                                <li style={styles.linkItem}>
+                                    <a href="https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                        Sneed DAO SNS Proposal
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div style={{...styles.section, textAlign: 'center', color: '#888', fontSize: '0.9rem'}}>
+                    © 2024 Built with ❤️ by Sneed DAO
                 </div>
             </main>
         </div>
