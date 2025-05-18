@@ -11,6 +11,8 @@ import Result "mo:base/Result";
 import Buffer "mo:base/Buffer";
 import Error "mo:base/Error";
 import Char "mo:base/Char";
+import Time "mo:base/Time";
+import Int "mo:base/Int";
 
 import T "Types";
 
@@ -38,6 +40,15 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     standard: Text;
   };
 
+  // Ban types
+  type BanLogEntry = {
+    user: Principal;
+    admin: Principal;
+    ban_timestamp: Int;
+    expiry_timestamp: Int;
+    reason: Text;
+  };
+
   // stable memory
   stable var stable_principal_swap_canisters : StablePrincipalSwapCanisters = [];
   stable var stable_principal_ledger_canisters : StablePrincipalLedgerCanisters = [];
@@ -48,6 +59,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // Stable storage for neuron names and nicknames
   stable var stable_neuron_names : [(NeuronNameKey, (Text, Bool))] = [];
   stable var stable_neuron_nicknames : [(Principal, [(NeuronNameKey, Text)])] = [];
+
+  // Stable storage for bans
+  stable var stable_ban_log : [BanLogEntry] = [];
+  stable var stable_banned_users : [(Principal, Int)] = [];
 
   // Runtime hashmaps for neuron names and nicknames
   var neuron_names = HashMap.HashMap<NeuronNameKey, (Text, Bool)>(100, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
@@ -71,6 +86,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     Text.equal,
     Text.hash
   );
+
+  // Runtime storage for bans
+  private var ban_log = Buffer.Buffer<BanLogEntry>(0);
+  private var banned_users = HashMap.HashMap<Principal, Int>(0, Principal.equal, Principal.hash);
 
   // ephemeral state
   let state : State = object { 
@@ -410,10 +429,119 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     true
   };
 
+  // Helper function to check if a user is banned
+  private func is_banned(user: Principal) : Bool {
+    switch (banned_users.get(user)) {
+      case (?expiry) {
+        let now = Time.now();
+        if (now >= expiry) {
+          // Ban has expired, remove it
+          banned_users.delete(user);
+          false
+        } else {
+          true
+        };
+      };
+      case null { false };
+    };
+  };
+
+  // Function to ban a user
+  public shared ({ caller }) func ban_user(user: Principal, duration_hours: Nat, reason: Text) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+
+    if (Principal.isAnonymous(user)) {
+      return #err("Cannot ban anonymous users");
+    };
+
+    if (is_admin(user)) {
+      return #err("Cannot ban administrators");
+    };
+
+    let now = Time.now();
+    let duration_nanos = duration_hours * 3600_000_000_000;
+    let expiry = now + duration_nanos;
+
+    // Check if user is already banned
+    switch (banned_users.get(user)) {
+      case (?current_expiry) {
+        // Only update if new ban expires later
+        if (expiry > current_expiry) {
+          banned_users.put(user, expiry);
+        };
+      };
+      case null {
+        banned_users.put(user, expiry);
+      };
+    };
+
+    // Add to ban log
+    let entry : BanLogEntry = {
+      user;
+      admin = caller;
+      ban_timestamp = now;
+      expiry_timestamp = expiry;
+      reason;
+    };
+    ban_log.add(entry);
+
+    #ok()
+  };
+
+  // Function to check ban status
+  public query func check_ban_status(user: Principal) : async Result.Result<(), Text> {
+    if (is_banned(user)) {
+      switch (banned_users.get(user)) {
+        case (?expiry) {
+          let time_remaining = expiry - Time.now();
+          if (time_remaining > 0) {
+            let hours_remaining = Int.abs(time_remaining) / 3600_000_000_000;
+            #err("User is banned. Ban expires in " # Int.toText(hours_remaining) # " hours")
+          } else {
+            #err("User is banned") // This shouldn't happen due to is_banned check
+          };
+        };
+        case null {
+          #err("User is banned") // This shouldn't happen due to is_banned check
+        };
+      };
+    } else {
+      #ok()
+    };
+  };
+
+  // Function to get ban log
+  public query ({ caller }) func get_ban_log() : async Result.Result<[BanLogEntry], Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+    #ok(Buffer.toArray(ban_log))
+  };
+
   // Neuron name management
   public shared ({ caller }) func set_neuron_name(sns_root_canister_id : Principal, neuron_id : NeuronId, name : Text) : async Result.Result<Text, Text> {
     if (Principal.isAnonymous(caller)) {
         return #err("Anonymous caller not allowed");
+    };
+
+    // Check if user is banned
+    if (is_banned(caller)) {
+        switch (banned_users.get(caller)) {
+            case (?expiry) {
+                let time_remaining = expiry - Time.now();
+                if (time_remaining > 0) {
+                    let hours_remaining = Int.abs(time_remaining) / 3600_000_000_000;
+                    return #err("You are banned. Ban expires in " # Int.toText(hours_remaining) # " hours");
+                } else {
+                    return #err("You are banned"); // This shouldn't happen due to is_banned check
+                };
+            };
+            case null {
+                return #err("You are banned"); // This shouldn't happen due to is_banned check
+            };
+        };
     };
 
     // Validate name format (unless it's empty)
@@ -670,6 +798,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
 
     // Save blacklisted words to stable storage
     stable_blacklisted_words := Iter.toArray(blacklisted_words.entries());
+
+    // Save ban data
+    stable_ban_log := Buffer.toArray(ban_log);
+    stable_banned_users := Iter.toArray(banned_users.entries());
   };
 
   // initialize ephemeral state and empty stable arrays to save memory
@@ -729,6 +861,17 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         Text.hash
       );
       stable_blacklisted_words := [];
+
+      // Restore ban data
+      ban_log := Buffer.fromArray(stable_ban_log);
+      banned_users := HashMap.fromIter<Principal, Int>(
+        stable_banned_users.vals(),
+        0,
+        Principal.equal,
+        Principal.hash
+      );
+      stable_ban_log := [];
+      stable_banned_users := [];
   };
 
 };
