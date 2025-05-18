@@ -33,6 +33,7 @@ import Admin from './pages/Admin';
 import UserBans from './pages/admin/UserBans';
 import WordBlacklist from './pages/admin/WordBlacklist';
 import Rewards from './pages/Rewards';
+import Disclaimer from './pages/Disclaimer';
 
 // Component to set up global naming function
 function GlobalNamingSetup() {
@@ -83,6 +84,7 @@ function App() {
               <Route path="/partners" element={<Partners />} />
               <Route path="/proposals" element={<Proposals />} />
               <Route path="/rewards" element={<Rewards />} />
+              <Route path="/disclaimer" element={<Disclaimer />} />
 
               {/* Admin routes */}
               <Route path="/admin" element={<Admin />} />
