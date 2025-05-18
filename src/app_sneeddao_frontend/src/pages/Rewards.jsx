@@ -169,6 +169,23 @@ function Rewards() {
         return tokenId.toString();
     };
 
+    // Add function to get token fee
+    const fetchTokenFee = async (tokenId) => {
+        try {
+            const icrc1Actor = createIcrc1Actor(tokenId.toString(), {
+                agentOptions: { identity }
+            });
+            const metadata = await icrc1Actor.icrc1_metadata();
+            const feeEntry = metadata.find(entry => entry[0] === 'icrc1:fee');
+            if (feeEntry && feeEntry[1]) {
+                return BigInt(feeEntry[1].Nat);
+            }
+        } catch (error) {
+            console.error('Error fetching token fee:', error);
+        }
+        return BigInt(10000); // Default fee if not found
+    };
+
     // Modify useEffect to fetch token symbols
     useEffect(() => {
         const fetchUserBalances = async () => {
@@ -271,17 +288,18 @@ function Rewards() {
             return;
         }
 
-        // Get token info to check fee
+        // Get token info including fee
+        const fee = await fetchTokenFee(tokenId);
         const token = {
             id: tokenId,
             symbol: tokenSymbols[tokenId.toString()] || tokenId.toString(),
-            fee: BigInt(10000) // Default fee of 0.0001 tokens
+            fee: fee
         };
 
         console.log("balance", balance, "token.fee", token.fee);
         // Check if balance is less than or equal to fee
         if (balance <= token.fee) {
-            msg = `Your ${token.symbol} rewards (${formatBalance(balance, 8)} ${token.symbol}) are less than the transaction fee (${formatBalance(token.fee, 8)} ${token.symbol}). Please wait until you have accumulated more rewards before claiming.`    
+            const msg = `Your ${token.symbol} rewards (${formatBalance(balance, 8)} ${token.symbol}) are less than the transaction fee (${formatBalance(token.fee, 8)} ${token.symbol}). Please wait until you have accumulated more rewards before claiming.`;
             console.error(msg);
             setNotification({
                 type: 'error',
