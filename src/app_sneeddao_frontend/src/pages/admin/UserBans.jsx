@@ -4,6 +4,7 @@ import { useAuth } from '../../AuthContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import Header from '../../components/Header';
+import { Principal } from '@dfinity/principal';
 
 export default function UserBans() {
   const { isAuthenticated, identity } = useAuth();
@@ -74,7 +75,11 @@ export default function UserBans() {
           host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
         }
       });
-      const result = await backendActor.get_user_ban_history(principal);
+      
+      // Convert the principal string to a Principal object
+      const principalObj = Principal.fromText(principal);
+      const result = await backendActor.get_user_ban_history(principalObj);
+      
       if ('ok' in result) {
         setBanHistory(result.ok);
         setError('');
