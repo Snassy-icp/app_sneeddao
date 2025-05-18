@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
+import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import Header from '../components/Header';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 import { uint8ArrayToHex } from '../utils/NeuronUtils';
@@ -115,6 +116,7 @@ function Rewards() {
     const [loadingUserEvents, setLoadingUserEvents] = useState(true);
     const [claimingTokens, setClaimingTokens] = useState({});
     const [notification, setNotification] = useState(null);
+    const [tokenSymbols, setTokenSymbols] = useState({});
 
     // Function to fetch neurons directly from SNS
     const fetchNeuronsFromSns = async () => {
@@ -122,7 +124,24 @@ function Rewards() {
         return await fetchUserNeuronsForSns(identity, sneedGovernanceCanisterId);
     };
 
-    // Fetch user balances
+    // Add function to get token symbol
+    const fetchTokenSymbol = async (tokenId) => {
+        try {
+            const icrc1Actor = createIcrc1Actor(tokenId.toString(), {
+                agentOptions: { identity }
+            });
+            const metadata = await icrc1Actor.icrc1_metadata();
+            const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
+            if (symbolEntry && symbolEntry[1]) {
+                return symbolEntry[1].Text;
+            }
+        } catch (error) {
+            console.error('Error fetching token symbol:', error);
+        }
+        return tokenId.toString();
+    };
+
+    // Modify useEffect to fetch token symbols
     useEffect(() => {
         const fetchUserBalances = async () => {
             if (!isAuthenticated || !identity) {
@@ -138,6 +157,13 @@ function Rewards() {
                 });
                 const balances = await rllActor.balances_of_hotkey_neurons(neurons);
                 setUserBalances(balances);
+
+                // Fetch symbols for all tokens
+                const symbols = {};
+                for (const [tokenId] of balances) {
+                    symbols[tokenId.toString()] = await fetchTokenSymbol(tokenId);
+                }
+                setTokenSymbols(symbols);
             } catch (error) {
                 console.error('Error fetching user balances:', error);
             } finally {
@@ -339,7 +365,7 @@ function Rewards() {
                                         }}>
                                             <div>
                                                 <div style={{ fontSize: '18px', marginBottom: '5px' }}>
-                                                    {tokenId.toString()}
+                                                    {tokenSymbols[tokenId.toString()] || tokenId.toString()}
                                                 </div>
                                                 <div style={{ color: '#888' }}>
                                                     Balance: {formatBalance(balance, 8)}
