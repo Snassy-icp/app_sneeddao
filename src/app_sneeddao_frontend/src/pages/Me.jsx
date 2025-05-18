@@ -325,35 +325,71 @@ export default function Me() {
                                                             >
                                                                 📋
                                                             </button>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setEditingName(neuronId);
-                                                                    setNameInput(displayName || '');
-                                                                }}
-                                                                style={{
-                                                                    background: 'none',
-                                                                    border: 'none',
-                                                                    padding: '4px',
-                                                                    cursor: 'pointer',
-                                                                    color: '#888',
-                                                                    display: 'flex',
-                                                                    alignItems: 'center'
-                                                                }}
-                                                                title="Edit neuron name/nickname"
-                                                            >
-                                                                ✏️
-                                                            </button>
-                                                            <div
-                                                                style={{
-                                                                    color: '#888',
-                                                                    cursor: 'help',
-                                                                    fontSize: '14px'
-                                                                }}
-                                                                title="Names (blue) are public and visible to everyone, but can only be set if you have hotkey access. Nicknames (gray) are private and can be set for any neuron you can see."
-                                                            >
-                                                                ℹ️
+                                                            {hasHotkeyAccess && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setEditingName(neuronId);
+                                                                        setNameInput(displayName || '');
+                                                                    }}
+                                                                    style={{
+                                                                        background: 'none',
+                                                                        border: 'none',
+                                                                        padding: '4px',
+                                                                        cursor: 'pointer',
+                                                                        color: '#888',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center'
+                                                                    }}
+                                                                    title="Edit neuron name/nickname"
+                                                                >
+                                                                    ✏️
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        {name && (
+                                                            <div style={{ 
+                                                                color: '#3498db',
+                                                                fontSize: '18px',
+                                                                fontWeight: 'bold',
+                                                                marginBottom: '5px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px'
+                                                            }}>
+                                                                {name}
+                                                                {isVerified && (
+                                                                    <span 
+                                                                        style={{ 
+                                                                            fontSize: '14px',
+                                                                            cursor: 'help'
+                                                                        }}
+                                                                        title="Verified name"
+                                                                    >
+                                                                        ✓
+                                                                    </span>
+                                                                )}
                                                             </div>
+                                                        )}
+                                                        {nickname && (
+                                                            <div style={{ 
+                                                                color: '#95a5a6',
+                                                                fontSize: '16px',
+                                                                fontStyle: 'italic',
+                                                                marginBottom: '5px'
+                                                            }}>
+                                                                {nickname}
+                                                            </div>
+                                                        )}
+                                                        <div
+                                                            style={{
+                                                                color: '#888',
+                                                                cursor: 'help',
+                                                                fontSize: '14px'
+                                                            }}
+                                                            title="Names (blue) are public and visible to everyone, but can only be set if you have hotkey access. Nicknames (gray) are private and can be set for any neuron you can see."
+                                                        >
+                                                            ℹ️
                                                         </div>
                                                         {editingName === neuronId && (
                                                             <div style={{ 
