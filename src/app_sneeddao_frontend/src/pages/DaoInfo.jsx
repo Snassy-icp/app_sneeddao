@@ -156,93 +156,95 @@ function DaoInfo() {
     // Fetch DAO data
     useEffect(() => {
         const fetchData = async () => {
+            if (!identity) return;
+            
             setLoading(true);
             setError(null);
             try {
+                // Create actors
+                const snsGovActor = createSnsGovernanceActor('fi3zi-fyaaa-aaaaq-aachq-cai', {
+                    agentOptions: { identity }
+                });
                 const rllActor = createRllActor(rllCanisterId, {
                     agentOptions: { identity }
                 });
 
-                // Get SNS governance canister
-                const sneedSns = getSnsById('fp274-iaaaa-aaaaq-aacha-cai');
-                if (!sneedSns) {
-                    throw new Error('Sneed SNS not found');
-                }
+                // Get list of all neurons
+                const listNeuronsResponse = await snsGovActor.list_neurons({
+                    limit: 0,
+                    start_page_at: [],
+                    of_principal: []
+                });
+                
+                // Count active neurons (not dissolved)
+                const activeNeurons = listNeuronsResponse.neurons.filter(neuron => {
+                    if (!neuron.dissolve_state?.[0]) return false;
+                    return 'DissolveDelaySeconds' in neuron.dissolve_state[0];
+                }).length;
 
-                const snsGovActor = createSnsGovernanceActor(sneedSns.canisters.governance, {
-                    agentOptions: { identity }
+                // Get proposal count
+                const listProposalsResponse = await snsGovActor.list_proposals({
+                    limit: 0,
+                    before_proposal: [],
+                    exclude_type: [],
+                    include_reward_status: [],
+                    include_status: [],
+                    include_topics: []
                 });
 
-                // Fetch metrics
-                const [listNeuronsResponse, listProposalsResponse] = await Promise.all([
-                    snsGovActor.list_neurons({ limit: 0 }),
-                    snsGovActor.list_proposals({ limit: 0 })
-                ]);
-
-                // Get total neurons and active neurons
-                const totalNeurons = listNeuronsResponse.neurons.length;
-                const activeNeurons = listNeuronsResponse.neurons.filter(n => 
-                    n.dissolve_state?.[0]?.DissolveDelaySeconds || 
-                    n.dissolve_state?.[0]?.WhenDissolvedTimestampSeconds
-                ).length;
-
-                // Get total proposals
-                const totalProposals = listProposalsResponse.proposals.length;
-
-                setDaoMetrics({
-                    memberCount: totalNeurons,
-                    activeNeurons: activeNeurons,
-                    proposalCount: totalProposals
-                });
-
-                // Fetch tokenomics data from RLL
-                const [treasuryBalances, distributionInfo] = await Promise.all([
-                    rllActor.get_treasury_balances(),
-                    rllActor.get_latest_distribution_info()
-                ]);
-
+                // Get latest distribution info
+                const latestDistribution = await rllActor.get_latest_distribution_info();
+                
+                // Get treasury balances
+                const treasuryBalances = await rllActor.get_treasury_balances();
+                
                 // Calculate total assets
-                let totalUsd = 0;
-                let icpBalance = 0;
-                let sneedBalance = 0;
+                let totalIcpUsd = 0;
+                let totalSneedUsd = 0;
+                let icpBalance = 0n;
+                let sneedBalance = 0n;
 
                 treasuryBalances.forEach(([tokenId, balance]) => {
                     const tokenIdStr = tokenId.toString();
                     if (tokenIdStr === 'ryjl3-tyaaa-aaaaa-aaaba-cai') { // ICP
-                        icpBalance = Number(balance);
-                        totalUsd += getUSDValue(Number(balance), 8, 'ICP');
+                        icpBalance = balance;
+                        totalIcpUsd = getUSDValue(Number(balance), 8, 'ICP');
                     } else if (tokenIdStr === 'zfcdd-tqaaa-aaaaq-aaaga-cai') { // SNEED
-                        sneedBalance = Number(balance);
-                        totalUsd += getUSDValue(Number(balance), 8, 'SNEED');
+                        sneedBalance = balance;
+                        totalSneedUsd = getUSDValue(Number(balance), 8, 'SNEED');
                     }
+                });
+
+                // Update state
+                setDaoMetrics({
+                    memberCount: listNeuronsResponse.neurons.length,
+                    activeNeurons: activeNeurons,
+                    proposalCount: listProposalsResponse.proposals.length
                 });
 
                 setTokenomics({
                     price: conversionRates['SNEED'] || 0,
-                    marketCap: (conversionRates['SNEED'] || 0) * 100000000, // Total supply is 100M
+                    marketCap: (conversionRates['SNEED'] || 0) * 100000000, // Assuming 100M total supply
                     totalAssets: {
-                        totalUsd: totalUsd,
-                        icp: icpBalance / Math.pow(10, 8),
-                        sneed: sneedBalance / Math.pow(10, 8)
+                        totalUsd: totalIcpUsd + totalSneedUsd,
+                        icp: Number(icpBalance),
+                        sneed: Number(sneedBalance)
                     },
-                    totalRewardsDistributed: distributionInfo?.total_rewards_distributed || 0,
+                    totalRewardsDistributed: latestDistribution.total_rewards_e8s,
                     latestDistribution: {
-                        round: distributionInfo?.current_round || 0,
-                        timestamp: distributionInfo?.last_distribution_timestamp
+                        round: Number(latestDistribution.round),
+                        timestamp: Number(latestDistribution.timestamp_seconds)
                     }
                 });
-
             } catch (err) {
                 console.error('Error fetching DAO data:', err);
-                setError(err.message);
+                setError('Failed to fetch DAO data');
             } finally {
                 setLoading(false);
             }
         };
 
-        if (identity) {
-            fetchData();
-        }
+        fetchData();
     }, [identity, conversionRates]);
 
     const formatNumber = (number) => {
