@@ -18,6 +18,10 @@ import T "Types";
 
 shared (deployer) actor class AppSneedDaoBackend() = this {
 
+  private func this_canister_id() : Principal {
+      Principal.fromActor(this);
+  };
+  
   let SWAPRUNNER_CANISTER_ID : Text = "tt72q-zqaaa-aaaaj-az4va-cai";
 
   // aliases
@@ -377,9 +381,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   };
 
   // Helper function to validate name text
-  private func validate_name_text(text: Text) : Bool {
+  private func validate_name_text(text: Text) : async* Result.Result<Bool, (Text, Text)> {
     if (text.size() > 32) {
-      return false;
+      return #ok(false);
     };
 
     // Check if text contains any blacklisted words (case insensitive)
@@ -387,7 +391,8 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     for ((word, _) in blacklisted_words.entries()) {
       let lowercaseWord = Text.toLowercase(word);
       if (Text.contains(lowercaseText, #text lowercaseWord)) {
-        return false;
+        // Found a blacklisted word - return it along with the full text for the ban reason
+        return #err(word, text);
       };
     };
 
@@ -399,11 +404,11 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       let isSeparator = char == ' ' or char == '-' or char == '_' or char == '.' or char == '\'';
       
       if (not (isAlphanumeric or isSeparator)) {
-        return false;
+        return #ok(false);
       };
     };
 
-    return true;
+    return #ok(true);
   };
 
   // Helper function to check if a name is unique
@@ -451,6 +456,11 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     if (not is_admin(caller)) {
       return #err("Not authorized");
     };
+
+    await ban_user_impl(caller, user, duration_hours, reason);
+  };
+
+  private func ban_user_impl(caller: Principal, user: Principal, duration_hours: Nat, reason: Text) : async Result.Result<(), Text> {
 
     if (Principal.isAnonymous(user)) {
       return #err("Cannot ban anonymous users");
@@ -545,8 +555,20 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     };
 
     // Validate name format (unless it's empty)
-    if (name != "" and not validate_name_text(name)) {
-        return #err("Name must be 1-32 characters long and contain only alphanumeric characters, spaces, hyphens, underscores, and dots");
+    if (name != "") {
+        switch (await* validate_name_text(name)) {
+            case (#ok(valid)) {
+                if (not valid) {
+                    return #err("Name must be 1-32 characters long and contain only alphanumeric characters, spaces, hyphens, underscores, dots, and apostrophes");
+                };
+            };
+            case (#err(blacklisted_word, attempted_name)) {
+                // Ban the user for 24 hours
+                let reason = "Attempted to set neuron name containing blacklisted word '" # blacklisted_word # "'. Full attempted name: '" # attempted_name # "'";
+                ignore await ban_user_impl(this_canister_id(), caller, 24, reason);
+                return #err("Name contains inappropriate content. You have been banned for 24 hours.");
+            };
+        };
     };
 
     let key : NeuronNameKey = {
@@ -657,9 +679,39 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         return #err("Anonymous caller not allowed");
     };
 
+    // Check if user is banned
+    if (is_banned(caller)) {
+        switch (banned_users.get(caller)) {
+            case (?expiry) {
+                let time_remaining = expiry - Time.now();
+                if (time_remaining > 0) {
+                    let hours_remaining = Int.abs(time_remaining) / 3600_000_000_000;
+                    return #err("You are banned. Ban expires in " # Int.toText(hours_remaining) # " hours");
+                } else {
+                    return #err("You are banned"); // This shouldn't happen due to is_banned check
+                };
+            };
+            case null {
+                return #err("You are banned"); // This shouldn't happen due to is_banned check
+            };
+        };
+    };
+
     // Validate nickname format (unless it's empty)
-    if (nickname != "" and not validate_name_text(nickname)) {
-        return #err("Nickname must be 1-32 characters long and contain only alphanumeric characters, spaces, hyphens, underscores, and dots");
+    if (nickname != "") {
+        switch (await* validate_name_text(nickname)) {
+            case (#ok(valid)) {
+                if (not valid) {
+                    return #err("Nickname must be 1-32 characters long and contain only alphanumeric characters, spaces, hyphens, underscores, dots, and apostrophes");
+                };
+            };
+            case (#err(blacklisted_word, attempted_name)) {
+                // Ban the user for 24 hours
+                let reason = "Attempted to set neuron nickname containing blacklisted word '" # blacklisted_word # "'. Full attempted name: '" # attempted_name # "'";
+                ignore await ban_user_impl(this_canister_id(), caller, 24, reason);
+                return #err("Nickname contains inappropriate content. You have been banned for 24 hours.");
+            };
+        };
     };
 
     let key : NeuronNameKey = {
