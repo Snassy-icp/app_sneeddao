@@ -10,7 +10,6 @@ import Blob "mo:base/Blob";
 import Result "mo:base/Result";
 import Buffer "mo:base/Buffer";
 import Error "mo:base/Error";
-import Char "mo:base/Char";
 import Time "mo:base/Time";
 import Int "mo:base/Int";
 

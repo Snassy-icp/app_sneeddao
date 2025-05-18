@@ -1,122 +1,90 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../AuthContext';
 import Header from '../../components/Header';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
+import { useAdminCheck } from '../../hooks/useAdminCheck';
 
 function WordBlacklist() {
-    const { identity, isAuthenticated } = useAuth();
-    const navigate = useNavigate();
-    const [isAdmin, setIsAdmin] = useState(false);
-    const [loading, setLoading] = useState(true);
+    const { isAuthenticated, identity } = useAuth();
+    const { isAdmin, loading, error: adminError, loadingComponent, errorComponent } = useAdminCheck({
+        identity,
+        isAuthenticated,
+        redirectPath: '/wallet'
+    });
+
     const [blacklistedWords, setBlacklistedWords] = useState([]);
-    const [error, setError] = useState('');
     const [newWord, setNewWord] = useState('');
+    const [error, setError] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
-        const checkAdminStatus = async () => {
-            console.log('Checking admin status...');
-            console.log('Is authenticated:', isAuthenticated);
-            console.log('Identity:', identity);
-            
-            if (!isAuthenticated || !identity) {
-                console.log('Not authenticated, redirecting to wallet...');
-                setError('Please connect your wallet first.');
-                setTimeout(() => navigate('/wallet'), 2000);
-                return;
-            }
+        if (isAdmin) {
+            fetchBlacklist();
+        }
+    }, [isAdmin, identity]);
 
-            try {
-                console.log('Creating backend actor...');
-                const backendActor = createBackendActor(backendCanisterId, {
-                    agentOptions: {
-                        identity,
-                        host: 'https://ic0.app'
-                    }
-                });
-                console.log('Calling caller_is_admin...');
-                const isAdminResult = await backendActor.caller_is_admin();
-                console.log('isAdminResult:', isAdminResult);
-                setIsAdmin(isAdminResult);
-                
-                if (!isAdminResult) {
-                    console.log('Not an admin, redirecting...');
-                    setError('You do not have admin privileges.');
-                    setTimeout(() => navigate('/wallet'), 2000);
+    const fetchBlacklist = async () => {
+        try {
+            const backendActor = createBackendActor(backendCanisterId, {
+                agentOptions: {
+                    identity,
+                    host: 'https://ic0.app'
                 }
-            } catch (err) {
-                console.error('Error checking admin status:', err);
-                setError('Error checking admin status: ' + err.message);
-                setTimeout(() => navigate('/wallet'), 2000);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        checkAdminStatus();
-    }, [identity, isAuthenticated, navigate]);
-
-    useEffect(() => {
-        const fetchBlacklistedWords = async () => {
-            if (!identity || !isAdmin) return;
-
-            try {
-                const backendActor = createBackendActor(identity);
-                const words = await backendActor.get_blacklisted_words();
-                setBlacklistedWords(words);
-            } catch (err) {
-                console.error('Error fetching blacklisted words:', err);
-                setError('Failed to fetch blacklisted words');
-            }
-        };
-
-        fetchBlacklistedWords();
-    }, [identity, isAdmin]);
+            });
+            const words = await backendActor.get_blacklisted_words();
+            setBlacklistedWords(words);
+        } catch (err) {
+            console.error('Error fetching blacklist:', err);
+            setError('Failed to fetch blacklisted words');
+        }
+    };
 
     const handleAddWord = async (e) => {
         e.preventDefault();
-        if (!newWord.trim()) return;
+        if (!newWord.trim()) {
+            setError('Please enter a word');
+            return;
+        }
 
         setIsSubmitting(true);
-        try {
-            const backendActor = createBackendActor(identity);
-            const result = await backendActor.add_blacklisted_word(newWord.trim());
+        setError(null);
 
-            if ('ok' in result) {
-                // Refresh word list
-                const words = await backendActor.get_blacklisted_words();
-                setBlacklistedWords(words);
-                // Clear form
-                setNewWord('');
-                setError('');
-            } else {
-                setError(result.err);
-            }
+        try {
+            const backendActor = createBackendActor(backendCanisterId, {
+                agentOptions: {
+                    identity,
+                    host: 'https://ic0.app'
+                }
+            });
+            await backendActor.add_blacklisted_word(newWord.trim().toLowerCase());
+            setNewWord('');
+            await fetchBlacklist();
         } catch (err) {
             console.error('Error adding word:', err);
-            setError('Failed to add word');
+            setError('Failed to add word: ' + err.message);
         } finally {
             setIsSubmitting(false);
         }
     };
 
     const handleRemoveWord = async (word) => {
-        try {
-            const backendActor = createBackendActor(identity);
-            const result = await backendActor.remove_blacklisted_word(word);
+        setIsSubmitting(true);
+        setError(null);
 
-            if ('ok' in result) {
-                // Refresh word list
-                const words = await backendActor.get_blacklisted_words();
-                setBlacklistedWords(words);
-                setError('');
-            } else {
-                setError(result.err);
-            }
+        try {
+            const backendActor = createBackendActor(backendCanisterId, {
+                agentOptions: {
+                    identity,
+                    host: 'https://ic0.app'
+                }
+            });
+            await backendActor.remove_blacklisted_word(word);
+            await fetchBlacklist();
         } catch (err) {
             console.error('Error removing word:', err);
-            setError('Failed to remove word');
+            setError('Failed to remove word: ' + err.message);
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -125,8 +93,21 @@ function WordBlacklist() {
             <div className='page-container'>
                 <Header />
                 <main className="wallet-container">
-                    <div style={{ textAlign: 'center', padding: '40px 20px', color: '#ffffff' }}>
-                        Loading...
+                    <div style={loadingComponent.style}>
+                        {loadingComponent.text}
+                    </div>
+                </main>
+            </div>
+        );
+    }
+
+    if (adminError) {
+        return (
+            <div className='page-container'>
+                <Header />
+                <main className="wallet-container">
+                    <div style={errorComponent.style}>
+                        {errorComponent.text}
                     </div>
                 </main>
             </div>
@@ -134,54 +115,31 @@ function WordBlacklist() {
     }
 
     if (!isAdmin) {
-        return null; // Will redirect in useEffect
+        return null;
     }
 
     return (
         <div className='page-container'>
             <Header />
             <main className="wallet-container">
-                <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Word Blacklist Management</h1>
+                <h1 style={{ color: '#ffffff', marginBottom: '30px' }}>Word Blacklist Management</h1>
 
-                {error && (
-                    <div style={{ 
-                        backgroundColor: 'rgba(231, 76, 60, 0.2)',
-                        border: '1px solid #e74c3c',
-                        color: '#e74c3c',
-                        padding: '15px',
-                        borderRadius: '6px',
-                        marginBottom: '20px'
-                    }}>
-                        {error}
-                    </div>
-                )}
-
-                <div style={{ 
-                    backgroundColor: '#2a2a2a',
-                    borderRadius: '8px',
-                    padding: '20px',
-                    marginBottom: '20px'
-                }}>
-                    <h2 style={{ color: '#ffffff', marginBottom: '15px' }}>Add Word to Blacklist</h2>
+                <div style={{ backgroundColor: '#2a2a2a', padding: '20px', borderRadius: '8px', marginBottom: '20px' }}>
                     <form onSubmit={handleAddWord}>
                         <div style={{ marginBottom: '15px' }}>
-                            <label style={{ color: '#888', display: 'block', marginBottom: '5px' }}>
-                                Word
-                            </label>
                             <input
                                 type="text"
                                 value={newWord}
                                 onChange={(e) => setNewWord(e.target.value)}
+                                placeholder="Enter word to blacklist"
                                 style={{
+                                    width: '100%',
+                                    padding: '10px',
                                     backgroundColor: '#3a3a3a',
                                     border: '1px solid #4a4a4a',
                                     borderRadius: '4px',
-                                    color: '#ffffff',
-                                    padding: '8px 12px',
-                                    width: '100%'
+                                    color: '#ffffff'
                                 }}
-                                placeholder="Enter word to blacklist"
-                                required
                             />
                         </div>
                         <button
@@ -191,68 +149,70 @@ function WordBlacklist() {
                                 backgroundColor: '#e74c3c',
                                 color: '#ffffff',
                                 border: 'none',
-                                borderRadius: '4px',
                                 padding: '10px 20px',
+                                borderRadius: '4px',
                                 cursor: isSubmitting ? 'not-allowed' : 'pointer',
                                 opacity: isSubmitting ? 0.7 : 1
                             }}
                         >
-                            {isSubmitting ? 'Adding...' : 'Add Word'}
+                            {isSubmitting ? 'Processing...' : 'Add Word'}
                         </button>
                     </form>
                 </div>
 
-                <div style={{ 
-                    backgroundColor: '#2a2a2a',
-                    borderRadius: '8px',
-                    padding: '20px'
-                }}>
-                    <h2 style={{ color: '#ffffff', marginBottom: '15px' }}>Blacklisted Words</h2>
-                    <div style={{ 
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: '10px'
+                {error && (
+                    <div style={{
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        border: '1px solid #e74c3c',
+                        color: '#e74c3c',
+                        padding: '15px',
+                        borderRadius: '4px',
+                        marginBottom: '20px'
                     }}>
-                        {blacklistedWords.map((word, index) => (
-                            <div
-                                key={index}
-                                style={{
-                                    backgroundColor: '#3a3a3a',
-                                    borderRadius: '4px',
-                                    padding: '5px 10px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px'
-                                }}
-                            >
-                                <span style={{ color: '#ffffff' }}>{word}</span>
-                                <button
-                                    onClick={() => handleRemoveWord(word)}
-                                    style={{
-                                        backgroundColor: 'transparent',
-                                        border: 'none',
-                                        color: '#e74c3c',
-                                        cursor: 'pointer',
-                                        padding: '0',
-                                        fontSize: '16px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        width: '20px',
-                                        height: '20px'
-                                    }}
-                                    title="Remove word"
-                                >
-                                    ×
-                                </button>
-                            </div>
-                        ))}
-                        {blacklistedWords.length === 0 && (
-                            <div style={{ color: '#888', padding: '10px' }}>
-                                No words in blacklist
-                            </div>
-                        )}
+                        {error}
                     </div>
+                )}
+
+                <div style={{ backgroundColor: '#2a2a2a', padding: '20px', borderRadius: '8px' }}>
+                    <h2 style={{ color: '#ffffff', marginBottom: '20px' }}>Blacklisted Words</h2>
+                    {blacklistedWords.length === 0 ? (
+                        <p style={{ color: '#888' }}>No blacklisted words found.</p>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {blacklistedWords.map((word, index) => (
+                                <div
+                                    key={index}
+                                    style={{
+                                        backgroundColor: '#3a3a3a',
+                                        padding: '15px',
+                                        borderRadius: '4px',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center'
+                                    }}
+                                >
+                                    <div style={{ color: '#ffffff' }}>
+                                        {word}
+                                    </div>
+                                    <button
+                                        onClick={() => handleRemoveWord(word)}
+                                        disabled={isSubmitting}
+                                        style={{
+                                            backgroundColor: '#3498db',
+                                            color: '#ffffff',
+                                            border: 'none',
+                                            padding: '8px 16px',
+                                            borderRadius: '4px',
+                                            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                            opacity: isSubmitting ? 0.7 : 1
+                                        }}
+                                    >
+                                        Remove
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </main>
         </div>
