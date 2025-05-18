@@ -33,67 +33,111 @@ const styles = {
     marginBottom: '0.5rem',
     color: '#ccc',
   },
+  warningBox: {
+    backgroundColor: '#2a2a2a',
+    border: '1px solid #e74c3c',
+    borderRadius: '8px',
+    padding: '1.5rem',
+    marginBottom: '2rem',
+  },
+  warningHeading: {
+    color: '#e74c3c',
+    fontSize: '1.5rem',
+    marginBottom: '1rem',
+  },
+  warningText: {
+    color: '#e74c3c',
+    marginBottom: '1rem',
+    lineHeight: '1.6',
+  },
 };
 
 function Disclaimer() {
   return (
     <div style={styles.container}>
-      <div style={styles.section}>
-        <h1 style={styles.heading}>Disclaimer</h1>
-        <p style={styles.paragraph}>
-          Welcome to the SNEED DAO platform. Before using our services, please carefully read and understand the following disclaimers and risk factors.
+      <div style={styles.warningBox}>
+        <h2 style={styles.warningHeading}>⚠️ IMPORTANT NOTICE - NO RESPONSIBILITY DISCLAIMER ⚠️</h2>
+        <p style={styles.warningText}>
+          BY USING THE SNEED DAO PLATFORM, YOU EXPLICITLY ACKNOWLEDGE AND AGREE THAT YOU ARE USING THE PLATFORM ENTIRELY AT YOUR OWN RISK. WE ACCEPT ABSOLUTELY NO RESPONSIBILITY OR LIABILITY WHATSOEVER FOR ANY CONSEQUENCES RESULTING FROM YOUR USE OF THE PLATFORM.
+        </p>
+        <p style={styles.warningText}>
+          THIS INCLUDES, BUT IS NOT LIMITED TO: FINANCIAL LOSSES, TECHNICAL ISSUES, SECURITY BREACHES, SMART CONTRACT VULNERABILITIES, REGULATORY COMPLIANCE, OR ANY OTHER POTENTIAL RISKS OR DAMAGES.
         </p>
       </div>
 
       <div style={styles.section}>
-        <h2 style={styles.subheading}>General Disclaimer</h2>
+        <h1 style={styles.heading}>Complete Disclaimer of Liability</h1>
         <p style={styles.paragraph}>
-          The SNEED DAO platform is an experimental decentralized autonomous organization. The information provided on this platform is for general informational purposes only and should not be construed as financial, investment, legal, or other professional advice.
+          The SNEED DAO platform is provided strictly on an "AS IS" and "AS AVAILABLE" basis. We make no warranties, representations, or guarantees of any kind, whether express or implied, regarding the platform's operation, security, reliability, or suitability for any purpose.
         </p>
       </div>
 
       <div style={styles.section}>
-        <h2 style={styles.subheading}>Risk Factors</h2>
+        <h2 style={styles.subheading}>Absolute Non-Responsibility Statement</h2>
+        <p style={styles.paragraph}>
+          We explicitly disclaim all responsibility and liability for:
+        </p>
         <ul style={styles.list}>
-          <li style={styles.listItem}>
-            <strong>Cryptocurrency Risks:</strong> Cryptocurrencies are highly volatile and speculative assets. You should never invest more than you can afford to lose.
-          </li>
-          <li style={styles.listItem}>
-            <strong>Smart Contract Risks:</strong> Despite thorough testing and auditing, smart contracts may contain bugs or vulnerabilities that could result in the loss of funds.
-          </li>
-          <li style={styles.listItem}>
-            <strong>Regulatory Risks:</strong> The regulatory landscape for cryptocurrencies and DAOs is evolving. Changes in regulations may impact the platform's operations and your assets.
-          </li>
-          <li style={styles.listItem}>
-            <strong>Technical Risks:</strong> The platform may experience technical issues, downtime, or security breaches that could affect your ability to access or use the services.
-          </li>
+          <li style={styles.listItem}>Any financial losses or damages of any kind</li>
+          <li style={styles.listItem}>The accuracy, completeness, or reliability of any information provided</li>
+          <li style={styles.listItem}>Any technical issues, downtime, or platform malfunctions</li>
+          <li style={styles.listItem}>Any security breaches or unauthorized access</li>
+          <li style={styles.listItem}>Any smart contract vulnerabilities or bugs</li>
+          <li style={styles.listItem}>Any regulatory or legal compliance issues</li>
+          <li style={styles.listItem}>Any decisions made based on information from the platform</li>
+          <li style={styles.listItem}>Any third-party services or integrations</li>
+          <li style={styles.listItem}>Any consequences of platform upgrades or changes</li>
+        </ul>
+      </div>
+
+      <div style={styles.section}>
+        <h2 style={styles.subheading}>High-Risk Activity Warning</h2>
+        <p style={styles.paragraph}>
+          Cryptocurrency and DAO participation are EXTREMELY HIGH-RISK activities. You acknowledge that:
+        </p>
+        <ul style={styles.list}>
+          <li style={styles.listItem}>You could lose ALL of your invested funds</li>
+          <li style={styles.listItem}>Cryptocurrency values are highly volatile and unpredictable</li>
+          <li style={styles.listItem}>Smart contracts may contain unknown vulnerabilities</li>
+          <li style={styles.listItem}>Regulatory changes could impact platform operations</li>
+          <li style={styles.listItem}>Technical failures could result in permanent loss of access</li>
+        </ul>
+      </div>
+
+      <div style={styles.section}>
+        <h2 style={styles.subheading}>User Responsibility</h2>
+        <p style={styles.paragraph}>
+          You are SOLELY and ENTIRELY responsible for:
+        </p>
+        <ul style={styles.list}>
+          <li style={styles.listItem}>Conducting your own research and due diligence</li>
+          <li style={styles.listItem}>Understanding all risks involved</li>
+          <li style={styles.listItem}>Securing your own wallet and credentials</li>
+          <li style={styles.listItem}>Complying with all applicable laws and regulations</li>
+          <li style={styles.listItem}>Verifying all information independently</li>
+          <li style={styles.listItem}>Managing your own investment decisions</li>
+          <li style={styles.listItem}>Any tax obligations or reporting requirements</li>
         </ul>
       </div>
 
       <div style={styles.section}>
         <h2 style={styles.subheading}>No Financial Advice</h2>
         <p style={styles.paragraph}>
-          Nothing on this platform constitutes financial advice, investment advice, trading advice, or any other type of advice. You should conduct your own research and consult with qualified professionals before making any financial decisions.
+          Nothing on this platform constitutes financial, investment, legal, or tax advice. Any numbers, metrics, or statistics shown are for informational purposes only and should not be relied upon for any decision-making.
         </p>
       </div>
 
       <div style={styles.section}>
-        <h2 style={styles.subheading}>User Responsibility</h2>
+        <h2 style={styles.subheading}>Indemnification</h2>
         <p style={styles.paragraph}>
-          By using the SNEED DAO platform, you acknowledge and agree that:
+          By using the platform, you agree to indemnify, defend, and hold harmless SNEED DAO, its developers, contributors, and affiliates from and against ANY and ALL claims, damages, losses, costs, investigations, liabilities, judgments, settlements, and expenses.
         </p>
-        <ul style={styles.list}>
-          <li style={styles.listItem}>You are solely responsible for your actions and decisions on the platform</li>
-          <li style={styles.listItem}>You understand and accept all associated risks</li>
-          <li style={styles.listItem}>You will comply with all applicable laws and regulations</li>
-          <li style={styles.listItem}>You will not use the platform for any illegal or unauthorized purposes</li>
-        </ul>
       </div>
 
-      <div style={styles.section}>
-        <h2 style={styles.subheading}>Updates to Disclaimer</h2>
-        <p style={styles.paragraph}>
-          This disclaimer may be updated from time to time without notice. It is your responsibility to review this disclaimer periodically for any changes.
+      <div style={styles.warningBox}>
+        <h2 style={styles.warningHeading}>Final Warning</h2>
+        <p style={styles.warningText}>
+          IF YOU DO NOT AGREE WITH ANY PART OF THIS DISCLAIMER OR DO NOT ACCEPT THE RISKS INVOLVED, DO NOT USE THE PLATFORM. CONTINUED USE OF THE PLATFORM CONSTITUTES YOUR EXPLICIT ACCEPTANCE OF ALL RISKS AND YOUR ACKNOWLEDGMENT THAT YOU ARE ACTING ENTIRELY AT YOUR OWN RISK.
         </p>
       </div>
     </div>
