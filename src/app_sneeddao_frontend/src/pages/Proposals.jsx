@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
@@ -10,7 +10,10 @@ import { formatProposalIdLink, formatNeuronIdLink } from '../utils/NeuronUtils';
 function Proposals() {
     const { isAuthenticated, identity } = useAuth();
     const navigate = useNavigate();
-    const [selectedSnsRoot, setSelectedSnsRoot] = useState('fp274-iaaaa-aaaaq-aacha-cai'); // Default to Sneed
+    const location = useLocation();
+    const [searchParams] = useSearchParams();
+    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
+    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || SNEED_SNS_ROOT);
     const [snsList, setSnsList] = useState([]);
     const [proposals, setProposals] = useState([]);
     const [error, setError] = useState('');
@@ -25,6 +28,18 @@ function Proposals() {
 
     // Add state to track expanded summaries
     const [expandedSummaries, setExpandedSummaries] = useState(new Set());
+
+    // Listen for URL parameter changes
+    useEffect(() => {
+        const snsParam = searchParams.get('sns');
+        if (snsParam && snsParam !== selectedSnsRoot) {
+            setSelectedSnsRoot(snsParam);
+            setCurrentPage(1);
+            setLastProposalId(null);
+            setHasMoreProposals(true);
+            setProposals([]);
+        }
+    }, [searchParams]);
 
     // Fetch SNS data on component mount
     useEffect(() => {
@@ -102,8 +117,13 @@ function Proposals() {
         }
     };
 
-    const handleSnsChange = (e) => {
-        const newSnsRoot = e.target.value;
+    const handleSnsChange = (newSnsRoot) => {
+        // Update URL parameter
+        const newSearchParams = new URLSearchParams(searchParams);
+        newSearchParams.set('sns', newSnsRoot);
+        navigate(`${location.pathname}?${newSearchParams.toString()}`);
+        
+        // Update state
         setSelectedSnsRoot(newSnsRoot);
         setCurrentPage(1);
         setLastProposalId(null);
