@@ -851,6 +851,22 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     Iter.toArray(blacklisted_words.keys())
   };
 
+  // Function to get ban history for a specific user
+  public query ({ caller }) func get_user_ban_history(user: Principal) : async Result.Result<[BanLogEntry], Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+    
+    let userBans = Buffer.Buffer<BanLogEntry>(0);
+    for (entry in ban_log.vals()) {
+      if (Principal.equal(entry.user, user)) {
+        userBans.add(entry);
+      };
+    };
+    
+    #ok(Buffer.toArray(userBans))
+  };
+
   // save state to stable arrays
   system func preupgrade() {
     /// stable_principal_swap_canisters
