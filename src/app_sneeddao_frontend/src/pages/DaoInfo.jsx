@@ -9,6 +9,10 @@ import { createActor as createRllActor, canisterId as rllCanisterId } from 'exte
 import { createActor as createNeutriniteDappActor } from 'external/neutrinite_dapp';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
+import { 
+    calculateTotalAssetsValue,
+    getTokenLogo 
+} from '../utils/TokenUtils';
 
 const styles = {
     container: {
@@ -245,7 +249,6 @@ function DaoInfo() {
                 // Fetch tokenomics data
                 setLoading(prev => ({ ...prev, tokenomics: true }));
                 try {
-                    // Create SNEED ledger actor to get total supply
                     const sneedLedgerActor = createLedgerActor('hvgxa-wqaaa-aaaaq-aacia-cai', {
                         agentOptions: { agent }
                     });
@@ -267,17 +270,39 @@ function DaoInfo() {
                         };
                     });
 
+                    // Fetch all required data in parallel
                     const [
                         totalDistributions,
                         mainLoopStatus,
                         eventStats,
-                        totalSupply
+                        totalSupply,
+                        knownTokens
                     ] = await Promise.all([
                         rllActor.get_total_distributions(),
                         rllActor.get_main_loop_status(),
                         rllActor.get_event_statistics(),
-                        sneedLedgerActor.icrc1_total_supply()
+                        sneedLedgerActor.icrc1_total_supply(),
+                        rllActor.get_known_tokens()
                     ]);
+
+                    // Get balances for each token
+                    const balances = await Promise.all(knownTokens.map(async ([tokenId]) => {
+                        const ledgerActor = createLedgerActor(tokenId.toString(), {
+                            agentOptions: { agent }
+                        });
+
+                        const balance = await ledgerActor.icrc1_balance_of({
+                            owner: Principal.fromText(rllCanisterId),
+                            subaccount: []
+                        });
+                        return [tokenId, balance];
+                    }));
+
+                    // Get reconciliation data using the balances
+                    const reconciliationData = await rllActor.balance_reconciliation_from_balances(balances);
+
+                    // Get LP positions
+                    const lpPositions = await rllActor.get_lp_positions();
 
                     // Process total distributions with metadata
                     let tokenDistributions = {};
@@ -300,6 +325,14 @@ function DaoInfo() {
                     const totalSupplyNum = Number(totalSupply) / 1e8;
                     const marketCapUsd = sneedPriceUsd * totalSupplyNum;
                     const marketCapIcp = sneedPriceIcp * totalSupplyNum;
+
+                    // Calculate total assets using the utility function
+                    const assetsData = calculateTotalAssetsValue(
+                        reconciliationData,
+                        lpPositions || [], // Handle case where lpPositions is null
+                        [], // No other LP positions
+                        conversionRates
+                    );
 
                     // Fetch token metadata
                     const [metadata, symbol, decimals, fee] = await Promise.all([
@@ -330,9 +363,13 @@ function DaoInfo() {
                             logo
                         },
                         totalAssets: {
-                            totalUsd: getUSDValue(Number(totalSupply), 8, 'ICP'),
-                            icp: Number(totalSupply),
-                            sneed: Number(totalSupply)
+                            icp: assetsData.totalIcp,
+                            sneed: assetsData.totalSneed,
+                            icpUsdValue: assetsData.icpUsdValue,
+                            sneedUsdValue: assetsData.sneedUsdValue,
+                            otherTokensUsd: assetsData.otherTokensUsdValue,
+                            otherPositionsUsd: assetsData.otherPositionsUsdValue,
+                            totalUsd: assetsData.totalUsdValue
                         },
                         tokenDistributions,
                         totalDistributionsUsd: totalUsdValue,

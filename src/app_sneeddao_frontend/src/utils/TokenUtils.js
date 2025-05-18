@@ -73,6 +73,103 @@ function getTokenTVL(token, rewardDetailsLoading, hideAvailable) {
     return parseFloat(converted);
 }
 
+// Calculate total ICP value including all sources
+export const calculateTotalIcpValue = (reconciliationData) => {
+    const icpReconciliation = reconciliationData.find(item => 
+        item.token_id.toString() === 'ryjl3-tyaaa-aaaaa-aaaba-cai'
+    );
+    return icpReconciliation ? icpReconciliation.server_balance : 0n;
+};
+
+// Calculate total SNEED value including all sources
+export const calculateTotalSneedValue = (reconciliationData) => {
+    const sneedReconciliation = reconciliationData.find(item => 
+        item.token_id.toString() === 'hvgxa-wqaaa-aaaaq-aacia-cai'
+    );
+    return sneedReconciliation ? sneedReconciliation.server_balance : 0n;
+};
+
+// Calculate total value of other tokens
+export const calculateOtherTokensValue = (reconciliationData, conversionRates) => {
+    let totalUsdValue = 0;
+    
+    // Process all tokens except ICP and SNEED
+    reconciliationData.forEach(item => {
+        const tokenIdStr = item.token_id.toString();
+        if (tokenIdStr !== 'ryjl3-tyaaa-aaaaa-aaaba-cai' && // not ICP
+            tokenIdStr !== 'hvgxa-wqaaa-aaaaq-aacia-cai') { // not SNEED
+            
+            // Get symbol and decimals from metadata if available
+            const symbol = item.metadata?.symbol || tokenIdStr;
+            const decimals = item.metadata?.decimals || 8;
+            const rate = conversionRates[symbol] || 0;
+            
+            // Calculate USD value using server balance
+            const value = Number(item.server_balance) / Math.pow(10, decimals) * rate;
+            totalUsdValue += value;
+        }
+    });
+    
+    return totalUsdValue;
+};
+
+// Calculate total value of other positions
+export const calculateOtherPositionsValue = (lpPositions, otherLpPositions, conversionRates) => {
+    let totalUsdValue = 0;
+    
+    // Add LP positions value
+    if (lpPositions) {
+        lpPositions.forEach(position => {
+            if (position.usd_value) {
+                totalUsdValue += Number(position.usd_value);
+            }
+        });
+    }
+    
+    // Add other LP positions value
+    if (otherLpPositions) {
+        otherLpPositions.forEach(position => {
+            if (position.usd_value) {
+                totalUsdValue += Number(position.usd_value);
+            }
+        });
+    }
+    
+    return totalUsdValue;
+};
+
+// Calculate total assets value
+export const calculateTotalAssetsValue = (
+    reconciliationData,
+    lpPositions,
+    otherLpPositions,
+    conversionRates
+) => {
+    // Calculate ICP total
+    const totalIcp = calculateTotalIcpValue(reconciliationData);
+    const icpUsdValue = Number(totalIcp) / 1e8 * (conversionRates['ICP'] || 0);
+    
+    // Calculate SNEED total
+    const totalSneed = calculateTotalSneedValue(reconciliationData);
+    const sneedUsdValue = Number(totalSneed) / 1e8 * (conversionRates['SNEED'] || 0);
+    
+    // Calculate other tokens value
+    const otherTokensUsdValue = calculateOtherTokensValue(reconciliationData, conversionRates);
+    
+    // Calculate other positions value
+    const otherPositionsUsdValue = calculateOtherPositionsValue(lpPositions, otherLpPositions, conversionRates);
+    
+    return {
+        totalIcp,
+        totalSneed,
+        icpUsdValue,
+        sneedUsdValue,
+        otherTokensUsdValue,
+        otherPositionsUsdValue,
+        totalUsdValue: icpUsdValue + sneedUsdValue + otherTokensUsdValue + otherPositionsUsdValue
+    };
+};
+
 export {
     get_available,
     get_available_backend,
