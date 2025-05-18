@@ -55,7 +55,7 @@ function Admin() {
                     padding: '20px'
                 }}>
                     <Link 
-                        to="/admin/bans"
+                        to="/admin/users/bans"
                         style={{
                             backgroundColor: '#2a2a2a',
                             padding: '20px',
@@ -78,7 +78,7 @@ function Admin() {
                     </Link>
 
                     <Link 
-                        to="/admin/blacklist"
+                        to="/admin/words"
                         style={{
                             backgroundColor: '#2a2a2a',
                             padding: '20px',
