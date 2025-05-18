@@ -530,6 +530,40 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     #ok(Buffer.toArray(ban_log))
   };
 
+  // Function to unban a user
+  public shared ({ caller }) func unban_user(user: Principal) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+
+    if (Principal.isAnonymous(user)) {
+      return #err("Cannot unban anonymous users");
+    };
+
+    if (is_admin(user)) {
+      return #err("Administrators cannot be banned or unbanned");
+    };
+
+    switch (banned_users.get(user)) {
+      case (?_) {
+        banned_users.delete(user);
+        // Add unban entry to ban log
+        let entry : BanLogEntry = {
+          user;
+          admin = caller;
+          ban_timestamp = Time.now();
+          expiry_timestamp = Time.now(); // Immediate expiry indicates unban
+          reason = "Manual unban by administrator";
+        };
+        ban_log.add(entry);
+        #ok()
+      };
+      case null {
+        #err("User is not currently banned")
+      };
+    }
+  };
+
   // Neuron name management
   public shared ({ caller }) func set_neuron_name(sns_root_canister_id : Principal, neuron_id : NeuronId, name : Text) : async Result.Result<Text, Text> {
     if (Principal.isAnonymous(caller)) {
