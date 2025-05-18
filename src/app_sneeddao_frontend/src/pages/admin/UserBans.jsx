@@ -19,6 +19,9 @@ export default function UserBans() {
   const [expandedUser, setExpandedUser] = useState(null);
   const [banHistory, setBanHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [duration, setDuration] = useState('');
+  const [durationUnit, setDurationUnit] = useState('hours');
+  const [reason, setReason] = useState('');
 
   // Use admin check hook
   useAdminCheck({ identity, isAuthenticated });
@@ -45,6 +48,25 @@ export default function UserBans() {
     } catch (err) {
       console.error('Error formatting expiry:', err);
       return 'Invalid Date';
+    }
+  };
+
+  // Helper function to convert duration to hours based on unit
+  const convertToHours = (value, unit) => {
+    const numValue = Number(value);
+    switch (unit) {
+      case 'hours':
+        return numValue;
+      case 'days':
+        return numValue * 24;
+      case 'weeks':
+        return numValue * 24 * 7;
+      case 'months':
+        return numValue * 24 * 30;
+      case 'years':
+        return numValue * 24 * 365;
+      default:
+        return numValue;
     }
   };
 
@@ -125,31 +147,27 @@ export default function UserBans() {
 
   const handleBanUser = async (e) => {
     e.preventDefault();
-    if (!identity || !principalId.trim() || !banDuration.trim() || !banReason.trim()) return;
+    if (!duration || !reason) return;
 
-    setIsSubmitting(true);
     try {
+      const durationInHours = convertToHours(duration, durationUnit);
       const backendActor = createBackendActor(backendCanisterId, {
         agentOptions: {
           identity,
           host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
         }
       });
-      const result = await backendActor.ban_user(principalId.trim(), BigInt(banDuration), banReason.trim());
+      const result = await backendActor.ban_user(Principal.fromText(e.target.principal.value), durationInHours, reason);
       if ('ok' in result) {
+        setDuration('');
+        setReason('');
         await fetchBans();
-        setPrincipalId('');
-        setBanDuration('');
-        setBanReason('');
-        setError('');
       } else {
         setError(result.err);
       }
     } catch (err) {
       console.error('Error banning user:', err);
       setError('Failed to ban user');
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -213,9 +231,8 @@ export default function UserBans() {
             <div>
               <input
                 type="text"
-                value={principalId}
-                onChange={(e) => setPrincipalId(e.target.value)}
-                placeholder="Enter Principal ID"
+                name="principal"
+                placeholder="User Principal ID"
                 style={{
                   width: '100%',
                   backgroundColor: '#3a3a3a',
@@ -226,28 +243,41 @@ export default function UserBans() {
                 }}
               />
             </div>
-            <div>
+            <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <input
                 type="number"
-                value={banDuration}
-                onChange={(e) => setBanDuration(e.target.value)}
-                placeholder="Ban Duration (in seconds)"
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                placeholder="Duration"
+                min="1"
                 style={{
-                  width: '100%',
-                  backgroundColor: '#3a3a3a',
-                  border: '1px solid #4a4a4a',
-                  borderRadius: '4px',
-                  color: '#ffffff',
-                  padding: '8px 12px'
+                  padding: '8px',
+                  width: '100px'
                 }}
               />
+              <select
+                value={durationUnit}
+                onChange={(e) => setDurationUnit(e.target.value)}
+                style={{
+                  padding: '8px',
+                  backgroundColor: '#fff',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px'
+                }}
+              >
+                <option value="hours">Hours</option>
+                <option value="days">Days</option>
+                <option value="weeks">Weeks</option>
+                <option value="months">Months</option>
+                <option value="years">Years</option>
+              </select>
             </div>
             <div>
               <input
                 type="text"
-                value={banReason}
-                onChange={(e) => setBanReason(e.target.value)}
-                placeholder="Ban Reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Reason for ban"
                 style={{
                   width: '100%',
                   backgroundColor: '#3a3a3a',
@@ -260,18 +290,18 @@ export default function UserBans() {
             </div>
             <button
               type="submit"
-              disabled={isSubmitting || !principalId.trim() || !banDuration.trim() || !banReason.trim()}
+              disabled={!duration || !reason}
               style={{
                 backgroundColor: '#3498db',
                 color: '#ffffff',
                 border: 'none',
                 borderRadius: '4px',
                 padding: '8px 16px',
-                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                opacity: isSubmitting ? 0.7 : 1
+                cursor: duration && reason ? 'pointer' : 'not-allowed',
+                opacity: duration && reason ? 1 : 0.7
               }}
             >
-              {isSubmitting ? 'Banning...' : 'Ban User'}
+              Ban User
             </button>
           </form>
 
