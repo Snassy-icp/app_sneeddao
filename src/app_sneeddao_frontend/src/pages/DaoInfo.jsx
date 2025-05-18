@@ -481,7 +481,7 @@ function DaoInfo() {
                                                 <strong>Decimals:</strong> {tokenomics.metadata.decimals}
                                             </div>
                                             <div>
-                                                <strong>Fee:</strong> {formatNumber(tokenomics.metadata.fee / BigInt(Math.pow(10, tokenomics.metadata.decimals)))} {tokenomics.metadata.symbol}
+                                                <strong>Fee:</strong> {(Number(tokenomics.metadata.fee) / Math.pow(10, tokenomics.metadata.decimals))} {tokenomics.metadata.symbol}
                                             </div>
                                         </div>
                                     </div>
