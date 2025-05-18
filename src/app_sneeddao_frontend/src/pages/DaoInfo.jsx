@@ -9,7 +9,7 @@ import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
 
 const styles = {
     container: {
-        maxWidth: '1200px',
+        maxWidth: '1800px',
         margin: '0 auto',
         padding: '2rem',
         color: '#ffffff',
@@ -19,11 +19,22 @@ const styles = {
         marginBottom: '2rem',
         color: '#ffffff',
     },
+    sectionsGrid: {
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr 1fr 1fr',
+        gap: '2rem',
+        '@media (max-width: 1600px)': {
+            gridTemplateColumns: '1fr 1fr',
+        },
+        '@media (max-width: 900px)': {
+            gridTemplateColumns: '1fr',
+        },
+    },
     section: {
         backgroundColor: '#2a2a2a',
         borderRadius: '8px',
-        padding: '2rem',
-        marginBottom: '2rem',
+        padding: '1.5rem',
+        minWidth: '300px',
     },
     subheading: {
         fontSize: '1.5rem',
@@ -32,8 +43,8 @@ const styles = {
     },
     grid: {
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-        gap: '1.5rem',
+        gridTemplateColumns: '1fr',
+        gap: '1rem',
     },
     card: {
         backgroundColor: '#3a3a3a',
@@ -66,6 +77,20 @@ const styles = {
         borderRadius: '8px',
     },
 };
+
+// Add media query styles
+const mediaStyles = `
+    @media (max-width: 1600px) {
+        .sections-grid {
+            grid-template-columns: 1fr 1fr !important;
+        }
+    }
+    @media (max-width: 900px) {
+        .sections-grid {
+            grid-template-columns: 1fr !important;
+        }
+    }
+`;
 
 // Add keyframes for spinner
 const spinKeyframes = `
@@ -259,7 +284,7 @@ function DaoInfo() {
                         <div style={styles.spinner} />
                     </div>
                 ) : (
-                    <>
+                    <div className="sections-grid" style={styles.sectionsGrid}>
                         {/* DAO Metrics Section */}
                         <section style={styles.section}>
                             <h2 style={styles.subheading}>DAO Metrics</h2>
@@ -335,10 +360,13 @@ function DaoInfo() {
                                 Coming Soon
                             </div>
                         </section>
-                    </>
+                    </div>
                 )}
             </main>
-            <style>{spinKeyframes}</style>
+            <style>
+                {spinKeyframes}
+                {mediaStyles}
+            </style>
         </div>
     );
 }
