@@ -85,18 +85,29 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
         navigate(menuSections[section].defaultPath);
     };
 
+    const handleLogoClick = () => {
+        // Open the hamburger menu
+        setIsMenuOpen(true);
+        // Select Sneed SNS if onSnsChange is provided
+        if (onSnsChange) {
+            onSnsChange('fp274-iaaaa-aaaaq-aacha-cai'); // Sneed SNS root canister ID
+        }
+    };
+
     return (
         <header className="site-header">
             <div style={{ display: 'flex', alignItems: 'flex-start', flex: 1, gap: '15px' }}>
                 <img
                     src="sneed_logo.png"
                     alt="Sneed Logo"
+                    onClick={handleLogoClick}
                     style={{
                         width: '52px',
                         height: '52px',
                         borderRadius: '50%',
                         objectFit: 'cover',
-                        marginTop: '8px'
+                        marginTop: '8px',
+                        cursor: 'pointer'
                     }}
                 />
                 <div style={{ display: 'flex', flexDirection: 'column', flex: 1, marginLeft: '37px' }}>
