@@ -465,6 +465,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     await ban_user_impl(caller, user, duration_hours, reason);
   };
 
+  public shared ({ caller }) func test_calculate_ban_duration(user: Principal) : async Nat {
+    calculate_ban_duration(user)
+  };
+
   // Helper function to calculate automatic ban duration based on ban history
   private func calculate_ban_duration(user: Principal) : Nat {
     var ban_count = 0;
@@ -522,7 +526,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     };
 
     let now = Time.now();
-    let duration_nanos = duration_hours * 3600_000_000_000;
+    let duration_nanos = Int.abs(duration_hours) * 3_600_000_000_000;
     let expiry = now + duration_nanos;
 
     // Check if user is already banned
