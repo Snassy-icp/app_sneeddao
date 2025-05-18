@@ -3,7 +3,7 @@ import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent } from '@dfinity/agent';
-import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { createActor as createNeutriniteDappActor } from 'external/neutrinite_dapp';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -122,7 +122,10 @@ function DaoInfo() {
     });
     const [tokenomics, setTokenomics] = useState({
         price: 0,
+        priceIcp: 0,
         marketCap: 0,
+        marketCapIcp: 0,
+        totalSupply: 0,
         totalAssets: {
             totalUsd: 0,
             icp: 0,
@@ -131,7 +134,7 @@ function DaoInfo() {
         totalRewardsDistributed: 0,
         latestDistribution: {
             round: 0,
-            timestamp: null
+            timestamp: 0
         }
     });
     const [conversionRates, setConversionRates] = useState({});
@@ -186,7 +189,7 @@ function DaoInfo() {
                 await agent.fetchRootKey();
 
                 // Create actors
-                const snsGovActor = createSnsGovernanceActor('fi3zi-fyaaa-aaaaq-aachq-cai', {
+                const snsGovActor = createSnsGovernanceActor(snsGovernanceCanisterId, {
                     agentOptions: { agent }
                 });
                 const rllActor = createRllActor(rllCanisterId, {
@@ -233,14 +236,21 @@ function DaoInfo() {
                 // Fetch tokenomics data
                 setLoading(prev => ({ ...prev, tokenomics: true }));
                 try {
+                    // Create SNEED ledger actor to get total supply
+                    const sneedLedgerActor = createLedgerActor('hvgxa-wqaaa-aaaaq-aacia-cai', {
+                        agentOptions: { agent }
+                    });
+
                     const [
                         totalDistributions,
                         mainLoopStatus,
-                        eventStats
+                        eventStats,
+                        totalSupply
                     ] = await Promise.all([
                         rllActor.get_total_distributions(),
                         rllActor.get_main_loop_status(),
-                        rllActor.get_event_statistics()
+                        rllActor.get_event_statistics(),
+                        sneedLedgerActor.icrc1_total_supply()
                     ]);
 
                     // Process total distributions
@@ -252,11 +262,22 @@ function DaoInfo() {
                         }
                     });
 
+                    // Calculate prices and market cap
+                    const sneedPriceUsd = conversionRates['SNEED'] || 0;
+                    const icpPriceUsd = conversionRates['ICP'] || 0;
+                    const sneedPriceIcp = icpPriceUsd > 0 ? sneedPriceUsd / icpPriceUsd : 0;
+                    const totalSupplyNum = Number(totalSupply) / 1e8;
+                    const marketCapUsd = sneedPriceUsd * totalSupplyNum;
+                    const marketCapIcp = sneedPriceIcp * totalSupplyNum;
+
                     setEventStats(eventStats);
                     setTokenomics(prev => ({
                         ...prev,
-                        price: conversionRates['SNEED'] || 0,
-                        marketCap: (conversionRates['SNEED'] || 0) * 100000000, // Assuming 100M total supply
+                        price: sneedPriceUsd,
+                        priceIcp: sneedPriceIcp,
+                        marketCap: marketCapUsd,
+                        marketCapIcp: marketCapIcp,
+                        totalSupply: totalSupplyNum,
                         totalRewardsDistributed: totalRewardsDistributed,
                         latestDistribution: {
                             round: eventStats?.all_time?.server_distributions?.total || 0,
@@ -395,12 +416,26 @@ function DaoInfo() {
                         ) : (
                             <div style={styles.grid}>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>${formatUSD(tokenomics.price)}</div>
+                                    <div style={styles.metric}>
+                                        ${formatUSD(tokenomics.price)}
+                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                            {formatNumber(tokenomics.priceIcp)} ICP
+                                        </div>
+                                    </div>
                                     <div style={styles.label}>SNEED Price</div>
                                 </div>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>${formatUSD(tokenomics.marketCap)}</div>
+                                    <div style={styles.metric}>
+                                        ${formatUSD(tokenomics.marketCap)}
+                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                            {formatNumber(tokenomics.marketCapIcp)} ICP
+                                        </div>
+                                    </div>
                                     <div style={styles.label}>Market Cap</div>
+                                </div>
+                                <div style={styles.card}>
+                                    <div style={styles.metric}>{formatNumber(tokenomics.totalSupply)}</div>
+                                    <div style={styles.label}>Total Supply</div>
                                 </div>
                                 <div style={styles.card}>
                                     <div style={styles.metric}>${formatUSD(tokenomics.totalAssets.totalUsd)}</div>
