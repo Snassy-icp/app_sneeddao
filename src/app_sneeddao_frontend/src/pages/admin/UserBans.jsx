@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../AuthContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
-import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import Header from '../../components/Header';
 
 export default function UserBans() {
@@ -10,10 +10,11 @@ export default function UserBans() {
   const navigate = useNavigate();
   const [bannedUsers, setBannedUsers] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState('');
   const [principalId, setPrincipalId] = useState('');
-  const [banDuration, setBanDuration] = useState(24); // Default 24 hours
+  const [banDuration, setBanDuration] = useState('');
   const [banReason, setBanReason] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Use admin check hook
   useAdminCheck({ identity, isAuthenticated });
@@ -29,10 +30,18 @@ export default function UserBans() {
 
     setLoading(true);
     try {
-      const backendActor = createBackendActor(identity);
+      const backendActor = createBackendActor(backendCanisterId, {
+        agentOptions: {
+          identity,
+          host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+        }
+      });
       const result = await backendActor.get_banned_users();
       if ('ok' in result) {
-        setBannedUsers(result.ok);
+        // Convert the entries to an array if it's not already
+        const bansArray = Array.isArray(result.ok) ? result.ok : Object.entries(result.ok);
+        setBannedUsers(bansArray);
+        setError('');
       } else {
         setError(result.err);
       }
@@ -46,17 +55,23 @@ export default function UserBans() {
 
   const handleBanUser = async (e) => {
     e.preventDefault();
-    if (!identity || !principalId.trim()) return;
+    if (!identity || !principalId.trim() || !banDuration.trim() || !banReason.trim()) return;
 
-    setLoading(true);
+    setIsSubmitting(true);
     try {
-      const backendActor = createBackendActor(identity);
-      const result = await backendActor.ban_user(principalId, BigInt(banDuration * 3600), banReason);
+      const backendActor = createBackendActor(backendCanisterId, {
+        agentOptions: {
+          identity,
+          host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+        }
+      });
+      const result = await backendActor.ban_user(principalId.trim(), BigInt(banDuration), banReason.trim());
       if ('ok' in result) {
         await fetchBans();
         setPrincipalId('');
+        setBanDuration('');
         setBanReason('');
-        setError(null);
+        setError('');
       } else {
         setError(result.err);
       }
@@ -64,20 +79,25 @@ export default function UserBans() {
       console.error('Error banning user:', err);
       setError('Failed to ban user');
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   const handleUnbanUser = async (principal) => {
     if (!identity) return;
 
-    setLoading(true);
+    setIsSubmitting(true);
     try {
-      const backendActor = createBackendActor(identity);
+      const backendActor = createBackendActor(backendCanisterId, {
+        agentOptions: {
+          identity,
+          host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+        }
+      });
       const result = await backendActor.unban_user(principal);
       if ('ok' in result) {
         await fetchBans();
-        setError(null);
+        setError('');
       } else {
         setError(result.err);
       }
@@ -85,7 +105,7 @@ export default function UserBans() {
       console.error('Error unbanning user:', err);
       setError('Failed to unban user');
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -93,7 +113,7 @@ export default function UserBans() {
     <div className='page-container'>
       <Header />
       <main className="wallet-container">
-        <h1 style={{ color: '#ffffff' }}>User Bans Management</h1>
+        <h1 style={{ color: '#ffffff' }}>User Ban Management</h1>
         
         <section style={{ backgroundColor: '#2a2a2a', borderRadius: '8px', padding: '20px', marginTop: '20px' }}>
           <form onSubmit={handleBanUser} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -117,12 +137,12 @@ export default function UserBans() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ color: '#ffffff' }}>Ban Duration (hours)</label>
+              <label style={{ color: '#ffffff' }}>Ban Duration (seconds)</label>
               <input
                 type="number"
                 value={banDuration}
                 onChange={(e) => setBanDuration(e.target.value)}
-                min="1"
+                placeholder="Enter ban duration in seconds"
                 style={{
                   backgroundColor: '#3a3a3a',
                   border: '1px solid #4a4a4a',
@@ -156,19 +176,19 @@ export default function UserBans() {
 
             <button 
               type="submit" 
-              disabled={loading}
+              disabled={isSubmitting}
               style={{
                 backgroundColor: '#3498db',
                 color: '#ffffff',
                 border: 'none',
                 borderRadius: '4px',
                 padding: '10px 16px',
-                cursor: loading ? 'not-allowed' : 'pointer',
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
                 fontSize: '14px',
-                opacity: loading ? 0.7 : 1
+                opacity: isSubmitting ? 0.7 : 1
               }}
             >
-              Ban User
+              {isSubmitting ? 'Banning...' : 'Ban User'}
             </button>
           </form>
 
@@ -200,7 +220,7 @@ export default function UserBans() {
                   <thead>
                     <tr style={{ backgroundColor: '#2c3e50' }}>
                       <th style={{ padding: '12px', color: '#ffffff', textAlign: 'left' }}>Principal ID</th>
-                      <th style={{ padding: '12px', color: '#ffffff', textAlign: 'left' }}>Expiry Time</th>
+                      <th style={{ padding: '12px', color: '#ffffff', textAlign: 'left' }}>Expiry</th>
                       <th style={{ padding: '12px', color: '#ffffff', textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
@@ -213,24 +233,26 @@ export default function UserBans() {
                           backgroundColor: index % 2 === 0 ? '#2a2a2a' : '#323232'
                         }}
                       >
-                        <td style={{ padding: '12px', color: '#ffffff' }}>{principal}</td>
+                        <td style={{ padding: '12px', color: '#ffffff', fontFamily: 'monospace' }}>{principal}</td>
                         <td style={{ padding: '12px', color: '#ffffff' }}>
-                          {new Date(Number(expiry) * 1000).toLocaleString()}
+                          {new Date(Number(expiry) / 1000000).toLocaleString()}
                         </td>
                         <td style={{ padding: '12px', textAlign: 'right' }}>
                           <button
                             onClick={() => handleUnbanUser(principal)}
+                            disabled={isSubmitting}
                             style={{
                               backgroundColor: '#e74c3c',
                               color: '#ffffff',
                               border: 'none',
                               borderRadius: '4px',
                               padding: '6px 12px',
-                              cursor: 'pointer',
-                              fontSize: '14px'
+                              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                              fontSize: '14px',
+                              opacity: isSubmitting ? 0.7 : 1
                             }}
                           >
-                            Unban
+                            {isSubmitting ? 'Unbanning...' : 'Unban'}
                           </button>
                         </td>
                       </tr>
