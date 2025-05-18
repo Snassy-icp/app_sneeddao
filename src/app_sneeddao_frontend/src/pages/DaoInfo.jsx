@@ -125,24 +125,24 @@ function DaoInfo() {
         activeNeurons: 0,
         proposalCount: 0,
         neuronStats: {
-            totalNeurons: 0,
-            activeNeurons: 0,
+            totalNeurons: 0n,
+            activeNeurons: 0n,
             dissolveState: {
-                notDissolving: 0,
-                dissolving: 0,
-                dissolved: 0
+                notDissolving: 0n,
+                dissolving: 0n,
+                dissolved: 0n
             },
             votingPower: {
-                total: 0,
-                min: 0,
-                max: 0,
-                avg: 0
+                total: 0n,
+                min: 100n,
+                max: 100n,
+                avg: 100
             },
             permissions: {
-                totalHotkeys: 0,
-                multiHotkeyNeurons: 0
+                totalHotkeys: 0n,
+                multiHotkeyNeurons: 0n
             },
-            totalStaked: 0
+            totalStaked: 0n
         }
     });
     const [tokenomics, setTokenomics] = useState({
@@ -539,50 +539,50 @@ function DaoInfo() {
                         ) : (
                             <div style={styles.grid}>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>{formatNumber(daoMetrics.neuronStats.totalNeurons)}</div>
+                                    <div style={styles.metric}>{formatNumber(Number(daoMetrics.neuronStats.totalNeurons))}</div>
                                     <div style={styles.label}>Total Neurons</div>
                                 </div>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>{formatNumber(daoMetrics.neuronStats.activeNeurons)}</div>
+                                    <div style={styles.metric}>{formatNumber(Number(daoMetrics.neuronStats.activeNeurons))}</div>
                                     <div style={styles.label}>Active Neurons</div>
                                 </div>
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
-                                        {formatNumber(daoMetrics.neuronStats.dissolveState.notDissolving)}
+                                        {formatNumber(Number(daoMetrics.neuronStats.dissolveState.notDissolving))}
                                         <div style={{ fontSize: '0.7em', color: '#888' }}>Not Dissolving</div>
                                     </div>
                                     <div style={styles.label}>Dissolve State</div>
                                 </div>
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
-                                        {formatNumber(daoMetrics.neuronStats.dissolveState.dissolving)}
+                                        {formatNumber(Number(daoMetrics.neuronStats.dissolveState.dissolving))}
                                         <div style={{ fontSize: '0.7em', color: '#888' }}>Dissolving</div>
                                     </div>
                                     <div style={styles.label}>Dissolve State</div>
                                 </div>
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
-                                        {formatNumber(daoMetrics.neuronStats.dissolveState.dissolved)}
+                                        {formatNumber(Number(daoMetrics.neuronStats.dissolveState.dissolved))}
                                         <div style={{ fontSize: '0.7em', color: '#888' }}>Dissolved</div>
                                     </div>
                                     <div style={styles.label}>Dissolve State</div>
                                 </div>
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
-                                        {formatNumber(daoMetrics.neuronStats.votingPower.total)}
+                                        {formatNumber(Number(daoMetrics.neuronStats.votingPower.total))}
                                         <div style={{ fontSize: '0.7em', color: '#888' }}>
-                                            Min: {formatNumber(daoMetrics.neuronStats.votingPower.min)}
+                                            Min: {formatNumber(Number(daoMetrics.neuronStats.votingPower.min))}
                                             {' | '}
-                                            Max: {formatNumber(daoMetrics.neuronStats.votingPower.max)}
+                                            Max: {formatNumber(Number(daoMetrics.neuronStats.votingPower.max))}
                                         </div>
                                     </div>
                                     <div style={styles.label}>Total Voting Power</div>
                                 </div>
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
-                                        {daoMetrics.neuronStats.permissions.totalHotkeys}
+                                        {formatNumber(Number(daoMetrics.neuronStats.permissions.totalHotkeys))}
                                         <div style={{ fontSize: '0.7em', color: '#888' }}>
-                                            Multi-hotkey: {daoMetrics.neuronStats.permissions.multiHotkeyNeurons}
+                                            Multi-hotkey: {formatNumber(Number(daoMetrics.neuronStats.permissions.multiHotkeyNeurons))}
                                         </div>
                                     </div>
                                     <div style={styles.label}>Hotkeys</div>
@@ -591,7 +591,7 @@ function DaoInfo() {
                                     <div style={styles.metric}>
                                         {formatNumber(Number(daoMetrics.neuronStats.totalStaked) / 1e8)} SNEED
                                         <div style={{ fontSize: '0.7em', color: '#888' }}>
-                                            {((Number(daoMetrics.neuronStats.totalStaked) / Number(tokenomics.totalSupply)) * 100).toFixed(2)}% of supply
+                                            {((Number(daoMetrics.neuronStats.totalStaked) / (Number(tokenomics.totalSupply) * 1e8)) * 100).toFixed(2)}% of supply
                                         </div>
                                     </div>
                                     <div style={styles.label}>Total Staked</div>
