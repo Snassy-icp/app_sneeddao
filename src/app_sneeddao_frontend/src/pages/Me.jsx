@@ -102,7 +102,8 @@ export default function Me() {
                 );
 
                 groups.set(owner, {
-                    title: owner === userPrincipal ? 'My Neurons' : `Neurons owned by ${owner}`,
+                    title: owner === userPrincipal ? 'My Neurons' : `Neurons from ${owner.slice(0, 6)}...${owner.slice(-6)}`,
+                    tooltip: owner === userPrincipal ? undefined : `Principal ID: ${owner}`,
                     neurons: ownerNeurons,
                     totalStake
                 });
@@ -323,8 +324,27 @@ export default function Me() {
                                             transition: 'transform 0.3s ease',
                                             display: 'inline-block'
                                         }}>▶</span>
-                                        <h2 style={{ margin: 0, color: '#ffffff' }}>
+                                        <h2 style={{ 
+                                            margin: 0, 
+                                            color: '#ffffff',
+                                            fontSize: '16px',
+                                            fontWeight: '500'
+                                        }}>
                                             {group.title} ({group.neurons.length})
+                                            {group.tooltip && (
+                                                <span 
+                                                    style={{ 
+                                                        marginLeft: '8px',
+                                                        fontSize: '14px',
+                                                        color: '#888',
+                                                        cursor: 'help',
+                                                        fontWeight: 'normal'
+                                                    }}
+                                                    title={group.tooltip}
+                                                >
+                                                    ℹ️
+                                                </span>
+                                            )}
                                         </h2>
                                     </div>
                                     <div style={{ color: '#3498db', fontSize: '18px', fontWeight: 'bold' }}>
