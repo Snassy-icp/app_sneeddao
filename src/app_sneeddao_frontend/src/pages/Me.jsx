@@ -36,9 +36,24 @@ export default function Me() {
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [editingName, setEditingName] = useState(null);
     const [nameInput, setNameInput] = useState('');
+    const [inputError, setInputError] = useState('');
     
     // Get naming context
     const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames } = useNaming();
+
+    // Add validation function
+    const validateNameInput = (input) => {
+        if (input.length > 32) {
+            return "Name must not exceed 32 characters";
+        }
+        
+        const validPattern = /^[a-zA-Z0-9\s\-_.]*$/;
+        if (!validPattern.test(input)) {
+            return "Only alphanumeric characters, spaces, hyphens, underscores, and dots are allowed";
+        }
+        
+        return "";
+    };
 
     // Group neurons by owner
     const groupedNeurons = React.useMemo(() => {
@@ -163,6 +178,12 @@ export default function Me() {
     };
 
     const handleNameSubmit = async (neuronId, isNickname = false) => {
+        const error = validateNameInput(nameInput);
+        if (error) {
+            setInputError(error);
+            return;
+        }
+
         if (!nameInput.trim()) return;
 
         try {
@@ -173,6 +194,7 @@ export default function Me() {
             if ('ok' in response) {
                 // Refresh global names
                 await fetchAllNames();
+                setInputError('');
             } else {
                 setError(response.err);
             }
@@ -398,20 +420,43 @@ export default function Me() {
                                                                 flexDirection: 'column',
                                                                 gap: '10px'
                                                             }}>
-                                                                <input
-                                                                    type="text"
-                                                                    value={nameInput}
-                                                                    onChange={(e) => setNameInput(e.target.value)}
-                                                                    placeholder="Enter neuron name"
-                                                                    style={{
-                                                                        backgroundColor: '#3a3a3a',
-                                                                        border: '1px solid #4a4a4a',
-                                                                        borderRadius: '4px',
-                                                                        color: '#ffffff',
-                                                                        padding: '8px',
-                                                                        width: '100%'
-                                                                    }}
-                                                                />
+                                                                <div>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={nameInput}
+                                                                        onChange={(e) => {
+                                                                            const newValue = e.target.value;
+                                                                            setNameInput(newValue);
+                                                                            setInputError(validateNameInput(newValue));
+                                                                        }}
+                                                                        maxLength={32}
+                                                                        placeholder="Enter neuron name (max 32 chars)"
+                                                                        style={{
+                                                                            backgroundColor: '#3a3a3a',
+                                                                            border: `1px solid ${inputError ? '#e74c3c' : '#4a4a4a'}`,
+                                                                            borderRadius: '4px',
+                                                                            color: '#ffffff',
+                                                                            padding: '8px',
+                                                                            width: '100%'
+                                                                        }}
+                                                                    />
+                                                                    {inputError && (
+                                                                        <div style={{
+                                                                            color: '#e74c3c',
+                                                                            fontSize: '12px',
+                                                                            marginTop: '4px'
+                                                                        }}>
+                                                                            {inputError}
+                                                                        </div>
+                                                                    )}
+                                                                    <div style={{
+                                                                        color: '#888',
+                                                                        fontSize: '12px',
+                                                                        marginTop: '4px'
+                                                                    }}>
+                                                                        Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.)
+                                                                    </div>
+                                                                </div>
                                                                 <div style={{
                                                                     display: 'flex',
                                                                     gap: '8px',
