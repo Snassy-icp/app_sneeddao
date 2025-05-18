@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
@@ -11,6 +11,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
     const navigate = useNavigate();
     const { isAuthenticated, identity, login, logout } = useAuth();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const menuRef = useRef(null);
     const [activeSection, setActiveSection] = useState(() => {
         const path = location.pathname;
         if (['/dao', '/dao_info', '/rll_info', '/products', '/partners', '/proposals'].includes(path)) return 'DAO';
@@ -19,6 +20,18 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
         return 'DAO';
     });
+
+    // Add click outside handler
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (menuRef.current && !menuRef.current.contains(event.target)) {
+                setIsMenuOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const menuSections = {
         'DAO': {
@@ -189,18 +202,20 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
                 )}
             </div>
             {isMenuOpen && (
-                <div style={{
-                    position: 'fixed',
-                    top: '60px',
-                    left: '0',
-                    background: 'linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%)',
-                    width: '250px',
-                    padding: '20px',
-                    boxShadow: '2px 0 15px rgba(0,0,0,0.3)',
-                    zIndex: 1000,
-                    borderRight: '1px solid rgba(255,255,255,0.1)',
-                    backdropFilter: 'blur(10px)'
-                }}>
+                <div 
+                    ref={menuRef}
+                    style={{
+                        position: 'fixed',
+                        top: '60px',
+                        left: '0',
+                        background: 'linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%)',
+                        width: '250px',
+                        padding: '20px',
+                        boxShadow: '2px 0 15px rgba(0,0,0,0.3)',
+                        zIndex: 1000,
+                        borderRight: '1px solid rgba(255,255,255,0.1)',
+                        backdropFilter: 'blur(10px)'
+                    }}>
                     <nav style={{
                         display: 'flex',
                         flexDirection: 'column',
