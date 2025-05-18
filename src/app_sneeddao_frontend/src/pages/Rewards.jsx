@@ -262,10 +262,27 @@ function Rewards() {
 
     // Add before the formatBalance function
     const handleClaimRewards = async (tokenId, balance) => {
+        // Check if balance is 0
         if (!balance || Number(balance) === 0) {
             setNotification({
                 type: 'error',
                 message: 'No rewards available to claim'
+            });
+            return;
+        }
+
+        // Get token info to check fee
+        const token = {
+            id: tokenId,
+            symbol: tokenSymbols[tokenId.toString()] || tokenId.toString(),
+            fee: BigInt(10000) // Default fee of 0.0001 tokens
+        };
+
+        // Check if balance is less than or equal to fee
+        if (balance <= token.fee) {
+            setNotification({
+                type: 'error',
+                message: `Your ${token.symbol} rewards (${formatBalance(balance, 8)} ${token.symbol}) are less than the transaction fee (${formatBalance(token.fee, 8)} ${token.symbol}). Please wait until you have accumulated more rewards before claiming.`
             });
             return;
         }
@@ -276,19 +293,44 @@ function Rewards() {
             const rllActor = createRllActor(rllCanisterId, {
                 agentOptions: { identity }
             });
-            await rllActor.claim_hotkey_neuron_rewards(neurons, tokenId);
-            setNotification({
-                type: 'success',
-                message: 'Successfully claimed rewards'
-            });
-            // Refresh balances
-            const newBalances = await rllActor.balances_of_hotkey_neurons(neurons);
-            setUserBalances(newBalances);
+            const claim_results = await rllActor.claim_hotkey_neuron_rewards(neurons, tokenId);
+            
+            // Check the result
+            if ('Ok' in claim_results) {
+                setNotification({
+                    type: 'success',
+                    message: `Successfully claimed ${formatBalance(balance, 8)} ${token.symbol}`
+                });
+                // Refresh balances
+                const newBalances = await rllActor.balances_of_hotkey_neurons(neurons);
+                setUserBalances(newBalances);
+            } else {
+                // Handle specific transfer errors
+                const error = claim_results.Err;
+                let errorMessage = '';
+                
+                if (error.InsufficientFunds) {
+                    const availableBalance = error.InsufficientFunds.balance;
+                    errorMessage = `Insufficient funds. Available balance: ${formatBalance(availableBalance, 8)} ${token.symbol}`;
+                } else if (error.BadFee) {
+                    const expectedFee = error.BadFee.expected_fee;
+                    errorMessage = `Your ${token.symbol} rewards are less than the transaction fee (${formatBalance(expectedFee, 8)} ${token.symbol}). Please wait until you have accumulated more rewards before claiming.`;
+                } else if (error.GenericError) {
+                    errorMessage = error.GenericError.message;
+                } else {
+                    errorMessage = `Transfer failed: ${Object.keys(error)[0]}`;
+                }
+                
+                setNotification({
+                    type: 'error',
+                    message: errorMessage
+                });
+            }
         } catch (error) {
             console.error('Error claiming rewards:', error);
             setNotification({
                 type: 'error',
-                message: 'Failed to claim rewards: ' + error.message
+                message: `Failed to claim ${token.symbol}: ${error.message}`
             });
         } finally {
             setClaimingTokens(prev => ({ ...prev, [tokenId.toString()]: false }));
@@ -455,18 +497,28 @@ function Rewards() {
                                             </div>
                                             <button
                                                 onClick={() => handleClaimRewards(tokenId, balance)}
-                                                disabled={claimingTokens[tokenId.toString()]}
+                                                disabled={!balance || Number(balance) === 0 || claimingTokens[tokenId.toString()]}
                                                 style={{
                                                     backgroundColor: '#3498db',
                                                     color: '#ffffff',
                                                     border: 'none',
                                                     borderRadius: '4px',
                                                     padding: '8px 16px',
-                                                    cursor: claimingTokens[tokenId.toString()] ? 'not-allowed' : 'pointer',
-                                                    opacity: claimingTokens[tokenId.toString()] ? 0.7 : 1
+                                                    cursor: !balance || Number(balance) === 0 || claimingTokens[tokenId.toString()] ? 'not-allowed' : 'pointer',
+                                                    opacity: !balance || Number(balance) === 0 || claimingTokens[tokenId.toString()] ? 0.7 : 1,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px'
                                                 }}
                                             >
-                                                {claimingTokens[tokenId.toString()] ? 'Claiming...' : 'Claim'}
+                                                {claimingTokens[tokenId.toString()] ? (
+                                                    <>
+                                                        <div style={styles.spinner} />
+                                                        Claiming...
+                                                    </>
+                                                ) : (
+                                                    'Claim'
+                                                )}
                                             </button>
                                         </div>
                                     ))}
