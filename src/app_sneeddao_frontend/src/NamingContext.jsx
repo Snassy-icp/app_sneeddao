@@ -32,12 +32,13 @@ export function NamingProvider({ children }) {
             const namesMap = new Map();
             const verifiedMap = new Map();
             if (names) {
-                names.forEach(([key, name]) => {
+                names.forEach(([key, nameData]) => {
                     const neuronId = uint8ArrayToHex(key.neuron_id.id);
                     const snsRoot = key.sns_root_canister_id.toString();
                     const mapKey = `${snsRoot}:${neuronId}`;
-                    namesMap.set(mapKey, name.name);
-                    verifiedMap.set(mapKey, name.verified);
+                    const [name, verified] = nameData;
+                    namesMap.set(mapKey, name);
+                    verifiedMap.set(mapKey, verified);
                 });
             }
             setNeuronNames(namesMap);

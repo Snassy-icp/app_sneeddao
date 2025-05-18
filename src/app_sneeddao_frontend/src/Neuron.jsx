@@ -40,9 +40,28 @@ function Neuron() {
     // Helper function to get display name
     const getDisplayName = (neuronId) => {
         const mapKey = `${selectedSnsRoot}:${neuronId}`;
-        const name = neuronNames.get(mapKey);
-        const nickname = neuronNicknames.get(mapKey);
-        const isVerified = verifiedNames.get(mapKey);
+        
+        // Convert arrays to Maps for easier lookup
+        const namesMap = new Map(Array.from(neuronNames.entries()));
+        const nicknamesMap = new Map(Array.from(neuronNicknames.entries()));
+        const verifiedMap = new Map(Array.from(verifiedNames.entries()));
+
+        // Get values from maps
+        const name = namesMap.get(mapKey);
+        const nickname = nicknamesMap.get(mapKey);
+        const isVerified = verifiedMap.get(mapKey);
+
+        console.log('Getting display name for:', {
+            neuronId,
+            mapKey,
+            name,
+            nickname,
+            isVerified,
+            allNames: Array.from(namesMap.entries()),
+            allNicknames: Array.from(nicknamesMap.entries()),
+            allVerified: Array.from(verifiedMap.entries())
+        });
+
         return { name, nickname, isVerified };
     };
 
@@ -90,6 +109,15 @@ function Neuron() {
                         return prev;
                     });
                 }
+                
+                // Fetch all names when component mounts
+                console.log('Fetching all names on mount...');
+                await fetchAllNames();
+                console.log('Names after mount fetch:', {
+                    names: Array.from(neuronNames.entries()),
+                    nicknames: Array.from(neuronNicknames.entries()),
+                    verified: Array.from(verifiedNames.entries())
+                });
             } catch (err) {
                 console.error('Error loading SNS data:', err);
                 setError('Failed to load SNS list');
@@ -145,6 +173,14 @@ function Neuron() {
             const response = await snsGovActor.get_neuron(neuronIdArg);
             if (response?.result?.[0]?.Neuron) {
                 setNeuronData(response.result[0].Neuron);
+                // Fetch all names to ensure we have the latest data
+                console.log('Fetching all names after getting neuron data...');
+                await fetchAllNames();
+                console.log('Names after neuron data fetch:', {
+                    names: Array.from(neuronNames.entries()),
+                    nicknames: Array.from(neuronNicknames.entries()),
+                    verified: Array.from(verifiedNames.entries())
+                });
             } else if (response?.result?.[0]?.Error) {
                 setError(response.result[0].Error.error_message);
             } else {
