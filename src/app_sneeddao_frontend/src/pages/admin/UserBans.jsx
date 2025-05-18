@@ -182,7 +182,9 @@ export default function UserBans() {
           host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
         }
       });
-      const result = await backendActor.unban_user(principal);
+      // Convert the principal string to a Principal object
+      const principalObj = Principal.fromText(principal);
+      const result = await backendActor.unban_user(principalObj);
       if ('ok' in result) {
         await fetchBans();
         setError('');
