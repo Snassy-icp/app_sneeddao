@@ -21,6 +21,7 @@ import {
     getAllNeuronNicknames
 } from '../utils/BackendUtils';
 import { useNaming } from '../NamingContext';
+import { Link } from 'react-router-dom';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -328,17 +329,22 @@ export default function Me() {
                                                 >
                                                     <div style={{ marginBottom: '15px' }}>
                                                         <div style={{ marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            <div 
+                                                            <Link
+                                                                to={`/neuron?neuronid=${neuronId}&sns=${selectedSnsRoot}`}
                                                                 style={{ 
                                                                     display: 'flex', 
                                                                     alignItems: 'center',
                                                                     fontFamily: 'monospace',
                                                                     color: '#888',
-                                                                    fontSize: '14px'
+                                                                    fontSize: '14px',
+                                                                    textDecoration: 'none'
                                                                 }}
+                                                                title={neuronId}
+                                                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
                                                             >
                                                                 {`${neuronId.slice(0, 6)}...${neuronId.slice(-6)}`}
-                                                            </div>
+                                                            </Link>
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
