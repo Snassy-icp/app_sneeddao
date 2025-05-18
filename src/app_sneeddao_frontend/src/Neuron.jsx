@@ -10,6 +10,14 @@ import { formatProposalIdLink, uint8ArrayToHex, getNeuronColor } from './utils/N
 import { useNaming } from './NamingContext';
 import { setNeuronNickname } from './utils/BackendUtils';
 
+// Add keyframes for spin animation after imports
+const spinKeyframes = `
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+`;
+
 function Neuron() {
     const { isAuthenticated, identity } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -34,6 +42,7 @@ function Neuron() {
     const [isEditingNickname, setIsEditingNickname] = useState(false);
     const [nicknameInput, setNicknameInput] = useState('');
     const [inputError, setInputError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames, fetchAllNames } = useNaming();
@@ -298,7 +307,7 @@ function Neuron() {
         return "";
     };
 
-    // Modify handleNicknameSubmit to include validation
+    // Modify handleNicknameSubmit to include loading state
     const handleNicknameSubmit = async () => {
         const error = validateNameInput(nicknameInput);
         if (error) {
@@ -308,6 +317,7 @@ function Neuron() {
 
         if (!nicknameInput.trim() || !identity || !currentNeuronId) return;
 
+        setIsSubmitting(true);
         try {
             const response = await setNeuronNickname(identity, selectedSnsRoot, currentNeuronId, nicknameInput);
             if ('ok' in response) {
@@ -321,6 +331,7 @@ function Neuron() {
             console.error('Error setting neuron nickname:', err);
             setError('Failed to set neuron nickname');
         } finally {
+            setIsSubmitting(false);
             setIsEditingNickname(false);
             setNicknameInput('');
         }
@@ -511,31 +522,49 @@ function Neuron() {
                                                             }}>
                                                                 <button
                                                                     onClick={handleNicknameSubmit}
+                                                                    disabled={isSubmitting}
                                                                     style={{
                                                                         backgroundColor: '#95a5a6',
                                                                         color: '#ffffff',
                                                                         border: 'none',
                                                                         borderRadius: '4px',
                                                                         padding: '8px 12px',
-                                                                        cursor: 'pointer',
-                                                                        whiteSpace: 'nowrap'
+                                                                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                                                        whiteSpace: 'nowrap',
+                                                                        opacity: isSubmitting ? 0.7 : 1,
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px'
                                                                     }}
                                                                 >
-                                                                    Save
+                                                                    {isSubmitting ? (
+                                                                        <>
+                                                                            <span style={{ 
+                                                                                display: 'inline-block',
+                                                                                animation: 'spin 1s linear infinite',
+                                                                                fontSize: '14px'
+                                                                            }}>⟳</span>
+                                                                            Setting...
+                                                                        </>
+                                                                    ) : (
+                                                                        'Save'
+                                                                    )}
                                                                 </button>
                                                                 <button
                                                                     onClick={() => {
                                                                         setIsEditingNickname(false);
                                                                         setNicknameInput('');
                                                                     }}
+                                                                    disabled={isSubmitting}
                                                                     style={{
                                                                         backgroundColor: '#e74c3c',
                                                                         color: '#ffffff',
                                                                         border: 'none',
                                                                         borderRadius: '4px',
                                                                         padding: '8px 12px',
-                                                                        cursor: 'pointer',
-                                                                        whiteSpace: 'nowrap'
+                                                                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                                                        whiteSpace: 'nowrap',
+                                                                        opacity: isSubmitting ? 0.7 : 1
                                                                     }}
                                                                 >
                                                                     Cancel
@@ -714,6 +743,7 @@ function Neuron() {
                     )}
                 </section>
             </main>
+            <style>{spinKeyframes}</style>
         </div>
     );
 }

@@ -22,6 +22,13 @@ import {
 } from '../utils/BackendUtils';
 import { useNaming } from '../NamingContext';
 
+const spinKeyframes = `
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+`;
+
 export default function Me() {
     const { identity } = useAuth();
     const navigate = useNavigate();
@@ -37,6 +44,7 @@ export default function Me() {
     const [editingName, setEditingName] = useState(null);
     const [nameInput, setNameInput] = useState('');
     const [inputError, setInputError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     
     // Get naming context
     const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames } = useNaming();
@@ -186,6 +194,7 @@ export default function Me() {
 
         if (!nameInput.trim()) return;
 
+        setIsSubmitting(true);
         try {
             const response = isNickname ?
                 await setNeuronNickname(identity, selectedSnsRoot, neuronId, nameInput) :
@@ -202,6 +211,7 @@ export default function Me() {
             console.error('Error setting neuron name:', err);
             setError('Failed to set neuron name');
         } finally {
+            setIsSubmitting(false);
             setEditingName(null);
             setNameInput('');
         }
@@ -464,34 +474,66 @@ export default function Me() {
                                                                 }}>
                                                                     <button
                                                                         onClick={() => handleNameSubmit(neuronId, true)}
+                                                                        disabled={isSubmitting}
                                                                         style={{
                                                                             backgroundColor: '#95a5a6',
                                                                             color: '#ffffff',
                                                                             border: 'none',
                                                                             borderRadius: '4px',
                                                                             padding: '8px 12px',
-                                                                            cursor: 'pointer',
-                                                                            whiteSpace: 'nowrap'
+                                                                            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                                                            whiteSpace: 'nowrap',
+                                                                            opacity: isSubmitting ? 0.7 : 1,
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '6px'
                                                                         }}
                                                                         title="Set as private nickname"
                                                                     >
-                                                                        Set Nickname
+                                                                        {isSubmitting ? (
+                                                                            <>
+                                                                                <span style={{ 
+                                                                                    display: 'inline-block',
+                                                                                    animation: 'spin 1s linear infinite',
+                                                                                    fontSize: '14px'
+                                                                                }}>⟳</span>
+                                                                                Setting...
+                                                                            </>
+                                                                        ) : (
+                                                                            'Set Nickname'
+                                                                        )}
                                                                     </button>
                                                                     {hasHotkeyAccess && (
                                                                         <button
                                                                             onClick={() => handleNameSubmit(neuronId, false)}
+                                                                            disabled={isSubmitting}
                                                                             style={{
                                                                                 backgroundColor: '#3498db',
                                                                                 color: '#ffffff',
                                                                                 border: 'none',
                                                                                 borderRadius: '4px',
                                                                                 padding: '8px 12px',
-                                                                                cursor: 'pointer',
-                                                                                whiteSpace: 'nowrap'
+                                                                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                                                                whiteSpace: 'nowrap',
+                                                                                opacity: isSubmitting ? 0.7 : 1,
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '6px'
                                                                             }}
                                                                             title="Set as public name"
                                                                         >
-                                                                            Set Name
+                                                                            {isSubmitting ? (
+                                                                                <>
+                                                                                    <span style={{ 
+                                                                                        display: 'inline-block',
+                                                                                        animation: 'spin 1s linear infinite',
+                                                                                        fontSize: '14px'
+                                                                                    }}>⟳</span>
+                                                                                    Setting...
+                                                                                </>
+                                                                            ) : (
+                                                                                'Set Name'
+                                                                            )}
                                                                         </button>
                                                                     )}
                                                                     <button
@@ -499,14 +541,16 @@ export default function Me() {
                                                                             setEditingName(null);
                                                                             setNameInput('');
                                                                         }}
+                                                                        disabled={isSubmitting}
                                                                         style={{
                                                                             backgroundColor: '#e74c3c',
                                                                             color: '#ffffff',
                                                                             border: 'none',
                                                                             borderRadius: '4px',
                                                                             padding: '8px 12px',
-                                                                            cursor: 'pointer',
-                                                                            whiteSpace: 'nowrap'
+                                                                            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                                                            whiteSpace: 'nowrap',
+                                                                            opacity: isSubmitting ? 0.7 : 1
                                                                         }}
                                                                     >
                                                                         Cancel
@@ -577,6 +621,7 @@ export default function Me() {
                     </div>
                 )}
             </main>
+            <style>{spinKeyframes}</style>
         </div>
     );
 } 
