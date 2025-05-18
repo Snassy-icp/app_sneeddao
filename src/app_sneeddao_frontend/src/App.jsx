@@ -29,6 +29,9 @@ import SneedlockInfo from './pages/SneedlockInfo';
 import Products from './pages/Products';
 import Partners from './pages/Partners';
 import Proposals from './pages/Proposals';
+import Admin from './pages/Admin';
+import UserBans from './pages/admin/UserBans';
+import WordBlacklist from './pages/admin/WordBlacklist';
 
 // Component to set up global naming function
 function GlobalNamingSetup() {
@@ -78,6 +81,11 @@ function App() {
               <Route path="/products" element={<Products />} />
               <Route path="/partners" element={<Partners />} />
               <Route path="/proposals" element={<Proposals />} />
+
+              {/* Admin routes */}
+              <Route path="/admin" element={<Admin />} />
+              <Route path="/admin/users/bans" element={<UserBans />} />
+              <Route path="/admin/words" element={<WordBlacklist />} />
             </Routes>
           </Layout>
         </NamingProvider>
