@@ -301,44 +301,11 @@ export default function Me() {
                                                                     display: 'flex', 
                                                                     alignItems: 'center',
                                                                     fontFamily: 'monospace',
-                                                                    cursor: 'pointer'
+                                                                    color: '#888',
+                                                                    fontSize: '14px'
                                                                 }}
-                                                                title={formatNeuronIdLink(neuron.id[0]?.id, selectedSnsRoot)}
                                                             >
-                                                                {name && (
-                                                                    <div style={{ 
-                                                                        display: 'flex',
-                                                                        alignItems: 'center',
-                                                                        gap: '4px',
-                                                                        color: '#3498db',
-                                                                        fontSize: '18px',
-                                                                        fontWeight: 'bold',
-                                                                        marginBottom: '5px'
-                                                                    }}>
-                                                                        {name}
-                                                                        {isVerified && (
-                                                                            <span 
-                                                                                style={{ 
-                                                                                    fontSize: '14px',
-                                                                                    cursor: 'help'
-                                                                                }}
-                                                                                title="Verified name"
-                                                                            >
-                                                                                ✓
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                                {nickname && !name && (
-                                                                    <div style={{ 
-                                                                        color: '#95a5a6',
-                                                                        fontSize: '16px',
-                                                                        fontStyle: 'italic',
-                                                                        marginBottom: '5px'
-                                                                    }}>
-                                                                        {nickname}
-                                                                    </div>
-                                                                )}
+                                                                {`${neuronId.slice(0, 6)}...${neuronId.slice(-6)}`}
                                                             </div>
                                                             <button
                                                                 onClick={(e) => {
