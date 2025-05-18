@@ -401,7 +401,7 @@ function Rewards() {
                             </button>
                         </div>
                     </section>
-                ) : hotkeyNeurons.neurons_by_owner.length > 0 ? (
+                ) : hotkeyNeurons.total_voting_power > 0 ? (
                     <>
                         {/* Your Token Balances */}
                         <section style={styles.section}>
@@ -648,24 +648,22 @@ function Rewards() {
                                                                         <div style={{ color: '#888' }}>Voting Power</div>
                                                                         <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
                                                                     </div>
-                                                                    <div style={{ gridColumn: '1 / -1' }}>
-                                                                        <div style={{ 
-                                                                            color: '#888',
-                                                                            fontSize: '14px',
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '5px'
-                                                                        }}>
-                                                                            {neuron.permissions.some(p => 
-                                                                                p.principal?.toString() === identity.getPrincipal().toString() &&
-                                                                                p.permission_type.includes(4) // Check for vote permission
-                                                                            ) ? (
-                                                                                <>
-                                                                                    <span style={{ color: '#2ecc71' }}>🔑 Hotkey Access</span>
-                                                                                </>
-                                                                            ) : null}
+                                                                    {neuron.permissions.some(p => 
+                                                                        p.principal?.toString() === identity.getPrincipal().toString() &&
+                                                                        p.permission_type.includes(4)
+                                                                    ) && (
+                                                                        <div style={{ gridColumn: '1 / -1' }}>
+                                                                            <div style={{ 
+                                                                                color: '#888',
+                                                                                fontSize: '14px',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '5px'
+                                                                            }}>
+                                                                                <span style={{ color: '#2ecc71' }}>🔑 Hotkey Access</span>
+                                                                            </div>
                                                                         </div>
-                                                                    </div>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         ))}
