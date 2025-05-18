@@ -534,6 +534,14 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     #ok(Buffer.toArray(ban_log))
   };
 
+  // Function to get all currently banned users
+  public query ({ caller }) func get_banned_users() : async Result.Result<[(Principal, Int)], Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+    #ok(Iter.toArray(banned_users.entries()))
+  };
+
   // Function to unban a user
   public shared ({ caller }) func unban_user(user: Principal) : async Result.Result<(), Text> {
     if (not is_admin(caller)) {
