@@ -25,6 +25,14 @@ function SnsDropdown({ onSnsChange }) {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Add effect to listen for URL changes
+    useEffect(() => {
+        const snsParam = searchParams.get('sns');
+        if (snsParam && snsParam !== selectedSnsRoot) {
+            setSelectedSnsRoot(snsParam);
+        }
+    }, [searchParams]);
+
     const loadSnsData = async () => {
         setLoadingSnses(true);
         try {
