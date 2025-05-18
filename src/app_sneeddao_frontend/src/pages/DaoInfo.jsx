@@ -102,162 +102,147 @@ const spinKeyframes = `
 function DaoInfo() {
     const { identity } = useAuth();
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [daoMetrics, setDaoMetrics] = useState({
         memberCount: 0,
         activeNeurons: 0,
-        proposalCount: 0,
+        proposalCount: 0
     });
     const [tokenomics, setTokenomics] = useState({
         price: 0,
         marketCap: 0,
         totalAssets: {
-            icp: 0,
-            sneed: 0,
-            others: 0,
             totalUsd: 0,
+            icp: 0,
+            sneed: 0
         },
         totalRewardsDistributed: 0,
         latestDistribution: {
             round: 0,
-            amount: 0,
-            timestamp: null,
-        },
+            timestamp: null
+        }
     });
-    const [conversionRates, setConversionRates] = useState({
-        ICP: 0,
-        SNEED: 0
-    });
+    const [conversionRates, setConversionRates] = useState({});
 
     // Fetch conversion rates from Neutrinite
     useEffect(() => {
         const fetchConversionRates = async () => {
             try {
-                const neutriniteActor = createNeutriniteDappActor(Principal.fromText("u45jl-liaaa-aaaam-abppa-cai"));
-                const tokens = await neutriniteActor.get_latest_wallet_tokens();
+                const neutriniteActor = createNeutriniteDappActor('wedc6-xiaaa-aaaaq-aabaq-cai', {
+                    agentOptions: { identity }
+                });
+                const latestWalletTokens = await neutriniteActor.get_latest_wallet_tokens();
                 const rates = {};
-                
-                tokens.latest.forEach(token => {
-                    if (token.rates) {
-                        token.rates.forEach(rate => {
-                            if (rate.symbol.endsWith("/USD")) {
-                                const tokenSymbol = rate.symbol.split("/")[0];
-                                rates[tokenSymbol] = rate.rate;
-                            }
-                        });
+                latestWalletTokens.forEach(token => {
+                    if (token.symbol.endsWith('/USD')) {
+                        rates[token.symbol.replace('/USD', '')] = Number(token.price) / Math.pow(10, 8);
                     }
                 });
-                
                 setConversionRates(rates);
-            } catch (error) {
-                console.error('Error fetching conversion rates:', error);
+            } catch (err) {
+                console.error('Error fetching conversion rates:', err);
             }
         };
 
-        fetchConversionRates();
-    }, []);
+        if (identity) {
+            fetchConversionRates();
+        }
+    }, [identity]);
 
-    // Helper function to calculate USD value
     const getUSDValue = (amount, decimals, symbol) => {
-        const value = Number(amount) / Math.pow(10, decimals);
-        return value * (conversionRates[symbol] || 0);
+        return (amount / Math.pow(10, decimals)) * (conversionRates[symbol] || 0);
     };
 
+    // Fetch DAO data
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
+            setError(null);
             try {
-                // Fetch SNS data for Sneed
-                const snsData = await fetchAndCacheSnsData(identity);
-                const sneedSns = snsData.find(sns => sns.rootCanisterId === 'fp274-iaaaa-aaaaq-aacha-cai');
-                
-                if (sneedSns) {
-                    // Create actors
-                    const snsGovActor = createSnsGovernanceActor(sneedSns.canisters.governance, {
-                        agentOptions: { identity },
-                    });
-                    const rllActor = createRllActor(rllCanisterId, {
-                        agentOptions: { identity },
-                    });
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: { identity }
+                });
 
-                    // Fetch DAO metrics
-                    const [listNeuronsResponse, listProposalsResponse] = await Promise.all([
-                        snsGovActor.list_neurons({ limit: 0 }),
-                        snsGovActor.list_proposals({
-                            limit: 0,
-                            before_proposal: [],
-                            include_reward_status: [],
-                            exclude_type: [],
-                            include_status: [],
-                            include_topics: [],
-                        }),
-                    ]);
-
-                    // Get active neurons (those that have voted in the last month)
-                    const activeNeuronCount = await rllActor.get_active_neuron_count();
-
-                    setDaoMetrics({
-                        memberCount: listNeuronsResponse.neurons.length,
-                        activeNeurons: Number(activeNeuronCount),
-                        proposalCount: listProposalsResponse.proposals.length,
-                    });
-
-                    // Fetch tokenomics data
-                    const [
-                        distributionStats,
-                        latestDistribution,
-                        treasuryBalances,
-                    ] = await Promise.all([
-                        rllActor.get_distribution_stats(),
-                        rllActor.get_latest_distribution(),
-                        rllActor.get_treasury_balances(),
-                    ]);
-
-                    // Calculate total assets
-                    let totalIcp = 0;
-                    let totalSneed = 0;
-                    let totalOthers = 0;
-                    let totalUsd = 0;
-
-                    treasuryBalances.forEach(([token, balance]) => {
-                        const amount = Number(balance);
-                        if (token.toString() === 'ryjl3-tyaaa-aaaaa-aaaba-cai') {
-                            totalIcp = amount;
-                            totalUsd += getUSDValue(amount, 8, 'ICP');
-                        } else if (token.toString() === 'zfcdd-tqaaa-aaaaq-aaaga-cai') {
-                            totalSneed = amount;
-                            totalUsd += getUSDValue(amount, 8, 'SNEED');
-                        } else {
-                            totalOthers += amount;
-                            // Note: Other tokens' USD value would need their own conversion rates
-                        }
-                    });
-
-                    // Set tokenomics data
-                    setTokenomics({
-                        price: conversionRates.SNEED || 0,
-                        marketCap: (conversionRates.SNEED || 0) * 100000000, // Assuming total supply of 100M SNEED
-                        totalAssets: {
-                            icp: totalIcp / Math.pow(10, 8),
-                            sneed: totalSneed / Math.pow(10, 8),
-                            others: totalOthers / Math.pow(10, 8),
-                            totalUsd,
-                        },
-                        totalRewardsDistributed: Number(distributionStats.total_rewards_e8s) / Math.pow(10, 8),
-                        latestDistribution: {
-                            round: Number(latestDistribution.round_number),
-                            amount: Number(latestDistribution.total_e8s) / Math.pow(10, 8),
-                            timestamp: Number(latestDistribution.timestamp_seconds),
-                        },
-                    });
+                // Get SNS governance canister
+                const sneedSns = getSnsById('fp274-iaaaa-aaaaq-aacha-cai');
+                if (!sneedSns) {
+                    throw new Error('Sneed SNS not found');
                 }
-            } catch (error) {
-                console.error('Error fetching DAO data:', error);
+
+                const snsGovActor = createSnsGovernanceActor(sneedSns.canisters.governance, {
+                    agentOptions: { identity }
+                });
+
+                // Fetch metrics
+                const [listNeuronsResponse, listProposalsResponse] = await Promise.all([
+                    snsGovActor.list_neurons({ limit: 0 }),
+                    snsGovActor.list_proposals({ limit: 0 })
+                ]);
+
+                // Get total neurons and active neurons
+                const totalNeurons = listNeuronsResponse.neurons.length;
+                const activeNeurons = listNeuronsResponse.neurons.filter(n => 
+                    n.dissolve_state?.[0]?.DissolveDelaySeconds || 
+                    n.dissolve_state?.[0]?.WhenDissolvedTimestampSeconds
+                ).length;
+
+                // Get total proposals
+                const totalProposals = listProposalsResponse.proposals.length;
+
+                setDaoMetrics({
+                    memberCount: totalNeurons,
+                    activeNeurons: activeNeurons,
+                    proposalCount: totalProposals
+                });
+
+                // Fetch tokenomics data from RLL
+                const [treasuryBalances, distributionInfo] = await Promise.all([
+                    rllActor.get_treasury_balances(),
+                    rllActor.get_latest_distribution_info()
+                ]);
+
+                // Calculate total assets
+                let totalUsd = 0;
+                let icpBalance = 0;
+                let sneedBalance = 0;
+
+                treasuryBalances.forEach(([tokenId, balance]) => {
+                    const tokenIdStr = tokenId.toString();
+                    if (tokenIdStr === 'ryjl3-tyaaa-aaaaa-aaaba-cai') { // ICP
+                        icpBalance = Number(balance);
+                        totalUsd += getUSDValue(Number(balance), 8, 'ICP');
+                    } else if (tokenIdStr === 'zfcdd-tqaaa-aaaaq-aaaga-cai') { // SNEED
+                        sneedBalance = Number(balance);
+                        totalUsd += getUSDValue(Number(balance), 8, 'SNEED');
+                    }
+                });
+
+                setTokenomics({
+                    price: conversionRates['SNEED'] || 0,
+                    marketCap: (conversionRates['SNEED'] || 0) * 100000000, // Total supply is 100M
+                    totalAssets: {
+                        totalUsd: totalUsd,
+                        icp: icpBalance / Math.pow(10, 8),
+                        sneed: sneedBalance / Math.pow(10, 8)
+                    },
+                    totalRewardsDistributed: distributionInfo?.total_rewards_distributed || 0,
+                    latestDistribution: {
+                        round: distributionInfo?.current_round || 0,
+                        timestamp: distributionInfo?.last_distribution_timestamp
+                    }
+                });
+
+            } catch (err) {
+                console.error('Error fetching DAO data:', err);
+                setError(err.message);
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchData();
+        if (identity) {
+            fetchData();
+        }
     }, [identity, conversionRates]);
 
     const formatNumber = (number) => {
