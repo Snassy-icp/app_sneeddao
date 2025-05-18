@@ -142,7 +142,8 @@ function DaoInfo() {
         latestDistribution: {
             round: 0,
             timestamp: 0
-        }
+        },
+        tokenDistributions: {}
     });
     const [conversionRates, setConversionRates] = useState({});
     const [eventStats, setEventStats] = useState(null);
@@ -261,12 +262,10 @@ function DaoInfo() {
                     ]);
 
                     // Process total distributions
-                    let totalRewardsDistributed = 0;
+                    let tokenDistributions = {};
                     totalDistributions.forEach(([tokenId, amount]) => {
                         const tokenIdStr = tokenId.toString();
-                        if (tokenIdStr === 'hvgxa-wqaaa-aaaaq-aacia-cai') { // SNEED
-                            totalRewardsDistributed = Number(amount);
-                        }
+                        tokenDistributions[tokenIdStr] = Number(amount);
                     });
 
                     // Calculate prices and market cap
@@ -305,7 +304,12 @@ function DaoInfo() {
                             fee,
                             logo
                         },
-                        totalRewardsDistributed: totalRewardsDistributed,
+                        totalAssets: {
+                            totalUsd: getUSDValue(Number(totalSupply), 8, 'ICP'),
+                            icp: Number(totalSupply),
+                            sneed: Number(totalSupply)
+                        },
+                        tokenDistributions,
                         latestDistribution: {
                             round: eventStats?.all_time?.server_distributions?.total || 0,
                             timestamp: Number(mainLoopStatus.last_cycle_ended || 0)
@@ -525,7 +529,27 @@ function DaoInfo() {
                                         <div style={styles.label}>SNEED Holdings ({formatUSD(getUSDValue(tokenomics.totalAssets.sneed, 8, 'SNEED'))})</div>
                                     </div>
                                     <div style={styles.card}>
-                                        <div style={styles.metric}>{formatNumber(tokenomics.totalRewardsDistributed / 1e8)}</div>
+                                        <div style={styles.metric}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                {Object.entries(tokenomics.tokenDistributions || {}).map(([tokenId, amount]) => {
+                                                    const isSneed = tokenId === 'hvgxa-wqaaa-aaaaq-aacia-cai';
+                                                    const isIcp = tokenId === 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+                                                    const symbol = isSneed ? 'SNEED' : isIcp ? 'ICP' : tokenId;
+                                                    const decimals = 8; // Both ICP and SNEED use 8 decimals
+                                                    const tokenAmount = formatNumber(amount / Math.pow(10, decimals));
+                                                    const usdValue = getUSDValue(amount, decimals, symbol);
+                                                    
+                                                    return (
+                                                        <div key={tokenId} style={{ textAlign: 'center' }}>
+                                                            {tokenAmount} {symbol}
+                                                            <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                                                ({formatUSD(usdValue)})
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
                                         <div style={styles.label}>Total Rewards Distributed</div>
                                     </div>
                                     <div style={styles.card}>
