@@ -403,6 +403,11 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_highest_closed_proposal_id' : IDL.Func([], [IDL.Nat64], ['query']),
+    'get_hotkey_claimed_amounts' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Nat))],
+        ['query'],
+      ),
     'get_hotkey_voting_power' : IDL.Func(
         [IDL.Vec(Neuron)],
         [
@@ -441,6 +446,45 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_neuron_import_status' : IDL.Func([], [Result], ['query']),
+    'get_neuron_statistics' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'permissions' : IDL.Record({
+              'multi_hotkey_neurons' : IDL.Nat,
+              'total_hotkeys' : IDL.Nat,
+            }),
+            'total_stake' : IDL.Nat64,
+            'dissolve_times' : IDL.Record({
+              'max_dissolve_delay_seconds' : IDL.Opt(IDL.Nat64),
+              'max_delay_neurons' : IDL.Record({
+                'count' : IDL.Nat,
+                'total_voting_power' : IDL.Nat64,
+              }),
+              'min_dissolve_delay_seconds' : IDL.Opt(IDL.Nat64),
+              'avg_dissolve_delay_seconds' : IDL.Float64,
+              'min_delay_neurons' : IDL.Record({
+                'count' : IDL.Nat,
+                'total_voting_power' : IDL.Nat64,
+              }),
+            }),
+            'active_neurons' : IDL.Nat,
+            'total_neurons' : IDL.Nat,
+            'dissolve_state' : IDL.Record({
+              'not_dissolving' : IDL.Nat,
+              'dissolved' : IDL.Nat,
+              'dissolving' : IDL.Nat,
+            }),
+            'voting_power' : IDL.Record({
+              'avg' : IDL.Float64,
+              'max' : IDL.Nat64,
+              'min' : IDL.Nat64,
+              'total' : IDL.Nat64,
+            }),
+          }),
+        ],
+        ['query'],
+      ),
     'get_neuron_voting_history' : IDL.Func(
         [IDL.Vec(IDL.Nat8)],
         [

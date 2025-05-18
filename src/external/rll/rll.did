@@ -210,6 +210,11 @@ type SneedRLL =
         };
      }) query;
    get_highest_closed_proposal_id: () -> (nat64) query;
+   get_hotkey_claimed_amounts: (principal) ->
+    (vec record {
+           principal;
+           nat;
+         }) query;
    get_hotkey_voting_power: (vec Neuron) ->
     (record {
        distribution_voting_power: nat64;
@@ -238,6 +243,43 @@ type SneedRLL =
        next_scheduled: opt int;
      }) query;
    get_neuron_import_status: () -> (Result) query;
+   get_neuron_statistics: () ->
+    (record {
+       active_neurons: nat;
+       dissolve_state:
+        record {
+          dissolved: nat;
+          dissolving: nat;
+          not_dissolving: nat;
+        };
+       dissolve_times:
+        record {
+          avg_dissolve_delay_seconds: float64;
+          max_delay_neurons: record {
+                               count: nat;
+                               total_voting_power: nat64;
+                             };
+          max_dissolve_delay_seconds: opt nat64;
+          min_delay_neurons: record {
+                               count: nat;
+                               total_voting_power: nat64;
+                             };
+          min_dissolve_delay_seconds: opt nat64;
+        };
+       permissions: record {
+                      multi_hotkey_neurons: nat;
+                      total_hotkeys: nat;
+                    };
+       total_neurons: nat;
+       total_stake: nat64;
+       voting_power:
+        record {
+          avg: float64;
+          max: nat64;
+          min: nat64;
+          total: nat64;
+        };
+     }) query;
    get_neuron_voting_history: (blob) ->
     (vec
       record {
