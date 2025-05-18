@@ -29,6 +29,25 @@ export default function UserBans() {
     }
   }, [isAuthenticated]);
 
+  // Helper function to format expiry timestamp
+  const formatExpiry = (expiry) => {
+    try {
+      // Convert nanoseconds to milliseconds if the number is too large
+      const timestamp = expiry > 1e12 ? Math.floor(expiry / 1e6) : expiry * 1000;
+      const date = new Date(timestamp);
+      
+      // Check if the date is valid
+      if (isNaN(date.getTime())) {
+        return 'Invalid Date';
+      }
+      
+      return date.toLocaleString();
+    } catch (err) {
+      console.error('Error formatting expiry:', err);
+      return 'Invalid Date';
+    }
+  };
+
   const fetchBans = async () => {
     if (!identity) return;
 
@@ -46,7 +65,7 @@ export default function UserBans() {
       if ('ok' in result) {
         // Convert the entries to an array if it's not already
         const bansArray = Array.isArray(result.ok) ? result.ok : Object.entries(result.ok);
-        // Convert Principal objects to strings
+        // Convert Principal objects to strings and format expiry
         const formattedBans = bansArray.map(([principal, expiry]) => ({
           principal: principal.toString(),
           expiry: Number(expiry)
@@ -322,7 +341,7 @@ export default function UserBans() {
                         color: '#ffffff',
                         padding: '12px 8px'
                       }}>
-                        {new Date(ban.expiry * 1000).toLocaleString()}
+                        {formatExpiry(ban.expiry)}
                       </td>
                       <td style={{ 
                         padding: '12px 8px',
