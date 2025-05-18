@@ -551,6 +551,62 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     #ok()
   };
 
+  // Helper function to format duration in hours to human readable string
+  private func format_duration(hours : Int) : Text {
+    if (hours < 0) { return "0 hours" };
+
+    let years = hours / (365 * 24);
+    let remaining_after_years = hours % (365 * 24);
+    
+    let months = remaining_after_years / (30 * 24);
+    let remaining_after_months = remaining_after_years % (30 * 24);
+    
+    let weeks = remaining_after_months / (7 * 24);
+    let remaining_after_weeks = remaining_after_months % (7 * 24);
+    
+    let days = remaining_after_weeks / 24;
+    let remaining_hours = remaining_after_weeks % 24;
+
+    var parts = Buffer.Buffer<Text>(5);
+    
+    if (years > 0) {
+      parts.add(Int.toText(years) # (if (years == 1) " year" else " years"));
+    };
+    if (months > 0) {
+      parts.add(Int.toText(months) # (if (months == 1) " month" else " months"));
+    };
+    if (weeks > 0) {
+      parts.add(Int.toText(weeks) # (if (weeks == 1) " week" else " weeks"));
+    };
+    if (days > 0) {
+      parts.add(Int.toText(days) # (if (days == 1) " day" else " days"));
+    };
+    if (remaining_hours > 0 or parts.size() == 0) {
+      parts.add(Int.toText(remaining_hours) # (if (remaining_hours == 1) " hour" else " hours"));
+    };
+
+    let parts_array = Buffer.toArray(parts);
+    
+    switch (parts_array.size()) {
+      case 0 { "0 hours" };
+      case 1 { parts_array[0] };
+      case 2 { parts_array[0] # " and " # parts_array[1] };
+      case _ {
+        var result = "";
+        for (i in Iter.range(0, parts_array.size() - 1)) {
+          if (i == parts_array.size() - 1) {
+            result #= "and " # parts_array[i];
+          } else if (i == parts_array.size() - 2) {
+            result #= parts_array[i] # " ";
+          } else {
+            result #= parts_array[i] # ", ";
+          };
+        };
+        result
+      };
+    }
+  };
+
   // Function to check ban status
   public query func check_ban_status(user: Principal) : async Result.Result<(), Text> {
     if (is_banned(user)) {
@@ -559,13 +615,13 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
           let time_remaining = expiry - Time.now();
           if (time_remaining > 0) {
             let hours_remaining = Int.abs(time_remaining) / 3600_000_000_000;
-            #err("User is banned. Ban expires in " # Int.toText(hours_remaining) # " hours")
+            #err("You are banned. Ban expires in " # format_duration(hours_remaining))
           } else {
-            #err("User is banned") // This shouldn't happen due to is_banned check
+            #err("You are banned") // This shouldn't happen due to is_banned check
           };
         };
         case null {
-          #err("User is banned") // This shouldn't happen due to is_banned check
+          #err("You are banned") // This shouldn't happen due to is_banned check
         };
       };
     } else {
@@ -636,7 +692,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
                 let time_remaining = expiry - Time.now();
                 if (time_remaining > 0) {
                     let hours_remaining = Int.abs(time_remaining) / 3600_000_000_000;
-                    return #err("You are banned. Ban expires in " # Int.toText(hours_remaining) # " hours");
+                    return #err("You are banned. Ban expires in " # format_duration(hours_remaining));
                 } else {
                     return #err("You are banned"); // This shouldn't happen due to is_banned check
                 };
@@ -779,7 +835,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
                 let time_remaining = expiry - Time.now();
                 if (time_remaining > 0) {
                     let hours_remaining = Int.abs(time_remaining) / 3600_000_000_000;
-                    return #err("You are banned. Ban expires in " # Int.toText(hours_remaining) # " hours");
+                    return #err("You are banned. Ban expires in " # format_duration(hours_remaining));
                 } else {
                     return #err("You are banned"); // This shouldn't happen due to is_banned check
                 };
