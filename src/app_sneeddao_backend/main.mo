@@ -359,7 +359,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         let isAlphanumeric = (char >= 'a' and char <= 'z') or
                             (char >= 'A' and char <= 'Z') or
                             (char >= '0' and char <= '9');
-        let isSeparator = char == ' ' or char == '-' or char == '_' or char == '.';
+        let isSeparator = char == ' ' or char == '-' or char == '_' or char == '.' or char == '\'';
         
         if (not (isAlphanumeric or isSeparator)) {
             return false;

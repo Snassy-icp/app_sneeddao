@@ -55,9 +55,9 @@ export default function Me() {
             return "Name must not exceed 32 characters";
         }
         
-        const validPattern = /^[a-zA-Z0-9\s\-_.]*$/;
+        const validPattern = /^[a-zA-Z0-9\s\-_.']*$/;
         if (!validPattern.test(input)) {
-            return "Only alphanumeric characters, spaces, hyphens, underscores, and dots are allowed";
+            return "Only alphanumeric characters, spaces, hyphens, underscores, dots, and apostrophes are allowed";
         }
         
         return "";
@@ -464,7 +464,7 @@ export default function Me() {
                                                                         fontSize: '12px',
                                                                         marginTop: '4px'
                                                                     }}>
-                                                                        Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.)
+                                                                        Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
                                                                     </div>
                                                                 </div>
                                                                 <div style={{
