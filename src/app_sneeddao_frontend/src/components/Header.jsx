@@ -200,7 +200,21 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
                 </div>
             </div>
             <div className="header-right" style={{ display: 'flex', alignItems: 'center' }}>
-                {showSnsDropdown && <SnsDropdown onSnsChange={onSnsChange} />}
+                {showSnsDropdown ? (
+                    <SnsDropdown onSnsChange={onSnsChange} />
+                ) : (
+                    <img
+                        src="sneed_logo.png"
+                        alt="Sneed Logo"
+                        style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '50%',
+                            objectFit: 'cover',
+                            marginRight: '16px'
+                        }}
+                    />
+                )}
                 {isAuthenticated ? (
                     <PrincipalBox 
                         principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
