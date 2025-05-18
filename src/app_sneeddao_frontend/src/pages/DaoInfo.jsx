@@ -126,6 +126,13 @@ function DaoInfo() {
         marketCap: 0,
         marketCapIcp: 0,
         totalSupply: 0,
+        metadata: {
+            name: '',
+            symbol: '',
+            decimals: 8,
+            fee: 0,
+            logo: ''
+        },
         totalAssets: {
             totalUsd: 0,
             icp: 0,
@@ -270,6 +277,19 @@ function DaoInfo() {
                     const marketCapUsd = sneedPriceUsd * totalSupplyNum;
                     const marketCapIcp = sneedPriceIcp * totalSupplyNum;
 
+                    // Fetch token metadata
+                    const [metadata, symbol, decimals, fee] = await Promise.all([
+                        sneedLedgerActor.icrc1_metadata(),
+                        sneedLedgerActor.icrc1_symbol(),
+                        sneedLedgerActor.icrc1_decimals(),
+                        sneedLedgerActor.icrc1_fee()
+                    ]);
+
+                    console.log("metadata", metadata, symbol, decimals, fee);
+                    // Get token name and logo from metadata
+                    const name = metadata.find(([key]) => key === 'icrc1:name')?.[1]?.Text || symbol;
+                    const logo = metadata.find(([key]) => key === 'icrc1:logo')?.[1]?.Text || 'icp_symbol.svg';
+
                     setEventStats(eventStats);
                     setTokenomics(prev => ({
                         ...prev,
@@ -278,6 +298,13 @@ function DaoInfo() {
                         marketCap: marketCapUsd,
                         marketCapIcp: marketCapIcp,
                         totalSupply: totalSupplyNum,
+                        metadata: {
+                            name,
+                            symbol,
+                            decimals,
+                            fee,
+                            logo
+                        },
                         totalRewardsDistributed: totalRewardsDistributed,
                         latestDistribution: {
                             round: eventStats?.all_time?.server_distributions?.total || 0,
@@ -414,56 +441,104 @@ function DaoInfo() {
                                 {error.tokenomics}
                             </div>
                         ) : (
-                            <div style={styles.grid}>
-                                <div style={styles.card}>
-                                    <div style={styles.metric}>
-                                        ${formatUSD(tokenomics.price)}
-                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
-                                            {formatNumber(tokenomics.priceIcp)} ICP
+                            <>
+                                {/* Token Metadata Card */}
+                                <div style={{
+                                    backgroundColor: '#3a3a3a',
+                                    borderRadius: '8px',
+                                    padding: '20px',
+                                    marginBottom: '20px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '20px'
+                                }}>
+                                    <img 
+                                        src={tokenomics.metadata.logo} 
+                                        alt={tokenomics.metadata.symbol}
+                                        style={{
+                                            width: '64px',
+                                            height: '64px',
+                                            borderRadius: '50%'
+                                        }}
+                                    />
+                                    <div>
+                                        <h3 style={{ 
+                                            margin: '0 0 10px 0',
+                                            color: '#ffffff',
+                                            fontSize: '1.5em'
+                                        }}>
+                                            {tokenomics.metadata.name}
+                                        </h3>
+                                        <div style={{
+                                            display: 'flex',
+                                            gap: '20px',
+                                            color: '#888'
+                                        }}>
+                                            <div>
+                                                <strong>Symbol:</strong> {tokenomics.metadata.symbol}
+                                            </div>
+                                            <div>
+                                                <strong>Decimals:</strong> {tokenomics.metadata.decimals}
+                                            </div>
+                                            <div>
+                                                <strong>Fee:</strong> {formatNumber(tokenomics.metadata.fee / BigInt(Math.pow(10, tokenomics.metadata.decimals)))} {tokenomics.metadata.symbol}
+                                            </div>
                                         </div>
                                     </div>
-                                    <div style={styles.label}>SNEED Price</div>
                                 </div>
-                                <div style={styles.card}>
-                                    <div style={styles.metric}>
-                                        ${formatUSD(tokenomics.marketCap)}
-                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
-                                            {formatNumber(tokenomics.marketCapIcp)} ICP
+
+                                {/* Existing Tokenomics Grid */}
+                                <div style={styles.grid}>
+                                    <div style={styles.card}>
+                                        <div style={styles.metric}>
+                                            ${formatUSD(tokenomics.price)}
+                                            <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                                {formatNumber(tokenomics.priceIcp)} ICP
+                                            </div>
+                                        </div>
+                                        <div style={styles.label}>SNEED Price</div>
+                                    </div>
+                                    <div style={styles.card}>
+                                        <div style={styles.metric}>
+                                            ${formatUSD(tokenomics.marketCap)}
+                                            <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                                {formatNumber(tokenomics.marketCapIcp)} ICP
+                                            </div>
+                                        </div>
+                                        <div style={styles.label}>Market Cap</div>
+                                    </div>
+                                    <div style={styles.card}>
+                                        <div style={styles.metric}>{formatNumber(tokenomics.totalSupply)}</div>
+                                        <div style={styles.label}>Total Supply</div>
+                                    </div>
+                                    <div style={styles.card}>
+                                        <div style={styles.metric}>${formatUSD(tokenomics.totalAssets.totalUsd)}</div>
+                                        <div style={styles.label}>Total Assets (USD)</div>
+                                    </div>
+                                    <div style={styles.card}>
+                                        <div style={styles.metric}>{formatNumber(tokenomics.totalAssets.icp / 1e8)} ICP</div>
+                                        <div style={styles.label}>ICP Holdings (${formatUSD(getUSDValue(tokenomics.totalAssets.icp, 8, 'ICP'))})</div>
+                                    </div>
+                                    <div style={styles.card}>
+                                        <div style={styles.metric}>{formatNumber(tokenomics.totalAssets.sneed / 1e8)} SNEED</div>
+                                        <div style={styles.label}>SNEED Holdings (${formatUSD(getUSDValue(tokenomics.totalAssets.sneed, 8, 'SNEED'))})</div>
+                                    </div>
+                                    <div style={styles.card}>
+                                        <div style={styles.metric}>{formatNumber(tokenomics.totalRewardsDistributed / 1e8)}</div>
+                                        <div style={styles.label}>Total Rewards Distributed</div>
+                                    </div>
+                                    <div style={styles.card}>
+                                        <div style={styles.metric}>Round #{tokenomics.latestDistribution.round}</div>
+                                        <div style={styles.label}>Latest Distribution</div>
+                                        <div style={styles.label}>
+                                            {tokenomics.latestDistribution.timestamp 
+                                                ? new Date(tokenomics.latestDistribution.timestamp * 1000).toLocaleDateString()
+                                                : 'N/A'
+                                            }
                                         </div>
                                     </div>
-                                    <div style={styles.label}>Market Cap</div>
                                 </div>
-                                <div style={styles.card}>
-                                    <div style={styles.metric}>{formatNumber(tokenomics.totalSupply)}</div>
-                                    <div style={styles.label}>Total Supply</div>
-                                </div>
-                                <div style={styles.card}>
-                                    <div style={styles.metric}>${formatUSD(tokenomics.totalAssets.totalUsd)}</div>
-                                    <div style={styles.label}>Total Assets (USD)</div>
-                                </div>
-                                <div style={styles.card}>
-                                    <div style={styles.metric}>{formatNumber(tokenomics.totalAssets.icp / 1e8)} ICP</div>
-                                    <div style={styles.label}>ICP Holdings (${formatUSD(getUSDValue(tokenomics.totalAssets.icp, 8, 'ICP'))})</div>
-                                </div>
-                                <div style={styles.card}>
-                                    <div style={styles.metric}>{formatNumber(tokenomics.totalAssets.sneed / 1e8)} SNEED</div>
-                                    <div style={styles.label}>SNEED Holdings (${formatUSD(getUSDValue(tokenomics.totalAssets.sneed, 8, 'SNEED'))})</div>
-                                </div>
-                                <div style={styles.card}>
-                                    <div style={styles.metric}>{formatNumber(tokenomics.totalRewardsDistributed / 1e8)}</div>
-                                    <div style={styles.label}>Total Rewards Distributed</div>
-                                </div>
-                                <div style={styles.card}>
-                                    <div style={styles.metric}>Round #{tokenomics.latestDistribution.round}</div>
-                                    <div style={styles.label}>Latest Distribution</div>
-                                    <div style={styles.label}>
-                                        {tokenomics.latestDistribution.timestamp 
-                                            ? new Date(tokenomics.latestDistribution.timestamp * 1000).toLocaleDateString()
-                                            : 'N/A'
-                                        }
-                                    </div>
-                                </div>
-                            </div>
+                            </>
                         )}
                     </section>
 
