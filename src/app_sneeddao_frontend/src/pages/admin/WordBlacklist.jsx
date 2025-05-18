@@ -35,11 +35,19 @@ export default function WordBlacklist() {
                 }
             });
             const result = await backendActor.get_blacklisted_words();
-            if ('ok' in result) {
+            console.log('Backend response:', result);
+            
+            // Handle both direct array response and variant response
+            if (Array.isArray(result)) {
+                setBlacklistedWords(result);
+                setError('');
+            } else if ('ok' in result) {
                 setBlacklistedWords(result.ok);
                 setError('');
-            } else {
+            } else if ('err' in result) {
                 setError(result.err);
+            } else {
+                setError('Invalid response format from backend');
             }
         } catch (err) {
             console.error('Error fetching blacklist:', err);
