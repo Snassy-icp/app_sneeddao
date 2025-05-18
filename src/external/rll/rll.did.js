@@ -472,6 +472,9 @@ export const idlFactory = ({ IDL }) => {
             'total_neurons' : IDL.Nat,
             'dissolve_state' : IDL.Record({
               'not_dissolving' : IDL.Nat,
+              'dissolved_stake' : IDL.Nat64,
+              'dissolving_stake' : IDL.Nat64,
+              'not_dissolving_stake' : IDL.Nat64,
               'dissolved' : IDL.Nat,
               'dissolving' : IDL.Nat,
             }),

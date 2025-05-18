@@ -249,8 +249,11 @@ type SneedRLL =
        dissolve_state:
         record {
           dissolved: nat;
+          dissolved_stake: nat64;
           dissolving: nat;
+          dissolving_stake: nat64;
           not_dissolving: nat;
+          not_dissolving_stake: nat64;
         };
        dissolve_times:
         record {
