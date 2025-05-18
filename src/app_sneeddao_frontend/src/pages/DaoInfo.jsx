@@ -338,7 +338,14 @@ function DaoInfo() {
 
                     // Calculate total assets using the utility function
                     const assetsData = calculateTotalAssetsValue(
-                        reconciliationData,
+                        reconciliationData.map(item => ({
+                            ...item,
+                            server_balance: Number(item.server_balance),
+                            local_total: Number(item.local_total),
+                            remaining: Number(item.remaining),
+                            underflow: Number(item.underflow),
+                            total_distributed: Number(item.total_distributed || 0)
+                        })),
                         [], // No LP positions
                         [], // No other LP positions
                         conversionRates
