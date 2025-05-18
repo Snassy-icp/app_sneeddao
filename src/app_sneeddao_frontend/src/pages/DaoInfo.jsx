@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { Principal } from '@dfinity/principal';
+import { HttpAgent } from '@dfinity/agent';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { createActor as createNeutriniteDappActor } from 'external/neutrinite_dapp';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
 
 const styles = {
@@ -101,8 +103,18 @@ const spinKeyframes = `
 
 function DaoInfo() {
     const { identity } = useAuth();
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [loading, setLoading] = useState({
+        metrics: true,
+        tokenomics: true,
+        reconciliation: true,
+        events: true
+    });
+    const [error, setError] = useState({
+        metrics: null,
+        tokenomics: null,
+        reconciliation: null,
+        events: null
+    });
     const [daoMetrics, setDaoMetrics] = useState({
         memberCount: 0,
         activeNeurons: 0,
@@ -123,22 +135,41 @@ function DaoInfo() {
         }
     });
     const [conversionRates, setConversionRates] = useState({});
+    const [eventStats, setEventStats] = useState(null);
+    const [reconciliation, setReconciliation] = useState([]);
 
     // Fetch conversion rates from Neutrinite
     useEffect(() => {
         const fetchConversionRates = async () => {
             try {
-                // For now, we'll use the rates from the ticker
-                setConversionRates({
-                    'ICP': 5.07,
-                    'SNEED': 77.29
+                const neutriniteActor = createNeutriniteDappActor(Principal.fromText("u45jl-liaaa-aaaam-abppa-cai"));
+                const tokens = await neutriniteActor.get_latest_wallet_tokens();
+                const rates = {};
+                
+                tokens.latest.forEach(token => {
+                    if (token.rates) {
+                        token.rates.forEach(rate => {
+                            if (rate.symbol.endsWith("/USD")) {
+                                const tokenSymbol = rate.symbol.split("/")[0];
+                                rates[tokenSymbol] = rate.rate;
+                            }
+                        });
+                    }
                 });
+                
+                setConversionRates(prevRates => ({
+                    ...prevRates,
+                    ...rates
+                }));
             } catch (err) {
                 console.error('Error fetching conversion rates:', err);
             }
         };
 
         fetchConversionRates();
+        // Refresh rates every 5 minutes
+        const interval = setInterval(fetchConversionRates, 5 * 60 * 1000);
+        return () => clearInterval(interval);
     }, []);
 
     const getUSDValue = (amount, decimals, symbol) => {
@@ -148,100 +179,158 @@ function DaoInfo() {
     // Fetch DAO data
     useEffect(() => {
         const fetchData = async () => {
-            if (!identity) return;
-            
-            setLoading(true);
-            setError(null);
             try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+
                 // Create actors
                 const snsGovActor = createSnsGovernanceActor('fi3zi-fyaaa-aaaaq-aachq-cai', {
-                    agentOptions: { identity }
+                    agentOptions: { agent }
                 });
                 const rllActor = createRllActor(rllCanisterId, {
-                    agentOptions: { identity }
+                    agentOptions: { agent }
                 });
 
-                // Get list of all neurons
-                const listNeuronsResponse = await snsGovActor.list_neurons({
-                    limit: 0,
-                    start_page_at: [],
-                    of_principal: []
-                });
-                
-                // Count active neurons (not dissolved)
-                const activeNeurons = listNeuronsResponse.neurons.filter(neuron => {
-                    if (!neuron.dissolve_state?.[0]) return false;
-                    return 'DissolveDelaySeconds' in neuron.dissolve_state[0];
-                }).length;
+                // Fetch metrics data
+                setLoading(prev => ({ ...prev, metrics: true }));
+                try {
+                    const [listNeuronsResponse, listProposalsResponse] = await Promise.all([
+                        snsGovActor.list_neurons({
+                            limit: 0,
+                            start_page_at: [],
+                            of_principal: []
+                        }),
+                        snsGovActor.list_proposals({
+                            limit: 0,
+                            before_proposal: [],
+                            exclude_type: [],
+                            include_reward_status: [],
+                            include_status: [],
+                            include_topics: []
+                        })
+                    ]);
+                    
+                    // Count active neurons (not dissolved)
+                    const activeNeurons = listNeuronsResponse.neurons.filter(neuron => {
+                        if (!neuron.dissolve_state?.[0]) return false;
+                        return 'DissolveDelaySeconds' in neuron.dissolve_state[0];
+                    }).length;
 
-                // Get proposal count
-                const listProposalsResponse = await snsGovActor.list_proposals({
-                    limit: 0,
-                    before_proposal: [],
-                    exclude_type: [],
-                    include_reward_status: [],
-                    include_status: [],
-                    include_topics: []
-                });
+                    setDaoMetrics({
+                        memberCount: listNeuronsResponse.neurons.length,
+                        activeNeurons: activeNeurons,
+                        proposalCount: listProposalsResponse.proposals.length
+                    });
+                } catch (err) {
+                    console.error('Error fetching metrics:', err);
+                    setError(prev => ({ ...prev, metrics: 'Failed to fetch metrics' }));
+                } finally {
+                    setLoading(prev => ({ ...prev, metrics: false }));
+                }
 
-                // Get total distributions for each token
-                const totalDistributions = await rllActor.get_total_distributions();
-                const distributionsMap = new Map(totalDistributions.map(([principal, amount]) => [principal.toString(), amount]));
-                
-                // Get treasury balances
-                const treasuryBalances = await rllActor.all_token_balances();
-                
-                // Calculate total assets
-                let totalIcpUsd = 0;
-                let totalSneedUsd = 0;
-                let icpBalance = 0n;
-                let sneedBalance = 0n;
+                // Fetch tokenomics data
+                setLoading(prev => ({ ...prev, tokenomics: true }));
+                try {
+                    const [
+                        totalDistributions,
+                        mainLoopStatus,
+                        eventStats
+                    ] = await Promise.all([
+                        rllActor.get_total_distributions(),
+                        rllActor.get_main_loop_status(),
+                        rllActor.get_event_statistics()
+                    ]);
 
-                treasuryBalances.forEach(([tokenId, balance]) => {
-                    const tokenIdStr = tokenId.toString();
-                    if (tokenIdStr === 'ryjl3-tyaaa-aaaaa-aaaba-cai') { // ICP
-                        icpBalance = balance;
-                        totalIcpUsd = getUSDValue(Number(balance), 8, 'ICP');
-                    } else if (tokenIdStr === 'zfcdd-tqaaa-aaaaq-aaaga-cai') { // SNEED
-                        sneedBalance = balance;
-                        totalSneedUsd = getUSDValue(Number(balance), 8, 'SNEED');
-                    }
-                });
+                    // Process total distributions
+                    let totalRewardsDistributed = 0;
+                    totalDistributions.forEach(([tokenId, amount]) => {
+                        const tokenIdStr = tokenId.toString();
+                        if (tokenIdStr === 'hvgxa-wqaaa-aaaaq-aacia-cai') { // SNEED
+                            totalRewardsDistributed = Number(amount);
+                        }
+                    });
 
-                // Get main loop status for latest distribution info
-                const mainLoopStatus = await rllActor.get_main_loop_status();
+                    setEventStats(eventStats);
+                    setTokenomics(prev => ({
+                        ...prev,
+                        price: conversionRates['SNEED'] || 0,
+                        marketCap: (conversionRates['SNEED'] || 0) * 100000000, // Assuming 100M total supply
+                        totalRewardsDistributed: totalRewardsDistributed,
+                        latestDistribution: {
+                            round: eventStats?.all_time?.server_distributions?.total || 0,
+                            timestamp: Number(mainLoopStatus.last_cycle_ended || 0)
+                        }
+                    }));
+                } catch (err) {
+                    console.error('Error fetching tokenomics:', err);
+                    setError(prev => ({ ...prev, tokenomics: 'Failed to fetch tokenomics' }));
+                } finally {
+                    setLoading(prev => ({ ...prev, tokenomics: false }));
+                }
 
-                // Update state
-                setDaoMetrics({
-                    memberCount: listNeuronsResponse.neurons.length,
-                    activeNeurons: activeNeurons,
-                    proposalCount: listProposalsResponse.proposals.length
-                });
+                // Fetch reconciliation data
+                setLoading(prev => ({ ...prev, reconciliation: true }));
+                try {
+                    const reconciliationData = await rllActor.balance_reconciliation();
+                    setReconciliation(reconciliationData);
 
-                setTokenomics({
-                    price: conversionRates['SNEED'] || 0,
-                    marketCap: (conversionRates['SNEED'] || 0) * 100000000, // Assuming 100M total supply
-                    totalAssets: {
-                        totalUsd: totalIcpUsd + totalSneedUsd,
-                        icp: Number(icpBalance),
-                        sneed: Number(sneedBalance)
-                    },
-                    totalRewardsDistributed: distributionsMap.get('zfcdd-tqaaa-aaaaq-aaaga-cai') || 0, // SNEED distributions
-                    latestDistribution: {
-                        round: 0, // This info is not directly available
-                        timestamp: Number(mainLoopStatus.last_cycle_ended || 0)
-                    }
-                });
+                    // Calculate total assets from reconciliation data
+                    let totalIcpUsd = 0;
+                    let totalSneedUsd = 0;
+                    let icpBalance = 0n;
+                    let sneedBalance = 0n;
+
+                    reconciliationData.forEach(item => {
+                        const tokenIdStr = item.token_id.toString();
+                        if (tokenIdStr === 'ryjl3-tyaaa-aaaaa-aaaba-cai') { // ICP
+                            icpBalance = item.server_balance;
+                            totalIcpUsd = getUSDValue(Number(item.server_balance), 8, 'ICP');
+                        } else if (tokenIdStr === 'hvgxa-wqaaa-aaaaq-aacia-cai') { // SNEED
+                            sneedBalance = item.server_balance;
+                            totalSneedUsd = getUSDValue(Number(item.server_balance), 8, 'SNEED');
+                        }
+                    });
+
+                    setTokenomics(prev => ({
+                        ...prev,
+                        totalAssets: {
+                            totalUsd: totalIcpUsd + totalSneedUsd,
+                            icp: Number(icpBalance),
+                            sneed: Number(sneedBalance)
+                        }
+                    }));
+                } catch (err) {
+                    console.error('Error fetching reconciliation:', err);
+                    setError(prev => ({ ...prev, reconciliation: 'Failed to fetch reconciliation' }));
+                } finally {
+                    setLoading(prev => ({ ...prev, reconciliation: false }));
+                }
+
             } catch (err) {
-                console.error('Error fetching DAO data:', err);
-                setError('Failed to fetch DAO data');
+                console.error('Error in fetchData:', err);
+                setError({
+                    metrics: 'Failed to fetch data',
+                    tokenomics: 'Failed to fetch data',
+                    reconciliation: 'Failed to fetch data',
+                    events: 'Failed to fetch data'
+                });
             } finally {
-                setLoading(false);
+                setLoading(prev => ({
+                    metrics: false,
+                    tokenomics: false,
+                    reconciliation: false,
+                    events: false
+                }));
             }
         };
 
         fetchData();
-    }, [identity, conversionRates]);
+        // Refresh data every minute
+        const interval = setInterval(fetchData, 60000);
+        return () => clearInterval(interval);
+    }, [conversionRates]);
 
     const formatNumber = (number) => {
         return new Intl.NumberFormat('en-US').format(number);
@@ -262,15 +351,19 @@ function DaoInfo() {
             <main style={styles.container}>
                 <h1 style={styles.heading}>DAO Dashboard</h1>
 
-                {loading ? (
-                    <div style={{ textAlign: 'center', padding: '2rem' }}>
-                        <div style={styles.spinner} />
-                    </div>
-                ) : (
-                    <div className="sections-grid" style={styles.sectionsGrid}>
-                        {/* DAO Metrics Section */}
-                        <section style={styles.section}>
-                            <h2 style={styles.subheading}>DAO Metrics</h2>
+                <div className="sections-grid" style={styles.sectionsGrid}>
+                    {/* DAO Metrics Section */}
+                    <section style={styles.section}>
+                        <h2 style={styles.subheading}>DAO Metrics</h2>
+                        {loading.metrics ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : error.metrics ? (
+                            <div style={{ color: '#e74c3c', padding: '20px', textAlign: 'center' }}>
+                                {error.metrics}
+                            </div>
+                        ) : (
                             <div style={styles.grid}>
                                 <div style={styles.card}>
                                     <div style={styles.metric}>{formatNumber(daoMetrics.memberCount)}</div>
@@ -285,34 +378,44 @@ function DaoInfo() {
                                     <div style={styles.label}>Total Proposals</div>
                                 </div>
                             </div>
-                        </section>
+                        )}
+                    </section>
 
-                        {/* Tokenomics Section */}
-                        <section style={styles.section}>
-                            <h2 style={styles.subheading}>Tokenomics</h2>
+                    {/* Tokenomics Section */}
+                    <section style={styles.section}>
+                        <h2 style={styles.subheading}>Tokenomics</h2>
+                        {loading.tokenomics ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                <div style={styles.spinner} />
+                            </div>
+                        ) : error.tokenomics ? (
+                            <div style={{ color: '#e74c3c', padding: '20px', textAlign: 'center' }}>
+                                {error.tokenomics}
+                            </div>
+                        ) : (
                             <div style={styles.grid}>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>{formatUSD(tokenomics.price)}</div>
+                                    <div style={styles.metric}>${formatUSD(tokenomics.price)}</div>
                                     <div style={styles.label}>SNEED Price</div>
                                 </div>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>{formatUSD(tokenomics.marketCap)}</div>
+                                    <div style={styles.metric}>${formatUSD(tokenomics.marketCap)}</div>
                                     <div style={styles.label}>Market Cap</div>
                                 </div>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>{formatUSD(tokenomics.totalAssets.totalUsd)}</div>
+                                    <div style={styles.metric}>${formatUSD(tokenomics.totalAssets.totalUsd)}</div>
                                     <div style={styles.label}>Total Assets (USD)</div>
                                 </div>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>{formatNumber(tokenomics.totalAssets.icp)} ICP</div>
-                                    <div style={styles.label}>ICP Holdings (${formatUSD(getUSDValue(tokenomics.totalAssets.icp * Math.pow(10, 8), 8, 'ICP'))})</div>
+                                    <div style={styles.metric}>{formatNumber(tokenomics.totalAssets.icp / 1e8)} ICP</div>
+                                    <div style={styles.label}>ICP Holdings (${formatUSD(getUSDValue(tokenomics.totalAssets.icp, 8, 'ICP'))})</div>
                                 </div>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>{formatNumber(tokenomics.totalAssets.sneed)} SNEED</div>
-                                    <div style={styles.label}>SNEED Holdings (${formatUSD(getUSDValue(tokenomics.totalAssets.sneed * Math.pow(10, 8), 8, 'SNEED'))})</div>
+                                    <div style={styles.metric}>{formatNumber(tokenomics.totalAssets.sneed / 1e8)} SNEED</div>
+                                    <div style={styles.label}>SNEED Holdings (${formatUSD(getUSDValue(tokenomics.totalAssets.sneed, 8, 'SNEED'))})</div>
                                 </div>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>{formatNumber(tokenomics.totalRewardsDistributed)}</div>
+                                    <div style={styles.metric}>{formatNumber(tokenomics.totalRewardsDistributed / 1e8)}</div>
                                     <div style={styles.label}>Total Rewards Distributed</div>
                                 </div>
                                 <div style={styles.card}>
@@ -326,25 +429,25 @@ function DaoInfo() {
                                     </div>
                                 </div>
                             </div>
-                        </section>
+                        )}
+                    </section>
 
-                        {/* Partners Section */}
-                        <section style={styles.section}>
-                            <h2 style={styles.subheading}>Partners</h2>
-                            <div style={styles.emptySection}>
-                                Coming Soon
-                            </div>
-                        </section>
+                    {/* Partners Section */}
+                    <section style={styles.section}>
+                        <h2 style={styles.subheading}>Partners</h2>
+                        <div style={styles.emptySection}>
+                            Coming Soon
+                        </div>
+                    </section>
 
-                        {/* Products Section */}
-                        <section style={styles.section}>
-                            <h2 style={styles.subheading}>Products</h2>
-                            <div style={styles.emptySection}>
-                                Coming Soon
-                            </div>
-                        </section>
-                    </div>
-                )}
+                    {/* Products Section */}
+                    <section style={styles.section}>
+                        <h2 style={styles.subheading}>Products</h2>
+                        <div style={styles.emptySection}>
+                            Coming Soon
+                        </div>
+                    </section>
+                </div>
             </main>
             <style>
                 {spinKeyframes}
