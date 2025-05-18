@@ -2725,8 +2725,16 @@ function RLLInfo() {
                 padding: '20px',
                 overflow: 'hidden'  // Prevent overflow issues
             }}>
-                <h1 style={{ color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    Recursive Liquidity Loop (RLL)
+                <h1 style={{ 
+                    color: '#ffffff', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px',
+                    justifyContent: 'center',
+                    width: '100%',
+                    marginBottom: '30px'
+                }}>
+                    Tokenomics
                     <span 
                         style={styles.infoIcon} 
                         title="A comprehensive system for managing DAO treasury assets, automating token distributions, and maintaining liquidity across multiple protocols"
@@ -3452,7 +3460,7 @@ function RLLInfo() {
                         overflow: 'hidden'
                     }}>
                         <h2 style={{ ...styles.heading }}>
-                            System Flow Diagram
+                            Recursive Liquidity Loop (RLL)
                             <span 
                                 style={styles.infoIcon} 
                                 title="Interactive visualization of token flows between different system components. Hover over nodes and edges for detailed information. Click nodes to visit relevant external links."
