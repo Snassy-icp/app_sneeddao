@@ -272,6 +272,15 @@ function Rewards() {
         return (Number(balance) / Math.pow(10, decimals)).toFixed(decimals);
     };
 
+    // Add helper function to format status
+    const formatStatus = (status) => {
+        if (typeof status === 'object') {
+            // If status is an object, get the key (e.g., {Pending: null} -> 'Pending')
+            return Object.keys(status)[0];
+        }
+        return status;
+    };
+
     return (
         <div className='page-container'>
             <Header />
@@ -427,13 +436,13 @@ function Rewards() {
                                                 borderRadius: '6px'
                                             }}>
                                                 <div style={{ marginBottom: '10px' }}>
-                                                    <strong>Token:</strong> {event.token_id.toString()}
+                                                    <strong>Token:</strong> {tokenSymbols[event.token_id.toString()] || event.token_id.toString()}
                                                 </div>
                                                 <div style={{ marginBottom: '10px' }}>
                                                     <strong>Amount:</strong> {formatBalance(event.amount, 8)}
                                                 </div>
                                                 <div style={{ marginBottom: '10px' }}>
-                                                    <strong>Status:</strong> {event.status}
+                                                    <strong>Status:</strong> {formatStatus(event.status)}
                                                 </div>
                                                 <div>
                                                     <strong>Timestamp:</strong> {new Date(Number(event.timestamp_nanos) / 1_000_000).toLocaleString()}
