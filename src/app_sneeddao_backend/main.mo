@@ -455,17 +455,58 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     };
   };
 
+  // Helper function to calculate ban duration based on ban history
+  private func calculate_ban_duration(user: Principal) : Nat {
+    var ban_count = 0;
+    
+    // Count bans (excluding unbans where timestamps are equal)
+    for (entry in ban_log.vals()) {
+      if (Principal.equal(entry.user, user)) {
+        if (entry.ban_timestamp != entry.expiry_timestamp) {
+          ban_count += 1;
+        } else {
+          // This is an unban entry, reduce the count
+          if (ban_count > 0) {
+            ban_count -= 1;
+          };
+        };
+      };
+    };
+
+    // Ensure ban_count doesn't go negative
+    let final_count : Nat = if (ban_count < 0) { 0 } else { Int.abs(ban_count) };
+
+    // Define durations in hours
+    let HOUR = 1;
+    let DAY = 24;
+    let WEEK = 7 * DAY;
+    let MONTH = 30 * DAY;
+    let YEAR = 365 * DAY;
+    let CENTURY = 100 * YEAR;
+
+    // Return duration based on ban count
+    switch (final_count) {
+      case 0 { HOUR };     // First ban: 1 hour
+      case 1 { DAY };      // Second ban: 24 hours
+      case 2 { WEEK };     // Third ban: 1 week
+      case 3 { MONTH };    // Fourth ban: 1 month
+      case 4 { YEAR };     // Fifth ban: 1 year
+      case _ { CENTURY };  // Sixth+ ban: 100 years (permaban)
+    }
+  };
+
   // Function to ban a user
   public shared ({ caller }) func ban_user(user: Principal, duration_hours: Nat, reason: Text) : async Result.Result<(), Text> {
     if (not is_admin(caller)) {
       return #err("Not authorized");
     };
 
-    await ban_user_impl(caller, user, duration_hours, reason);
+    // Calculate duration based on ban history
+    let duration = calculate_ban_duration(user);
+    await ban_user_impl(caller, user, duration, reason);
   };
 
   private func ban_user_impl(caller: Principal, user: Principal, duration_hours: Nat, reason: Text) : async Result.Result<(), Text> {
-
     if (Principal.isAnonymous(user)) {
       return #err("Cannot ban anonymous users");
     };
