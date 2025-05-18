@@ -42,6 +42,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
                 { name: 'DAO', path: '/dao' },
                 { name: 'Dashboard', path: '/dao_info' },
                 { name: 'Tokenomics', path: '/rll_info' },
+                { name: 'Rewards', path: '/rll' },
                 { name: 'Products', path: '/products' },
                 { name: 'Partners', path: '/partners' },
                 { name: 'Proposals', path: '/proposals' }
@@ -61,7 +62,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
             defaultPath: '/me',
             subMenu: [
                 { name: 'Me', path: '/me' },
-                { name: 'My Rewards', path: '/rll' }
+                { name: 'My Rewards', path: '/rewards' }
             ]
         },
         'Locks': {
