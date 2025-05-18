@@ -285,12 +285,12 @@ function DaoInfo() {
                     totalDistributions.forEach(([tokenId, amount]) => {
                         const tokenIdStr = tokenId.toString();
                         tokenDistributions[tokenIdStr] = {
-                            amount: Number(amount),
+                            amount: amount,
                             metadata: tokenMetadata[tokenIdStr]
                         };
                         const symbol = tokenMetadata[tokenIdStr]?.symbol || tokenIdStr;
                         const decimals = tokenMetadata[tokenIdStr]?.decimals || 8;
-                        totalUsdValue += getUSDValue(amount, decimals, symbol);
+                        totalUsdValue += getUSDValue(Number(amount), decimals, symbol);
                     });
 
                     // Calculate prices and market cap
@@ -561,8 +561,8 @@ function DaoInfo() {
                                                     const { amount, metadata } = data;
                                                     const symbol = metadata?.symbol || tokenId;
                                                     const decimals = metadata?.decimals || 8;
-                                                    const tokenAmount = formatNumber(amount / Math.pow(10, decimals));
-                                                    const usdValue = getUSDValue(amount, decimals, symbol);
+                                                    const tokenAmount = formatNumber(Number(amount) / Math.pow(10, decimals));
+                                                    const usdValue = getUSDValue(Number(amount), decimals, symbol);
                                                     
                                                     return (
                                                         <div key={tokenId} style={{ textAlign: 'center' }}>
