@@ -505,7 +505,7 @@ function Rewards() {
                                             ))}
                                         </div>
                                     </div>
-                                )}
+                                )
                             )}
                         </section>
                     </>
