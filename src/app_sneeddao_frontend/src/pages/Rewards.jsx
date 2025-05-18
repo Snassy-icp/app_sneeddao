@@ -417,7 +417,7 @@ function Rewards() {
                                     </div>
                                 ) : (
                                     <p>No claim history available</p>
-                                )}
+                                )
                             )}
                         </section>
 
