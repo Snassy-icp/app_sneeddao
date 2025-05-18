@@ -330,14 +330,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       switch (neuron.id) {
         case (?id) {
           if (Blob.equal(id.id, neuron_id.id)) {
-            switch (neuron.controller) {
-              case (?controller) {
-                if (Principal.equal(controller, caller)) {
-                  return true;
-                };
-              };
-              case null {};
-            };
+            return true;
           };
         };
         case null {};
