@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../AuthContext';
-import Header from '../../components/Header';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
+import Header from '../../components/Header';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
 
 function WordBlacklist() {
     const { isAuthenticated, identity } = useAuth();
-    const { isAdmin, loading, error: adminError, loadingComponent, errorComponent } = useAdminCheck({
+    const { isAdmin, loading: adminLoading, error: adminError, loadingComponent, errorComponent } = useAdminCheck({
         identity,
         isAuthenticated,
         redirectPath: '/wallet'
@@ -14,7 +14,8 @@ function WordBlacklist() {
 
     const [blacklistedWords, setBlacklistedWords] = useState([]);
     const [newWord, setNewWord] = useState('');
-    const [error, setError] = useState(null);
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -24,6 +25,9 @@ function WordBlacklist() {
     }, [isAdmin, identity]);
 
     const fetchBlacklist = async () => {
+        if (!identity) return;
+        setLoading(true);
+        setError('');
         try {
             const backendActor = createBackendActor(backendCanisterId, {
                 agentOptions: {
@@ -36,6 +40,8 @@ function WordBlacklist() {
         } catch (err) {
             console.error('Error fetching blacklist:', err);
             setError('Failed to fetch blacklisted words');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -47,8 +53,7 @@ function WordBlacklist() {
         }
 
         setIsSubmitting(true);
-        setError(null);
-
+        setError('');
         try {
             const backendActor = createBackendActor(backendCanisterId, {
                 agentOptions: {
@@ -69,8 +74,7 @@ function WordBlacklist() {
 
     const handleRemoveWord = async (word) => {
         setIsSubmitting(true);
-        setError(null);
-
+        setError('');
         try {
             const backendActor = createBackendActor(backendCanisterId, {
                 agentOptions: {
@@ -88,7 +92,7 @@ function WordBlacklist() {
         }
     };
 
-    if (loading) {
+    if (adminLoading) {
         return (
             <div className='page-container'>
                 <Header />
@@ -175,7 +179,9 @@ function WordBlacklist() {
 
                 <div style={{ backgroundColor: '#2a2a2a', padding: '20px', borderRadius: '8px' }}>
                     <h2 style={{ color: '#ffffff', marginBottom: '20px' }}>Blacklisted Words</h2>
-                    {blacklistedWords.length === 0 ? (
+                    {loading ? (
+                        <div style={{ color: '#888', textAlign: 'center' }}>Loading blacklisted words...</div>
+                    ) : blacklistedWords.length === 0 ? (
                         <p style={{ color: '#888' }}>No blacklisted words found.</p>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

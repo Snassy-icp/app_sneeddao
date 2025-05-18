@@ -18,11 +18,14 @@ export function useAdminCheck({ identity, isAuthenticated, redirectPath = '/' })
     const [isAdmin, setIsAdmin] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [authChecked, setAuthChecked] = useState(false);
-    let authCheckTimeout = null;
 
     useEffect(() => {
+        let mounted = true;
+        let timeoutId = null;
+
         const checkAdminStatus = async () => {
+            if (!mounted) return;
+            
             console.log('Checking admin status...');
             console.log('Is authenticated:', isAuthenticated);
             console.log('Identity:', identity);
@@ -38,18 +41,26 @@ export function useAdminCheck({ identity, isAuthenticated, redirectPath = '/' })
                 console.log('Calling caller_is_admin...');
                 const isAdminResult = await backendActor.caller_is_admin();
                 console.log('isAdminResult:', isAdminResult);
-                setIsAdmin(isAdminResult);
                 
+                if (!mounted) return;
+
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                    timeoutId = null;
+                }
+
+                setIsAdmin(isAdminResult);
                 if (!isAdminResult) {
                     console.log('Not an admin, redirecting...');
                     setError('You do not have admin privileges.');
-                    setTimeout(() => navigate(redirectPath), 2000);
+                    setTimeout(() => mounted && navigate(redirectPath), 2000);
                 }
+                setLoading(false);
             } catch (err) {
                 console.error('Error checking admin status:', err);
+                if (!mounted) return;
                 setError('Error checking admin status: ' + err.message);
-                setTimeout(() => navigate(redirectPath), 2000);
-            } finally {
+                setTimeout(() => mounted && navigate(redirectPath), 2000);
                 setLoading(false);
             }
         };
@@ -57,32 +68,30 @@ export function useAdminCheck({ identity, isAuthenticated, redirectPath = '/' })
         const checkAuth = () => {
             if (!isAuthenticated || !identity) {
                 console.log('Not authenticated, setting timeout...');
-                // Set a timeout to wait for authentication
-                authCheckTimeout = setTimeout(() => {
+                timeoutId = setTimeout(() => {
+                    if (!mounted) return;
                     console.log('Auth timeout expired, redirecting...');
                     setError('Please connect your wallet first.');
+                    setLoading(false);
                     navigate(redirectPath);
                 }, 1000);
             } else {
                 console.log('Authenticated, checking admin status...');
-                if (authCheckTimeout) {
-                    clearTimeout(authCheckTimeout);
-                }
                 checkAdminStatus();
             }
-            setAuthChecked(true);
         };
 
-        if (!authChecked) {
-            checkAuth();
-        }
+        setLoading(true);
+        setError(null);
+        checkAuth();
 
         return () => {
-            if (authCheckTimeout) {
-                clearTimeout(authCheckTimeout);
+            mounted = false;
+            if (timeoutId) {
+                clearTimeout(timeoutId);
             }
         };
-    }, [identity, isAuthenticated, authChecked, navigate, redirectPath]);
+    }, [identity, isAuthenticated, navigate, redirectPath]);
 
     const loadingComponent = {
         text: 'Loading...',

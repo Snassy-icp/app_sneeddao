@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../AuthContext';
-import Header from '../../components/Header';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
+import Header from '../../components/Header';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
 
 function UserBans() {
     const { isAuthenticated, identity } = useAuth();
-    const { isAdmin, loading, error: adminError, loadingComponent, errorComponent } = useAdminCheck({
+    const { isAdmin, loading: adminLoading, error: adminError, loadingComponent, errorComponent } = useAdminCheck({
         identity,
         isAuthenticated,
         redirectPath: '/wallet'
@@ -14,7 +14,8 @@ function UserBans() {
 
     const [bannedUsers, setBannedUsers] = useState([]);
     const [principalInput, setPrincipalInput] = useState('');
-    const [error, setError] = useState(null);
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -24,6 +25,9 @@ function UserBans() {
     }, [isAdmin, identity]);
 
     const fetchBans = async () => {
+        if (!identity) return;
+        setLoading(true);
+        setError('');
         try {
             const backendActor = createBackendActor(backendCanisterId, {
                 agentOptions: {
@@ -36,6 +40,8 @@ function UserBans() {
         } catch (err) {
             console.error('Error fetching bans:', err);
             setError('Failed to fetch banned users');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -47,8 +53,7 @@ function UserBans() {
         }
 
         setIsSubmitting(true);
-        setError(null);
-
+        setError('');
         try {
             const backendActor = createBackendActor(backendCanisterId, {
                 agentOptions: {
@@ -56,7 +61,7 @@ function UserBans() {
                     host: 'https://ic0.app'
                 }
             });
-            await backendActor.ban_user(principalInput);
+            await backendActor.ban_user(principalInput.trim());
             setPrincipalInput('');
             await fetchBans();
         } catch (err) {
@@ -69,8 +74,7 @@ function UserBans() {
 
     const handleUnbanUser = async (principal) => {
         setIsSubmitting(true);
-        setError(null);
-
+        setError('');
         try {
             const backendActor = createBackendActor(backendCanisterId, {
                 agentOptions: {
@@ -88,7 +92,7 @@ function UserBans() {
         }
     };
 
-    if (loading) {
+    if (adminLoading) {
         return (
             <div className='page-container'>
                 <Header />
@@ -131,7 +135,7 @@ function UserBans() {
                                 type="text"
                                 value={principalInput}
                                 onChange={(e) => setPrincipalInput(e.target.value)}
-                                placeholder="Enter Principal ID"
+                                placeholder="Enter principal ID to ban"
                                 style={{
                                     width: '100%',
                                     padding: '10px',
@@ -175,7 +179,9 @@ function UserBans() {
 
                 <div style={{ backgroundColor: '#2a2a2a', padding: '20px', borderRadius: '8px' }}>
                     <h2 style={{ color: '#ffffff', marginBottom: '20px' }}>Banned Users</h2>
-                    {bannedUsers.length === 0 ? (
+                    {loading ? (
+                        <div style={{ color: '#888', textAlign: 'center' }}>Loading banned users...</div>
+                    ) : bannedUsers.length === 0 ? (
                         <p style={{ color: '#888' }}>No banned users found.</p>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -194,7 +200,7 @@ function UserBans() {
                                     <div style={{ 
                                         color: '#ffffff',
                                         fontFamily: 'monospace',
-                                        wordBreak: 'break-all'
+                                        fontSize: '14px'
                                     }}>
                                         {principal}
                                     </div>
