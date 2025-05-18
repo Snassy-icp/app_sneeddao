@@ -455,7 +455,17 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     };
   };
 
-  // Helper function to calculate ban duration based on ban history
+  // Function to ban a user
+  public shared ({ caller }) func ban_user(user: Principal, duration_hours: Nat, reason: Text) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+
+    // Use the admin-specified duration directly
+    await ban_user_impl(caller, user, duration_hours, reason);
+  };
+
+  // Helper function to calculate automatic ban duration based on ban history
   private func calculate_ban_duration(user: Principal) : Nat {
     var ban_count = 0;
     
@@ -495,12 +505,8 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     }
   };
 
-  // Function to ban a user
-  public shared ({ caller }) func ban_user(user: Principal, duration_hours: Nat, reason: Text) : async Result.Result<(), Text> {
-    if (not is_admin(caller)) {
-      return #err("Not authorized");
-    };
-
+  // Function to ban a user with automatic duration calculation
+  private func auto_ban_user(caller: Principal, user: Principal, reason: Text) : async Result.Result<(), Text> {
     // Calculate duration based on ban history
     let duration = calculate_ban_duration(user);
     await ban_user_impl(caller, user, duration, reason);
@@ -650,10 +656,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
                 };
             };
             case (#err(blacklisted_word, attempted_name)) {
-                // Ban the user for 24 hours
+                // Ban the user automatically based on ban history
                 let reason = "Attempted to set neuron name containing blacklisted word '" # blacklisted_word # "'. Full attempted name: '" # attempted_name # "'";
-                ignore await ban_user_impl(this_canister_id(), caller, 24, reason);
-                return #err("Name contains inappropriate content. You have been banned for 24 hours.");
+                ignore await auto_ban_user(this_canister_id(), caller, reason);
+                return #err("Name contains inappropriate content. You have been banned.");
             };
         };
     };
@@ -793,10 +799,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
                 };
             };
             case (#err(blacklisted_word, attempted_name)) {
-                // Ban the user for 24 hours
+                // Ban the user automatically based on ban history
                 let reason = "Attempted to set neuron nickname containing blacklisted word '" # blacklisted_word # "'. Full attempted name: '" # attempted_name # "'";
-                ignore await ban_user_impl(this_canister_id(), caller, 24, reason);
-                return #err("Nickname contains inappropriate content. You have been banned for 24 hours.");
+                ignore await auto_ban_user(this_canister_id(), caller, reason);
+                return #err("Nickname contains inappropriate content. You have been banned.");
             };
         };
     };
