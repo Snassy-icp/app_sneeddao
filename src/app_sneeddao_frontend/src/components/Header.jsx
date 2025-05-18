@@ -88,9 +88,19 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
     const handleLogoClick = () => {
         // Open the hamburger menu
         setIsMenuOpen(true);
+        
         // Select Sneed SNS if onSnsChange is provided
+        const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
         if (onSnsChange) {
-            onSnsChange('fp274-iaaaa-aaaaq-aacha-cai'); // Sneed SNS root canister ID
+            // Update the URL search params to include the SNS
+            const searchParams = new URLSearchParams(window.location.search);
+            searchParams.set('sns', SNEED_SNS_ROOT);
+            const newSearch = searchParams.toString();
+            const newPath = `${window.location.pathname}${newSearch ? '?' + newSearch : ''}`;
+            navigate(newPath);
+            
+            // Update the SNS dropdown
+            onSnsChange(SNEED_SNS_ROOT);
         }
     };
 
