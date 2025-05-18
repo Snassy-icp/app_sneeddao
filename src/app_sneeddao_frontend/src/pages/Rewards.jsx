@@ -100,6 +100,34 @@ const spinKeyframes = `
 }
 `;
 
+// Add helper functions
+const getDissolveState = (neuron) => {
+    if (!neuron.dissolve_state?.[0]) return 'Unknown';
+    
+    if ('DissolveDelaySeconds' in neuron.dissolve_state[0]) {
+        const seconds = Number(neuron.dissolve_state[0].DissolveDelaySeconds);
+        const days = Math.floor(seconds / (24 * 60 * 60));
+        return `Locked for ${days} days`;
+    }
+    
+    if ('WhenDissolvedTimestampSeconds' in neuron.dissolve_state[0]) {
+        const dissolveTime = Number(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds);
+        const now = Math.floor(Date.now() / 1000);
+        if (dissolveTime <= now) {
+            return 'Dissolved';
+        }
+        const daysLeft = Math.floor((dissolveTime - now) / (24 * 60 * 60));
+        return `Dissolving (${daysLeft} days left)`;
+    }
+    
+    return 'Unknown';
+};
+
+const formatE8s = (e8s) => {
+    if (!e8s) return '0';
+    return (Number(e8s) / 100000000).toFixed(8);
+};
+
 function Rewards() {
     const { identity, isAuthenticated, login } = useAuth();
     const [userBalances, setUserBalances] = useState([]);
@@ -594,6 +622,50 @@ function Rewards() {
                                                                             uint8ArrayToHex(neuron.id[0].id)
                                                                             : 'Unknown'}
                                                                     </span>
+                                                                </div>
+                                                                <div style={{ 
+                                                                    display: 'grid',
+                                                                    gridTemplateColumns: '1fr 1fr',
+                                                                    gap: '15px',
+                                                                    fontSize: '14px',
+                                                                    marginTop: '10px'
+                                                                }}>
+                                                                    <div>
+                                                                        <div style={{ color: '#888' }}>Created</div>
+                                                                        <div style={{ color: '#ffffff' }}>
+                                                                            {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <div style={{ color: '#888' }}>Dissolve State</div>
+                                                                        <div style={{ color: '#ffffff' }}>{getDissolveState(neuron)}</div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <div style={{ color: '#888' }}>Maturity</div>
+                                                                        <div style={{ color: '#ffffff' }}>{formatE8s(neuron.maturity_e8s_equivalent)} SNEED</div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <div style={{ color: '#888' }}>Voting Power</div>
+                                                                        <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
+                                                                    </div>
+                                                                    <div style={{ gridColumn: '1 / -1' }}>
+                                                                        <div style={{ 
+                                                                            color: '#888',
+                                                                            fontSize: '14px',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '5px'
+                                                                        }}>
+                                                                            {neuron.permissions.some(p => 
+                                                                                p.principal?.toString() === identity.getPrincipal().toString() &&
+                                                                                p.permission_type.includes(4) // Check for vote permission
+                                                                            ) ? (
+                                                                                <>
+                                                                                    <span style={{ color: '#2ecc71' }}>🔑 Hotkey Access</span>
+                                                                                </>
+                                                                            ) : null}
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         ))}
