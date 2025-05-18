@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../AuthContext';
 import Header from '../../components/Header';
-import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 
 function WordBlacklist() {
     const { identity, isAuthenticated } = useAuth();
@@ -29,7 +29,12 @@ function WordBlacklist() {
 
             try {
                 console.log('Creating backend actor...');
-                const backendActor = createBackendActor(identity);
+                const backendActor = createBackendActor(backendCanisterId, {
+                    agentOptions: {
+                        identity,
+                        host: 'https://ic0.app'
+                    }
+                });
                 console.log('Calling caller_is_admin...');
                 const isAdminResult = await backendActor.caller_is_admin();
                 console.log('isAdminResult:', isAdminResult);
