@@ -139,6 +139,11 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     };
   };
 
+  // Add public query function for admin check
+  public query ({ caller }) func caller_is_admin() : async Bool {
+    is_admin(caller)
+  };
+
   // Whitelist management functions
   public shared ({ caller }) func add_whitelisted_token(token: WhitelistedToken) : async () {
     // Only allow the deployer to add whitelisted tokens

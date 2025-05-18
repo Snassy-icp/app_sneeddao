@@ -5,35 +5,49 @@ import Header from '../components/Header';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
 
 function Admin() {
-    const { identity } = useAuth();
+    const { identity, isAuthenticated } = useAuth();
     const navigate = useNavigate();
     const [isAdmin, setIsAdmin] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     useEffect(() => {
         const checkAdminStatus = async () => {
-            if (!identity) {
-                navigate('/');
+            console.log('Checking admin status...');
+            console.log('Is authenticated:', isAuthenticated);
+            console.log('Identity:', identity);
+            
+            if (!isAuthenticated || !identity) {
+                console.log('Not authenticated, redirecting to wallet...');
+                setError('Please connect your wallet first.');
+                setTimeout(() => navigate('/wallet'), 2000);
                 return;
             }
 
             try {
+                console.log('Creating backend actor...');
                 const backendActor = createBackendActor(identity);
-                const isAdminResult = await backendActor.is_admin();
+                console.log('Calling caller_is_admin...');
+                const isAdminResult = await backendActor.caller_is_admin();
+                console.log('isAdminResult:', isAdminResult);
                 setIsAdmin(isAdminResult);
+                
                 if (!isAdminResult) {
-                    navigate('/');
+                    console.log('Not an admin, redirecting...');
+                    setError('You do not have admin privileges.');
+                    setTimeout(() => navigate('/wallet'), 2000);
                 }
             } catch (err) {
                 console.error('Error checking admin status:', err);
-                navigate('/');
+                setError('Error checking admin status: ' + err.message);
+                setTimeout(() => navigate('/wallet'), 2000);
             } finally {
                 setLoading(false);
             }
         };
 
         checkAdminStatus();
-    }, [identity, navigate]);
+    }, [identity, isAuthenticated, navigate]);
 
     if (loading) {
         return (
@@ -42,6 +56,26 @@ function Admin() {
                 <main className="wallet-container">
                     <div style={{ textAlign: 'center', padding: '40px 20px', color: '#ffffff' }}>
                         Loading...
+                    </div>
+                </main>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className='page-container'>
+                <Header />
+                <main className="wallet-container">
+                    <div style={{ 
+                        textAlign: 'center', 
+                        padding: '40px 20px', 
+                        color: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        borderRadius: '8px',
+                        margin: '20px'
+                    }}>
+                        {error}
                     </div>
                 </main>
             </div>
