@@ -1,7 +1,11 @@
 import React from 'react';
 import Header from '../components/Header';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../AuthContext';
 
 function Sneedlock() {
+    const { identity } = useAuth();
+    
     const styles = {
         container: {
             maxWidth: '1200px',
@@ -157,6 +161,41 @@ function Sneedlock() {
                         Whether you're a project founder, team member, or token recipient, SneedLock provides the 
                         tools and transparency you need to manage token vesting with confidence.
                     </p>
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        marginTop: '2rem'
+                    }}>
+                        <Link
+                            to={`/sneedlock_info${identity ? `?owner=${identity.getPrincipal().toString()}` : ''}`}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                backgroundColor: '#3498db',
+                                color: '#ffffff',
+                                padding: '12px 24px',
+                                borderRadius: '8px',
+                                textDecoration: 'none',
+                                fontSize: '1.1rem',
+                                fontWeight: '500',
+                                transition: 'background-color 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = '#2980b9'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = '#3498db'}
+                        >
+                            <img 
+                                src="/sneedlock-logo4.png" 
+                                alt="Sneedlock"
+                                style={{
+                                    width: '24px',
+                                    height: '24px',
+                                    objectFit: 'contain'
+                                }}
+                            />
+                            View My Locks
+                        </Link>
+                    </div>
                 </section>
             </main>
         </div>
