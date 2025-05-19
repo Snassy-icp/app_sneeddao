@@ -58,6 +58,7 @@ const styles = {
         marginBottom: '15px',
         display: 'flex',
         alignItems: 'center',
+        justifyContent: 'space-between',
         gap: '8px'
     },
     infoIcon: {
@@ -70,7 +71,8 @@ const styles = {
         width: '20px',
         height: '20px',
         borderRadius: '50%',
-        border: '1px solid #3498db'
+        border: '1px solid #3498db',
+        marginLeft: 'auto'
     },
     spinner: {
         width: '20px',
