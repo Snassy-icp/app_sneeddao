@@ -698,6 +698,22 @@ function SneedlockInfo() {
                                     width: '300px'
                                 }}
                             />
+                            {identity && (
+                                <button
+                                    onClick={() => handleOwnerFilterChange(identity.getPrincipal().toString())}
+                                    style={{
+                                        padding: '8px 12px',
+                                        borderRadius: '4px',
+                                        border: '1px solid #444',
+                                        background: '#333',
+                                        color: '#fff',
+                                        cursor: 'pointer'
+                                    }}
+                                    title="Show only your locks"
+                                >
+                                    My Locks
+                                </button>
+                            )}
                             {ownerFilter && (
                                 <button
                                     onClick={() => handleOwnerFilterChange('')}
