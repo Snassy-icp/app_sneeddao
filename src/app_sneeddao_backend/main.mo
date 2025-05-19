@@ -398,16 +398,6 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       return #ok(false);
     };
 
-    // Check if text contains any blacklisted words (case insensitive)
-    let lowercaseText = Text.toLowercase(text);
-    for ((word, _) in blacklisted_words.entries()) {
-      let lowercaseWord = Text.toLowercase(word);
-      if (Text.contains(lowercaseText, #text lowercaseWord)) {
-        // Found a blacklisted word - return it along with the full text for the ban reason
-        return #err(word, text);
-      };
-    };
-
     // Check characters
     for (char in text.chars()) {
       let isAlphanumeric = (char >= 'a' and char <= 'z') or
@@ -417,6 +407,17 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       
       if (not (isAlphanumeric or isSeparator)) {
         return #ok(false);
+      };
+    };
+
+    // Check blacklist last so any other errors are caught if the blacklist is ignored by caller.
+    // Check if text contains any blacklisted words (case insensitive)
+    let lowercaseText = Text.toLowercase(text);
+    for ((word, _) in blacklisted_words.entries()) {
+      let lowercaseWord = Text.toLowercase(word);
+      if (Text.contains(lowercaseText, #text lowercaseWord)) {
+        // Found a blacklisted word - return it along with the full text for the ban reason
+        return #err(word, text);
       };
     };
 
@@ -867,10 +868,12 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
                 };
             };
             case (#err(blacklisted_word, attempted_name)) {
+                // Don't ban users for nicknames only they can see
+
                 // Ban the user automatically based on ban history
-                let reason = "Attempted to set neuron nickname containing blacklisted word '" # blacklisted_word # "'. Full attempted name: '" # attempted_name # "'";
-                ignore await auto_ban_user(this_canister_id(), caller, reason);
-                return #err("Nickname contains inappropriate content. You have been banned.");
+                //let reason = "Attempted to set neuron nickname containing blacklisted word '" # blacklisted_word # "'. Full attempted name: '" # attempted_name # "'";
+                //ignore await auto_ban_user(this_canister_id(), caller, reason);
+                //return #err("Nickname contains inappropriate content. You have been banned.");
             };
         };
     };
@@ -1079,10 +1082,12 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
                   };
               };
               case (#err(blacklisted_word, attempted_name)) {
+                  // Don't ban users for nicknames only they can see
+
                   // Ban the user automatically based on ban history
-                  let reason = "Attempted to set principal nickname containing blacklisted word '" # blacklisted_word # "'. Full attempted name: '" # attempted_name # "'";
-                  ignore await auto_ban_user(this_canister_id(), caller, reason);
-                  return #err("Nickname contains inappropriate content. You have been banned.");
+                  //let reason = "Attempted to set principal nickname containing blacklisted word '" # blacklisted_word # "'. Full attempted name: '" # attempted_name # "'";
+                  //ignore await auto_ban_user(this_canister_id(), caller, reason);
+                  //return #err("Nickname contains inappropriate content. You have been banned.");
               };
           };
       };

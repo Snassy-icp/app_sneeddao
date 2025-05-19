@@ -61,16 +61,15 @@ export const formatPrincipal = (principal, displayInfo = null) => {
     if (!displayInfo) return truncated;
 
     const { name, nickname, isVerified } = displayInfo;
-    const displayName = name || nickname;
 
-    if (!displayName) return truncated;
+    if (!name && !nickname) return truncated;
 
     return {
-        displayName,
+        name,
+        nickname,
         truncatedId: truncated,
         fullId: principal.toString(),
-        isVerified,
-        isNickname: !name && nickname
+        isVerified
     };
 };
 
@@ -134,7 +133,7 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
         );
     }
 
-    // Show compact display with name/nickname
+    // Show compact display with name and/or nickname
     return React.createElement('div',
         {
             style: {
@@ -152,24 +151,50 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
                     style: {
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '4px',
-                        fontWeight: formatted.isNickname ? 'normal' : 'bold',
-                        fontStyle: formatted.isNickname ? 'italic' : 'normal'
+                        gap: '4px'
                     },
                     title: formatted.fullId
                 },
-                formatted.displayName,
-                formatted.isVerified && !formatted.isNickname && React.createElement('span',
+                formatted.name && React.createElement('span',
                     {
                         style: {
-                            fontSize: '14px',
-                            cursor: 'help'
-                        },
-                        title: "Verified name"
+                            fontWeight: 'bold',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                        }
                     },
-                    "✓"
+                    formatted.name,
+                    formatted.isVerified && React.createElement('span',
+                        {
+                            style: {
+                                fontSize: '14px',
+                                cursor: 'help'
+                            },
+                            title: "Verified name"
+                        },
+                        "✓"
+                    )
                 ),
-                `(${formatted.truncatedId})`
+                formatted.name && formatted.nickname && " • ",
+                formatted.nickname && React.createElement('span',
+                    {
+                        style: {
+                            fontStyle: 'italic',
+                            color: '#95a5a6'
+                        }
+                    },
+                    formatted.nickname
+                ),
+                React.createElement('span',
+                    {
+                        style: {
+                            marginLeft: '4px',
+                            color: '#888'
+                        }
+                    },
+                    `(${formatted.truncatedId})`
+                )
             )
         ),
         showCopyButton && React.createElement('button',

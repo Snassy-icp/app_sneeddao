@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
-import { getPrincipalName, setPrincipalName, setPrincipalNickname } from '../utils/BackendUtils';
+import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname } from '../utils/BackendUtils';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor } from '../utils/PrincipalUtils';
 import ConfirmationModal from '../ConfirmationModal';
@@ -21,10 +21,13 @@ export default function PrincipalPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [editingName, setEditingName] = useState(false);
+    const [editingNickname, setEditingNickname] = useState(false);
     const [nameInput, setNameInput] = useState('');
     const [nicknameInput, setNicknameInput] = useState('');
     const [inputError, setInputError] = useState('');
+    const [nicknameError, setNicknameError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSubmittingNickname, setIsSubmittingNickname] = useState(false);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [confirmAction, setConfirmAction] = useState(null);
     const [confirmMessage, setConfirmMessage] = useState('');
@@ -59,10 +62,15 @@ export default function PrincipalPage() {
             }
 
             try {
-                const nameResponse = await getPrincipalName(identity, principalId);
+                const [nameResponse, nicknameResponse] = await Promise.all([
+                    getPrincipalName(identity, principalId),
+                    getPrincipalNickname(identity, principalId)
+                ]);
+                
                 setPrincipalInfo({
                     name: nameResponse ? nameResponse[0] : null,
-                    isVerified: nameResponse ? nameResponse[1] : false
+                    isVerified: nameResponse ? nameResponse[1] : false,
+                    nickname: nicknameResponse || null
                 });
             } catch (err) {
                 console.error('Error fetching principal info:', err);
@@ -91,10 +99,11 @@ export default function PrincipalPage() {
                 const response = await setPrincipalName(identity, nameInput);
                 if ('ok' in response) {
                     const newInfo = await getPrincipalName(identity, principalId);
-                    setPrincipalInfo({
+                    setPrincipalInfo(prev => ({
+                        ...prev,
                         name: newInfo ? newInfo[0] : null,
                         isVerified: newInfo ? newInfo[1] : false
-                    });
+                    }));
                     setInputError('');
                 } else {
                     setError(response.err);
@@ -116,6 +125,37 @@ export default function PrincipalPage() {
             "Are you sure you want to proceed?"
         );
         setShowConfirmModal(true);
+    };
+
+    const handleNicknameSubmit = async () => {
+        const error = validateNameInput(nicknameInput);
+        if (error) {
+            setNicknameError(error);
+            return;
+        }
+
+        if (!nicknameInput.trim()) return;
+
+        setIsSubmittingNickname(true);
+        try {
+            const response = await setPrincipalNickname(identity, principalId, nicknameInput);
+            if ('ok' in response) {
+                setPrincipalInfo(prev => ({
+                    ...prev,
+                    nickname: nicknameInput
+                }));
+                setNicknameError('');
+            } else {
+                setError(response.err);
+            }
+        } catch (err) {
+            console.error('Error setting principal nickname:', err);
+            setError('Failed to set principal nickname');
+        } finally {
+            setIsSubmittingNickname(false);
+            setEditingNickname(false);
+            setNicknameInput('');
+        }
     };
 
     if (!principalId) {
@@ -179,6 +219,7 @@ export default function PrincipalPage() {
                                         principal={principalId}
                                         displayInfo={{
                                             name: principalInfo?.name,
+                                            nickname: principalInfo?.nickname,
                                             isVerified: principalInfo?.isVerified
                                         }}
                                         style={{
@@ -186,26 +227,45 @@ export default function PrincipalPage() {
                                         }}
                                     />
                                 </div>
-                                {identity?.getPrincipal().toString() === principalId.toString() && !editingName && (
-                                    <button
-                                        onClick={() => setEditingName(true)}
-                                        style={{
-                                            backgroundColor: '#3498db',
-                                            color: '#ffffff',
-                                            border: 'none',
-                                            borderRadius: '4px',
-                                            padding: '8px 12px',
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        {principalInfo?.name ? 'Change Name' : 'Set Name'}
-                                    </button>
-                                )}
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    {!editingName && !editingNickname && (
+                                        <>
+                                            <button
+                                                onClick={() => setEditingNickname(true)}
+                                                style={{
+                                                    backgroundColor: '#95a5a6',
+                                                    color: '#ffffff',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    padding: '8px 12px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                {principalInfo?.nickname ? 'Change Nickname' : 'Set Nickname'}
+                                            </button>
+                                            {identity?.getPrincipal().toString() === principalId.toString() && (
+                                                <button
+                                                    onClick={() => setEditingName(true)}
+                                                    style={{
+                                                        backgroundColor: '#3498db',
+                                                        color: '#ffffff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '8px 12px',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    {principalInfo?.name ? 'Change Name' : 'Set Name'}
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
                             </div>
 
                             {editingName && (
                                 <div style={{ 
-                                    marginTop: '10px',
+                                    marginTop: '20px',
                                     display: 'flex',
                                     flexDirection: 'column',
                                     gap: '10px'
@@ -220,7 +280,7 @@ export default function PrincipalPage() {
                                                 setInputError(validateNameInput(newValue));
                                             }}
                                             maxLength={32}
-                                            placeholder="Enter your name (max 32 chars)"
+                                            placeholder="Enter public name (max 32 chars)"
                                             style={{
                                                 backgroundColor: '#3a3a3a',
                                                 border: `1px solid ${inputError ? '#e74c3c' : '#4a4a4a'}`,
@@ -262,7 +322,6 @@ export default function PrincipalPage() {
                                                 borderRadius: '4px',
                                                 padding: '8px 12px',
                                                 cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                                whiteSpace: 'nowrap',
                                                 opacity: isSubmitting ? 0.7 : 1,
                                                 display: 'flex',
                                                 alignItems: 'center',
@@ -286,6 +345,7 @@ export default function PrincipalPage() {
                                             onClick={() => {
                                                 setEditingName(false);
                                                 setNameInput('');
+                                                setInputError('');
                                             }}
                                             disabled={isSubmitting}
                                             style={{
@@ -295,8 +355,108 @@ export default function PrincipalPage() {
                                                 borderRadius: '4px',
                                                 padding: '8px 12px',
                                                 cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                                whiteSpace: 'nowrap',
                                                 opacity: isSubmitting ? 0.7 : 1
+                                            }}
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {editingNickname && (
+                                <div style={{ 
+                                    marginTop: '20px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '10px'
+                                }}>
+                                    <div>
+                                        <input
+                                            type="text"
+                                            value={nicknameInput}
+                                            onChange={(e) => {
+                                                const newValue = e.target.value;
+                                                setNicknameInput(newValue);
+                                                setNicknameError(validateNameInput(newValue));
+                                            }}
+                                            maxLength={32}
+                                            placeholder="Enter private nickname (max 32 chars)"
+                                            style={{
+                                                backgroundColor: '#3a3a3a',
+                                                border: `1px solid ${nicknameError ? '#e74c3c' : '#4a4a4a'}`,
+                                                borderRadius: '4px',
+                                                color: '#ffffff',
+                                                padding: '8px',
+                                                width: '100%'
+                                            }}
+                                        />
+                                        {nicknameError && (
+                                            <div style={{
+                                                color: '#e74c3c',
+                                                fontSize: '12px',
+                                                marginTop: '4px'
+                                            }}>
+                                                {nicknameError}
+                                            </div>
+                                        )}
+                                        <div style={{
+                                            color: '#888',
+                                            fontSize: '12px',
+                                            marginTop: '4px'
+                                        }}>
+                                            Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
+                                        </div>
+                                    </div>
+                                    <div style={{
+                                        display: 'flex',
+                                        gap: '8px',
+                                        justifyContent: 'flex-end'
+                                    }}>
+                                        <button
+                                            onClick={handleNicknameSubmit}
+                                            disabled={isSubmittingNickname}
+                                            style={{
+                                                backgroundColor: '#95a5a6',
+                                                color: '#ffffff',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                padding: '8px 12px',
+                                                cursor: isSubmittingNickname ? 'not-allowed' : 'pointer',
+                                                opacity: isSubmittingNickname ? 0.7 : 1,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px'
+                                            }}
+                                        >
+                                            {isSubmittingNickname ? (
+                                                <>
+                                                    <span style={{ 
+                                                        display: 'inline-block',
+                                                        animation: 'spin 1s linear infinite',
+                                                        fontSize: '14px'
+                                                    }}>⟳</span>
+                                                    Setting...
+                                                </>
+                                            ) : (
+                                                'Set Nickname'
+                                            )}
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setEditingNickname(false);
+                                                setNicknameInput('');
+                                                setNicknameError('');
+                                            }}
+                                            disabled={isSubmittingNickname}
+                                            style={{
+                                                backgroundColor: '#e74c3c',
+                                                color: '#ffffff',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                padding: '8px 12px',
+                                                cursor: isSubmittingNickname ? 'not-allowed' : 'pointer',
+                                                opacity: isSubmittingNickname ? 0.7 : 1
                                             }}
                                         >
                                             Cancel
