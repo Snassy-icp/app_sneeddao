@@ -2889,13 +2889,13 @@ function RLLInfo() {
                                 </h3>
                                 {/* GAV Section */}
                                 <div style={{ marginBottom: '15px' }}>
-                                    <div style={{ color: '#888', marginBottom: '5px' }}>
-                                        Gross Asset Value (GAV):
+                                    <div style={{ color: '#888', marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <span>Gross Asset Value (GAV):</span>
                                         <span 
-                                                style={styles.infoIcon} 
-                                                title="Gross Asset Value: total market-value of every treasury asset—including self-held tokens—before netting out liabilities. Reveals the full scale of the DAO’s resource pool. The gap between GAV and NAV measures how much value resides in treasury tokens (i.e. potential future deployment) that NAV strips out."
-                                            >
-                                                i
+                                            style={styles.infoIcon} 
+                                            title="Gross Asset Value: total market-value of every treasury asset—including self-held tokens—before netting out liabilities. Reveals the full scale of the DAO's resource pool. The gap between GAV and NAV measures how much value resides in treasury tokens (i.e. potential future deployment) that NAV strips out."
+                                        >
+                                            i
                                         </span>
                                     </div>
                                     <div style={{ fontSize: '1.2em' }}>
@@ -2919,8 +2919,8 @@ function RLLInfo() {
                                 </div>
                                 {/* NAV Section */}
                                 <div>
-                                    <div style={{ color: '#888', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        Net Asset Value (NAV):
+                                    <div style={{ color: '#888', marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <span>Net Asset Value (NAV):</span>
                                         <span 
                                             style={styles.infoIcon} 
                                             title="Net Asset Value: fair-value of on-chain treasury assets (ETH, stablecoins, LP positions) minus liabilities, excluding self-held tokens. Shows the true external backing per token. If P/NAV < 1, the market may be undervaluing the DAO's collateral (potential upside); if > 1, it's trading at a premium to its net reserves—revealing overconfidence or speculative sentiment."
@@ -2934,13 +2934,15 @@ function RLLInfo() {
                                             {(getNAVUSDValue() / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
                                         <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
-                                            P/NAV:
-                                            {(getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)).toFixed(2)}x
-                                            <span 
-                                                style={styles.infoIcon} 
-                                                title="Price-to-NAV: circulating market cap divided by DAO NAV. Compares market valuation to net backing per token. A P/NAV < 1 suggests the DAO is undervalued relative to its collateral (potential upside), while > 1 shows a premium; divergences highlight where market sentiment departs from on-chain asset coverage."
-                                            >
-                                                i
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                P/NAV:
+                                                {(getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)).toFixed(2)}x
+                                                <span 
+                                                    style={styles.infoIcon} 
+                                                    title="Price-to-NAV: circulating market cap divided by DAO NAV. Compares market valuation to net backing per token. A P/NAV < 1 suggests the DAO is undervalued relative to its collateral (potential upside), while > 1 shows a premium; divergences highlight where market sentiment departs from on-chain asset coverage."
+                                                >
+                                                    i
+                                                </span>
                                             </span>
                                         </div>
                                     </div>
@@ -2948,8 +2950,8 @@ function RLLInfo() {
 
                                 {/* NGAR Section */}
                                 <div style={{ marginTop: '15px' }}>
-                                    <div style={{ color: '#888', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        Net-to-Gross Alignment Ratio (NGAR):
+                                    <div style={{ color: '#888', marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <span>Net-to-Gross Alignment Ratio (NGAR):</span>
                                         <span 
                                             style={styles.infoIcon} 
                                             title="NGAR: (P/NAV) ÷ (FDV/GAV). Measures how closely net-backing valuation and fully-diluted market value move together. A ratio near 1 signals alignment—few hidden reserves or looming unlocks; < 1 implies untapped upside in treasury tokens; > 1 warns of heavy future dilution compared to current backing."
