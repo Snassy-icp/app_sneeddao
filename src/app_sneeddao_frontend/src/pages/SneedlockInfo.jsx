@@ -144,7 +144,8 @@ function SneedlockInfo() {
                 const amount = BigInt(lock[2].amount);
                 const tokenKey = tokenId.toText();
                 const lockDetails = {
-                    id: lock[0],  // Lock ID
+                    id: lock[0],  // Lock ID (principal)
+                    lockId: lock[2].lock_id,  // Numerical lock ID
                     amount: amount,
                     expiry: lock[2].expiry,
                     owner: lock[0].toText()  // Use the lock ID as owner since it contains the principal
@@ -495,7 +496,7 @@ function SneedlockInfo() {
                                                                 <div>
                                                                     <span style={{ color: '#666' }}>Token Lock</span>{' '}
                                                                     <a 
-                                                                        href={`/tokenlock?ledger=${token?.ledger_id || ''}&locks=${lock.id?.toString().split('-').slice(-1)[0] || ''}`}
+                                                                        href={`/tokenlock?ledger=${token?.ledger_id || ''}&locks=${lock.lockId?.toString() || ''}`}
                                                                         style={{ 
                                                                             color: '#888',
                                                                             textDecoration: 'none',
@@ -504,7 +505,7 @@ function SneedlockInfo() {
                                                                             }
                                                                         }}
                                                                     >
-                                                                        #{lock.id?.toString().split('-').slice(-1)[0] || 'Unknown'}
+                                                                        #{lock.lockId?.toString() || 'Unknown'}
                                                                     </a>
                                                                 </div>
                                                                 <div>
@@ -548,10 +549,22 @@ function SneedlockInfo() {
                                                         <td colSpan="4" style={{ padding: '8px 40px' }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.9em' }}>
                                                                 <div>
-                                                                    <span style={{ color: '#666' }}>Position Lock</span> #{lock.id?.toString().split('-').slice(-1)[0] || 'Unknown'}
+                                                                    <span style={{ color: '#666' }}>Position Lock</span>{' '}
+                                                                    <a 
+                                                                        href={`/positionlock?swap=${lock.swapCanisterId?.toString() || ''}&positions=${lock.positionId?.toString() || ''}`}
+                                                                        style={{ 
+                                                                            color: '#888',
+                                                                            textDecoration: 'none',
+                                                                            ':hover': {
+                                                                                textDecoration: 'underline'
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        #{lock.positionId?.toString() || 'Unknown'}
+                                                                    </a>
                                                                 </div>
                                                                 <div>
-                                                                    Position: #{lock.positionId?.toString() || 'Unknown'}
+                                                                    Swap: {lock.swapCanisterId?.toString() || 'Unknown'}
                                                                 </div>
                                                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                                                                     <div>
