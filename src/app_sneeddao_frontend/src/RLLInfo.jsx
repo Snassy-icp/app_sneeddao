@@ -3014,7 +3014,15 @@ function RLLInfo() {
                                             backgroundColor: 'rgba(46, 204, 113, 0.1)',
                                             borderRadius: '4px'
                                         }}>
-                                            <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Total Value Locked (TVL):</div>
+                                            <div style={{ color: '#2ecc71', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                Total Value Locked (TVL):
+                                                <span 
+                                                    style={styles.infoIcon} 
+                                                    title="Total Value Locked: market-value of assets locked in smart contracts (staked tokens, LP positions). Gauges protocol engagement, security and yield-earning capacity. A high TVL relative to circulating cap suggests strong staking participation and lower immediate sell-pressure, while a low ratio may warn of potential liquidity crunches and indicate more tokens are free to flood the market."
+                                                >
+                                                    i
+                                                </span>
+                                            </div>
                                             <div style={{ fontSize: '1.2em', fontWeight: 'bold' }}>
                                                 ${formatUSD(getTVL())}
                                             </div>
