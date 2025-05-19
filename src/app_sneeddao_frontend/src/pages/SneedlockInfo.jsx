@@ -23,43 +23,68 @@ function SneedlockInfo() {
     const [usdValues, setUsdValues] = useState({});
     const [conversionRates, setConversionRates] = useState({});
     const [ownerFilter, setOwnerFilter] = useState('');
+    const [ledgerFilter, setLedgerFilter] = useState('');
 
     // Cache for swap canister data
     const swapCanisterCache = {};
 
-    // Get owner from URL on component mount
+    // Get filters from URL on component mount
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const ownerParam = params.get('owner');
-        if (ownerParam) {
-            setOwnerFilter(ownerParam);
-        }
+        const ledgerParam = params.get('ledger');
+        if (ownerParam) setOwnerFilter(ownerParam);
+        if (ledgerParam) setLedgerFilter(ledgerParam);
     }, [location]);
 
-    // Update URL when owner filter changes
-    const handleOwnerFilterChange = (value) => {
-        setOwnerFilter(value);
+    // Update URL when filters change
+    const updateFilters = (newOwner, newLedger) => {
         const params = new URLSearchParams(location.search);
-        if (value) {
-            params.set('owner', value);
+        
+        if (newOwner) {
+            params.set('owner', newOwner);
         } else {
             params.delete('owner');
         }
+        
+        if (newLedger) {
+            params.set('ledger', newLedger);
+        } else {
+            params.delete('ledger');
+        }
+        
         navigate('?' + params.toString(), { replace: true });
     };
 
-    // Filter data by owner
+    const handleOwnerFilterChange = (value) => {
+        setOwnerFilter(value);
+        updateFilters(value, ledgerFilter);
+    };
+
+    const handleLedgerFilterChange = (value) => {
+        setLedgerFilter(value);
+        updateFilters(ownerFilter, value);
+    };
+
+    // Filter data by owner and ledger
     const getFilteredData = () => {
-        if (!ownerFilter) return tokenData;
+        if (!ownerFilter && !ledgerFilter) return tokenData;
 
         const filteredData = {};
         Object.entries(tokenData).forEach(([tokenKey, data]) => {
-            const filteredTokenLocks = data.tokenLocks.filter(
-                lock => lock.owner.toLowerCase().includes(ownerFilter.toLowerCase())
-            );
-            const filteredPositionLocks = data.positionLocks.filter(
-                lock => lock.owner.toLowerCase().includes(ownerFilter.toLowerCase())
-            );
+            // Apply ledger filter first
+            if (ledgerFilter && !tokenKey.toLowerCase().includes(ledgerFilter.toLowerCase())) {
+                return;
+            }
+
+            // Then filter locks by owner if needed
+            const filteredTokenLocks = ownerFilter 
+                ? data.tokenLocks.filter(lock => lock.owner.toLowerCase().includes(ownerFilter.toLowerCase()))
+                : data.tokenLocks;
+                
+            const filteredPositionLocks = ownerFilter
+                ? data.positionLocks.filter(lock => lock.owner.toLowerCase().includes(ownerFilter.toLowerCase()))
+                : data.positionLocks;
 
             if (filteredTokenLocks.length > 0 || filteredPositionLocks.length > 0) {
                 filteredData[tokenKey] = {
@@ -502,37 +527,71 @@ function SneedlockInfo() {
                         marginBottom: '20px',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '10px'
+                        gap: '10px',
+                        flexWrap: 'wrap'
                     }}>
-                        <input
-                            type="text"
-                            value={ownerFilter}
-                            onChange={(e) => handleOwnerFilterChange(e.target.value)}
-                            placeholder="Filter by owner principal"
-                            style={{
-                                padding: '8px 12px',
-                                borderRadius: '4px',
-                                border: '1px solid #444',
-                                background: '#222',
-                                color: '#fff',
-                                width: '300px'
-                            }}
-                        />
-                        {ownerFilter && (
-                            <button
-                                onClick={() => handleOwnerFilterChange('')}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <input
+                                type="text"
+                                value={ownerFilter}
+                                onChange={(e) => handleOwnerFilterChange(e.target.value)}
+                                placeholder="Filter by owner principal"
                                 style={{
                                     padding: '8px 12px',
                                     borderRadius: '4px',
                                     border: '1px solid #444',
-                                    background: '#333',
+                                    background: '#222',
                                     color: '#fff',
-                                    cursor: 'pointer'
+                                    width: '300px'
                                 }}
-                            >
-                                Clear
-                            </button>
-                        )}
+                            />
+                            {ownerFilter && (
+                                <button
+                                    onClick={() => handleOwnerFilterChange('')}
+                                    style={{
+                                        padding: '8px 12px',
+                                        borderRadius: '4px',
+                                        border: '1px solid #444',
+                                        background: '#333',
+                                        color: '#fff',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Clear
+                                </button>
+                            )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <input
+                                type="text"
+                                value={ledgerFilter}
+                                onChange={(e) => handleLedgerFilterChange(e.target.value)}
+                                placeholder="Filter by ledger principal"
+                                style={{
+                                    padding: '8px 12px',
+                                    borderRadius: '4px',
+                                    border: '1px solid #444',
+                                    background: '#222',
+                                    color: '#fff',
+                                    width: '300px'
+                                }}
+                            />
+                            {ledgerFilter && (
+                                <button
+                                    onClick={() => handleLedgerFilterChange('')}
+                                    style={{
+                                        padding: '8px 12px',
+                                        borderRadius: '4px',
+                                        border: '1px solid #444',
+                                        background: '#333',
+                                        color: '#fff',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Clear
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
