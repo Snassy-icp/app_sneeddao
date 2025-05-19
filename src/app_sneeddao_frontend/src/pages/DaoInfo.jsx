@@ -128,9 +128,9 @@ function DaoInfo() {
             totalNeurons: 0n,
             activeNeurons: 0n,
             dissolveState: {
-                notDissolving: 0n,
+                not_dissolving: 0n,
                 dissolving: 0n,
-                dissolved: 0n
+                dissolved: 0n,
             },
             votingPower: {
                 total: 0n,
@@ -265,13 +265,17 @@ function DaoInfo() {
                         neuronStats: {
                             totalNeurons: neuronStats.total_neurons,
                             activeNeurons: neuronStats.active_neurons,
-                            dissolveState: neuronStats.dissolve_state,
+                            dissolveState: {
+                                not_dissolving: neuronStats.dissolve_state.not_dissolving,
+                                dissolving: neuronStats.dissolve_state.dissolving,
+                                dissolved: neuronStats.dissolve_state.dissolved
+                            },
                             votingPower: neuronStats.voting_power,
                             permissions: neuronStats.permissions,
                             totalStaked: neuronStats.total_stake,
-                            not_dissolving_stake: neuronStats.not_dissolving_stake,
-                            dissolving_stake: neuronStats.dissolving_stake,
-                            dissolved_stake: neuronStats.dissolved_stake
+                            not_dissolving_stake: neuronStats.dissolve_state.not_dissolving_stake,
+                            dissolving_stake: neuronStats.dissolve_state.dissolving_stake,
+                            dissolved_stake: neuronStats.dissolve_state.dissolved_stake
                         }
                     });
                 } catch (err) {
