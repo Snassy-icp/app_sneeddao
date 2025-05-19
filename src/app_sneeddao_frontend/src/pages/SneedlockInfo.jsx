@@ -74,29 +74,92 @@ function SneedlockInfo() {
 
         const filteredData = {};
         Object.entries(tokenData).forEach(([tokenKey, data]) => {
+            // Skip if no data
+            if (!data) return;
+
             // Apply ledger filter first
             if (ledgerFilter && !tokenKey.toLowerCase().includes(ledgerFilter.toLowerCase())) {
                 return;
             }
 
-            // Then filter locks by owner if needed
-            const filteredTokenLocks = ownerFilter 
-                ? data.tokenLocks.filter(lock => lock.owner.toLowerCase().includes(ownerFilter.toLowerCase()))
-                : data.tokenLocks;
+            // Filter locks by owner if needed
+            const filteredTokenLocks = ownerFilter && data.tokenLocks 
+                ? data.tokenLocks.filter(lock => {
+                    if (!lock || !lock.owner) return false;
+                    const ownerStr = lock.owner.toString().toLowerCase();
+                    const filterStr = ownerFilter.toLowerCase();
+                    
+                    // Check principal ID
+                    if (ownerStr.includes(filterStr)) return true;
+                    
+                    // Check name/nickname
+                    const displayInfo = principalDisplayInfo.get(ownerStr);
+                    if (!displayInfo) return false;
+                    
+                    const name = Array.isArray(displayInfo.name) ? displayInfo.name[0] : displayInfo.name;
+                    if (name && name.toLowerCase().includes(filterStr)) return true;
+                    
+                    const nickname = Array.isArray(displayInfo.nickname) ? displayInfo.nickname[0] : displayInfo.nickname;
+                    if (nickname && nickname.toLowerCase().includes(filterStr)) return true;
+                    
+                    return false;
+                })
+                : data.tokenLocks || [];
                 
-            const filteredPositionLocks = ownerFilter
-                ? data.positionLocks.filter(lock => lock.owner.toLowerCase().includes(ownerFilter.toLowerCase()))
-                : data.positionLocks;
+            const filteredPositionLocks = ownerFilter && data.positionLocks
+                ? data.positionLocks.filter(lock => {
+                    if (!lock || !lock.owner) return false;
+                    const ownerStr = lock.owner.toString().toLowerCase();
+                    const filterStr = ownerFilter.toLowerCase();
+                    
+                    // Check principal ID
+                    if (ownerStr.includes(filterStr)) return true;
+                    
+                    // Check name/nickname
+                    const displayInfo = principalDisplayInfo.get(ownerStr);
+                    if (!displayInfo) return false;
+                    
+                    const name = Array.isArray(displayInfo.name) ? displayInfo.name[0] : displayInfo.name;
+                    if (name && name.toLowerCase().includes(filterStr)) return true;
+                    
+                    const nickname = Array.isArray(displayInfo.nickname) ? displayInfo.nickname[0] : displayInfo.nickname;
+                    if (nickname && nickname.toLowerCase().includes(filterStr)) return true;
+                    
+                    return false;
+                })
+                : data.positionLocks || [];
 
+            // Only include tokens that have matching locks
             if (filteredTokenLocks.length > 0 || filteredPositionLocks.length > 0) {
+                // Calculate amounts safely
+                const tokenLockAmount = filteredTokenLocks.reduce((sum, lock) => {
+                    if (!lock || !lock.amount) return sum;
+                    try {
+                        return sum + BigInt(lock.amount);
+                    } catch (e) {
+                        console.warn('Invalid token lock amount:', lock);
+                        return sum;
+                    }
+                }, 0n);
+
+                const positionLockAmount = filteredPositionLocks.reduce((sum, lock) => {
+                    if (!lock || !lock.amount) return sum;
+                    try {
+                        return sum + BigInt(lock.amount);
+                    } catch (e) {
+                        console.warn('Invalid position lock amount:', lock);
+                        return sum;
+                    }
+                }, 0n);
+
                 filteredData[tokenKey] = {
                     ...data,
                     tokenLocks: filteredTokenLocks,
                     positionLocks: filteredPositionLocks,
                     tokenLockCount: filteredTokenLocks.length,
                     positionLockCount: filteredPositionLocks.length,
-                    tokenLockAmount: filteredTokenLocks.reduce((sum, lock) => sum + BigInt(lock.amount), 0n),
-                    positionLockAmount: filteredPositionLocks.reduce((sum, lock) => sum + BigInt(lock.amount), 0n)
+                    tokenLockAmount,
+                    positionLockAmount
                 };
             }
         });
