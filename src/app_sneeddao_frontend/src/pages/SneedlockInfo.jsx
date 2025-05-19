@@ -81,7 +81,18 @@ function SneedlockInfo() {
     };
 
     const formatTimestamp = (timestamp) => {
-        const date = new Date(Number(timestamp) / 1000000); // Convert nano to milliseconds
+        // Convert nanoseconds to milliseconds and handle BigInt
+        const milliseconds = typeof timestamp === 'bigint' ? 
+            Number(timestamp / BigInt(1000000)) : 
+            Number(timestamp) / 1000000;
+        
+        const date = new Date(milliseconds);
+        
+        // Return "Never" if the date is too far in the future (essentially no expiration)
+        if (date.getFullYear() > 2100) {
+            return "Never";
+        }
+        
         return date.toLocaleString();
     };
 
@@ -480,11 +491,16 @@ function SneedlockInfo() {
                                                                 <div>
                                                                     Position: #{lock.positionId?.toString() || 'Unknown'}
                                                                 </div>
-                                                                <div>
-                                                                    Pair Amount: {formatAmount(lock.otherAmount || 0n, token?.decimals || 8)} {tokenMetadata[lock.otherToken?.toText() || '']?.symbol || (lock.otherToken?.toText() || 'Unknown')}
+                                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                                                                    <div>
+                                                                        {formatAmount(lock.amount || 0n, token?.decimals || 8)} {token?.symbol || tokenKey}
+                                                                    </div>
+                                                                    <div>
+                                                                        {formatAmount(lock.otherAmount || 0n, tokenMetadata[lock.otherToken?.toText() || '']?.decimals || 8)} {tokenMetadata[lock.otherToken?.toText() || '']?.symbol || (lock.otherToken?.toText() || 'Unknown')}
+                                                                    </div>
                                                                 </div>
                                                                 <div>
-                                                                    Expires: {formatTimestamp(lock.expiration || 0)}
+                                                                    Expires: {formatTimestamp(lock.expiration)}
                                                                 </div>
                                                                 <div style={{ opacity: 0.7 }}>
                                                                     Owner: {lock.owner?.toString() || 'Unknown'}
