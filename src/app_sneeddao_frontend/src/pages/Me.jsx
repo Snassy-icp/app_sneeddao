@@ -26,7 +26,7 @@ import {
 import { useNaming } from '../NamingContext';
 import { Link } from 'react-router-dom';
 import ConfirmationModal from '../ConfirmationModal';
-import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -60,6 +60,7 @@ export default function Me() {
     const [principalNameInput, setPrincipalNameInput] = useState('');
     const [principalNameError, setPrincipalNameError] = useState('');
     const [isSubmittingPrincipalName, setIsSubmittingPrincipalName] = useState(false);
+    const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     
     // Get naming context
     const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames } = useNaming();
@@ -201,6 +202,33 @@ export default function Me() {
             fetchPrincipalName();
         }
     }, [identity]);
+
+    // Add effect to fetch principal display info
+    useEffect(() => {
+        const fetchPrincipalInfo = async () => {
+            if (!identity || neurons.length === 0) return;
+
+            const uniquePrincipals = new Set();
+            neurons.forEach(neuron => {
+                // Add owner principals
+                getOwnerPrincipals(neuron).forEach(p => uniquePrincipals.add(p));
+                // Add all principals with permissions
+                neuron.permissions.forEach(p => {
+                    if (p.principal) uniquePrincipals.add(p.principal.toString());
+                });
+            });
+
+            const displayInfoMap = new Map();
+            await Promise.all(Array.from(uniquePrincipals).map(async principal => {
+                const displayInfo = await getPrincipalDisplayInfo(identity, principal);
+                displayInfoMap.set(principal.toString(), displayInfo);
+            }));
+
+            setPrincipalDisplayInfo(displayInfoMap);
+        };
+
+        fetchPrincipalInfo();
+    }, [identity, neurons]);
 
     const handleSnsChange = (newSnsRoot) => {
         setSelectedSnsRoot(newSnsRoot);
@@ -976,6 +1004,7 @@ export default function Me() {
                                                                     <span style={{ color: '#888' }}>Owner:</span>
                                                                     <PrincipalDisplay 
                                                                         principal={getOwnerPrincipals(neuron)[0]}
+                                                                        displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0]?.toString())}
                                                                         showCopyButton={false}
                                                                     />
                                                                 </div>
@@ -995,6 +1024,7 @@ export default function Me() {
                                                                         </span>
                                                                         <PrincipalDisplay 
                                                                             principal={p.principal}
+                                                                            displayInfo={principalDisplayInfo.get(p.principal?.toString())}
                                                                             showCopyButton={false}
                                                                         />
                                                                     </div>
