@@ -9,9 +9,12 @@ import { getTokenLogo } from '../utils/TokenUtils';
 import Header from '../components/Header';
 import { Principal } from '@dfinity/principal';
 import { createActor as createNeutriniteDappActor, canisterId as neutriniteCanisterId } from 'external/neutrinite_dapp';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 function SneedlockInfo() {
     const { identity } = useAuth();
+    const location = useLocation();
+    const navigate = useNavigate();
     const [tokenData, setTokenData] = useState({});
     const [initialLoading, setInitialLoading] = useState(true);
     const [metadataLoading, setMetadataLoading] = useState(true);
@@ -19,9 +22,59 @@ function SneedlockInfo() {
     const [expandedRows, setExpandedRows] = useState(new Set());  // Track expanded rows
     const [usdValues, setUsdValues] = useState({});
     const [conversionRates, setConversionRates] = useState({});
+    const [ownerFilter, setOwnerFilter] = useState('');
 
     // Cache for swap canister data
     const swapCanisterCache = {};
+
+    // Get owner from URL on component mount
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const ownerParam = params.get('owner');
+        if (ownerParam) {
+            setOwnerFilter(ownerParam);
+        }
+    }, [location]);
+
+    // Update URL when owner filter changes
+    const handleOwnerFilterChange = (value) => {
+        setOwnerFilter(value);
+        const params = new URLSearchParams(location.search);
+        if (value) {
+            params.set('owner', value);
+        } else {
+            params.delete('owner');
+        }
+        navigate('?' + params.toString(), { replace: true });
+    };
+
+    // Filter data by owner
+    const getFilteredData = () => {
+        if (!ownerFilter) return tokenData;
+
+        const filteredData = {};
+        Object.entries(tokenData).forEach(([tokenKey, data]) => {
+            const filteredTokenLocks = data.tokenLocks.filter(
+                lock => lock.owner.toLowerCase().includes(ownerFilter.toLowerCase())
+            );
+            const filteredPositionLocks = data.positionLocks.filter(
+                lock => lock.owner.toLowerCase().includes(ownerFilter.toLowerCase())
+            );
+
+            if (filteredTokenLocks.length > 0 || filteredPositionLocks.length > 0) {
+                filteredData[tokenKey] = {
+                    ...data,
+                    tokenLocks: filteredTokenLocks,
+                    positionLocks: filteredPositionLocks,
+                    tokenLockCount: filteredTokenLocks.length,
+                    positionLockCount: filteredPositionLocks.length,
+                    tokenLockAmount: filteredTokenLocks.reduce((sum, lock) => sum + BigInt(lock.amount), 0n),
+                    positionLockAmount: filteredPositionLocks.reduce((sum, lock) => sum + BigInt(lock.amount), 0n)
+                };
+            }
+        });
+        return filteredData;
+    };
 
     const formatUSD = (value) => {
         if (value === undefined || value === null || isNaN(value)) return '';
@@ -445,6 +498,42 @@ function SneedlockInfo() {
                 </h1>
                 
                 <div style={{ backgroundColor: '#2a2a2a', borderRadius: '8px', padding: '20px' }}>
+                    <div style={{ 
+                        marginBottom: '20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px'
+                    }}>
+                        <input
+                            type="text"
+                            value={ownerFilter}
+                            onChange={(e) => handleOwnerFilterChange(e.target.value)}
+                            placeholder="Filter by owner principal"
+                            style={{
+                                padding: '8px 12px',
+                                borderRadius: '4px',
+                                border: '1px solid #444',
+                                background: '#222',
+                                color: '#fff',
+                                width: '300px'
+                            }}
+                        />
+                        {ownerFilter && (
+                            <button
+                                onClick={() => handleOwnerFilterChange('')}
+                                style={{
+                                    padding: '8px 12px',
+                                    borderRadius: '4px',
+                                    border: '1px solid #444',
+                                    background: '#333',
+                                    color: '#fff',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Clear
+                            </button>
+                        )}
+                    </div>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                             <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
@@ -461,7 +550,7 @@ function SneedlockInfo() {
                             </tr>
                         </thead>
                         <tbody>
-                            {Object.entries(tokenData).map(([tokenKey, data]) => {
+                            {Object.entries(getFilteredData()).map(([tokenKey, data]) => {
                                 const token = tokenMetadata[tokenKey];
                                 const isExpanded = expandedRows.has(tokenKey);
                                 return (
