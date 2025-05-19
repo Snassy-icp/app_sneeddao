@@ -497,14 +497,50 @@ function SneedlockInfo() {
         }
     }, [identity]);
 
+    // Add this function near other utility functions
+    const calculateTotalTVL = () => {
+        let total = 0;
+        Object.values(tokenData).forEach(data => {
+            // Add token locks USD value
+            if (data.tokenLocks) {
+                data.tokenLocks.forEach(lock => {
+                    const usdValue = getUSDValue(lock.amount, data.decimals, data.symbol);
+                    if (!isNaN(usdValue)) {
+                        total += usdValue;
+                    }
+                });
+            }
+            // Add position locks USD value
+            if (data.positionLocks) {
+                data.positionLocks.forEach(lock => {
+                    const usdValue = getUSDValue(lock.amount, data.decimals, data.symbol);
+                    if (!isNaN(usdValue)) {
+                        total += usdValue;
+                    }
+                });
+            }
+        });
+        return total;
+    };
+
     if (initialLoading) {
         return (
             <div className='page-container'>
                 <Header />
                 <main className="wallet-container">
-                    <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>SneedLock Info</h1>
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-                        <div className="spinner"></div>
+                    <div style={{ 
+                        padding: '60px 0 40px',
+                        textAlign: 'center'
+                    }}>
+                        <h1 style={{ 
+                            color: '#ffffff',
+                            fontSize: '32px',
+                            fontWeight: '500',
+                            letterSpacing: '0.5px',
+                            marginBottom: '0'
+                        }}>
+                            SneedLock Info
+                        </h1>
                     </div>
                 </main>
             </div>
@@ -515,12 +551,37 @@ function SneedlockInfo() {
         <div className='page-container'>
             <Header />
             <main className="wallet-container">
-                <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>
-                    SneedLock Dashboard
-                    {metadataLoading && (
-                        <div className="spinner" style={{ width: '16px', height: '16px', display: 'inline-block', marginLeft: '10px', verticalAlign: 'middle' }} />
-                    )}
-                </h1>
+                <div style={{ 
+                    padding: '60px 0 40px',
+                    borderBottom: '1px solid rgba(255,255,255,0.1)',
+                    marginBottom: '40px'
+                }}>
+                    <h1 style={{ 
+                        color: '#ffffff',
+                        fontSize: '32px',
+                        fontWeight: '500',
+                        letterSpacing: '0.5px',
+                        marginBottom: '24px',
+                        textAlign: 'center'
+                    }}>
+                        SneedLock Info
+                    </h1>
+                    <div style={{
+                        textAlign: 'center'
+                    }}>
+                        <div style={{ color: '#888', fontSize: '14px', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>
+                            Total Value Locked
+                        </div>
+                        <div style={{ 
+                            color: '#fff',
+                            fontSize: '48px',
+                            fontWeight: '400',
+                            letterSpacing: '0.5px'
+                        }}>
+                            {formatUSD(calculateTotalTVL())}
+                        </div>
+                    </div>
+                </div>
                 
                 <div style={{ backgroundColor: '#2a2a2a', borderRadius: '8px', padding: '20px' }}>
                     <div style={{ 
