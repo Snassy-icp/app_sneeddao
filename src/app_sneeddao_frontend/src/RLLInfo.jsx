@@ -1431,6 +1431,8 @@ function RLLInfo() {
             error: null
         }
     });
+    const [stakingStats, setStakingStats] = useState(null);
+    const [isLoadingStakingStats, setIsLoadingStakingStats] = useState(true);
 
     // Update effect to fetch conversion rates
     useEffect(() => {
@@ -1465,8 +1467,9 @@ function RLLInfo() {
 
     // Helper function to calculate USD value
     const getUSDValue = (amount, decimals, symbol) => {
+        if (!amount) return 0;
         const value = Number(amount) / Math.pow(10, decimals);
-        return value * conversionRates[symbol];
+        return value * (conversionRates[symbol] || 0);
     };
 
     // Helper function to format USD
@@ -2725,6 +2728,61 @@ function RLLInfo() {
                getOtherTokensUSDTotal();     // Other tokens
     };
 
+    // Update effect to fetch staking statistics
+    useEffect(() => {
+        const fetchStakingStats = async () => {
+            setIsLoadingStakingStats(true);
+            try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+                
+                const rllActor = createRllActor(rllCanisterId, {
+                    agentOptions: { agent }
+                });
+
+                const stats = await rllActor.get_neuron_statistics();
+                setStakingStats(stats);
+            } catch (error) {
+                console.error('Error fetching staking statistics:', error);
+            } finally {
+                setIsLoadingStakingStats(false);
+            }
+        };
+
+        fetchStakingStats();
+    }, []);
+
+    // Calculate total supply (in SNEED)
+    const TOTAL_SUPPLY = BigInt("1000000000000000"); // 10M SNEED with 8 decimals
+
+    // Helper function to calculate circulating supply
+    const getCirculatingSupply = () => {
+        const treasury = BigInt(treasuryBalances.sneed || 0);
+        const lpAmount = BigInt(lpPositions.totals?.token0Amount || 0);
+        return TOTAL_SUPPLY - treasury - lpAmount;
+    };
+
+    // Helper function to get total staked SNEED
+    const getTotalStakedSneed = () => {
+        if (!stakingStats?.total_staked_e8s) return BigInt(0);
+        return BigInt(stakingStats.total_staked_e8s);
+    };
+
+    // Helper function to get total SNEED in LPs
+    const getTotalSneedInLPs = () => {
+        if (!lpPositions?.totals?.token0Amount) return BigInt(0);
+        return BigInt(lpPositions.totals.token0Amount);
+    };
+
+    // Helper function to calculate TVL
+    const getTVL = () => {
+        const stakedValue = getUSDValue(getTotalStakedSneed(), 8, 'SNEED') || 0;
+        const lpValue = getUSDValue(getTotalSneedInLPs(), 8, 'SNEED') || 0;
+        return stakedValue + lpValue;
+    };
+
     return (
         <div className='page-container'>
             <Header />
@@ -2852,6 +2910,101 @@ function RLLInfo() {
                                         </div>
                                         <div style={{ fontSize: '1.2em', color: '#888', marginTop: '5px' }}>
                                             {(getNAVUSDValue() / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Market Cap Card */}
+                            <div style={{
+                                backgroundColor: '#1a1a1a',
+                                padding: '20px',
+                                borderRadius: '6px',
+                                border: '1px solid #2ecc71',
+                                marginBottom: '20px'
+                            }}>
+                                <h3 style={{ color: '#2ecc71', marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    Market Cap & Supply
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="Overview of SNEED token supply, market metrics, and total value locked (TVL)"
+                                    >
+                                        i
+                                    </span>
+                                </h3>
+                                {isLoadingBalances || isLoadingStakingStats || isLoadingLp ? (
+                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                        <div style={styles.spinner} />
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Total Supply & FDV */}
+                                        <div style={{ marginBottom: '20px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>Total Supply:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(TOTAL_SUPPLY) / 1e8).toLocaleString()} SNEED
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (FDV: ${formatUSD(getUSDValue(TOTAL_SUPPLY, 8, 'SNEED'))})
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Total Staked */}
+                                        <div style={{ marginBottom: '20px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>Total Staked:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(getTotalStakedSneed()) / 1e8).toLocaleString()} SNEED
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(getTotalStakedSneed(), 8, 'SNEED'))})
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Total in LPs */}
+                                        <div style={{ marginBottom: '20px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>Total in LPs:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(getTotalSneedInLPs()) / 1e8).toLocaleString()} SNEED
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(getTotalSneedInLPs(), 8, 'SNEED'))})
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* TVL */}
+                                        <div style={{ 
+                                            marginBottom: '20px',
+                                            padding: '10px',
+                                            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                                            borderRadius: '4px'
+                                        }}>
+                                            <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Total Value Locked (TVL):</div>
+                                            <div style={{ fontSize: '1.2em', fontWeight: 'bold' }}>
+                                                ${formatUSD(getTVL())}
+                                            </div>
+                                        </div>
+
+                                        {/* Circulating Supply */}
+                                        <div style={{ marginBottom: '20px' }}>
+                                            <div style={{ color: '#888', marginBottom: '5px' }}>Circulating Supply:</div>
+                                            <div style={{ fontSize: '1.1em' }}>
+                                                {(Number(getCirculatingSupply()) / 1e8).toLocaleString()} SNEED
+                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                    (${formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED'))})
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Circulating Market Cap */}
+                                        <div style={{ 
+                                            padding: '10px',
+                                            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                                            borderRadius: '4px'
+                                        }}>
+                                            <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Circulating Market Cap:</div>
+                                            <div style={{ fontSize: '1.2em', fontWeight: 'bold' }}>
+                                                ${formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED'))}
+                                            </div>
                                         </div>
                                     </>
                                 )}
