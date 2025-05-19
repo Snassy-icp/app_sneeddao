@@ -557,10 +557,10 @@ function SneedlockInfo() {
     };
 
     useEffect(() => {
-        if (identity) {
+        //if (identity) {
             fetchData();
-        }
-    }, [identity]);
+        //}
+    }, []);
 
     // Add this function near other utility functions
     const calculateTotalTVL = () => {
