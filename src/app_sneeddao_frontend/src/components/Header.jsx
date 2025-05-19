@@ -72,7 +72,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/sneedlock',
             subMenu: [
                 { name: 'Locks', path: '/sneedlock' },
-                { name: 'Dashboard', path: '/sneedlock_info' }
+                { name: 'Dashboard', path: '/sneedlock_info' },
+                { name: 'My Locks', path: identity ? `/sneedlock_info?owner=${identity.getPrincipal().toString()}` : '/sneedlock_info' }
             ]
         }
     };

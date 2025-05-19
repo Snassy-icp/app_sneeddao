@@ -349,179 +349,228 @@ export default function Me() {
         <div className='page-container'>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             <main className="wallet-container">
-                {/* Add principal name section */}
-                <div style={{ 
-                    backgroundColor: '#2a2a2a',
-                    borderRadius: '8px',
-                    padding: '20px',
-                    marginBottom: '30px',
-                    border: '1px solid #3a3a3a'
+                {/* Principal ID and Quick Links section */}
+                <div style={{
+                    display: 'flex',
+                    gap: '20px',
+                    marginBottom: '30px'
                 }}>
+                    {/* Principal ID card */}
                     <div style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'flex-start',
-                        marginBottom: '15px'
+                        backgroundColor: '#2a2a2a',
+                        borderRadius: '8px',
+                        padding: '20px',
+                        border: '1px solid #3a3a3a',
+                        flex: '1'
                     }}>
-                        <div>
-                            <h2 style={{ 
-                                color: '#ffffff',
-                                margin: '0 0 5px 0',
-                                fontSize: '18px',
-                                fontWeight: '500'
-                            }}>
-                                Your Principal ID
-                            </h2>
-                            <div style={{ 
-                                fontFamily: 'monospace',
-                                color: '#888',
-                                fontSize: '14px'
-                            }}>
-                                {identity?.getPrincipal().toString()}
-                            </div>
-                        </div>
-                        {!editingPrincipalName && (
-                            <button
-                                onClick={() => setEditingPrincipalName(true)}
-                                style={{
-                                    backgroundColor: '#3498db',
-                                    color: '#ffffff',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '8px 12px',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                {principalName ? 'Change Name' : 'Set Name'}
-                            </button>
-                        )}
-                    </div>
-
-                    {principalName && !editingPrincipalName && (
                         <div style={{ 
-                            color: '#3498db',
-                            fontSize: '18px',
-                            fontWeight: 'bold',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                        }}>
-                            {principalName}
-                            {isVerified && (
-                                <span 
-                                    style={{ 
-                                        fontSize: '14px',
-                                        cursor: 'help'
-                                    }}
-                                    title="Verified name"
-                                >
-                                    ✓
-                                </span>
-                            )}
-                        </div>
-                    )}
-
-                    {editingPrincipalName && (
-                        <div style={{ 
-                            marginTop: '10px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '10px'
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'flex-start',
+                            marginBottom: '15px'
                         }}>
                             <div>
-                                <input
-                                    type="text"
-                                    value={principalNameInput}
-                                    onChange={(e) => {
-                                        const newValue = e.target.value;
-                                        setPrincipalNameInput(newValue);
-                                        setPrincipalNameError(validateNameInput(newValue));
-                                    }}
-                                    maxLength={32}
-                                    placeholder="Enter your name (max 32 chars)"
-                                    style={{
-                                        backgroundColor: '#3a3a3a',
-                                        border: `1px solid ${principalNameError ? '#e74c3c' : '#4a4a4a'}`,
-                                        borderRadius: '4px',
-                                        color: '#ffffff',
-                                        padding: '8px',
-                                        width: '100%'
-                                    }}
-                                />
-                                {principalNameError && (
-                                    <div style={{
-                                        color: '#e74c3c',
-                                        fontSize: '12px',
-                                        marginTop: '4px'
-                                    }}>
-                                        {principalNameError}
-                                    </div>
-                                )}
-                                <div style={{
-                                    color: '#888',
-                                    fontSize: '12px',
-                                    marginTop: '4px'
+                                <h2 style={{ 
+                                    color: '#ffffff',
+                                    margin: '0 0 5px 0',
+                                    fontSize: '18px',
+                                    fontWeight: '500'
                                 }}>
-                                    Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
+                                    Your Principal ID
+                                </h2>
+                                <div style={{ 
+                                    fontFamily: 'monospace',
+                                    color: '#888',
+                                    fontSize: '14px'
+                                }}>
+                                    {identity?.getPrincipal().toString()}
                                 </div>
                             </div>
-                            <div style={{
-                                display: 'flex',
-                                gap: '8px',
-                                justifyContent: 'flex-end'
-                            }}>
+                            {!editingPrincipalName && (
                                 <button
-                                    onClick={handlePrincipalNameSubmit}
-                                    disabled={isSubmittingPrincipalName}
+                                    onClick={() => setEditingPrincipalName(true)}
                                     style={{
                                         backgroundColor: '#3498db',
                                         color: '#ffffff',
                                         border: 'none',
                                         borderRadius: '4px',
                                         padding: '8px 12px',
-                                        cursor: isSubmittingPrincipalName ? 'not-allowed' : 'pointer',
-                                        whiteSpace: 'nowrap',
-                                        opacity: isSubmittingPrincipalName ? 0.7 : 1,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px'
+                                        cursor: 'pointer'
                                     }}
                                 >
-                                    {isSubmittingPrincipalName ? (
-                                        <>
-                                            <span style={{ 
-                                                display: 'inline-block',
-                                                animation: 'spin 1s linear infinite',
-                                                fontSize: '14px'
-                                            }}>⟳</span>
-                                            Setting...
-                                        </>
-                                    ) : (
-                                        'Set Name'
-                                    )}
+                                    {principalName ? 'Change Name' : 'Set Name'}
                                 </button>
-                                <button
-                                    onClick={() => {
-                                        setEditingPrincipalName(false);
-                                        setPrincipalNameInput('');
-                                    }}
-                                    disabled={isSubmittingPrincipalName}
-                                    style={{
-                                        backgroundColor: '#e74c3c',
-                                        color: '#ffffff',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '8px 12px',
-                                        cursor: isSubmittingPrincipalName ? 'not-allowed' : 'pointer',
-                                        whiteSpace: 'nowrap',
-                                        opacity: isSubmittingPrincipalName ? 0.7 : 1
-                                    }}
-                                >
-                                    Cancel
-                                </button>
-                            </div>
+                            )}
                         </div>
-                    )}
+
+                        {principalName && !editingPrincipalName && (
+                            <div style={{ 
+                                color: '#3498db',
+                                fontSize: '18px',
+                                fontWeight: 'bold',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                            }}>
+                                {principalName}
+                                {isVerified && (
+                                    <span 
+                                        style={{ 
+                                            fontSize: '14px',
+                                            cursor: 'help'
+                                        }}
+                                        title="Verified name"
+                                    >
+                                        ✓
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
+                        {editingPrincipalName && (
+                            <div style={{ 
+                                marginTop: '10px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '10px'
+                            }}>
+                                <div>
+                                    <input
+                                        type="text"
+                                        value={principalNameInput}
+                                        onChange={(e) => {
+                                            const newValue = e.target.value;
+                                            setPrincipalNameInput(newValue);
+                                            setPrincipalNameError(validateNameInput(newValue));
+                                        }}
+                                        maxLength={32}
+                                        placeholder="Enter your name (max 32 chars)"
+                                        style={{
+                                            backgroundColor: '#3a3a3a',
+                                            border: `1px solid ${principalNameError ? '#e74c3c' : '#4a4a4a'}`,
+                                            borderRadius: '4px',
+                                            color: '#ffffff',
+                                            padding: '8px',
+                                            width: '100%'
+                                        }}
+                                    />
+                                    {principalNameError && (
+                                        <div style={{
+                                            color: '#e74c3c',
+                                            fontSize: '12px',
+                                            marginTop: '4px'
+                                        }}>
+                                            {principalNameError}
+                                        </div>
+                                    )}
+                                    <div style={{
+                                        color: '#888',
+                                        fontSize: '12px',
+                                        marginTop: '4px'
+                                    }}>
+                                        Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
+                                    </div>
+                                </div>
+                                <div style={{
+                                    display: 'flex',
+                                    gap: '8px',
+                                    justifyContent: 'flex-end'
+                                }}>
+                                    <button
+                                        onClick={handlePrincipalNameSubmit}
+                                        disabled={isSubmittingPrincipalName}
+                                        style={{
+                                            backgroundColor: '#3498db',
+                                            color: '#ffffff',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '8px 12px',
+                                            cursor: isSubmittingPrincipalName ? 'not-allowed' : 'pointer',
+                                            whiteSpace: 'nowrap',
+                                            opacity: isSubmittingPrincipalName ? 0.7 : 1,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px'
+                                        }}
+                                    >
+                                        {isSubmittingPrincipalName ? (
+                                            <>
+                                                <span style={{ 
+                                                    display: 'inline-block',
+                                                    animation: 'spin 1s linear infinite',
+                                                    fontSize: '14px'
+                                                }}>⟳</span>
+                                                Setting...
+                                            </>
+                                        ) : (
+                                            'Set Name'
+                                        )}
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setEditingPrincipalName(false);
+                                            setPrincipalNameInput('');
+                                        }}
+                                        disabled={isSubmittingPrincipalName}
+                                        style={{
+                                            backgroundColor: '#e74c3c',
+                                            color: '#ffffff',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '8px 12px',
+                                            cursor: isSubmittingPrincipalName ? 'not-allowed' : 'pointer',
+                                            whiteSpace: 'nowrap',
+                                            opacity: isSubmittingPrincipalName ? 0.7 : 1
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Quick Links card */}
+                    <div style={{ 
+                        backgroundColor: '#2a2a2a',
+                        borderRadius: '8px',
+                        padding: '20px',
+                        border: '1px solid #3a3a3a',
+                        width: '200px'
+                    }}>
+                        <h2 style={{ 
+                            color: '#ffffff',
+                            margin: '0 0 15px 0',
+                            fontSize: '18px',
+                            fontWeight: '500'
+                        }}>
+                            Quick Links
+                        </h2>
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '10px'
+                        }}>
+                            <Link
+                                to={`/sneedlock_info?owner=${identity?.getPrincipal().toString()}`}
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    transition: 'background-color 0.2s',
+                                    fontSize: '14px'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                🔒 My Locks
+                            </Link>
+                        </div>
+                    </div>
                 </div>
 
                 <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>My Neurons</h1>
