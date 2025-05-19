@@ -113,6 +113,17 @@ function SneedlockInfo() {
         }
     };
 
+    const truncatePrincipal = (principal) => {
+        if (!principal) return 'Unknown';
+        const start = principal.slice(0, 5);
+        const end = principal.slice(-5);
+        return `${start}...${end}`;
+    };
+
+    const copyToClipboard = (text) => {
+        navigator.clipboard.writeText(text);
+    };
+
     const fetchData = async () => {
         setInitialLoading(true);
         try {
@@ -136,7 +147,7 @@ function SneedlockInfo() {
                     id: lock[0],  // Lock ID
                     amount: amount,
                     expiry: lock[2].expiry,
-                    owner: lock[2].owner
+                    owner: lock[0].toText()  // Use the lock ID as owner since it contains the principal
                 };
 
                 if (!aggregatedData[tokenKey]) {
@@ -285,7 +296,7 @@ function SneedlockInfo() {
                                 swapCanisterId,
                                 amount: token0Amount,
                                 expiry,
-                                owner,
+                                owner: lockId.toText(),  // Use the lock ID as owner
                                 otherToken: token1,
                                 otherAmount: BigInt(matchingPosition.token1Amount)
                             });
@@ -314,7 +325,7 @@ function SneedlockInfo() {
                                 swapCanisterId,
                                 amount: token1Amount,
                                 expiry,
-                                owner,
+                                owner: lockId.toText(),  // Use the lock ID as owner
                                 otherToken: token0,
                                 otherAmount: BigInt(matchingPosition.token0Amount)
                             });
@@ -482,7 +493,7 @@ function SneedlockInfo() {
                                                         <td colSpan="4" style={{ padding: '8px 40px' }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.9em' }}>
                                                                 <div>
-                                                                    <span style={{ color: '#666' }}>Token Lock</span> #{lock.id?.toString() || 'Unknown'}
+                                                                    <span style={{ color: '#666' }}>Token Lock</span> #{lock.id?.toString().split('-').slice(-1)[0] || 'Unknown'}
                                                                 </div>
                                                                 <div>
                                                                     Amount: {formatAmount(lock.amount, token?.decimals || 8)}
@@ -490,8 +501,30 @@ function SneedlockInfo() {
                                                                 <div>
                                                                     Expires: {formatTimestamp(lock.expiry)}
                                                                 </div>
-                                                                <div style={{ opacity: 0.7 }}>
-                                                                    Owner: {lock.owner?.toString() || 'Unknown'}
+                                                                <div style={{ opacity: 0.7, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <span>Owner: </span>
+                                                                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                                                                        <span 
+                                                                            title={lock.owner || 'Unknown'}
+                                                                            style={{ cursor: 'help' }}
+                                                                        >
+                                                                            {truncatePrincipal(lock.owner)}
+                                                                        </span>
+                                                                        <button
+                                                                            onClick={() => copyToClipboard(lock.owner)}
+                                                                            style={{
+                                                                                marginLeft: '4px',
+                                                                                background: 'none',
+                                                                                border: 'none',
+                                                                                cursor: 'pointer',
+                                                                                padding: '2px',
+                                                                                color: '#666'
+                                                                            }}
+                                                                            title="Copy principal"
+                                                                        >
+                                                                            📋
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </td>
@@ -503,7 +536,7 @@ function SneedlockInfo() {
                                                         <td colSpan="4" style={{ padding: '8px 40px' }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.9em' }}>
                                                                 <div>
-                                                                    <span style={{ color: '#666' }}>Position Lock</span> #{lock.id?.toString() || 'Unknown'}
+                                                                    <span style={{ color: '#666' }}>Position Lock</span> #{lock.id?.toString().split('-').slice(-1)[0] || 'Unknown'}
                                                                 </div>
                                                                 <div>
                                                                     Position: #{lock.positionId?.toString() || 'Unknown'}
@@ -519,8 +552,30 @@ function SneedlockInfo() {
                                                                 <div>
                                                                     Expires: {formatTimestamp(lock.expiry)}
                                                                 </div>
-                                                                <div style={{ opacity: 0.7 }}>
-                                                                    Owner: {lock.owner?.toString() || 'Unknown'}
+                                                                <div style={{ opacity: 0.7, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <span>Owner: </span>
+                                                                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                                                                        <span 
+                                                                            title={lock.owner || 'Unknown'}
+                                                                            style={{ cursor: 'help' }}
+                                                                        >
+                                                                            {truncatePrincipal(lock.owner)}
+                                                                        </span>
+                                                                        <button
+                                                                            onClick={() => copyToClipboard(lock.owner)}
+                                                                            style={{
+                                                                                marginLeft: '4px',
+                                                                                background: 'none',
+                                                                                border: 'none',
+                                                                                cursor: 'pointer',
+                                                                                padding: '2px',
+                                                                                color: '#666'
+                                                                            }}
+                                                                            title="Copy principal"
+                                                                        >
+                                                                            📋
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </td>
