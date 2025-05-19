@@ -3026,9 +3026,6 @@ function RLLInfo() {
                                             <div style={{ color: '#888', marginBottom: '5px' }}>Circulating Supply:</div>
                                             <div style={{ fontSize: '1.1em' }}>
                                                 {(Number(getCirculatingSupply()) / 1e8).toLocaleString()} SNEED
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (${formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED'))})
-                                                </span>
                                             </div>
                                         </div>
 
