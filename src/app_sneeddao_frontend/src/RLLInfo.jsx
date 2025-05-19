@@ -2889,7 +2889,15 @@ function RLLInfo() {
                                 </h3>
                                 {/* GAV Section */}
                                 <div style={{ marginBottom: '15px' }}>
-                                    <div style={{ color: '#888', marginBottom: '5px' }}>Gross Asset Value (GAV):</div>
+                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                        Gross Asset Value (GAV):
+                                        <span 
+                                                style={styles.infoIcon} 
+                                                title="Gross Asset Value: total market-value of every treasury asset—including self-held tokens—before netting out liabilities. Reveals the full scale of the DAO’s resource pool. The gap between GAV and NAV measures how much value resides in treasury tokens (i.e. potential future deployment) that NAV strips out."
+                                            >
+                                                i
+                                        </span>
+                                    </div>
                                     <div style={{ fontSize: '1.2em' }}>
                                         ${formatUSD(getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal())}
                                         <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
