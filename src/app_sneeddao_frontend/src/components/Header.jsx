@@ -116,7 +116,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     style={{
                         width: '52px',
                         height: '52px',
-                        borderRadius: '50%',
+                        borderRadius: customLogo ? '0' : '50%',
                         objectFit: 'cover',
                         marginTop: '8px',
                         cursor: 'pointer'
@@ -206,8 +206,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     <SnsDropdown onSnsChange={onSnsChange} />
                 ) : (
                     <img
-                        src={customLogo || "sneed_logo.png"}
-                        alt={customLogo ? "Logo" : "Sneed Logo"}
+                        src={"sneed_logo.png"}
+                        alt={"Sneed Logo"}
                         style={{
                             width: '32px',
                             height: '32px',
