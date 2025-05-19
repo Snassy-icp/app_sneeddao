@@ -172,19 +172,19 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
                             color: principalColor
                         }
                     },
-                    formatted.name,
                     formatted.isVerified && React.createElement('span',
                         {
                             style: {
                                 fontSize: '14px',
                                 cursor: 'help',
                                 color: '#2ecc71',
-                                marginLeft: '2px'
+                                marginRight: '2px'
                             },
                             title: "Verified name"
                         },
                         "✓"
-                    )
+                    ),
+                    formatted.name
                 ),
                 (formatted.name && formatted.nickname && formatted.name.length > 0 && formatted.nickname.length > 0) ? " • " : null,
                 formatted.nickname && React.createElement('span',
