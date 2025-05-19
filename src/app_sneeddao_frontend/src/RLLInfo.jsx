@@ -1433,6 +1433,7 @@ function RLLInfo() {
     });
     const [stakingStats, setStakingStats] = useState(null);
     const [isLoadingStakingStats, setIsLoadingStakingStats] = useState(true);
+    const [totalSupply, setTotalSupply] = useState(null);
 
     // Update effect to fetch conversion rates
     useEffect(() => {
@@ -2754,14 +2755,38 @@ function RLLInfo() {
         fetchStakingStats();
     }, []);
 
+    // Fetch total supply from SNEED ledger
+    useEffect(() => {
+        const fetchTotalSupply = async () => {
+            try {
+                const agent = new HttpAgent({
+                    identity,
+                    host: "https://ic0.app"
+                });
+                await agent.fetchRootKey();
+
+                const sneedLedgerActor = createLedgerActor('hvgxa-wqaaa-aaaaq-aacia-cai', {
+                    agentOptions: { agent }
+                });
+                const supply = await sneedLedgerActor.icrc1_total_supply();
+                setTotalSupply(supply);
+            } catch (err) {
+                console.error('Error fetching total supply:', err);
+            }
+        };
+        fetchTotalSupply();
+    }, [identity]);
+
     // Calculate total supply (in SNEED)
-    const TOTAL_SUPPLY = BigInt("1000000000000000"); // 10M SNEED with 8 decimals
+    const getTotalSupply = () => {
+        return totalSupply || BigInt(0);
+    };
 
     // Helper function to calculate circulating supply
     const getCirculatingSupply = () => {
         const treasury = BigInt(treasuryBalances.sneed || 0);
         const lpAmount = BigInt(lpPositions.totals?.token0Amount || 0);
-        return TOTAL_SUPPLY - treasury - lpAmount;
+        return getTotalSupply() - treasury - lpAmount;
     };
 
     // Helper function to get total staked SNEED
@@ -2942,9 +2967,9 @@ function RLLInfo() {
                                         <div style={{ marginBottom: '20px' }}>
                                             <div style={{ color: '#888', marginBottom: '5px' }}>Total Supply:</div>
                                             <div style={{ fontSize: '1.1em' }}>
-                                                {(Number(TOTAL_SUPPLY) / 1e8).toLocaleString()} SNEED
+                                                {(Number(getTotalSupply()) / 1e8).toLocaleString()} SNEED
                                                 <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (FDV: ${formatUSD(getUSDValue(TOTAL_SUPPLY, 8, 'SNEED'))})
+                                                    (FDV: ${formatUSD(getUSDValue(getTotalSupply(), 8, 'SNEED'))})
                                                 </span>
                                             </div>
                                         </div>
