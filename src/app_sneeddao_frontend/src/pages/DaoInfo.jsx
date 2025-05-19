@@ -142,7 +142,10 @@ function DaoInfo() {
                 totalHotkeys: 0n,
                 multiHotkeyNeurons: 0n
             },
-            totalStaked: 0n
+            totalStaked: 0n,
+            not_dissolving_stake: 0n,
+            dissolving_stake: 0n,
+            dissolved_stake: 0n
         }
     });
     const [tokenomics, setTokenomics] = useState({
@@ -265,7 +268,10 @@ function DaoInfo() {
                             dissolveState: neuronStats.dissolve_state,
                             votingPower: neuronStats.voting_power,
                             permissions: neuronStats.permissions,
-                            totalStaked: neuronStats.total_stake
+                            totalStaked: neuronStats.total_stake,
+                            not_dissolving_stake: neuronStats.not_dissolving_stake,
+                            dissolving_stake: neuronStats.dissolving_stake,
+                            dissolved_stake: neuronStats.dissolved_stake
                         }
                     });
                 } catch (err) {
@@ -538,6 +544,9 @@ function DaoInfo() {
                                     <div style={styles.metric}>
                                         {formatNumber(Number(daoMetrics.neuronStats.dissolveState.not_dissolving))}
                                         <div style={{ fontSize: '0.7em', color: '#888' }}>Not Dissolving</div>
+                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                            {formatNumber(Number(daoMetrics.neuronStats.not_dissolving_stake) / 1e8)} SNEED
+                                        </div>
                                     </div>
                                     <div style={styles.label}>Dissolve State</div>
                                 </div>
@@ -545,6 +554,9 @@ function DaoInfo() {
                                     <div style={styles.metric}>
                                         {formatNumber(Number(daoMetrics.neuronStats.dissolveState.dissolving))}
                                         <div style={{ fontSize: '0.7em', color: '#888' }}>Dissolving</div>
+                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                            {formatNumber(Number(daoMetrics.neuronStats.dissolving_stake) / 1e8)} SNEED
+                                        </div>
                                     </div>
                                     <div style={styles.label}>Dissolve State</div>
                                 </div>
@@ -552,6 +564,9 @@ function DaoInfo() {
                                     <div style={styles.metric}>
                                         {formatNumber(Number(daoMetrics.neuronStats.dissolveState.dissolved))}
                                         <div style={{ fontSize: '0.7em', color: '#888' }}>Dissolved</div>
+                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                            {formatNumber(Number(daoMetrics.neuronStats.dissolved_stake) / 1e8)} SNEED
+                                        </div>
                                     </div>
                                     <div style={styles.label}>Dissolve State</div>
                                 </div>
