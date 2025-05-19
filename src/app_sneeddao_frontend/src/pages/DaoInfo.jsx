@@ -595,15 +595,6 @@ function DaoInfo() {
                                     <div style={styles.label}>Hotkeys</div>
                                 </div>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>
-                                        {formatNumber(Number(daoMetrics.neuronStats.totalStaked) / 1e8)} SNEED
-                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
-                                            {((Number(daoMetrics.neuronStats.totalStaked) / (Number(tokenomics.totalSupply) * 1e8)) * 100).toFixed(2)}% of supply
-                                        </div>
-                                    </div>
-                                    <div style={styles.label}>Total Staked</div>
-                                </div>
-                                <div style={styles.card}>
                                     <div style={styles.metric}>{formatNumber(daoMetrics.proposalCount)}</div>
                                     <div style={styles.label}>Total Proposals</div>
                                 </div>
@@ -691,8 +682,17 @@ function DaoInfo() {
                                         <div style={styles.label}>Market Cap</div>
                                     </div>
                                     <div style={styles.card}>
-                                        <div style={styles.metric}>{formatNumber(tokenomics.totalSupply)}</div>
+                                        <div style={styles.metric}>{formatNumber(tokenomics.totalSupply)} SNEED</div>
                                         <div style={styles.label}>Total Supply</div>
+                                    </div>
+                                    <div style={styles.card}>
+                                        <div style={styles.metric}>
+                                            {formatNumber(Number(daoMetrics.neuronStats.totalStaked) / 1e8)} SNEED
+                                            <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                                {((Number(daoMetrics.neuronStats.totalStaked) / (Number(tokenomics.totalSupply) * 1e8)) * 100).toFixed(2)}% of supply
+                                            </div>
+                                        </div>
+                                        <div style={styles.label}>Total Staked</div>
                                     </div>
                                     <div style={styles.card}>
                                         <div style={styles.metric}>{formatUSD(tokenomics.totalAssets.totalUsd)}</div>
