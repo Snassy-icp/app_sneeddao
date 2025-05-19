@@ -3510,20 +3510,22 @@ function RLLInfo() {
                                     onClick={() => toggleSection('otherTokens')}
                                     style={{ 
                                         color: '#9b59b6', 
-                                        marginTop: 0, 
+                                        marginTop: 0,
+                                        marginBottom: '15px',
                                         display: 'flex', 
                                         alignItems: 'center', 
-                                        gap: '8px',
+                                        justifyContent: 'space-between',
                                         cursor: 'pointer' 
                                     }}
                                 >
-                                    <span style={{ 
-                                        display: 'inline-block',
-                                        transform: `rotate(${expandedSections.otherTokens ? '90deg' : '0deg'})`,
-                                        transition: 'transform 0.2s ease',
-                                        marginRight: '4px'
-                                    }}>▸</span>
-                                    Other Tokens
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ 
+                                            display: 'inline-block',
+                                            transform: `rotate(${expandedSections.otherTokens ? '90deg' : '0deg'})`,
+                                            transition: 'transform 0.2s ease'
+                                        }}>▸</span>
+                                        Other Tokens
+                                    </div>
                                     <span 
                                         style={styles.infoIcon} 
                                         title="Overview of other token holdings in the treasury"
@@ -3646,26 +3648,29 @@ function RLLInfo() {
                                 border: '1px solid #9b59b6',
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ 
-                                    color: '#9b59b6', 
-                                    marginTop: 0, 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: '8px',
-                                    cursor: 'pointer' 
-                                }}
+                                <h3 
                                     onClick={() => toggleSection('otherPositions')}
+                                    style={{ 
+                                        color: '#9b59b6', 
+                                        marginTop: 0,
+                                        marginBottom: '15px',
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'space-between',
+                                        cursor: 'pointer' 
+                                    }}
                                 >
-                                    <span style={{ 
-                                        display: 'inline-block',
-                                        transform: `rotate(${expandedSections.otherPositions ? '90deg' : '0deg'})`,
-                                        transition: 'transform 0.2s ease',
-                                        marginRight: '4px'
-                                    }}>▸</span>
-                                    Other Positions
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ 
+                                            display: 'inline-block',
+                                            transform: `rotate(${expandedSections.otherPositions ? '90deg' : '0deg'})`,
+                                            transition: 'transform 0.2s ease'
+                                        }}>▸</span>
+                                        Other Positions
+                                    </div>
                                     <span 
                                         style={styles.infoIcon} 
-                                        title="Additional liquidity positions and holdings in other protocols"
+                                        title="Overview of other investment positions and holdings"
                                         onClick={e => e.stopPropagation()}
                                     >
                                         i
