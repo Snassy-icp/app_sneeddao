@@ -2785,10 +2785,10 @@ function RLLInfo() {
                                 marginBottom: '20px'
                             }}>
                                 <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    Total Value (USD)
+                                    Total Value (GAV)
                                     <span 
                                         style={styles.infoIcon} 
-                                        title="Combined USD value of all DAO assets, including ICP and SNEED holdings across all protocols and positions"
+                                        title="Gross Asset Value (GAV) - Combined USD value of all DAO assets, including ICP, SNEED holdings (including treasury SNEED), and other tokens across all protocols and positions"
                                     >
                                         i
                                     </span>
