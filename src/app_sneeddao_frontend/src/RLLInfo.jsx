@@ -3038,26 +3038,27 @@ function RLLInfo() {
                                             backgroundColor: 'rgba(46, 204, 113, 0.1)',
                                             borderRadius: '4px'
                                         }}>
-                                            <div style={{ color: '#2ecc71', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                Total Value Locked (TVL):
+                                            <div style={{ color: '#2ecc71', marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <span>Total Value Locked (TVL):</span>
                                                 <span 
                                                     style={styles.infoIcon} 
-                                                    title="Total Value Locked: market-value of assets locked in smart contracts (staked tokens, LP positions). Gauges protocol engagement, security and yield-earning capacity. A high TVL relative to circulating cap suggests strong staking participation and lower immediate sell-pressure, while a low ratio may warn of potential liquidity crunches and indicate more tokens are free to flood the market."
+                                                    title="Total Value Locked: sum of all SNEED staked in neurons and provided to liquidity pools. Higher TVL indicates stronger price support and more sustainable yield generation."
                                                 >
                                                     i
                                                 </span>
                                             </div>
-                                            <div style={{ fontSize: '1.2em', fontWeight: 'bold' }}>
+
+                                            <div style={{ fontSize: '1.2em', color: '#2ecc71' }}>
                                                 ${formatUSD(getTVL())}
-                                            </div>
-                                            <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                TVL/MCap: {(getTVL() / (getUSDValue(getCirculatingSupply(), 8, 'SNEED') || 1)).toFixed(2)}x
-                                                <span 
-                                                    style={styles.infoIcon} 
-                                                    title="TVL/Market Cap: TVL divided by circulating market cap. Indicates what share of the token supply is locked versus freely tradable. A high ratio means most tokens are earning yield or providing liquidity, reducing sell-pressure and demonstrating strong protocol commitment. A low ratio suggests many tokens remain liquid, increasing potential sell-pressure and signaling weaker staking engagement."
-                                                >
-                                                    i
-                                                </span>
+                                                <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                    <span>TVL/MCap: {(getTVL() / (getUSDValue(getCirculatingSupply(), 8, 'SNEED') || 1)).toFixed(2)}x</span>
+                                                    <span 
+                                                        style={styles.infoIcon} 
+                                                        title="TVL/Market Cap: TVL divided by circulating market cap. Indicates what share of the token supply is locked versus freely tradable. A high ratio means most tokens are earning yield or providing liquidity, reducing sell-pressure and driving sustainable returns."
+                                                    >
+                                                        i
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
 
@@ -3075,16 +3076,16 @@ function RLLInfo() {
                                             backgroundColor: 'rgba(46, 204, 113, 0.1)',
                                             borderRadius: '4px'
                                         }}>
-                                            <div style={{ color: '#2ecc71', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                Circulating Market Cap:
+                                            <div style={{ color: '#2ecc71', marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <span>Circulating Market Cap:</span>
                                                 <span 
                                                     style={styles.infoIcon} 
-                                                    title="Current token price × number of tokens held by the public (excludes treasury and protocol-owned holdings). Reflects the immediate market size and liquidity. A rising circulating cap signals strong demand, while a shrinking one (relative to TVL) can indicate reduced sell-pressure absorption."
+                                                    title="Current market value of all circulating SNEED tokens (excluding treasury holdings and LP positions). Represents the actively traded portion of the token supply."
                                                 >
                                                     i
                                                 </span>
                                             </div>
-                                            <div style={{ fontSize: '1.2em', fontWeight: 'bold' }}>
+                                            <div style={{ fontSize: '1.2em', color: '#2ecc71' }}>
                                                 ${formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED'))}
                                             </div>
                                         </div>
