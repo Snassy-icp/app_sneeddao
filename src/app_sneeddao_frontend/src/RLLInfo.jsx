@@ -3030,7 +3030,7 @@ function RLLInfo() {
                                                 TVL/MCap: {(getTVL() / (getUSDValue(getCirculatingSupply(), 8, 'SNEED') || 1)).toFixed(2)}x
                                                 <span 
                                                     style={styles.infoIcon} 
-                                                    title="Indicates how much of the token's market value is locked, affecting sell pressure."
+                                                    title="TVL/Market Cap: TVL divided by circulating market cap. Indicates what share of the token supply is locked versus freely tradable. A high ratio means most tokens are earning yield or providing liquidity, reducing sell-pressure and demonstrating strong protocol commitment. A low ratio suggests many tokens remain liquid, increasing potential sell-pressure and signaling weaker staking engagement."
                                                 >
                                                     i
                                                 </span>
