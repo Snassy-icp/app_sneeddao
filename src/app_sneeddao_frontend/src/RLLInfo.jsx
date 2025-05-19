@@ -2968,9 +2968,20 @@ function RLLInfo() {
                                             <div style={{ color: '#888', marginBottom: '5px' }}>Total Supply:</div>
                                             <div style={{ fontSize: '1.1em' }}>
                                                 {(Number(getTotalSupply()) / 1e8).toLocaleString()} SNEED
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
-                                                    (FDV: ${formatUSD(getUSDValue(getTotalSupply(), 8, 'SNEED'))})
-                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Fully Diluted Valuation */}
+                                        <div style={{
+                                            backgroundColor: '#1a1a1a',
+                                            padding: '15px',
+                                            borderRadius: '6px',
+                                            border: '1px solid #2ecc71',
+                                            marginBottom: '20px'
+                                        }}>
+                                            <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Fully Diluted Valuation (FDV):</div>
+                                            <div style={{ fontSize: '1.2em', color: '#2ecc71' }}>
+                                                ${formatUSD(getUSDValue(getTotalSupply(), 8, 'SNEED'))}
                                             </div>
                                         </div>
 
