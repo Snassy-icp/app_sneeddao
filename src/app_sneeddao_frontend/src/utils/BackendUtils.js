@@ -148,4 +148,95 @@ export const getAllNeuronNicknames = async (identity) => {
         console.error('Error getting all neuron nicknames:', error);
         return null;
     }
+};
+
+// Set a public name for your principal
+export const setPrincipalName = async (identity, name) => {
+    if (!identity || name === undefined) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const response = await actor.set_principal_name(name);
+        return response;
+    } catch (error) {
+        console.error('Error setting principal name:', error);
+        throw error;
+    }
+};
+
+// Set a private nickname for a principal
+export const setPrincipalNickname = async (identity, principal, nickname) => {
+    if (!identity || !principal || nickname === undefined) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const response = await actor.set_principal_nickname(
+            typeof principal === 'string' ? Principal.fromText(principal) : principal,
+            nickname
+        );
+        return response;
+    } catch (error) {
+        console.error('Error setting principal nickname:', error);
+        throw error;
+    }
+};
+
+// Get the public name of a principal
+export const getPrincipalName = async (identity, principal) => {
+    if (!identity || !principal) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const response = await actor.get_principal_name(
+            typeof principal === 'string' ? Principal.fromText(principal) : principal
+        );
+        return response;
+    } catch (error) {
+        console.error('Error getting principal name:', error);
+        return null;
+    }
+};
+
+// Get your private nickname for a principal
+export const getPrincipalNickname = async (identity, principal) => {
+    if (!identity || !principal) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const response = await actor.get_principal_nickname(
+            typeof principal === 'string' ? Principal.fromText(principal) : principal
+        );
+        return response;
+    } catch (error) {
+        console.error('Error getting principal nickname:', error);
+        return null;
+    }
+};
+
+// Get all principal names
+export const getAllPrincipalNames = async (identity) => {
+    if (!identity) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const response = await actor.get_all_principal_names();
+        return response;
+    } catch (error) {
+        console.error('Error getting all principal names:', error);
+        return null;
+    }
+};
+
+// Get all principal nicknames for the current user
+export const getAllPrincipalNicknames = async (identity) => {
+    if (!identity) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const response = await actor.get_all_principal_nicknames();
+        return response;
+    } catch (error) {
+        console.error('Error getting all principal nicknames:', error);
+        return null;
+    }
 }; 
