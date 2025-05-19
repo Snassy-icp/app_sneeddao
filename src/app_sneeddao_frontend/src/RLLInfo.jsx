@@ -2798,14 +2798,19 @@ function RLLInfo() {
                                         <div style={styles.spinner} />
                                     </div>
                                 ) : (
-                                    <div style={{ fontSize: '1.6em', fontWeight: 'bold' }}>
-                                        ${formatUSD(
-                                            getTotalIcpUSDValue() +      // All ICP including Other Positions
-                                            getTotalSneedUSDValue() +    // All SNEED
-                                            getOtherPositionsNonIcpUSDTotal() + // Non-ICP values from Other Positions
-                                            getOtherTokensUSDTotal()     // Other tokens
-                                        )}
-                                    </div>
+                                    <>
+                                        <div style={{ fontSize: '1.6em', fontWeight: 'bold' }}>
+                                            ${formatUSD(
+                                                getTotalIcpUSDValue() +      // All ICP including Other Positions
+                                                getTotalSneedUSDValue() +    // All SNEED
+                                                getOtherPositionsNonIcpUSDTotal() + // Non-ICP values from Other Positions
+                                                getOtherTokensUSDTotal()     // Other tokens
+                                            )}
+                                        </div>
+                                        <div style={{ fontSize: '1.2em', color: '#888', marginTop: '5px' }}>
+                                            ≈ {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
+                                        </div>
+                                    </>
                                 )}
                             </div>
 
