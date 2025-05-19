@@ -2893,7 +2893,7 @@ function RLLInfo() {
                                     <div style={{ fontSize: '1.2em' }}>
                                         ${formatUSD(getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal())}
                                         <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
-                                            ≈ {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
+                                            {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
                                     </div>
                                 </div>
@@ -2903,7 +2903,7 @@ function RLLInfo() {
                                     <div style={{ fontSize: '1.2em' }}>
                                         ${formatUSD(getNAVUSDValue())}
                                         <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
-                                            ≈ {(getNAVUSDValue() / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
+                                            {(getNAVUSDValue() / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
                                     </div>
                                 </div>
