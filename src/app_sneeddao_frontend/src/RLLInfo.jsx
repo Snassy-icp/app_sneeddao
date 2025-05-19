@@ -2896,7 +2896,16 @@ function RLLInfo() {
                                             {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
                                         <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
-                                            FDV/GAV: {(getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) || 1)).toFixed(2)}x
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                FDV/GAV:
+                                                <span 
+                                                    style={styles.infoIcon} 
+                                                    title="Fully Diluted Valuation: current token price × maximum supply (issued + unissued/unlocked tokens). Indicates market's valuation if all tokens were in circulation. A high FDV versus circulating cap flags dilution risk from future unlocks, whereas FDV close to current cap implies minimal upcoming supply pressure."
+                                                >
+                                                    i
+                                                </span>
+                                            </span>
+                                            {(getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) || 1)).toFixed(2)}x
                                         </div>
                                     </div>
                                 </div>
