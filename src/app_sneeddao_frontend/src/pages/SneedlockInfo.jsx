@@ -12,7 +12,8 @@ import { Principal } from '@dfinity/principal';
 function SneedlockInfo() {
     const { identity } = useAuth();
     const [tokenData, setTokenData] = useState({});
-    const [loading, setLoading] = useState(true);
+    const [initialLoading, setInitialLoading] = useState(true);
+    const [metadataLoading, setMetadataLoading] = useState(true);
     const [tokenMetadata, setTokenMetadata] = useState({});
 
     // Cache for swap canister data
@@ -67,15 +68,14 @@ function SneedlockInfo() {
     }
 
     const fetchData = async () => {
-        setLoading(true);
+        setInitialLoading(true);
         try {
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
-            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
-console.log("Fetching all locks");            
+            
             // Fetch all locks first to know which tokens we need metadata for
             const allTokenLocks = await sneedLockActor.get_all_token_locks();
             const allPositionLocks = await sneedLockActor.get_all_position_locks();
-console.log("DONE");
+
             // Aggregate token locks by token type
             const aggregatedData = {};
 
@@ -96,6 +96,13 @@ console.log("DONE");
                 aggregatedData[tokenKey].tokenLockAmount += amount;
             }
 
+            // Update state with initial data
+            setTokenData(aggregatedData);
+            setInitialLoading(false);
+
+            // Start loading metadata and positions in the background
+            setMetadataLoading(true);
+
             // Process position locks
             for (const lock of allPositionLocks) {
                 const swapCanisterId = lock[1];
@@ -108,36 +115,44 @@ console.log("DONE");
                 if (!canisterData.error) {
                     const matchingPosition = canisterData.positions.find(p => p.id === positionId);
                     if (matchingPosition) {
-                        // Add token0 amount
-                        const token0Key = token0.toText();
-                        if (!aggregatedData[token0Key]) {
-                            aggregatedData[token0Key] = {
-                                tokenId: token0,
-                                tokenLockAmount: 0n,
-                                positionLockAmount: 0n,
-                                positionsLoading: false
-                            };
-                        }
-                        aggregatedData[token0Key].positionLockAmount += BigInt(matchingPosition.token0Amount);
+                        setTokenData(prevData => {
+                            const newData = { ...prevData };
+                            
+                            // Add token0 amount
+                            const token0Key = token0.toText();
+                            if (!newData[token0Key]) {
+                                newData[token0Key] = {
+                                    tokenId: token0,
+                                    tokenLockAmount: 0n,
+                                    positionLockAmount: 0n,
+                                    positionsLoading: false
+                                };
+                            }
+                            newData[token0Key].positionLockAmount = (newData[token0Key].positionLockAmount || 0n) + BigInt(matchingPosition.token0Amount);
+                            newData[token0Key].positionsLoading = false;
 
-                        // Add token1 amount
-                        const token1Key = token1.toText();
-                        if (!aggregatedData[token1Key]) {
-                            aggregatedData[token1Key] = {
-                                tokenId: token1,
-                                tokenLockAmount: 0n,
-                                positionLockAmount: 0n,
-                                positionsLoading: false
-                            };
-                        }
-                        aggregatedData[token1Key].positionLockAmount += BigInt(matchingPosition.token1Amount);
+                            // Add token1 amount
+                            const token1Key = token1.toText();
+                            if (!newData[token1Key]) {
+                                newData[token1Key] = {
+                                    tokenId: token1,
+                                    tokenLockAmount: 0n,
+                                    positionLockAmount: 0n,
+                                    positionsLoading: false
+                                };
+                            }
+                            newData[token1Key].positionLockAmount = (newData[token1Key].positionLockAmount || 0n) + BigInt(matchingPosition.token1Amount);
+                            newData[token1Key].positionsLoading = false;
+
+                            return newData;
+                        });
                     }
                 }
             }
 
             // Now fetch whitelisted tokens and only process the ones we need
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             const whitelistedTokens = await backendActor.get_whitelisted_tokens();
-            const metadata = {};
             
             // Create a map for faster lookup
             const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [token.ledger_id.toText(), token]));
@@ -151,24 +166,26 @@ console.log("DONE");
                         const tokenMetadata = await ledgerActor.icrc1_metadata();
                         const logo = getTokenLogo(tokenMetadata);
                         
-                        metadata[tokenKey] = {
-                            ...whitelistedToken,
-                            logo
-                        };
+                        setTokenMetadata(prev => ({
+                            ...prev,
+                            [tokenKey]: {
+                                ...whitelistedToken,
+                                logo
+                            }
+                        }));
                     } catch (error) {
                         console.error(`Error fetching metadata for token ${tokenKey}:`, error);
-                        metadata[tokenKey] = whitelistedToken;
+                        setTokenMetadata(prev => ({
+                            ...prev,
+                            [tokenKey]: whitelistedToken
+                        }));
                     }
                 }
             }
 
-            // Update state
-            setTokenMetadata(metadata);
-            setTokenData(aggregatedData);
+            setMetadataLoading(false);
         } catch (error) {
             console.error('Error fetching data:', error);
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -178,69 +195,82 @@ console.log("DONE");
         }
     }, [identity]);
 
+    if (initialLoading) {
+        return (
+            <div className='page-container'>
+                <Header />
+                <main className="wallet-container">
+                    <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>SneedLock Info</h1>
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
+                        <div className="spinner"></div>
+                    </div>
+                </main>
+            </div>
+        );
+    }
+
     return (
         <div className='page-container'>
             <Header />
             <main className="wallet-container">
-                <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>SneedLock Info</h1>
+                <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>
+                    SneedLock Info
+                    {metadataLoading && (
+                        <div className="spinner" style={{ width: '16px', height: '16px', display: 'inline-block', marginLeft: '10px', verticalAlign: 'middle' }} />
+                    )}
+                </h1>
                 
-                {loading ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-                        <div className="spinner"></div>
-                    </div>
-                ) : (
-                    <div style={{ backgroundColor: '#2a2a2a', borderRadius: '8px', padding: '20px' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                                    <th style={{ padding: '10px', textAlign: 'left', color: '#888' }}>Token</th>
-                                    <th style={{ padding: '10px', textAlign: 'right', color: '#888' }}>Token Locks</th>
-                                    <th style={{ padding: '10px', textAlign: 'right', color: '#888' }}>Position Locks</th>
-                                    <th style={{ padding: '10px', textAlign: 'right', color: '#888' }}>Total Locked</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {Object.entries(tokenData).map(([tokenKey, data]) => {
-                                    const token = tokenMetadata[tokenKey];
-                                    return (
-                                        <tr 
-                                            key={tokenKey}
-                                            style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-                                        >
-                                            <td style={{ padding: '10px', color: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                {token?.logo && (
-                                                    <img 
-                                                        src={token.logo} 
-                                                        alt={token?.symbol || tokenKey} 
-                                                        style={{ width: '24px', height: '24px', borderRadius: '50%' }}
-                                                    />
-                                                )}
-                                                {token?.symbol || tokenKey}
-                                            </td>
-                                            <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
-                                                {formatAmount(data.tokenLockAmount, token?.decimals || 8)}
-                                            </td>
-                                            <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
-                                                {data.positionsLoading ? (
-                                                    <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
-                                                ) : (
-                                                    formatAmount(data.positionLockAmount, token?.decimals || 8)
-                                                )}
-                                            </td>
-                                            <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
-                                                {data.positionsLoading ? (
-                                                    <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
-                                                ) : (
-                                                    formatAmount(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8)
-                                                )}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                <div style={{ backgroundColor: '#2a2a2a', borderRadius: '8px', padding: '20px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                <th style={{ padding: '10px', textAlign: 'left', color: '#888' }}>Token</th>
+                                <th style={{ padding: '10px', textAlign: 'right', color: '#888' }}>Token Locks</th>
+                                <th style={{ padding: '10px', textAlign: 'right', color: '#888' }}>Position Locks</th>
+                                <th style={{ padding: '10px', textAlign: 'right', color: '#888' }}>Total Locked</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {Object.entries(tokenData).map(([tokenKey, data]) => {
+                                const token = tokenMetadata[tokenKey];
+                                return (
+                                    <tr 
+                                        key={tokenKey}
+                                        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                                    >
+                                        <td style={{ padding: '10px', color: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            {token?.logo && (
+                                                <img 
+                                                    src={token.logo} 
+                                                    alt={token?.symbol || tokenKey} 
+                                                    style={{ width: '24px', height: '24px', borderRadius: '50%' }}
+                                                />
+                                            )}
+                                            {token?.symbol || tokenKey}
+                                        </td>
+                                        <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
+                                            {formatAmount(data.tokenLockAmount, token?.decimals || 8)}
+                                        </td>
+                                        <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
+                                            {data.positionsLoading ? (
+                                                <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
+                                            ) : (
+                                                formatAmount(data.positionLockAmount, token?.decimals || 8)
+                                            )}
+                                        </td>
+                                        <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
+                                            {data.positionsLoading ? (
+                                                <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
+                                            ) : (
+                                                formatAmount(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8)
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </main>
         </div>
     );
