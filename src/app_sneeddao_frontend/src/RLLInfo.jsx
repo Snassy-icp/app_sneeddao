@@ -2904,16 +2904,15 @@ function RLLInfo() {
                                             {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
                                         <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                FDV/GAV:
-                                                {(getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) || 1)).toFixed(2)}x
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <span>FDV/GAV: {(getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) || 1)).toFixed(2)}x</span>
                                                 <span 
                                                     style={styles.infoIcon} 
                                                     title="FDV/GAV: fully-diluted valuation divided by gross asset value. > 1 means the market values all tokens (including future unlocks) above the DAO's total treasury size—warning of dilution risk and potential sell-pressure when vesting begins. < 1 indicates a discount to on-chain assets, hinting at latent upside in self-held token reserves."
                                                 >
                                                     i
                                                 </span>
-                                            </span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -2934,16 +2933,15 @@ function RLLInfo() {
                                             {(getNAVUSDValue() / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
                                         <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                P/NAV:
-                                                {(getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)).toFixed(2)}x
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <span>P/NAV: {(getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)).toFixed(2)}x</span>
                                                 <span 
                                                     style={styles.infoIcon} 
                                                     title="Price-to-NAV: circulating market cap divided by DAO NAV. Compares market valuation to net backing per token. A P/NAV < 1 suggests the DAO is undervalued relative to its collateral (potential upside), while > 1 shows a premium; divergences highlight where market sentiment departs from on-chain asset coverage."
                                                 >
                                                     i
                                                 </span>
-                                            </span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
