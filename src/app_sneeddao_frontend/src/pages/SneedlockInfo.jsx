@@ -778,21 +778,24 @@ function SneedlockInfo() {
                                                 {data.tokenLocks.map(lock => (
                                                     <tr key={`token-${lock.id}`} style={{ backgroundColor: '#222' }}>
                                                         <td colSpan="4" style={{ padding: '8px 40px' }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.9em' }}>
-                                                                <div>
-                                                                    <span style={{ color: '#666' }}>Token Lock</span>{' '}
-                                                                    <a 
-                                                                        href={`/tokenlock?ledger=${token?.ledger_id || ''}&locks=${lock.lockId?.toString() || ''}`}
-                                                                        style={{ 
-                                                                            color: '#888',
-                                                                            textDecoration: 'none',
-                                                                            ':hover': {
-                                                                                textDecoration: 'underline'
-                                                                            }
-                                                                        }}
-                                                                    >
-                                                                        #{lock.lockId?.toString() || 'Unknown'}
-                                                                    </a>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.9em', alignItems: 'center' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <img src="sneedlock-logo1.png" alt="SneedLock" style={{ width: '24px', height: '24px' }} />
+                                                                    <div>
+                                                                        <span style={{ color: '#666' }}>Token Lock</span>{' '}
+                                                                        <a 
+                                                                            href={`/tokenlock?ledger=${token?.ledger_id || ''}&locks=${lock.lockId?.toString() || ''}`}
+                                                                            style={{ 
+                                                                                color: '#888',
+                                                                                textDecoration: 'none',
+                                                                                ':hover': {
+                                                                                    textDecoration: 'underline'
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            #{lock.lockId?.toString() || 'Unknown'}
+                                                                        </a>
+                                                                    </div>
                                                                 </div>
                                                                 <div>
                                                                     Amount: {formatAmount(lock.amount, token?.decimals || 8)}{' '}
@@ -836,21 +839,24 @@ function SneedlockInfo() {
                                                 {data.positionLocks.map(lock => (
                                                     <tr key={`position-${lock.id}`} style={{ backgroundColor: '#222' }}>
                                                         <td colSpan="4" style={{ padding: '8px 40px' }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.9em' }}>
-                                                                <div>
-                                                                    <span style={{ color: '#666' }}>Position Lock</span>{' '}
-                                                                    <a 
-                                                                        href={`/positionlock?swap=${lock.swapCanisterId?.toString() || ''}&positions=${lock.positionId?.toString() || ''}`}
-                                                                        style={{ 
-                                                                            color: '#888',
-                                                                            textDecoration: 'none',
-                                                                            ':hover': {
-                                                                                textDecoration: 'underline'
-                                                                            }
-                                                                        }}
-                                                                    >
-                                                                        #{lock.positionId?.toString() || 'Unknown'}
-                                                                    </a>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.9em', alignItems: 'center' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <img src="sneedlock-logo1.png" alt="SneedLock" style={{ width: '24px', height: '24px' }} />
+                                                                    <div>
+                                                                        <span style={{ color: '#666' }}>Position Lock</span>{' '}
+                                                                        <a 
+                                                                            href={`/positionlock?swap=${lock.swapCanisterId}&positions=${lock.positionId}`}
+                                                                            style={{ 
+                                                                                color: '#888',
+                                                                                textDecoration: 'none',
+                                                                                ':hover': {
+                                                                                    textDecoration: 'underline'
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            #{lock.positionId?.toString() || 'Unknown'}
+                                                                        </a>
+                                                                    </div>
                                                                 </div>
                                                                 <div>
                                                                     Swap: {lock.swapCanisterId?.toString() || 'Unknown'}
