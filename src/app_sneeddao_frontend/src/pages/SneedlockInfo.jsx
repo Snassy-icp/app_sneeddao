@@ -81,19 +81,36 @@ function SneedlockInfo() {
     };
 
     const formatTimestamp = (timestamp) => {
-        // Convert nanoseconds to milliseconds and handle BigInt
-        const milliseconds = typeof timestamp === 'bigint' ? 
-            Number(timestamp / BigInt(1000000)) : 
-            Number(timestamp) / 1000000;
+        if (!timestamp) return "Never";
         
-        const date = new Date(milliseconds);
-        
-        // Return "Never" if the date is too far in the future (essentially no expiration)
-        if (date.getFullYear() > 2100) {
-            return "Never";
+        try {
+            // For token locks, the field is named 'expiry'
+            // For position locks, we need to handle both 'expiry' and 'expiration'
+            const actualTimestamp = typeof timestamp === 'object' && timestamp.expiry ? 
+                timestamp.expiry : timestamp;
+
+            // Convert BigInt to string to avoid precision loss
+            const timestampStr = actualTimestamp.toString();
+            // Convert nanoseconds to milliseconds
+            const milliseconds = Number(timestampStr) / 1_000_000;
+            
+            const date = new Date(milliseconds);
+            
+            // Check if date is valid
+            if (isNaN(date.getTime())) {
+                return "Never";
+            }
+            
+            // Check if it's effectively "never" (far future date)
+            if (date.getFullYear() > 2100) {
+                return "Never";
+            }
+            
+            return date.toLocaleString();
+        } catch (error) {
+            console.error("Error formatting timestamp:", error);
+            return "Invalid Date";
         }
-        
-        return date.toLocaleString();
     };
 
     const fetchData = async () => {
@@ -118,7 +135,7 @@ function SneedlockInfo() {
                 const lockDetails = {
                     id: lock[0],  // Lock ID
                     amount: amount,
-                    expiration: lock[2].expiration,
+                    expiry: lock[2].expiration,
                     owner: lock[2].owner
                 };
 
@@ -233,7 +250,7 @@ function SneedlockInfo() {
                 const token0 = lock[2].token0;
                 const token1 = lock[2].token1;
                 const lockId = lock[0];
-                const expiration = lock[2].expiration;
+                const expiry = lock[2].expiry;
                 const owner = lock[2].owner;
 
                 // Fetch position details
@@ -267,7 +284,7 @@ function SneedlockInfo() {
                                 positionId,
                                 swapCanisterId,
                                 amount: token0Amount,
-                                expiration,
+                                expiry,
                                 owner,
                                 otherToken: token1,
                                 otherAmount: BigInt(matchingPosition.token1Amount)
@@ -296,7 +313,7 @@ function SneedlockInfo() {
                                 positionId,
                                 swapCanisterId,
                                 amount: token1Amount,
-                                expiration,
+                                expiry,
                                 owner,
                                 otherToken: token0,
                                 otherAmount: BigInt(matchingPosition.token0Amount)
@@ -471,7 +488,7 @@ function SneedlockInfo() {
                                                                     Amount: {formatAmount(lock.amount, token?.decimals || 8)}
                                                                 </div>
                                                                 <div>
-                                                                    Expires: {formatTimestamp(lock.expiration || 0)}
+                                                                    Expires: {formatTimestamp(lock.expiry)}
                                                                 </div>
                                                                 <div style={{ opacity: 0.7 }}>
                                                                     Owner: {lock.owner?.toString() || 'Unknown'}
@@ -500,7 +517,7 @@ function SneedlockInfo() {
                                                                     </div>
                                                                 </div>
                                                                 <div>
-                                                                    Expires: {formatTimestamp(lock.expiration)}
+                                                                    Expires: {formatTimestamp(lock.expiry)}
                                                                 </div>
                                                                 <div style={{ opacity: 0.7 }}>
                                                                     Owner: {lock.owner?.toString() || 'Unknown'}
