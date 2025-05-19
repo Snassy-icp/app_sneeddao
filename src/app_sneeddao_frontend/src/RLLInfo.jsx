@@ -2808,7 +2808,7 @@ function RLLInfo() {
                                             )}
                                         </div>
                                         <div style={{ fontSize: '1.2em', color: '#888', marginTop: '5px' }}>
-                                            ≈ {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
+                                            {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
                                     </>
                                 )}
