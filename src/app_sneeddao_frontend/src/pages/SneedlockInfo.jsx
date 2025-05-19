@@ -76,6 +76,8 @@ function SneedlockInfo() {
             const allTokenLocks = await sneedLockActor.get_all_token_locks();
             const allPositionLocks = await sneedLockActor.get_all_position_locks();
 
+            console.log("All token locks fetched", allTokenLocks);
+            console.log("All position locks fetched", allPositionLocks);
             // Aggregate token locks by token type
             const aggregatedData = {};
 
@@ -90,10 +92,13 @@ function SneedlockInfo() {
                         tokenId,
                         tokenLockAmount: 0n,
                         positionLockAmount: 0n,
+                        tokenLockCount: 0,
+                        positionLockCount: 0,
                         positionsLoading: true
                     };
                 }
                 aggregatedData[tokenKey].tokenLockAmount += amount;
+                aggregatedData[tokenKey].tokenLockCount += 1;
             }
 
             // Update state with initial data
@@ -125,10 +130,13 @@ function SneedlockInfo() {
                                     tokenId: token0,
                                     tokenLockAmount: 0n,
                                     positionLockAmount: 0n,
+                                    tokenLockCount: 0,
+                                    positionLockCount: 0,
                                     positionsLoading: false
                                 };
                             }
                             newData[token0Key].positionLockAmount = (newData[token0Key].positionLockAmount || 0n) + BigInt(matchingPosition.token0Amount);
+                            newData[token0Key].positionLockCount += 1;
                             newData[token0Key].positionsLoading = false;
 
                             // Add token1 amount
@@ -138,10 +146,13 @@ function SneedlockInfo() {
                                     tokenId: token1,
                                     tokenLockAmount: 0n,
                                     positionLockAmount: 0n,
+                                    tokenLockCount: 0,
+                                    positionLockCount: 0,
                                     positionsLoading: false
                                 };
                             }
                             newData[token1Key].positionLockAmount = (newData[token1Key].positionLockAmount || 0n) + BigInt(matchingPosition.token1Amount);
+                            newData[token1Key].positionLockCount += 1;
                             newData[token1Key].positionsLoading = false;
 
                             return newData;
@@ -250,19 +261,32 @@ function SneedlockInfo() {
                                         </td>
                                         <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
                                             {formatAmount(data.tokenLockAmount, token?.decimals || 8)}
+                                            <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
+                                                {data.tokenLockCount} lock{data.tokenLockCount !== 1 ? 's' : ''}
+                                            </div>
                                         </td>
                                         <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
                                             {data.positionsLoading ? (
                                                 <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
                                             ) : (
-                                                formatAmount(data.positionLockAmount, token?.decimals || 8)
+                                                <>
+                                                    {formatAmount(data.positionLockAmount, token?.decimals || 8)}
+                                                    <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
+                                                        {data.positionLockCount} position{data.positionLockCount !== 1 ? 's' : ''}
+                                                    </div>
+                                                </>
                                             )}
                                         </td>
                                         <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
                                             {data.positionsLoading ? (
                                                 <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
                                             ) : (
-                                                formatAmount(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8)
+                                                <>
+                                                    {formatAmount(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8)}
+                                                    <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
+                                                        {data.tokenLockCount + data.positionLockCount} total lock{data.tokenLockCount + data.positionLockCount !== 1 ? 's' : ''}
+                                                    </div>
+                                                </>
                                             )}
                                         </td>
                                     </tr>
