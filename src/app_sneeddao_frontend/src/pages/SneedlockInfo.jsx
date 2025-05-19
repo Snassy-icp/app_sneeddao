@@ -529,18 +529,14 @@ function SneedlockInfo() {
                 <Header />
                 <main className="wallet-container">
                     <div style={{ 
-                        padding: '60px 0 40px',
+                        padding: '20px 0',
                         textAlign: 'center'
                     }}>
-                        <h1 style={{ 
-                            color: '#ffffff',
-                            fontSize: '32px',
-                            fontWeight: '500',
-                            letterSpacing: '0.5px',
-                            marginBottom: '0'
-                        }}>
-                            SneedLock Info
-                        </h1>
+                        <img 
+                            src="/sneedlock-logo-cropped.png" 
+                            alt="SneedLock" 
+                            style={{ height: '48px', width: 'auto' }}
+                        />
                     </div>
                 </main>
             </div>
@@ -552,23 +548,22 @@ function SneedlockInfo() {
             <Header />
             <main className="wallet-container">
                 <div style={{ 
-                    padding: '60px 0 40px',
+                    padding: '20px 0',
                     borderBottom: '1px solid rgba(255,255,255,0.1)',
-                    marginBottom: '40px'
+                    marginBottom: '20px'
                 }}>
-                    <h1 style={{ 
-                        color: '#ffffff',
-                        fontSize: '32px',
-                        fontWeight: '500',
-                        letterSpacing: '0.5px',
-                        marginBottom: '24px',
-                        textAlign: 'center'
-                    }}>
-                        SneedLock Info
-                    </h1>
                     <div style={{
                         textAlign: 'center'
                     }}>
+                        <img 
+                            src="/sneedlock-logo-cropped.png" 
+                            alt="SneedLock" 
+                            style={{ 
+                                height: '48px', 
+                                width: 'auto',
+                                marginBottom: '16px'
+                            }}
+                        />
                         <div style={{ color: '#888', fontSize: '14px', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '8px' }}>
                             Total Value Locked
                         </div>
