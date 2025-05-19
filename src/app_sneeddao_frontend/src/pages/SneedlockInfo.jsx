@@ -529,7 +529,7 @@ function SneedlockInfo() {
     if (initialLoading) {
         return (
             <div className='page-container'>
-                <Header />
+                <Header customLogo="/sneedlock-logo-cropped.png" />
                 <main className="wallet-container">
                     <div style={{ 
                         padding: '20px 0',
@@ -548,7 +548,7 @@ function SneedlockInfo() {
 
     return (
         <div className='page-container'>
-            <Header />
+            <Header customLogo="/sneedlock-logo-cropped.png" />
             <main className="wallet-container">
                 <div style={{ 
                     padding: '20px 0',

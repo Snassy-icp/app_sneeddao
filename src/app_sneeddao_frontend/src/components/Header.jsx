@@ -6,7 +6,7 @@ import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
 import SnsDropdown from './SnsDropdown';
 
-function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
+function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const location = useLocation();
     const navigate = useNavigate();
     const { isAuthenticated, identity, login, logout } = useAuth();
@@ -110,8 +110,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
         <header className="site-header">
             <div style={{ display: 'flex', alignItems: 'flex-start', flex: 1, gap: '15px' }}>
                 <img
-                    src="sneed_logo.png"
-                    alt="Sneed Logo"
+                    src={customLogo || "sneed_logo.png"}
+                    alt={customLogo ? "Logo" : "Sneed Logo"}
                     onClick={handleLogoClick}
                     style={{
                         width: '52px',
@@ -206,8 +206,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange }) {
                     <SnsDropdown onSnsChange={onSnsChange} />
                 ) : (
                     <img
-                        src="sneed_logo.png"
-                        alt="Sneed Logo"
+                        src={customLogo || "sneed_logo.png"}
+                        alt={customLogo ? "Logo" : "Sneed Logo"}
                         style={{
                             width: '32px',
                             height: '32px',
