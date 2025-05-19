@@ -2944,7 +2944,7 @@ function RLLInfo() {
                                         Net-to-Gross Alignment Ratio (NGAR):
                                         <span 
                                             style={styles.infoIcon} 
-                                            title="Ratio between P/NAV and FDV/GAV, indicating the alignment between net and gross valuations"
+                                            title="NGAR: (P/NAV) ÷ (FDV/GAV). Measures how closely net-backing valuation and fully-diluted market value move together. A ratio near 1 signals alignment—few hidden reserves or looming unlocks; < 1 implies untapped upside in treasury tokens; > 1 warns of heavy future dilution compared to current backing."
                                         >
                                             i
                                         </span>
