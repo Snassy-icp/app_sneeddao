@@ -2879,33 +2879,34 @@ function RLLInfo() {
                                 marginBottom: '20px'
                             }}>
                                 <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    Total Value (GAV)
+                                    Total Value
                                     <span 
                                         style={styles.infoIcon} 
-                                        title="Gross Asset Value (GAV) - Combined USD value of all DAO assets, including ICP, SNEED holdings (including treasury SNEED), and other tokens across all protocols and positions"
+                                        title="Total value of all DAO assets. GAV includes SNEED holdings in treasury, while NAV excludes them to avoid circular valuation."
                                     >
                                         i
                                     </span>
                                 </h3>
-                                {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
-                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
-                                        <div style={styles.spinner} />
+                                {/* GAV Section */}
+                                <div style={{ marginBottom: '15px' }}>
+                                    <div style={{ color: '#888', marginBottom: '5px' }}>Gross Asset Value (GAV):</div>
+                                    <div style={{ fontSize: '1.2em' }}>
+                                        ${formatUSD(getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal())}
+                                        <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
+                                            ≈ {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
+                                        </div>
                                     </div>
-                                ) : (
-                                    <>
-                                        <div style={{ fontSize: '1.6em', fontWeight: 'bold' }}>
-                                            ${formatUSD(
-                                                getTotalIcpUSDValue() +      // All ICP including Other Positions
-                                                getTotalSneedUSDValue() +    // All SNEED
-                                                getOtherPositionsNonIcpUSDTotal() + // Non-ICP values from Other Positions
-                                                getOtherTokensUSDTotal()     // Other tokens
-                                            )}
+                                </div>
+                                {/* NAV Section */}
+                                <div>
+                                    <div style={{ color: '#888', marginBottom: '5px' }}>Net Asset Value (NAV):</div>
+                                    <div style={{ fontSize: '1.2em' }}>
+                                        ${formatUSD(getNAVUSDValue())}
+                                        <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
+                                            ≈ {(getNAVUSDValue() / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
-                                        <div style={{ fontSize: '1.2em', color: '#888', marginTop: '5px' }}>
-                                            {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
-                                        </div>
-                                    </>
-                                )}
+                                    </div>
+                                </div>
                             </div>
 
                             {/* NAV Card */}
