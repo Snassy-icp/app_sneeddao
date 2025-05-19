@@ -2715,6 +2715,16 @@ function RLLInfo() {
                getUSDValue(defiBalances.sneed, 8, 'SNEED');
     };
 
+    // Calculate NAV (excluding treasury SNEED)
+    const getNAVUSDValue = () => {
+        return getTotalIcpUSDValue() +      // All ICP including Other Positions
+               getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +  // LP SNEED
+               getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED') +   // Unclaimed LP SNEED
+               getUSDValue(defiBalances.sneed, 8, 'SNEED') +               // DeFi SNEED
+               getOtherPositionsNonIcpUSDTotal() +  // Non-ICP values from Other Positions
+               getOtherTokensUSDTotal();     // Other tokens
+    };
+
     return (
         <div className='page-container'>
             <Header />
@@ -2809,6 +2819,39 @@ function RLLInfo() {
                                         </div>
                                         <div style={{ fontSize: '1.2em', color: '#888', marginTop: '5px' }}>
                                             {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsNonIcpUSDTotal() + getOtherTokensUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* NAV Card */}
+                            <div style={{
+                                backgroundColor: '#1a1a1a',
+                                padding: '20px',
+                                borderRadius: '6px',
+                                border: '1px solid #9b59b6',
+                                marginBottom: '20px'
+                            }}>
+                                <h3 style={{ color: '#9b59b6', marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    Total Value (NAV)
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="Net Asset Value (NAV) - Combined USD value of all DAO assets excluding SNEED holdings in treasury. This represents the DAO's value without counting its own token holdings."
+                                    >
+                                        i
+                                    </span>
+                                </h3>
+                                {isLoadingBalances || isLoadingNeuron || isLoadingLp ? (
+                                    <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                                        <div style={styles.spinner} />
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div style={{ fontSize: '1.6em', fontWeight: 'bold' }}>
+                                            ${formatUSD(getNAVUSDValue())}
+                                        </div>
+                                        <div style={{ fontSize: '1.2em', color: '#888', marginTop: '5px' }}>
+                                            {(getNAVUSDValue() / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
                                     </>
                                 )}
