@@ -516,7 +516,7 @@ function SneedlockInfo() {
             <Header />
             <main className="wallet-container">
                 <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>
-                    SneedLock Info
+                    SneedLock Dashboard
                     {metadataLoading && (
                         <div className="spinner" style={{ width: '16px', height: '16px', display: 'inline-block', marginLeft: '10px', verticalAlign: 'middle' }} />
                     )}
