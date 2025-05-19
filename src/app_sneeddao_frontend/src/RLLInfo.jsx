@@ -2015,21 +2015,6 @@ function RLLInfo() {
                         </div>
                     </>
                 )}
-                <div style={{ marginTop: '8px' }}>
-                    <div style={{ marginBottom: '4px' }}>Billing:</div>
-                    <div style={styles.statusItem}>
-                        <span>Balance:</span>
-                        <span>{(Number(info.billing?.balance_e8s || 0) / 1e8).toFixed(8)} ICP</span>
-                    </div>
-                    <div style={styles.statusItem}>
-                        <span>Status:</span>
-                        <span>{info.billing?.status || 'Unknown'}</span>
-                    </div>
-                    <div style={styles.statusItem}>
-                        <span>Cost per day:</span>
-                        <span>{(Number(info.billing?.cost_per_day_e8s || 0) / 1e8).toFixed(8)} ICP</span>
-                    </div>
-                </div>
                 {/* Sources */}
                 {info.sources && info.sources.length > 0 && (
                     <div style={{ marginTop: '8px' }}>
