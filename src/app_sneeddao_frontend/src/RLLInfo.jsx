@@ -2895,6 +2895,9 @@ function RLLInfo() {
                                         <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
                                             {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
+                                        <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
+                                            FDV/GAV: {(getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) || 1)).toFixed(2)}x
+                                        </div>
                                     </div>
                                 </div>
                                 {/* NAV Section */}
@@ -2989,6 +2992,15 @@ function RLLInfo() {
                                             <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Total Value Locked (TVL):</div>
                                             <div style={{ fontSize: '1.2em', fontWeight: 'bold' }}>
                                                 ${formatUSD(getTVL())}
+                                            </div>
+                                            <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                TVL/MCap: {(getTVL() / (getUSDValue(getCirculatingSupply(), 8, 'SNEED') || 1)).toFixed(2)}x
+                                                <span 
+                                                    style={styles.infoIcon} 
+                                                    title="Indicates how much of the token's market value is locked, affecting sell pressure."
+                                                >
+                                                    i
+                                                </span>
                                             </div>
                                         </div>
 
