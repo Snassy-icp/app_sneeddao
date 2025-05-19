@@ -161,7 +161,8 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
                             fontWeight: 'bold',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '4px'
+                            gap: '4px',
+                            color: principalColor
                         }
                     },
                     formatted.name,
@@ -169,7 +170,9 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
                         {
                             style: {
                                 fontSize: '14px',
-                                cursor: 'help'
+                                cursor: 'help',
+                                color: '#2ecc71',
+                                marginLeft: '2px'
                             },
                             title: "Verified name"
                         },
@@ -181,7 +184,7 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
                     {
                         style: {
                             fontStyle: 'italic',
-                            color: '#95a5a6'
+                            color: principalColor
                         }
                     },
                     formatted.nickname
@@ -190,7 +193,8 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
                     {
                         style: {
                             marginLeft: '4px',
-                            color: '#888'
+                            color: principalColor,
+                            opacity: 0.7
                         }
                     },
                     `(${formatted.truncatedId})`
