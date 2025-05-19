@@ -67,6 +67,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_ban_log : [BanLogEntry] = [];
   stable var stable_banned_users : [(Principal, Int)] = [];
 
+  // Stable storage for principal names and nicknames
+  stable var stable_principal_names : [(Principal, (Text, Bool))] = [];
+  stable var stable_principal_nicknames : [(Principal, [(Principal, Text)])] = [];
+
   // Runtime hashmaps for neuron names and nicknames
   var neuron_names = HashMap.HashMap<NeuronNameKey, (Text, Bool)>(100, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
     Principal.equal(k1.sns_root_canister_id, k2.sns_root_canister_id) and Blob.equal(k1.neuron_id.id, k2.neuron_id.id)
@@ -93,6 +97,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // Runtime storage for bans
   private var ban_log = Buffer.Buffer<BanLogEntry>(0);
   private var banned_users = HashMap.HashMap<Principal, Int>(0, Principal.equal, Principal.hash);
+
+  // Runtime hashmaps for principal names and nicknames
+  var principal_names = HashMap.HashMap<Principal, (Text, Bool)>(100, Principal.equal, Principal.hash);
+  var principal_nicknames = HashMap.HashMap<Principal, HashMap.HashMap<Principal, Text>>(100, Principal.equal, Principal.hash);
 
   // ephemeral state
   let state : State = object { 
@@ -925,6 +933,196 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     }
   };
 
+  // Principal name management
+  public shared ({ caller }) func set_principal_name(name : Text) : async Result.Result<Text, Text> {
+      if (Principal.isAnonymous(caller)) {
+          return #err("Anonymous caller not allowed");
+      };
+
+      if (is_banned(caller)) {
+          switch (banned_users.get(caller)) {
+              case (?expiry) {
+                  let time_remaining = expiry - Time.now();
+                  if (time_remaining > 0) {
+                      let hours_remaining = Int.abs(time_remaining) / 3600_000_000_000;
+                      return #err("You are banned. Ban expires in " # format_duration(hours_remaining));
+                  } else {
+                      return #err("You are banned"); // This shouldn't happen due to is_banned check
+                  };
+              };
+              case null {
+                  return #err("You are banned"); // This shouldn't happen due to is_banned check
+              };
+          };
+      };
+
+      // Validate name format (unless it's empty)
+      if (name != "") {
+          switch (await* validate_name_text(name)) {
+              case (#ok(valid)) {
+                  if (not valid) {
+                      return #err("Name must be 1-32 characters long and contain only alphanumeric characters, spaces, hyphens, underscores, dots, and apostrophes");
+                  };
+              };
+              case (#err(blacklisted_word, attempted_name)) {
+                  // Ban the user automatically based on ban history
+                  let reason = "Attempted to set principal name containing blacklisted word '" # blacklisted_word # "'. Full attempted name: '" # attempted_name # "'";
+                  ignore await auto_ban_user(this_canister_id(), caller, reason);
+                  return #err("Name contains inappropriate content. You have been banned.");
+              };
+          };
+      };
+
+      // Check name uniqueness (only if setting a new name)
+      if (name != "") {
+          for ((principal, (existing_name, _)) in principal_names.entries()) {
+              if (Text.equal(existing_name, name) and principal != caller) {
+                  return #err("Name is already taken by another principal");
+              };
+          };
+      };
+
+      if (name == "") {
+          // Remove the name if it exists
+          principal_names.delete(caller);
+          return #ok("Successfully removed principal name");
+      } else {
+          // Keep verification status if it exists, otherwise set to false
+          let current_verified = switch (principal_names.get(caller)) {
+              case (?(_, verified)) { verified };
+              case null { false };
+          };
+          
+          principal_names.put(caller, (name, current_verified));
+          return #ok("Successfully set principal name");
+      };
+  };
+
+  public query func get_principal_name(principal : Principal) : async ?(Text, Bool) {
+      principal_names.get(principal)
+  };
+
+  public query func get_all_principal_names() : async [(Principal, (Text, Bool))] {
+      Iter.toArray(principal_names.entries())
+  };
+
+  public shared ({ caller }) func verify_principal_name(principal : Principal) : async Result.Result<Text, Text> {
+      if (not is_admin(caller)) {
+          return #err("Caller is not authorized to verify names");
+      };
+
+      switch (principal_names.get(principal)) {
+          case (?(name, _)) {
+              principal_names.put(principal, (name, true));
+              #ok("Successfully verified principal name")
+          };
+          case null {
+              #err("No name found for this principal")
+          };
+      }
+  };
+
+  public shared ({ caller }) func unverify_principal_name(principal : Principal) : async Result.Result<Text, Text> {
+      if (not is_admin(caller)) {
+          return #err("Caller is not authorized to unverify names");
+      };
+
+      switch (principal_names.get(principal)) {
+          case (?(name, _)) {
+              principal_names.put(principal, (name, false));
+              #ok("Successfully unverified principal name")
+          };
+          case null {
+              #err("No name found for this principal")
+          };
+      }
+  };
+
+  // Principal nickname management
+  public shared ({ caller }) func set_principal_nickname(principal : Principal, nickname : Text) : async Result.Result<Text, Text> {
+      if (Principal.isAnonymous(caller)) {
+          return #err("Anonymous caller not allowed");
+      };
+
+      if (is_banned(caller)) {
+          switch (banned_users.get(caller)) {
+              case (?expiry) {
+                  let time_remaining = expiry - Time.now();
+                  if (time_remaining > 0) {
+                      let hours_remaining = Int.abs(time_remaining) / 3600_000_000_000;
+                      return #err("You are banned. Ban expires in " # format_duration(hours_remaining));
+                  } else {
+                      return #err("You are banned"); // This shouldn't happen due to is_banned check
+                  };
+              };
+              case null {
+                  return #err("You are banned"); // This shouldn't happen due to is_banned check
+              };
+          };
+      };
+
+      // Validate nickname format (unless it's empty)
+      if (nickname != "") {
+          switch (await* validate_name_text(nickname)) {
+              case (#ok(valid)) {
+                  if (not valid) {
+                      return #err("Nickname must be 1-32 characters long and contain only alphanumeric characters, spaces, hyphens, underscores, dots, and apostrophes");
+                  };
+              };
+              case (#err(blacklisted_word, attempted_name)) {
+                  // Ban the user automatically based on ban history
+                  let reason = "Attempted to set principal nickname containing blacklisted word '" # blacklisted_word # "'. Full attempted name: '" # attempted_name # "'";
+                  ignore await auto_ban_user(this_canister_id(), caller, reason);
+                  return #err("Nickname contains inappropriate content. You have been banned.");
+              };
+          };
+      };
+
+      if (nickname == "") {
+          // Get the user's nickname map
+          switch (principal_nicknames.get(caller)) {
+              case (?user_map) {
+                  // Remove the nickname if it exists
+                  user_map.delete(principal);
+              };
+              case null { /* No nicknames map exists, nothing to remove */ };
+          };
+          return #ok("Successfully removed principal nickname");
+      } else {
+          // Get or create the user's nickname map
+          let user_map = switch (principal_nicknames.get(caller)) {
+              case (?existing_map) { existing_map };
+              case null {
+                  let new_map = HashMap.HashMap<Principal, Text>(10, Principal.equal, Principal.hash);
+                  principal_nicknames.put(caller, new_map);
+                  new_map
+              };
+          };
+          
+          // Set the nickname
+          user_map.put(principal, nickname);
+          return #ok("Successfully set principal nickname");
+      };
+  };
+
+  public query ({ caller }) func get_principal_nickname(principal : Principal) : async ?Text {
+      switch (principal_nicknames.get(caller)) {
+          case (?user_nicknames) {
+              user_nicknames.get(principal)
+          };
+          case null { null };
+      }
+  };
+
+  public query ({ caller }) func get_all_principal_nicknames() : async [(Principal, Text)] {
+      switch (principal_nicknames.get(caller)) {
+          case (?user_nicknames) {
+              Iter.toArray(user_nicknames.entries())
+          };
+          case null { [] };
+      }
+  };
+
   // Add after other admin functions
   public shared ({ caller }) func add_blacklisted_word(word: Text) : async Result.Result<(), Text> {
     if (not is_admin(caller)) {
@@ -1057,6 +1255,16 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     // Save ban data
     stable_ban_log := Buffer.toArray(ban_log);
     stable_banned_users := Iter.toArray(banned_users.entries());
+
+    // Save principal names and nicknames to stable storage
+    stable_principal_names := Iter.toArray(principal_names.entries());
+    
+    // Convert nested HashMap to stable format for principal nicknames
+    let principal_nickname_entries = Buffer.Buffer<(Principal, [(Principal, Text)])>(principal_nicknames.size());
+    for ((user, nicknames) in principal_nicknames.entries()) {
+        principal_nickname_entries.add((user, Iter.toArray(nicknames.entries())));
+    };
+    stable_principal_nicknames := Buffer.toArray(principal_nickname_entries);
   };
 
   // initialize ephemeral state and empty stable arrays to save memory
@@ -1127,6 +1335,22 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       );
       stable_ban_log := [];
       stable_banned_users := [];
+
+      // Restore principal names
+      for ((principal, name) in stable_principal_names.vals()) {
+          principal_names.put(principal, name);
+      };
+      stable_principal_names := [];
+
+      // Restore principal nicknames
+      for ((user, nicknames) in stable_principal_nicknames.vals()) {
+          let user_map = HashMap.HashMap<Principal, Text>(10, Principal.equal, Principal.hash);
+          for ((principal, nickname) in nicknames.vals()) {
+              user_map.put(principal, nickname);
+          };
+          principal_nicknames.put(user, user_map);
+      };
+      stable_principal_nicknames := [];
   };
 
 };
