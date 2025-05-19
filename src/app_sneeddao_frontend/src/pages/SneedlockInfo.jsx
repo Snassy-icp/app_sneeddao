@@ -94,11 +94,18 @@ function SneedlockInfo() {
                         positionLockAmount: 0n,
                         tokenLockCount: 0,
                         positionLockCount: 0,
-                        positionsLoading: true
+                        positionsLoading: false  // Initialize as false by default
                     };
                 }
                 aggregatedData[tokenKey].tokenLockAmount += amount;
                 aggregatedData[tokenKey].tokenLockCount += 1;
+            }
+
+            // Create a Set of tokens that appear in position locks
+            const tokensInPositions = new Set();
+            for (const lock of allPositionLocks) {
+                tokensInPositions.add(lock[2].token0.toText());
+                tokensInPositions.add(lock[2].token1.toText());
             }
 
             // Pre-process position locks to create initial entries for all tokens
@@ -115,8 +122,10 @@ function SneedlockInfo() {
                         positionLockAmount: 0n,
                         tokenLockCount: 0,
                         positionLockCount: 0,
-                        positionsLoading: true
+                        positionsLoading: true  // Set to true because this token has positions
                     };
+                } else {
+                    aggregatedData[token0Key].positionsLoading = true;  // Ensure it's set to true if token exists
                 }
                 
                 // Initialize token1 data if not exists
@@ -128,8 +137,10 @@ function SneedlockInfo() {
                         positionLockAmount: 0n,
                         tokenLockCount: 0,
                         positionLockCount: 0,
-                        positionsLoading: true
+                        positionsLoading: true  // Set to true because this token has positions
                     };
+                } else {
+                    aggregatedData[token1Key].positionsLoading = true;  // Ensure it's set to true if token exists
                 }
             }
 
