@@ -135,7 +135,7 @@ function SneedlockInfo() {
                 const lockDetails = {
                     id: lock[0],  // Lock ID
                     amount: amount,
-                    expiry: lock[2].expiration,
+                    expiry: lock[2].expiry,
                     owner: lock[2].owner
                 };
 
