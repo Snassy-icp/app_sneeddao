@@ -9,6 +9,7 @@ import { getTokenLogo, get_token_conversion_rates } from './utils/TokenUtils';
 import PositionCard from './PositionCard';
 import './Wallet.css';
 import { lockFromLocks } from './utils/PositionUtils';
+import Header from './components/Header';
 
 function PositionLock() {
     const [positions, setPositions] = useState([]);
@@ -126,17 +127,8 @@ function PositionLock() {
 
     return (
         <div className='page-container'>
-            <header className="site-header">
-                <div className="logo">
-                    <Link to="/">
-                        <img src="sneedlock-logo-cropped.png" alt="Sneedlock" />
-                    </Link>
-                </div>
-                <div className="header-right">
-                    <Link to="/help" className="help-link">Help</Link>
-                </div>
-            </header>
-            <div className="wallet-container">
+            <Header customLogo="/sneedlock-logo4.png" />
+            <main className="wallet-container">
                 {positions[0] && positions[0].details && (
                     <PositionCard
                         position={positions[0]}
@@ -150,7 +142,7 @@ function PositionLock() {
                         <div className="spinner"></div>
                     </div>
                 )}
-            </div>
+            </main>
         </div>
     );
 }

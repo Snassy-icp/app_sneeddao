@@ -69,8 +69,8 @@ function TokenLock() {
 
     return (
         <div className='page-container'>
-            <Header />
-            <div className="wallet-container">
+            <Header customLogo="/sneedlock-logo4.png" />
+            <main className="wallet-container">
                 {token && (
                     <TokenCard
                         token={token}
@@ -81,7 +81,7 @@ function TokenLock() {
                         hideButtons={true}
                     />
                 )}
-            </div>
+            </main>
         </div>
     );
 }

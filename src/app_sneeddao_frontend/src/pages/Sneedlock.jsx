@@ -65,7 +65,7 @@ function Sneedlock() {
 
     return (
         <div className='page-container'>
-            <Header />
+            <Header customLogo="/sneedlock-logo4.png" />
             <main style={styles.container}>
                 <div style={styles.hero}>
                     <h1 style={styles.title}>SneedLock</h1>
