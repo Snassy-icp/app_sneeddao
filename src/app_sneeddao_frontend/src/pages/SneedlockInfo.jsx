@@ -500,11 +500,14 @@ function SneedlockInfo() {
     // Add this function near other utility functions
     const calculateTotalTVL = () => {
         let total = 0;
-        Object.values(tokenData).forEach(data => {
+        Object.entries(getFilteredData()).forEach(([tokenKey, data]) => {
+            const metadata = tokenMetadata[tokenKey];
+            if (!metadata) return;
+
             // Add token locks USD value
             if (data.tokenLocks) {
                 data.tokenLocks.forEach(lock => {
-                    const usdValue = getUSDValue(lock.amount, data.decimals, data.symbol);
+                    const usdValue = getUSDValue(lock.amount, metadata.decimals, metadata.symbol);
                     if (!isNaN(usdValue)) {
                         total += usdValue;
                     }
@@ -513,7 +516,7 @@ function SneedlockInfo() {
             // Add position locks USD value
             if (data.positionLocks) {
                 data.positionLocks.forEach(lock => {
-                    const usdValue = getUSDValue(lock.amount, data.decimals, data.symbol);
+                    const usdValue = getUSDValue(lock.amount, metadata.decimals, metadata.symbol);
                     if (!isNaN(usdValue)) {
                         total += usdValue;
                     }
@@ -535,7 +538,7 @@ function SneedlockInfo() {
                         <img 
                             src="/sneedlock-logo-cropped.png" 
                             alt="SneedLock" 
-                            style={{ height: '48px', width: 'auto' }}
+                            style={{ height: '64px', width: 'auto' }}
                         />
                     </div>
                 </main>
@@ -559,7 +562,7 @@ function SneedlockInfo() {
                             src="/sneedlock-logo-cropped.png" 
                             alt="SneedLock" 
                             style={{ 
-                                height: '48px', 
+                                height: '64px', 
                                 width: 'auto',
                                 marginBottom: '16px'
                             }}
