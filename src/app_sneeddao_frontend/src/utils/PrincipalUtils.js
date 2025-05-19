@@ -60,7 +60,10 @@ export const formatPrincipal = (principal, displayInfo = null) => {
     const truncated = truncatePrincipal(principal);
     if (!displayInfo) return truncated;
 
-    const { name, nickname, isVerified } = displayInfo;
+    // Handle array format for name and verification status
+    const name = Array.isArray(displayInfo.name) ? displayInfo.name[0] : displayInfo.name;
+    const isVerified = Array.isArray(displayInfo.name) ? displayInfo.name[1] : displayInfo.isVerified;
+    const nickname = Array.isArray(displayInfo.nickname) ? displayInfo.nickname[0] : displayInfo.nickname;
 
     if (!name && !nickname) return truncated;
 
@@ -77,6 +80,10 @@ export const formatPrincipal = (principal, displayInfo = null) => {
 export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton = true, style = {} }) => {
     const formatted = formatPrincipal(principal, displayInfo);
     const principalColor = getPrincipalColor(principal);
+    
+    // Debug logging
+    console.log('PrincipalDisplay displayInfo:', displayInfo);
+    console.log('PrincipalDisplay formatted:', formatted);
     
     // Create a link wrapper component
     const LinkWrapper = ({ children }) => {
