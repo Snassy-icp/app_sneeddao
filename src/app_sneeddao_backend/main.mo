@@ -974,6 +974,40 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     #ok(Buffer.toArray(userBans))
   };
 
+  // Function to get all neurons owned by a user
+  public shared ({ caller }) func get_user_neurons() : async Result.Result<[T.Neuron], Text> {
+    if (Principal.isAnonymous(caller)) {
+        return #err("Anonymous users cannot get neurons");
+    };
+
+    if (is_banned(caller)) {
+        return #err("You are banned");
+    };
+
+    try {
+        let governance_canister_id = await get_sns_governance_canister(Principal.fromText("fp274-iaaaa-aaaaq-aacha-cai"));
+        let sns_governance = actor (Principal.toText(governance_canister_id)) : actor {
+            list_neurons : shared query ({
+                of_principal : ?Principal;
+                limit : Nat32;
+                start_page_at : ?NeuronId;
+            }) -> async {
+                neurons : [T.Neuron];
+            };
+        };
+
+        let response = await sns_governance.list_neurons({
+            of_principal = ?caller;
+            limit = 100;
+            start_page_at = null;
+        });
+
+        #ok(response.neurons)
+    } catch (e) {
+        #err("Failed to fetch neurons: " # Error.message(e))
+    }
+  };
+
   // save state to stable arrays
   system func preupgrade() {
     /// stable_principal_swap_canisters
