@@ -2902,7 +2902,15 @@ function RLLInfo() {
                                 </div>
                                 {/* NAV Section */}
                                 <div>
-                                    <div style={{ color: '#888', marginBottom: '5px' }}>Net Asset Value (NAV):</div>
+                                    <div style={{ color: '#888', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        Net Asset Value (NAV):
+                                        <span 
+                                            style={styles.infoIcon} 
+                                            title="Net Asset Value: fair-value of on-chain treasury assets (ETH, stablecoins, LP positions) minus liabilities, excluding self-held tokens. Shows the true external backing per token. If P/NAV < 1, the market may be undervaluing the DAO's collateral (potential upside); if > 1, it's trading at a premium to its net reserves—revealing overconfidence or speculative sentiment."
+                                        >
+                                            i
+                                        </span>
+                                    </div>
                                     <div style={{ fontSize: '1.2em' }}>
                                         ${formatUSD(getNAVUSDValue())}
                                         <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
