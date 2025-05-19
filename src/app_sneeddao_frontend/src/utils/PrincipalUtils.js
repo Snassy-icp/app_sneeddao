@@ -179,7 +179,7 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
                         "✓"
                     )
                 ),
-                formatted.name && formatted.nickname && " • ",
+                (formatted.name && formatted.nickname && formatted.name.length > 0 && formatted.nickname.length > 0) ? " • " : null,
                 formatted.nickname && React.createElement('span',
                     {
                         style: {
