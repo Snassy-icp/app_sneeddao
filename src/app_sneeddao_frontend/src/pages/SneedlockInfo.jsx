@@ -493,7 +493,19 @@ function SneedlockInfo() {
                                                         <td colSpan="4" style={{ padding: '8px 40px' }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.9em' }}>
                                                                 <div>
-                                                                    <span style={{ color: '#666' }}>Token Lock</span> #{lock.id?.toString().split('-').slice(-1)[0] || 'Unknown'}
+                                                                    <span style={{ color: '#666' }}>Token Lock</span>{' '}
+                                                                    <a 
+                                                                        href={`/tokenlock?ledger=${token?.ledger_id || ''}&locks=${lock.id?.toString().split('-').slice(-1)[0] || ''}`}
+                                                                        style={{ 
+                                                                            color: '#888',
+                                                                            textDecoration: 'none',
+                                                                            ':hover': {
+                                                                                textDecoration: 'underline'
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        #{lock.id?.toString().split('-').slice(-1)[0] || 'Unknown'}
+                                                                    </a>
                                                                 </div>
                                                                 <div>
                                                                     Amount: {formatAmount(lock.amount, token?.decimals || 8)}
