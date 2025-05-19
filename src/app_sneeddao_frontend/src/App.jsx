@@ -34,6 +34,7 @@ import UserBans from './pages/admin/UserBans';
 import WordBlacklist from './pages/admin/WordBlacklist';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
+import Principal from './pages/Principal';
 
 // Component to set up global naming function
 function GlobalNamingSetup() {
@@ -85,6 +86,7 @@ function App() {
               <Route path="/proposals" element={<Proposals />} />
               <Route path="/rewards" element={<Rewards />} />
               <Route path="/disclaimer" element={<Disclaimer />} />
+              <Route path="/principal" element={<Principal />} />
 
               {/* Admin routes */}
               <Route path="/admin" element={<Admin />} />

@@ -79,6 +79,23 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
     const formatted = formatPrincipal(principal, displayInfo);
     const principalColor = getPrincipalColor(principal);
     
+    // Create a link wrapper component
+    const LinkWrapper = ({ children }) => {
+        const href = `/principal?id=${principal?.toString()}`;
+        return React.createElement('a', 
+            {
+                href,
+                style: {
+                    textDecoration: 'none',
+                    color: 'inherit'
+                },
+                onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
+                onMouseLeave: (e) => e.target.style.textDecoration = 'none'
+            },
+            children
+        );
+    };
+    
     // If no display info was provided, just show truncated ID
     if (typeof formatted === 'string') {
         return React.createElement('div', 
@@ -92,9 +109,11 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
                     ...style
                 }
             },
-            React.createElement('span', 
-                { title: principal?.toString() }, 
-                formatted
+            React.createElement(LinkWrapper, null,
+                React.createElement('span', 
+                    { title: principal?.toString() }, 
+                    formatted
+                )
             ),
             showCopyButton && React.createElement('button',
                 {
@@ -127,29 +146,31 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
                 ...style
             }
         },
-        React.createElement('span',
-            {
-                style: {
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    fontWeight: formatted.isNickname ? 'normal' : 'bold',
-                    fontStyle: formatted.isNickname ? 'italic' : 'normal'
-                },
-                title: formatted.fullId
-            },
-            formatted.displayName,
-            formatted.isVerified && !formatted.isNickname && React.createElement('span',
+        React.createElement(LinkWrapper, null,
+            React.createElement('span',
                 {
                     style: {
-                        fontSize: '14px',
-                        cursor: 'help'
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontWeight: formatted.isNickname ? 'normal' : 'bold',
+                        fontStyle: formatted.isNickname ? 'italic' : 'normal'
                     },
-                    title: "Verified name"
+                    title: formatted.fullId
                 },
-                "✓"
-            ),
-            `(${formatted.truncatedId})`
+                formatted.displayName,
+                formatted.isVerified && !formatted.isNickname && React.createElement('span',
+                    {
+                        style: {
+                            fontSize: '14px',
+                            cursor: 'help'
+                        },
+                        title: "Verified name"
+                    },
+                    "✓"
+                ),
+                `(${formatted.truncatedId})`
+            )
         ),
         showCopyButton && React.createElement('button',
             {

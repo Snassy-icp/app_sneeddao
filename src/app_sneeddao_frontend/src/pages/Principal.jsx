@@ -1,0 +1,321 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../AuthContext';
+import { useSearchParams } from 'react-router-dom';
+import Header from '../components/Header';
+import { getPrincipalName, setPrincipalName, setPrincipalNickname } from '../utils/BackendUtils';
+import { Principal } from '@dfinity/principal';
+import { PrincipalDisplay, getPrincipalColor } from '../utils/PrincipalUtils';
+import ConfirmationModal from '../ConfirmationModal';
+
+const spinKeyframes = `
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+`;
+
+export default function PrincipalPage() {
+    const { identity } = useAuth();
+    const [searchParams] = useSearchParams();
+    const [principalInfo, setPrincipalInfo] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [editingName, setEditingName] = useState(false);
+    const [nameInput, setNameInput] = useState('');
+    const [nicknameInput, setNicknameInput] = useState('');
+    const [inputError, setInputError] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    const [confirmAction, setConfirmAction] = useState(null);
+    const [confirmMessage, setConfirmMessage] = useState('');
+
+    const principalParam = searchParams.get('id');
+    let principalId = null;
+    try {
+        principalId = principalParam ? Principal.fromText(principalParam) : null;
+    } catch (e) {
+        console.error('Invalid principal ID:', e);
+    }
+
+    // Validation function
+    const validateNameInput = (input) => {
+        if (input.length > 32) {
+            return "Name must not exceed 32 characters";
+        }
+        
+        const validPattern = /^[a-zA-Z0-9\s\-_.']*$/;
+        if (!validPattern.test(input)) {
+            return "Only alphanumeric characters, spaces, hyphens, underscores, dots, and apostrophes are allowed";
+        }
+        
+        return "";
+    };
+
+    useEffect(() => {
+        const fetchPrincipalInfo = async () => {
+            if (!identity || !principalId) {
+                setLoading(false);
+                return;
+            }
+
+            try {
+                const nameResponse = await getPrincipalName(identity, principalId);
+                setPrincipalInfo({
+                    name: nameResponse ? nameResponse[0] : null,
+                    isVerified: nameResponse ? nameResponse[1] : false
+                });
+            } catch (err) {
+                console.error('Error fetching principal info:', err);
+                setError('Failed to load principal information');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchPrincipalInfo();
+    }, [identity, principalId]);
+
+    const handleNameSubmit = async () => {
+        const error = validateNameInput(nameInput);
+        if (error) {
+            setInputError(error);
+            return;
+        }
+
+        if (!nameInput.trim()) return;
+
+        // Show confirmation dialog
+        setConfirmAction(() => async () => {
+            setIsSubmitting(true);
+            try {
+                const response = await setPrincipalName(identity, nameInput);
+                if ('ok' in response) {
+                    const newInfo = await getPrincipalName(identity, principalId);
+                    setPrincipalInfo({
+                        name: newInfo ? newInfo[0] : null,
+                        isVerified: newInfo ? newInfo[1] : false
+                    });
+                    setInputError('');
+                } else {
+                    setError(response.err);
+                }
+            } catch (err) {
+                console.error('Error setting principal name:', err);
+                setError('Failed to set principal name');
+            } finally {
+                setIsSubmitting(false);
+                setEditingName(false);
+                setNameInput('');
+            }
+        });
+        setConfirmMessage(
+            "You are about to set a public name for this principal. Please note:\n\n" +
+            "• This name will be visible to everyone\n" +
+            "• Only set a name if you want to help others identify you\n" +
+            "• Inappropriate names can result in a user ban\n\n" +
+            "Are you sure you want to proceed?"
+        );
+        setShowConfirmModal(true);
+    };
+
+    if (!principalId) {
+        return (
+            <div className='page-container'>
+                <Header />
+                <main className="wallet-container">
+                    <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                        <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Invalid Principal ID</h1>
+                        <p style={{ color: '#888' }}>Please provide a valid principal ID in the URL.</p>
+                    </div>
+                </main>
+            </div>
+        );
+    }
+
+    return (
+        <div className='page-container'>
+            <Header />
+            <main className="wallet-container">
+                <div style={{ 
+                    backgroundColor: '#2a2a2a',
+                    borderRadius: '8px',
+                    padding: '20px',
+                    marginBottom: '30px',
+                    border: '1px solid #3a3a3a'
+                }}>
+                    {loading ? (
+                        <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                            Loading...
+                        </div>
+                    ) : error ? (
+                        <div style={{ 
+                            backgroundColor: 'rgba(231, 76, 60, 0.2)', 
+                            border: '1px solid #e74c3c',
+                            color: '#e74c3c',
+                            padding: '15px',
+                            borderRadius: '6px',
+                            marginBottom: '20px'
+                        }}>
+                            {error}
+                        </div>
+                    ) : (
+                        <>
+                            <div style={{ 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                alignItems: 'flex-start',
+                                marginBottom: '15px'
+                            }}>
+                                <div>
+                                    <h2 style={{ 
+                                        color: '#ffffff',
+                                        margin: '0 0 5px 0',
+                                        fontSize: '18px',
+                                        fontWeight: '500'
+                                    }}>
+                                        Principal Details
+                                    </h2>
+                                    <PrincipalDisplay 
+                                        principal={principalId}
+                                        displayInfo={{
+                                            name: principalInfo?.name,
+                                            isVerified: principalInfo?.isVerified
+                                        }}
+                                        style={{
+                                            fontSize: '16px'
+                                        }}
+                                    />
+                                </div>
+                                {identity?.getPrincipal().toString() === principalId.toString() && !editingName && (
+                                    <button
+                                        onClick={() => setEditingName(true)}
+                                        style={{
+                                            backgroundColor: '#3498db',
+                                            color: '#ffffff',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '8px 12px',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        {principalInfo?.name ? 'Change Name' : 'Set Name'}
+                                    </button>
+                                )}
+                            </div>
+
+                            {editingName && (
+                                <div style={{ 
+                                    marginTop: '10px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '10px'
+                                }}>
+                                    <div>
+                                        <input
+                                            type="text"
+                                            value={nameInput}
+                                            onChange={(e) => {
+                                                const newValue = e.target.value;
+                                                setNameInput(newValue);
+                                                setInputError(validateNameInput(newValue));
+                                            }}
+                                            maxLength={32}
+                                            placeholder="Enter your name (max 32 chars)"
+                                            style={{
+                                                backgroundColor: '#3a3a3a',
+                                                border: `1px solid ${inputError ? '#e74c3c' : '#4a4a4a'}`,
+                                                borderRadius: '4px',
+                                                color: '#ffffff',
+                                                padding: '8px',
+                                                width: '100%'
+                                            }}
+                                        />
+                                        {inputError && (
+                                            <div style={{
+                                                color: '#e74c3c',
+                                                fontSize: '12px',
+                                                marginTop: '4px'
+                                            }}>
+                                                {inputError}
+                                            </div>
+                                        )}
+                                        <div style={{
+                                            color: '#888',
+                                            fontSize: '12px',
+                                            marginTop: '4px'
+                                        }}>
+                                            Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
+                                        </div>
+                                    </div>
+                                    <div style={{
+                                        display: 'flex',
+                                        gap: '8px',
+                                        justifyContent: 'flex-end'
+                                    }}>
+                                        <button
+                                            onClick={handleNameSubmit}
+                                            disabled={isSubmitting}
+                                            style={{
+                                                backgroundColor: '#3498db',
+                                                color: '#ffffff',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                padding: '8px 12px',
+                                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                                whiteSpace: 'nowrap',
+                                                opacity: isSubmitting ? 0.7 : 1,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px'
+                                            }}
+                                        >
+                                            {isSubmitting ? (
+                                                <>
+                                                    <span style={{ 
+                                                        display: 'inline-block',
+                                                        animation: 'spin 1s linear infinite',
+                                                        fontSize: '14px'
+                                                    }}>⟳</span>
+                                                    Setting...
+                                                </>
+                                            ) : (
+                                                'Set Name'
+                                            )}
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setEditingName(false);
+                                                setNameInput('');
+                                            }}
+                                            disabled={isSubmitting}
+                                            style={{
+                                                backgroundColor: '#e74c3c',
+                                                color: '#ffffff',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                padding: '8px 12px',
+                                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                                whiteSpace: 'nowrap',
+                                                opacity: isSubmitting ? 0.7 : 1
+                                            }}
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+            </main>
+            <style>{spinKeyframes}</style>
+            <ConfirmationModal
+                show={showConfirmModal}
+                onClose={() => setShowConfirmModal(false)}
+                onSubmit={confirmAction}
+                message={confirmMessage}
+                doAwait={true}
+            />
+        </div>
+    );
+} 
