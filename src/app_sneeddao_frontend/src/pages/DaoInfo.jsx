@@ -177,6 +177,8 @@ function DaoInfo() {
     const [eventStats, setEventStats] = useState(null);
     const [reconciliation, setReconciliation] = useState([]);
 
+    console.log("tokenomics", tokenomics);
+    console.log("daoMetrics", daoMetrics);
     // Fetch conversion rates from Neutrinite
     useEffect(() => {
         const fetchConversionRates = async () => {
