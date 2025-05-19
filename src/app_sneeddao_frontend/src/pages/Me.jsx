@@ -562,12 +562,28 @@ export default function Me() {
                                     padding: '8px',
                                     borderRadius: '4px',
                                     transition: 'background-color 0.2s',
-                                    fontSize: '14px'
+                                    fontSize: '14px',
+                                    width: '100%'
                                 }}
                                 onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
                                 onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                             >
-                                🔒 My Locks
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                }}>
+                                    <img 
+                                        src="/sneedlock-logo4.png" 
+                                        alt="Sneedlock"
+                                        style={{
+                                            width: '16px',
+                                            height: '16px',
+                                            objectFit: 'contain'
+                                        }}
+                                    /> 
+                                    <span>My Locks</span>
+                                </div>
                             </Link>
                         </div>
                     </div>
