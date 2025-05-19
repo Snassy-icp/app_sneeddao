@@ -116,7 +116,7 @@ function SneedlockInfo() {
         let tokenLockTotal = 0;
         let positionLockTotal = 0;
 
-        Object.entries(tokenData).forEach(([tokenKey, data]) => {
+        Object.entries(getFilteredData()).forEach(([tokenKey, data]) => {
             const token = tokenMetadata[tokenKey];
             if (token) {
                 const tokenLockUSD = getUSDValue(data.tokenLockAmount, token.decimals || 8, token.symbol);
