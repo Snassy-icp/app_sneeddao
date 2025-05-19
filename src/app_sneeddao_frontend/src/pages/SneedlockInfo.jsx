@@ -3,7 +3,9 @@ import { useAuth } from '../AuthContext';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'external/sneed_lock';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { formatAmount } from '../utils/StringUtils';
+import { getTokenLogo } from '../utils/TokenUtils';
 import Header from '../components/Header';
 import { Principal } from '@dfinity/principal';
 
@@ -11,25 +13,10 @@ function SneedlockInfo() {
     const { identity } = useAuth();
     const [tokenData, setTokenData] = useState({});
     const [loading, setLoading] = useState(true);
-    const [tokenSymbols, setTokenSymbols] = useState({});
+    const [tokenMetadata, setTokenMetadata] = useState({});
 
     // Cache for swap canister data
     const swapCanisterCache = {};
-
-    const fetchTokenSymbol = async (tokenId) => {
-        try {
-            const ledgerActor = createLedgerActor(tokenId, { agentOptions: { identity } });
-            const metadata = await ledgerActor.icrc1_metadata();
-            const symbolEntry = metadata.find(entry => entry[0] === 'symbol');
-            if (symbolEntry) {
-                return symbolEntry[1].Text;
-            }
-            return tokenId.toText();
-        } catch (error) {
-            console.error(`Error fetching symbol for token ${tokenId.toText()}:`, error);
-            return tokenId.toText();
-        }
-    };
 
     async function fetchPositionDetails(swapCanisterId) {
         if (swapCanisterCache[swapCanisterId.toText()]) {
@@ -83,14 +70,14 @@ function SneedlockInfo() {
         setLoading(true);
         try {
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
-            
-            // Fetch all locks
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+console.log("Fetching all locks");            
+            // Fetch all locks first to know which tokens we need metadata for
             const allTokenLocks = await sneedLockActor.get_all_token_locks();
             const allPositionLocks = await sneedLockActor.get_all_position_locks();
-
+console.log("DONE");
             // Aggregate token locks by token type
             const aggregatedData = {};
-            const symbols = {};
 
             // Process token locks
             for (const lock of allTokenLocks) {
@@ -107,14 +94,7 @@ function SneedlockInfo() {
                     };
                 }
                 aggregatedData[tokenKey].tokenLockAmount += amount;
-
-                // Fetch symbol if not already fetched
-                if (!symbols[tokenKey]) {
-                    symbols[tokenKey] = await fetchTokenSymbol(tokenId);
-                }
             }
-
-            setTokenSymbols(symbols);
 
             // Process position locks
             for (const lock of allPositionLocks) {
@@ -137,7 +117,6 @@ function SneedlockInfo() {
                                 positionLockAmount: 0n,
                                 positionsLoading: false
                             };
-                            symbols[token0Key] = canisterData.token0Symbol;
                         }
                         aggregatedData[token0Key].positionLockAmount += BigInt(matchingPosition.token0Amount);
 
@@ -150,16 +129,42 @@ function SneedlockInfo() {
                                 positionLockAmount: 0n,
                                 positionsLoading: false
                             };
-                            symbols[token1Key] = canisterData.token1Symbol;
                         }
                         aggregatedData[token1Key].positionLockAmount += BigInt(matchingPosition.token1Amount);
                     }
                 }
             }
 
+            // Now fetch whitelisted tokens and only process the ones we need
+            const whitelistedTokens = await backendActor.get_whitelisted_tokens();
+            const metadata = {};
+            
+            // Create a map for faster lookup
+            const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [token.ledger_id.toText(), token]));
+            
+            // Only process metadata for tokens that have locks or positions
+            for (const tokenKey of Object.keys(aggregatedData)) {
+                const whitelistedToken = whitelistedTokenMap.get(tokenKey);
+                if (whitelistedToken) {
+                    try {
+                        const ledgerActor = createLedgerActor(whitelistedToken.ledger_id, { agentOptions: { identity } });
+                        const tokenMetadata = await ledgerActor.icrc1_metadata();
+                        const logo = getTokenLogo(tokenMetadata);
+                        
+                        metadata[tokenKey] = {
+                            ...whitelistedToken,
+                            logo
+                        };
+                    } catch (error) {
+                        console.error(`Error fetching metadata for token ${tokenKey}:`, error);
+                        metadata[tokenKey] = whitelistedToken;
+                    }
+                }
+            }
+
             // Update state
+            setTokenMetadata(metadata);
             setTokenData(aggregatedData);
-            setTokenSymbols(symbols);
         } catch (error) {
             console.error('Error fetching data:', error);
         } finally {
@@ -195,33 +200,43 @@ function SneedlockInfo() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {Object.entries(tokenData).map(([tokenKey, data]) => (
-                                    <tr 
-                                        key={tokenKey}
-                                        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-                                    >
-                                        <td style={{ padding: '10px', color: '#fff' }}>
-                                            {tokenSymbols[tokenKey] || tokenKey}
-                                        </td>
-                                        <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
-                                            {formatAmount(data.tokenLockAmount, 8)}
-                                        </td>
-                                        <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
-                                            {data.positionsLoading ? (
-                                                <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
-                                            ) : (
-                                                formatAmount(data.positionLockAmount, 8)
-                                            )}
-                                        </td>
-                                        <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
-                                            {data.positionsLoading ? (
-                                                <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
-                                            ) : (
-                                                formatAmount(data.tokenLockAmount + data.positionLockAmount, 8)
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
+                                {Object.entries(tokenData).map(([tokenKey, data]) => {
+                                    const token = tokenMetadata[tokenKey];
+                                    return (
+                                        <tr 
+                                            key={tokenKey}
+                                            style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                                        >
+                                            <td style={{ padding: '10px', color: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                {token?.logo && (
+                                                    <img 
+                                                        src={token.logo} 
+                                                        alt={token?.symbol || tokenKey} 
+                                                        style={{ width: '24px', height: '24px', borderRadius: '50%' }}
+                                                    />
+                                                )}
+                                                {token?.symbol || tokenKey}
+                                            </td>
+                                            <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
+                                                {formatAmount(data.tokenLockAmount, token?.decimals || 8)}
+                                            </td>
+                                            <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
+                                                {data.positionsLoading ? (
+                                                    <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
+                                                ) : (
+                                                    formatAmount(data.positionLockAmount, token?.decimals || 8)
+                                                )}
+                                            </td>
+                                            <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
+                                                {data.positionsLoading ? (
+                                                    <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
+                                                ) : (
+                                                    formatAmount(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8)
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
