@@ -698,27 +698,6 @@ function DaoInfo() {
                                     </div>
                                     <div style={styles.card}>
                                         <div style={styles.metric}>
-                                            {formatNumber(tokenomics.totalAssets.sneed / 1e8)} SNEED
-                                            <div style={{ fontSize: '0.7em', color: '#888' }}>
-                                                {((tokenomics.totalAssets.sneed / (Number(tokenomics.totalSupply) * 1e8)) * 100).toFixed(2)}% of supply
-                                            </div>
-                                        </div>
-                                        <div style={styles.label}>Treasury SNEED</div>
-                                    </div>
-                                    <div style={styles.card}>
-                                        <div style={styles.metric}>{formatUSD(tokenomics.totalAssets.totalUsd)}</div>
-                                        <div style={styles.label}>Total Assets (USD)</div>
-                                    </div>
-                                    <div style={styles.card}>
-                                        <div style={styles.metric}>{formatNumber(tokenomics.totalAssets.icp / 1e8)} ICP</div>
-                                        <div style={styles.label}>ICP Holdings ({formatUSD(getUSDValue(tokenomics.totalAssets.icp, 8, 'ICP'))})</div>
-                                    </div>
-                                    <div style={styles.card}>
-                                        <div style={styles.metric}>{formatNumber(tokenomics.totalAssets.sneed / 1e8)} SNEED</div>
-                                        <div style={styles.label}>SNEED Holdings ({formatUSD(getUSDValue(tokenomics.totalAssets.sneed, 8, 'SNEED'))})</div>
-                                    </div>
-                                    <div style={styles.card}>
-                                        <div style={styles.metric}>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                 {Object.entries(tokenomics.tokenDistributions || {}).map(([tokenId, data]) => {
                                                     const { amount, metadata } = data;
@@ -748,16 +727,6 @@ function DaoInfo() {
                                             </div>
                                         </div>
                                         <div style={styles.label}>Total Rewards Distributed</div>
-                                    </div>
-                                    <div style={styles.card}>
-                                        <div style={styles.metric}>Round #{tokenomics.latestDistribution.round}</div>
-                                        <div style={styles.label}>Latest Distribution</div>
-                                        <div style={styles.label}>
-                                            {tokenomics.latestDistribution.timestamp 
-                                                ? new Date(tokenomics.latestDistribution.timestamp * 1000).toLocaleDateString()
-                                                : 'N/A'
-                                            }
-                                        </div>
                                     </div>
                                 </div>
                             </>
