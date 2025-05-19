@@ -935,6 +935,15 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
 
   // Principal name management
   public shared ({ caller }) func set_principal_name(name : Text) : async Result.Result<Text, Text> {
+    await set_principal_name_impl(caller, caller, name)
+  };
+
+  public shared ({ caller }) func set_principal_name_for(principal : Principal, name : Text) : async Result.Result<Text, Text> {
+    await set_principal_name_impl(caller, principal, name)
+  };
+
+  // Principal name management
+  private func set_principal_name_impl(caller : Principal, principal : Principal, name : Text) : async Result.Result<Text, Text> {
       if (Principal.isAnonymous(caller)) {
           return #err("Anonymous caller not allowed");
       };
@@ -976,7 +985,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       // Check name uniqueness (only if setting a new name)
       if (name != "") {
           for ((principal, (existing_name, _)) in principal_names.entries()) {
-              if (Text.equal(existing_name, name) and principal != caller) {
+              if (Text.equal(existing_name, name) and principal != principal) {
                   return #err("Name is already taken by another principal");
               };
           };
@@ -984,16 +993,16 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
 
       if (name == "") {
           // Remove the name if it exists
-          principal_names.delete(caller);
+          principal_names.delete(principal);
           return #ok("Successfully removed principal name");
       } else {
           // Keep verification status if it exists, otherwise set to false
-          let current_verified = switch (principal_names.get(caller)) {
+          let current_verified = switch (principal_names.get(principal)) {
               case (?(_, verified)) { verified };
               case null { false };
           };
           
-          principal_names.put(caller, (name, current_verified));
+          principal_names.put(principal, (name, current_verified));
           return #ok("Successfully set principal name");
       };
   };

@@ -10,6 +10,29 @@ export const truncatePrincipal = (principal) => {
     return `${start}...${end}`;
 };
 
+// Generate a consistent color from a principal ID
+export const getPrincipalColor = (principal) => {
+    if (!principal) return '#888';
+    const principalText = principal.toString();
+    
+    // Simple hash function that sums char codes multiplied by position
+    let hash = 0;
+    for (let i = 0; i < principalText.length; i++) {
+        hash = ((hash << 5) - hash) + principalText.charCodeAt(i);
+        hash = hash & hash; // Convert to 32-bit integer
+    }
+
+    // Generate HSL color with:
+    // - Hue: full range (0-360) for maximum distinction
+    // - Saturation: 60-80% for good color without being too bright
+    // - Lightness: 45-65% for good contrast on both dark and light backgrounds
+    const hue = Math.abs(hash % 360);
+    const saturation = 70 + (Math.abs((hash >> 8) % 11)); // 70-80%
+    const lightness = 55 + (Math.abs((hash >> 16) % 11)); // 55-65%
+
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+};
+
 // Get the display name for a principal, including name and verification status
 export const getPrincipalDisplayInfo = async (identity, principal) => {
     if (!identity || !principal) return { name: null, nickname: null, isVerified: false };
@@ -54,15 +77,18 @@ export const formatPrincipal = (principal, displayInfo = null) => {
 // React component for displaying a principal
 export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton = true, style = {} }) => {
     const formatted = formatPrincipal(principal, displayInfo);
+    const principalColor = getPrincipalColor(principal);
     
     // If no display info was provided, just show truncated ID
     if (typeof formatted === 'string') {
         return React.createElement('div', 
             { 
                 style: { 
-                    display: 'flex', 
+                    display: 'inline-flex', 
                     alignItems: 'center', 
                     gap: '8px',
+                    color: principalColor,
+                    fontFamily: 'monospace',
                     ...style
                 }
             },
@@ -89,26 +115,28 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
         );
     }
 
-    // Show full display with name/nickname
+    // Show compact display with name/nickname
     return React.createElement('div',
         {
             style: {
-                display: 'flex',
-                flexDirection: 'column',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                color: principalColor,
+                fontFamily: 'monospace',
                 ...style
             }
         },
-        React.createElement('div',
+        React.createElement('span',
             {
                 style: {
-                    display: 'flex',
+                    display: 'inline-flex',
                     alignItems: 'center',
                     gap: '4px',
-                    color: formatted.isNickname ? '#95a5a6' : '#3498db',
-                    fontSize: '16px',
                     fontWeight: formatted.isNickname ? 'normal' : 'bold',
                     fontStyle: formatted.isNickname ? 'italic' : 'normal'
-                }
+                },
+                title: formatted.fullId
             },
             formatted.displayName,
             formatted.isVerified && !formatted.isNickname && React.createElement('span',
@@ -120,39 +148,24 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
                     title: "Verified name"
                 },
                 "✓"
-            )
-        ),
-        React.createElement('div',
-            {
-                style: {
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    color: '#888',
-                    fontSize: '14px',
-                    fontFamily: 'monospace'
-                }
-            },
-            React.createElement('span',
-                { title: formatted.fullId },
-                formatted.truncatedId
             ),
-            showCopyButton && React.createElement('button',
-                {
-                    onClick: () => navigator.clipboard.writeText(formatted.fullId),
-                    style: {
-                        background: 'none',
-                        border: 'none',
-                        padding: '4px',
-                        cursor: 'pointer',
-                        color: '#888',
-                        display: 'flex',
-                        alignItems: 'center'
-                    },
-                    title: "Copy principal ID to clipboard"
+            `(${formatted.truncatedId})`
+        ),
+        showCopyButton && React.createElement('button',
+            {
+                onClick: () => navigator.clipboard.writeText(formatted.fullId),
+                style: {
+                    background: 'none',
+                    border: 'none',
+                    padding: '4px',
+                    cursor: 'pointer',
+                    color: '#888',
+                    display: 'flex',
+                    alignItems: 'center'
                 },
-                "📋"
-            )
+                title: "Copy principal ID to clipboard"
+            },
+            "📋"
         )
     );
 }; 
