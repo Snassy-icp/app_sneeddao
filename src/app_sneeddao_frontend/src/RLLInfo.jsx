@@ -2744,6 +2744,7 @@ function RLLInfo() {
                 });
 
                 const stats = await rllActor.get_neuron_statistics();
+                console.log("STATS", stats);
                 setStakingStats(stats);
             } catch (error) {
                 console.error('Error fetching staking statistics:', error);
@@ -2791,8 +2792,8 @@ function RLLInfo() {
 
     // Helper function to get total staked SNEED
     const getTotalStakedSneed = () => {
-        if (!stakingStats?.total_staked_e8s) return BigInt(0);
-        return BigInt(stakingStats.total_staked_e8s);
+        if (!stakingStats?.total_stake) return BigInt(0);
+        return BigInt(stakingStats.total_stake);
     };
 
     // Helper function to get total SNEED in LPs
