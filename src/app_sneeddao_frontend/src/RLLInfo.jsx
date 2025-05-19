@@ -2926,7 +2926,14 @@ function RLLInfo() {
                                             {(getNAVUSDValue() / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
                                         <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
-                                            P/NAV: {(getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)).toFixed(2)}x
+                                            P/NAV:
+                                            <span 
+                                                style={styles.infoIcon} 
+                                                title="Price-to-NAV: circulating market cap divided by DAO NAV. Compares market valuation to net backing per token. A P/NAV < 1 suggests the DAO is undervalued relative to its collateral (potential upside), while > 1 shows a premium; divergences highlight where market sentiment departs from on-chain asset coverage."
+                                            >
+                                                i
+                                            </span>
+                                            {(getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)).toFixed(2)}x
                                         </div>
                                     </div>
                                 </div>
