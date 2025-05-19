@@ -16,7 +16,8 @@ const spinKeyframes = `
 
 export default function PrincipalPage() {
     const { identity } = useAuth();
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || '');
     const [principalInfo, setPrincipalInfo] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -39,6 +40,11 @@ export default function PrincipalPage() {
     } catch (e) {
         console.error('Invalid principal ID:', e);
     }
+
+    const handleSnsChange = (newSnsRoot) => {
+        setSelectedSnsRoot(newSnsRoot);
+        setSearchParams({ id: principalParam, sns: newSnsRoot });
+    };
 
     // Validation function
     const validateNameInput = (input) => {
@@ -161,7 +167,7 @@ export default function PrincipalPage() {
     if (!principalId) {
         return (
             <div className='page-container'>
-                <Header />
+                <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                 <main className="wallet-container">
                     <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                         <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Invalid Principal ID</h1>
@@ -174,7 +180,7 @@ export default function PrincipalPage() {
 
     return (
         <div className='page-container'>
-            <Header />
+            <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             <main className="wallet-container">
                 <div style={{ 
                     backgroundColor: '#2a2a2a',
