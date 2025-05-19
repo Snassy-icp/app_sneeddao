@@ -278,7 +278,13 @@ function SneedlockInfo() {
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                             <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#888', width: '200px' }}>Token</th>
+                                <th style={{ 
+                                    padding: '10px 20px', 
+                                    textAlign: 'left', 
+                                    color: '#888', 
+                                    width: '200px',
+                                    position: 'relative'  // Add positioning context
+                                }}>Token</th>
                                 <th style={{ padding: '10px', textAlign: 'right', color: '#888' }}>Token Locks</th>
                                 <th style={{ padding: '10px', textAlign: 'right', color: '#888' }}>Position Locks</th>
                                 <th style={{ padding: '10px', textAlign: 'right', color: '#888' }}>Total Locked</th>
@@ -295,12 +301,19 @@ function SneedlockInfo() {
                                         <td style={{ 
                                             padding: '10px 20px', 
                                             color: '#fff',
-                                            width: '200px'
+                                            width: '200px',
+                                            position: 'relative'  // Add positioning context
                                         }}>
                                             <div style={{
-                                                display: 'flex',
+                                                position: 'absolute',  // Position the container absolutely
+                                                left: '20px',         // Match the padding
+                                                top: '50%',           // Center vertically
+                                                transform: 'translateY(-50%)',  // Center vertically
+                                                display: 'grid',      // Use grid instead of flex
+                                                gridTemplateColumns: '20px 1fr',  // Fixed width for logo, auto for text
+                                                gap: '8px',
                                                 alignItems: 'center',
-                                                gap: '8px'
+                                                width: 'calc(100% - 40px)'  // Account for padding
                                             }}>
                                                 {token?.logo ? (
                                                     <img 
@@ -310,20 +323,21 @@ function SneedlockInfo() {
                                                             width: '20px', 
                                                             height: '20px', 
                                                             borderRadius: '50%',
-                                                            flexShrink: 0
+                                                            gridColumn: '1'
                                                         }}
                                                     />
                                                 ) : (
                                                     <div style={{ 
                                                         width: '20px', 
                                                         height: '20px',
-                                                        flexShrink: 0 
+                                                        gridColumn: '1'
                                                     }} />
                                                 )}
                                                 <span style={{ 
                                                     whiteSpace: 'nowrap',
                                                     overflow: 'hidden',
-                                                    textOverflow: 'ellipsis'
+                                                    textOverflow: 'ellipsis',
+                                                    gridColumn: '2'
                                                 }}>
                                                     {token?.symbol || tokenKey}
                                                 </span>
