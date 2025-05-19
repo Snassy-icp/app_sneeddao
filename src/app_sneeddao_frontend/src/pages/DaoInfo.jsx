@@ -681,7 +681,7 @@ function DaoInfo() {
                                                 {formatNumber(tokenomics.marketCapIcp)} ICP
                                             </div>
                                         </div>
-                                        <div style={styles.label}>Market Cap</div>
+                                        <div style={styles.label}>FDV</div>
                                     </div>
                                     <div style={styles.card}>
                                         <div style={styles.metric}>{formatNumber(tokenomics.totalSupply)} SNEED</div>
