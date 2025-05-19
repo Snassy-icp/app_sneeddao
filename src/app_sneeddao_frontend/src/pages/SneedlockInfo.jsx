@@ -101,6 +101,38 @@ function SneedlockInfo() {
                 aggregatedData[tokenKey].tokenLockCount += 1;
             }
 
+            // Pre-process position locks to create initial entries for all tokens
+            for (const lock of allPositionLocks) {
+                const token0 = lock[2].token0;
+                const token1 = lock[2].token1;
+                
+                // Initialize token0 data if not exists
+                const token0Key = token0.toText();
+                if (!aggregatedData[token0Key]) {
+                    aggregatedData[token0Key] = {
+                        tokenId: token0,
+                        tokenLockAmount: 0n,
+                        positionLockAmount: 0n,
+                        tokenLockCount: 0,
+                        positionLockCount: 0,
+                        positionsLoading: true
+                    };
+                }
+                
+                // Initialize token1 data if not exists
+                const token1Key = token1.toText();
+                if (!aggregatedData[token1Key]) {
+                    aggregatedData[token1Key] = {
+                        tokenId: token1,
+                        tokenLockAmount: 0n,
+                        positionLockAmount: 0n,
+                        tokenLockCount: 0,
+                        positionLockCount: 0,
+                        positionsLoading: true
+                    };
+                }
+            }
+
             // Update state with initial data
             setTokenData(aggregatedData);
             setInitialLoading(false);
@@ -108,7 +140,40 @@ function SneedlockInfo() {
             // Start loading metadata and positions in the background
             setMetadataLoading(true);
 
-            // Process position locks
+            // Now fetch whitelisted tokens for ALL tokens we found
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const whitelistedTokens = await backendActor.get_whitelisted_tokens();
+            
+            // Create a map for faster lookup
+            const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [token.ledger_id.toText(), token]));
+            
+            // Process metadata for ALL tokens (both from token locks and position locks)
+            for (const tokenKey of Object.keys(aggregatedData)) {
+                const whitelistedToken = whitelistedTokenMap.get(tokenKey);
+                if (whitelistedToken) {
+                    try {
+                        const ledgerActor = createLedgerActor(whitelistedToken.ledger_id, { agentOptions: { identity } });
+                        const tokenMetadata = await ledgerActor.icrc1_metadata();
+                        const logo = getTokenLogo(tokenMetadata);
+                        
+                        setTokenMetadata(prev => ({
+                            ...prev,
+                            [tokenKey]: {
+                                ...whitelistedToken,
+                                logo
+                            }
+                        }));
+                    } catch (error) {
+                        console.error(`Error fetching metadata for token ${tokenKey}:`, error);
+                        setTokenMetadata(prev => ({
+                            ...prev,
+                            [tokenKey]: whitelistedToken
+                        }));
+                    }
+                }
+            }
+
+            // Process position locks to get amounts
             for (const lock of allPositionLocks) {
                 const swapCanisterId = lock[1];
                 const positionId = lock[2].position_id;
@@ -157,39 +222,6 @@ function SneedlockInfo() {
 
                             return newData;
                         });
-                    }
-                }
-            }
-
-            // Now fetch whitelisted tokens and only process the ones we need
-            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
-            const whitelistedTokens = await backendActor.get_whitelisted_tokens();
-            
-            // Create a map for faster lookup
-            const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [token.ledger_id.toText(), token]));
-            
-            // Only process metadata for tokens that have locks or positions
-            for (const tokenKey of Object.keys(aggregatedData)) {
-                const whitelistedToken = whitelistedTokenMap.get(tokenKey);
-                if (whitelistedToken) {
-                    try {
-                        const ledgerActor = createLedgerActor(whitelistedToken.ledger_id, { agentOptions: { identity } });
-                        const tokenMetadata = await ledgerActor.icrc1_metadata();
-                        const logo = getTokenLogo(tokenMetadata);
-                        
-                        setTokenMetadata(prev => ({
-                            ...prev,
-                            [tokenKey]: {
-                                ...whitelistedToken,
-                                logo
-                            }
-                        }));
-                    } catch (error) {
-                        console.error(`Error fetching metadata for token ${tokenKey}:`, error);
-                        setTokenMetadata(prev => ({
-                            ...prev,
-                            [tokenKey]: whitelistedToken
-                        }));
                     }
                 }
             }
