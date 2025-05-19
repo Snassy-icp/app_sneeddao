@@ -3035,7 +3035,15 @@ function RLLInfo() {
                                             backgroundColor: 'rgba(46, 204, 113, 0.1)',
                                             borderRadius: '4px'
                                         }}>
-                                            <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Circulating Market Cap:</div>
+                                            <div style={{ color: '#2ecc71', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                Circulating Market Cap:
+                                                <span 
+                                                    style={styles.infoIcon} 
+                                                    title="Current token price × number of tokens held by the public (excludes treasury and protocol-owned holdings). Reflects the immediate market size and liquidity. A rising circulating cap signals strong demand, while a shrinking one (relative to TVL) can indicate reduced sell-pressure absorption."
+                                                >
+                                                    i
+                                                </span>
+                                            </div>
                                             <div style={{ fontSize: '1.2em', fontWeight: 'bold' }}>
                                                 ${formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED'))}
                                             </div>
