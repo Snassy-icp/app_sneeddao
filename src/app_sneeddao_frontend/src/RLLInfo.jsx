@@ -2900,7 +2900,7 @@ function RLLInfo() {
                                                 FDV/GAV:
                                                 <span 
                                                     style={styles.infoIcon} 
-                                                    title="Fully Diluted Valuation: current token price × maximum supply (issued + unissued/unlocked tokens). Indicates market's valuation if all tokens were in circulation. A high FDV versus circulating cap flags dilution risk from future unlocks, whereas FDV close to current cap implies minimal upcoming supply pressure."
+                                                    title="FDV/GAV: fully-diluted valuation divided by gross asset value. > 1 means the market values all tokens (including future unlocks) above the DAO's total treasury size—warning of dilution risk and potential sell-pressure when vesting begins. < 1 indicates a discount to on-chain assets, hinting at latent upside in self-held token reserves."
                                                 >
                                                     i
                                                 </span>
