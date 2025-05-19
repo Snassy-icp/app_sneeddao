@@ -34,6 +34,28 @@ function SneedlockInfo() {
         return normalizedAmount * conversionRates[symbol];
     };
 
+    const calculateTotals = () => {
+        let tokenLockTotal = 0;
+        let positionLockTotal = 0;
+
+        Object.entries(tokenData).forEach(([tokenKey, data]) => {
+            const token = tokenMetadata[tokenKey];
+            if (token) {
+                const tokenLockUSD = getUSDValue(data.tokenLockAmount, token.decimals || 8, token.symbol);
+                const positionLockUSD = getUSDValue(data.positionLockAmount, token.decimals || 8, token.symbol);
+                
+                if (tokenLockUSD) tokenLockTotal += tokenLockUSD;
+                if (positionLockUSD) positionLockTotal += positionLockUSD;
+            }
+        });
+
+        return {
+            tokenLockTotal,
+            positionLockTotal,
+            combinedTotal: tokenLockTotal + positionLockTotal
+        };
+    };
+
     const fetchConversionRates = async () => {
         try {
             const neutriniteActor = createNeutriniteDappActor(neutriniteCanisterId, { agentOptions: { identity } });
@@ -682,6 +704,33 @@ function SneedlockInfo() {
                                 );
                             })}
                         </tbody>
+                        <tfoot>
+                            <tr style={{ 
+                                borderTop: '2px solid #2ecc71',
+                                backgroundColor: '#1a1a1a',
+                                fontWeight: 'bold'
+                            }}>
+                                <td style={{ padding: '15px' }}>Total Value</td>
+                                <td style={{ padding: '15px', textAlign: 'right', color: '#fff' }}>
+                                    {formatUSD(calculateTotals().tokenLockTotal)}
+                                    <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
+                                        Total Token Locks
+                                    </div>
+                                </td>
+                                <td style={{ padding: '15px', textAlign: 'right', color: '#fff' }}>
+                                    {formatUSD(calculateTotals().positionLockTotal)}
+                                    <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
+                                        Total Position Locks
+                                    </div>
+                                </td>
+                                <td style={{ padding: '15px', textAlign: 'right', color: '#fff' }}>
+                                    {formatUSD(calculateTotals().combinedTotal)}
+                                    <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
+                                        Grand Total
+                                    </div>
+                                </td>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
             </main>
