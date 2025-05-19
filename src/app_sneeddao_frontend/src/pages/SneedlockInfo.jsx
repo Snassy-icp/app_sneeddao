@@ -10,6 +10,7 @@ import Header from '../components/Header';
 import { Principal } from '@dfinity/principal';
 import { createActor as createNeutriniteDappActor, canisterId as neutriniteCanisterId } from 'external/neutrinite_dapp';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 
 function SneedlockInfo() {
     const { identity } = useAuth();
@@ -24,6 +25,7 @@ function SneedlockInfo() {
     const [conversionRates, setConversionRates] = useState({});
     const [ownerFilter, setOwnerFilter] = useState('');
     const [ledgerFilter, setLedgerFilter] = useState('');
+    const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
 
     // Cache for swap canister data
     const swapCanisterCache = {};
@@ -526,6 +528,35 @@ function SneedlockInfo() {
         return total;
     };
 
+    // Add after other useEffect hooks
+    useEffect(() => {
+        const fetchPrincipalNames = async () => {
+            if (!identity) return;
+
+            // Get all unique principals from token and position locks
+            const uniquePrincipals = new Set();
+            Object.values(tokenData).forEach(data => {
+                data.tokenLocks.forEach(lock => {
+                    if (lock.owner) uniquePrincipals.add(lock.owner);
+                });
+                data.positionLocks.forEach(lock => {
+                    if (lock.owner) uniquePrincipals.add(lock.owner);
+                });
+            });
+
+            // Fetch display info for each principal
+            const displayInfoMap = new Map();
+            await Promise.all(Array.from(uniquePrincipals).map(async principal => {
+                const displayInfo = await getPrincipalDisplayInfo(identity, principal);
+                displayInfoMap.set(principal, displayInfo);
+            }));
+
+            setPrincipalDisplayInfo(displayInfoMap);
+        };
+
+        fetchPrincipalNames();
+    }, [identity, tokenData]);
+
     if (initialLoading) {
         return (
             <div className='page-container'>
@@ -806,30 +837,13 @@ function SneedlockInfo() {
                                                                 <div>
                                                                     Expires: {formatTimestamp(lock.expiry)}
                                                                 </div>
-                                                                <div style={{ opacity: 0.7, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <div style={{ opacity: 0.7 }}>
                                                                     <span>Owner: </span>
-                                                                    <div style={{ position: 'relative', display: 'inline-block' }}>
-                                                                        <span 
-                                                                            title={lock.owner || 'Unknown'}
-                                                                            style={{ cursor: 'help' }}
-                                                                        >
-                                                                            {truncatePrincipal(lock.owner)}
-                                                                        </span>
-                                                                        <button
-                                                                            onClick={() => copyToClipboard(lock.owner)}
-                                                                            style={{
-                                                                                marginLeft: '4px',
-                                                                                background: 'none',
-                                                                                border: 'none',
-                                                                                cursor: 'pointer',
-                                                                                padding: '2px',
-                                                                                color: '#666'
-                                                                            }}
-                                                                            title="Copy principal"
-                                                                        >
-                                                                            📋
-                                                                        </button>
-                                                                    </div>
+                                                                    <PrincipalDisplay 
+                                                                        principal={lock.owner} 
+                                                                        displayInfo={principalDisplayInfo.get(lock.owner)}
+                                                                        style={{ display: 'inline-flex' }}
+                                                                    />
                                                                 </div>
                                                             </div>
                                                         </td>
@@ -882,30 +896,13 @@ function SneedlockInfo() {
                                                                 <div>
                                                                     Expires: {formatTimestamp(lock.expiry)}
                                                                 </div>
-                                                                <div style={{ opacity: 0.7, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <div style={{ opacity: 0.7 }}>
                                                                     <span>Owner: </span>
-                                                                    <div style={{ position: 'relative', display: 'inline-block' }}>
-                                                                        <span 
-                                                                            title={lock.owner || 'Unknown'}
-                                                                            style={{ cursor: 'help' }}
-                                                                        >
-                                                                            {truncatePrincipal(lock.owner)}
-                                                                        </span>
-                                                                        <button
-                                                                            onClick={() => copyToClipboard(lock.owner)}
-                                                                            style={{
-                                                                                marginLeft: '4px',
-                                                                                background: 'none',
-                                                                                border: 'none',
-                                                                                cursor: 'pointer',
-                                                                                padding: '2px',
-                                                                                color: '#666'
-                                                                            }}
-                                                                            title="Copy principal"
-                                                                        >
-                                                                            📋
-                                                                        </button>
-                                                                    </div>
+                                                                    <PrincipalDisplay 
+                                                                        principal={lock.owner} 
+                                                                        displayInfo={principalDisplayInfo.get(lock.owner)}
+                                                                        style={{ display: 'inline-flex' }}
+                                                                    />
                                                                 </div>
                                                             </div>
                                                         </td>
