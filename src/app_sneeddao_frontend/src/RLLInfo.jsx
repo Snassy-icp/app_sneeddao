@@ -38,14 +38,23 @@ const styles = {
         color: '#ffffff'
     },
     expandableHeader: {
+        backgroundColor: '#2d3436',
+        padding: '12px 16px',
+        marginBottom: '8px',
+        borderRadius: '6px',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '10px',
-        backgroundColor: '#3a3a3a',
-        borderRadius: '4px',
-        marginBottom: '10px'
+        justifyContent: 'space-between'
+    },
+    headerLeft: {
+        display: 'flex',
+        alignItems: 'center'
+    },
+    headerRight: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
     },
     content: {
         padding: '10px'
@@ -3113,21 +3122,23 @@ function RLLInfo() {
                                         cursor: 'pointer' 
                                     }}
                                 >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ 
+                                    <div style={styles.headerLeft}>
+                                        <span>ICP Assets</span>
+                                    </div>
+                                    <div style={styles.headerRight}>
+                                        <span 
+                                            style={styles.infoIcon} 
+                                            title="Overview of ICP holdings across treasury wallets and investment positions"
+                                            onClick={e => e.stopPropagation()}
+                                        >
+                                            i
+                                        </span>
+                                        <span style={{
                                             display: 'inline-block',
                                             transform: `rotate(${expandedSections.icpAssets ? '90deg' : '0deg'})`,
                                             transition: 'transform 0.2s ease'
                                         }}>▸</span>
-                                        ICP Assets
                                     </div>
-                                    <span 
-                                        style={styles.infoIcon} 
-                                        title="Overview of ICP holdings across treasury wallets and investment positions"
-                                        onClick={e => e.stopPropagation()}
-                                    >
-                                        i
-                                    </span>
                                 </h3>
                                 
                                 {/* Details section - collapsible */}
@@ -3360,21 +3371,23 @@ function RLLInfo() {
                                         cursor: 'pointer' 
                                     }}
                                 >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ 
+                                    <div style={styles.headerLeft}>
+                                        <span>SNEED Assets</span>
+                                    </div>
+                                    <div style={styles.headerRight}>
+                                        <span 
+                                            style={styles.infoIcon} 
+                                            title="Overview of SNEED token holdings across treasury wallets and investment positions"
+                                            onClick={e => e.stopPropagation()}
+                                        >
+                                            i
+                                        </span>
+                                        <span style={{
                                             display: 'inline-block',
                                             transform: `rotate(${expandedSections.sneedAssets ? '90deg' : '0deg'})`,
                                             transition: 'transform 0.2s ease'
                                         }}>▸</span>
-                                        SNEED Assets
                                     </div>
-                                    <span 
-                                        style={styles.infoIcon} 
-                                        title="Overview of SNEED token holdings across treasury wallets and investment positions"
-                                        onClick={e => e.stopPropagation()}
-                                    >
-                                        i
-                                    </span>
                                 </h3>
 
                                 {/* Details section - collapsible */}
@@ -3518,21 +3531,23 @@ function RLLInfo() {
                                         cursor: 'pointer' 
                                     }}
                                 >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ 
+                                    <div style={styles.headerLeft}>
+                                        <span>Other Tokens</span>
+                                    </div>
+                                    <div style={styles.headerRight}>
+                                        <span 
+                                            style={styles.infoIcon} 
+                                            title="Overview of other token holdings in the treasury"
+                                            onClick={e => e.stopPropagation()}
+                                        >
+                                            i
+                                        </span>
+                                        <span style={{
                                             display: 'inline-block',
                                             transform: `rotate(${expandedSections.otherTokens ? '90deg' : '0deg'})`,
                                             transition: 'transform 0.2s ease'
                                         }}>▸</span>
-                                        Other Tokens
                                     </div>
-                                    <span 
-                                        style={styles.infoIcon} 
-                                        title="Overview of other token holdings in the treasury"
-                                        onClick={e => e.stopPropagation()}
-                                    >
-                                        i
-                                    </span>
                                 </h3>
                                 {expandedSections.otherTokens && (
                                     <>
@@ -3660,21 +3675,23 @@ function RLLInfo() {
                                         cursor: 'pointer' 
                                     }}
                                 >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ 
+                                    <div style={styles.headerLeft}>
+                                        <span>Other Positions</span>
+                                    </div>
+                                    <div style={styles.headerRight}>
+                                        <span 
+                                            style={styles.infoIcon} 
+                                            title="Overview of other investment positions and holdings"
+                                            onClick={e => e.stopPropagation()}
+                                        >
+                                            i
+                                        </span>
+                                        <span style={{
                                             display: 'inline-block',
                                             transform: `rotate(${expandedSections.otherPositions ? '90deg' : '0deg'})`,
                                             transition: 'transform 0.2s ease'
                                         }}>▸</span>
-                                        Other Positions
                                     </div>
-                                    <span 
-                                        style={styles.infoIcon} 
-                                        title="Overview of other investment positions and holdings"
-                                        onClick={e => e.stopPropagation()}
-                                    >
-                                        i
-                                    </span>
                                 </h3>
 
                                 {expandedSections.otherPositions && (
@@ -3811,16 +3828,23 @@ function RLLInfo() {
                                     style={styles.expandableHeader}
                                     onClick={() => toggleSection(key)}
                                 >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={styles.headerLeft}>
                                         <span>{section.title}</span>
+                                    </div>
+                                    <div style={styles.headerRight}>
                                         <span 
                                             style={styles.infoIcon} 
                                             title={section.description || `Details about ${section.title} components and their functions in the system`}
+                                            onClick={e => e.stopPropagation()}
                                         >
                                             i
                                         </span>
+                                        <span style={{
+                                            display: 'inline-block',
+                                            transform: `rotate(${expandedSections[key] ? '90deg' : '0deg'})`,
+                                            transition: 'transform 0.2s ease'
+                                        }}>▸</span>
                                     </div>
-                                    <span>{expandedSections[key] ? '▼' : '▶'}</span>
                                 </div>
                                 {expandedSections[key] && (
                                     <div style={styles.content}>
@@ -3830,16 +3854,23 @@ function RLLInfo() {
                                                     style={styles.itemHeader}
                                                     onClick={() => toggleItem(item.id)}
                                                 >
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <div style={styles.headerLeft}>
                                                         <span>{item.title}</span>
+                                                    </div>
+                                                    <div style={styles.headerRight}>
                                                         <span 
                                                             style={styles.infoIcon} 
                                                             title={item.description}
+                                                            onClick={e => e.stopPropagation()}
                                                         >
                                                             i
                                                         </span>
+                                                        <span style={{
+                                                            display: 'inline-block',
+                                                            transform: `rotate(${expandedItems[item.id] ? '90deg' : '0deg'})`,
+                                                            transition: 'transform 0.2s ease'
+                                                        }}>▸</span>
                                                     </div>
-                                                    <span>{expandedItems[item.id] ? '▼' : '▶'}</span>
                                                 </div>
                                                 {expandedItems[item.id] && renderItemDetails(item)}
                                             </div>
@@ -3864,16 +3895,23 @@ function RLLInfo() {
                                     style={styles.expandableHeader}
                                     onClick={() => toggleSection(key + '_edges')}
                                 >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={styles.headerLeft}>
                                         <span>{section.title}</span>
+                                    </div>
+                                    <div style={styles.headerRight}>
                                         <span 
                                             style={styles.infoIcon} 
                                             title={`Token flow paths for ${section.title}, showing how tokens move between components`}
+                                            onClick={e => e.stopPropagation()}
                                         >
                                             i
                                         </span>
+                                        <span style={{
+                                            display: 'inline-block',
+                                            transform: `rotate(${expandedSections[key + '_edges'] ? '90deg' : '0deg'})`,
+                                            transition: 'transform 0.2s ease'
+                                        }}>▸</span>
                                     </div>
-                                    <span>{expandedSections[key + '_edges'] ? '▼' : '▶'}</span>
                                 </div>
                                 {expandedSections[key + '_edges'] && (
                                     <div style={styles.content}>
@@ -3883,16 +3921,23 @@ function RLLInfo() {
                                                     style={styles.itemHeader}
                                                     onClick={() => toggleItem(item.id)}
                                                 >
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <div style={styles.headerLeft}>
                                                         <span>{item.description}</span>
+                                                    </div>
+                                                    <div style={styles.headerRight}>
                                                         <span 
                                                             style={styles.infoIcon} 
                                                             title={`Token flow from ${item.source} to ${item.target} (${item.percentage} of ${item.token})`}
+                                                            onClick={e => e.stopPropagation()}
                                                         >
                                                             i
                                                         </span>
+                                                        <span style={{
+                                                            display: 'inline-block',
+                                                            transform: `rotate(${expandedItems[item.id] ? '90deg' : '0deg'})`,
+                                                            transition: 'transform 0.2s ease'
+                                                        }}>▸</span>
                                                     </div>
-                                                    <span>{expandedItems[item.id] ? '▼' : '▶'}</span>
                                                 </div>
                                                 {expandedItems[item.id] && (
                                                     <div style={styles.itemContent}>
