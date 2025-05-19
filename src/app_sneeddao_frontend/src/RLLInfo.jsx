@@ -3356,20 +3356,21 @@ function RLLInfo() {
                                         marginBottom: '15px',
                                         display: 'flex', 
                                         alignItems: 'center', 
-                                        gap: '8px',
+                                        justifyContent: 'space-between',
                                         cursor: 'pointer' 
                                     }}
                                 >
-                                    <span style={{ 
-                                        display: 'inline-block',
-                                        transform: `rotate(${expandedSections.sneedAssets ? '90deg' : '0deg'})`,
-                                        transition: 'transform 0.2s ease',
-                                        marginRight: '4px'
-                                    }}>▸</span>
-                                    SNEED Assets
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ 
+                                            display: 'inline-block',
+                                            transform: `rotate(${expandedSections.sneedAssets ? '90deg' : '0deg'})`,
+                                            transition: 'transform 0.2s ease'
+                                        }}>▸</span>
+                                        SNEED Assets
+                                    </div>
                                     <span 
                                         style={styles.infoIcon} 
-                                        title="All SNEED holdings across Treasury, LP positions, DeFi canister, and pending distributions"
+                                        title="Overview of SNEED token holdings across treasury wallets and investment positions"
                                         onClick={e => e.stopPropagation()}
                                     >
                                         i
@@ -3525,7 +3526,7 @@ function RLLInfo() {
                                     Other Tokens
                                     <span 
                                         style={styles.infoIcon} 
-                                        title="Additional token holdings in the DeFi canister and RLL Distribution system"
+                                        title="Overview of other token holdings in the treasury"
                                         onClick={e => e.stopPropagation()}
                                     >
                                         i
