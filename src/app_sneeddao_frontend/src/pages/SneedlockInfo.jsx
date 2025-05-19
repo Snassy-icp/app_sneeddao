@@ -15,6 +15,7 @@ function SneedlockInfo() {
     const [initialLoading, setInitialLoading] = useState(true);
     const [metadataLoading, setMetadataLoading] = useState(true);
     const [tokenMetadata, setTokenMetadata] = useState({});
+    const [expandedRows, setExpandedRows] = useState(new Set());  // Track expanded rows
 
     // Cache for swap canister data
     const swapCanisterCache = {};
@@ -67,6 +68,23 @@ function SneedlockInfo() {
         }
     }
 
+    const toggleRow = (tokenKey) => {
+        setExpandedRows(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(tokenKey)) {
+                newSet.delete(tokenKey);
+            } else {
+                newSet.add(tokenKey);
+            }
+            return newSet;
+        });
+    };
+
+    const formatTimestamp = (timestamp) => {
+        const date = new Date(Number(timestamp) / 1000000); // Convert nano to milliseconds
+        return date.toLocaleString();
+    };
+
     const fetchData = async () => {
         setInitialLoading(true);
         try {
@@ -81,11 +99,17 @@ function SneedlockInfo() {
             // Aggregate token locks by token type
             const aggregatedData = {};
 
-            // Process token locks
+            // Process token locks with detailed information
             for (const lock of allTokenLocks) {
                 const tokenId = lock[1];
                 const amount = BigInt(lock[2].amount);
                 const tokenKey = tokenId.toText();
+                const lockDetails = {
+                    id: lock[0],  // Lock ID
+                    amount: amount,
+                    expiration: lock[2].expiration,
+                    owner: lock[2].owner
+                };
 
                 if (!aggregatedData[tokenKey]) {
                     aggregatedData[tokenKey] = {
@@ -94,11 +118,14 @@ function SneedlockInfo() {
                         positionLockAmount: 0n,
                         tokenLockCount: 0,
                         positionLockCount: 0,
-                        positionsLoading: false  // Initialize as false by default
+                        positionsLoading: false,
+                        tokenLocks: [],      // Store individual lock details
+                        positionLocks: []    // Store individual position details
                     };
                 }
                 aggregatedData[tokenKey].tokenLockAmount += amount;
                 aggregatedData[tokenKey].tokenLockCount += 1;
+                aggregatedData[tokenKey].tokenLocks.push(lockDetails);
             }
 
             // Create a Set of tokens that appear in position locks
@@ -122,7 +149,9 @@ function SneedlockInfo() {
                         positionLockAmount: 0n,
                         tokenLockCount: 0,
                         positionLockCount: 0,
-                        positionsLoading: true  // Set to true because this token has positions
+                        positionsLoading: true,  // Set to true because this token has positions
+                        tokenLocks: [],
+                        positionLocks: []
                     };
                 } else {
                     aggregatedData[token0Key].positionsLoading = true;  // Ensure it's set to true if token exists
@@ -137,7 +166,9 @@ function SneedlockInfo() {
                         positionLockAmount: 0n,
                         tokenLockCount: 0,
                         positionLockCount: 0,
-                        positionsLoading: true  // Set to true because this token has positions
+                        positionsLoading: true,  // Set to true because this token has positions
+                        tokenLocks: [],
+                        positionLocks: []
                     };
                 } else {
                     aggregatedData[token1Key].positionsLoading = true;  // Ensure it's set to true if token exists
@@ -184,12 +215,15 @@ function SneedlockInfo() {
                 }
             }
 
-            // Process position locks to get amounts
+            // Process position locks with detailed information
             for (const lock of allPositionLocks) {
                 const swapCanisterId = lock[1];
                 const positionId = lock[2].position_id;
                 const token0 = lock[2].token0;
                 const token1 = lock[2].token1;
+                const lockId = lock[0];
+                const expiration = lock[2].expiration;
+                const owner = lock[2].owner;
 
                 // Fetch position details
                 const canisterData = await fetchPositionDetails(swapCanisterId);
@@ -199,7 +233,7 @@ function SneedlockInfo() {
                         setTokenData(prevData => {
                             const newData = { ...prevData };
                             
-                            // Add token0 amount
+                            // Add token0 details
                             const token0Key = token0.toText();
                             if (!newData[token0Key]) {
                                 newData[token0Key] = {
@@ -208,14 +242,27 @@ function SneedlockInfo() {
                                     positionLockAmount: 0n,
                                     tokenLockCount: 0,
                                     positionLockCount: 0,
-                                    positionsLoading: false
+                                    positionsLoading: false,
+                                    tokenLocks: [],
+                                    positionLocks: []
                                 };
                             }
-                            newData[token0Key].positionLockAmount = (newData[token0Key].positionLockAmount || 0n) + BigInt(matchingPosition.token0Amount);
+                            const token0Amount = BigInt(matchingPosition.token0Amount);
+                            newData[token0Key].positionLockAmount = (newData[token0Key].positionLockAmount || 0n) + token0Amount;
                             newData[token0Key].positionLockCount += 1;
                             newData[token0Key].positionsLoading = false;
+                            newData[token0Key].positionLocks.push({
+                                id: lockId,
+                                positionId,
+                                swapCanisterId,
+                                amount: token0Amount,
+                                expiration,
+                                owner,
+                                otherToken: token1,
+                                otherAmount: BigInt(matchingPosition.token1Amount)
+                            });
 
-                            // Add token1 amount
+                            // Add token1 details (similar to token0)
                             const token1Key = token1.toText();
                             if (!newData[token1Key]) {
                                 newData[token1Key] = {
@@ -224,12 +271,25 @@ function SneedlockInfo() {
                                     positionLockAmount: 0n,
                                     tokenLockCount: 0,
                                     positionLockCount: 0,
-                                    positionsLoading: false
+                                    positionsLoading: false,
+                                    tokenLocks: [],
+                                    positionLocks: []
                                 };
                             }
-                            newData[token1Key].positionLockAmount = (newData[token1Key].positionLockAmount || 0n) + BigInt(matchingPosition.token1Amount);
+                            const token1Amount = BigInt(matchingPosition.token1Amount);
+                            newData[token1Key].positionLockAmount = (newData[token1Key].positionLockAmount || 0n) + token1Amount;
                             newData[token1Key].positionLockCount += 1;
                             newData[token1Key].positionsLoading = false;
+                            newData[token1Key].positionLocks.push({
+                                id: lockId,
+                                positionId,
+                                swapCanisterId,
+                                amount: token1Amount,
+                                expiration,
+                                owner,
+                                otherToken: token0,
+                                otherAmount: BigInt(matchingPosition.token0Amount)
+                            });
 
                             return newData;
                         });
@@ -293,87 +353,149 @@ function SneedlockInfo() {
                         <tbody>
                             {Object.entries(tokenData).map(([tokenKey, data]) => {
                                 const token = tokenMetadata[tokenKey];
+                                const isExpanded = expandedRows.has(tokenKey);
                                 return (
-                                    <tr 
-                                        key={tokenKey}
-                                        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-                                    >
-                                        <td style={{ 
-                                            padding: '10px 20px', 
-                                            color: '#fff',
-                                            width: '200px',
-                                            position: 'relative'  // Add positioning context
-                                        }}>
-                                            <div style={{
-                                                position: 'absolute',  // Position the container absolutely
-                                                left: '20px',         // Match the padding
-                                                top: '50%',           // Center vertically
-                                                transform: 'translateY(-50%)',  // Center vertically
-                                                display: 'grid',      // Use grid instead of flex
-                                                gridTemplateColumns: '20px 1fr',  // Fixed width for logo, auto for text
-                                                gap: '8px',
-                                                alignItems: 'center',
-                                                width: 'calc(100% - 40px)'  // Account for padding
+                                    <React.Fragment key={tokenKey}>
+                                        <tr 
+                                            onClick={() => toggleRow(tokenKey)}
+                                            style={{ 
+                                                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                                cursor: 'pointer',
+                                                backgroundColor: isExpanded ? '#333' : 'transparent'
+                                            }}
+                                        >
+                                            <td style={{ 
+                                                padding: '10px 20px', 
+                                                color: '#fff',
+                                                width: '200px',
+                                                position: 'relative'  // Add positioning context
                                             }}>
-                                                {token?.logo ? (
-                                                    <img 
-                                                        src={token.logo} 
-                                                        alt={token?.symbol || tokenKey} 
-                                                        style={{ 
-                                                            width: '20px', 
-                                                            height: '20px', 
-                                                            borderRadius: '50%',
-                                                            gridColumn: '1'
-                                                        }}
-                                                    />
-                                                ) : (
-                                                    <div style={{ 
-                                                        width: '20px', 
-                                                        height: '20px',
-                                                        gridColumn: '1'
-                                                    }} />
-                                                )}
-                                                <span style={{ 
-                                                    whiteSpace: 'nowrap',
-                                                    overflow: 'hidden',
-                                                    textOverflow: 'ellipsis',
-                                                    gridColumn: '2'
+                                                <div style={{
+                                                    position: 'absolute',  // Position the container absolutely
+                                                    left: '20px',         // Match the padding
+                                                    top: '50%',           // Center vertically
+                                                    transform: 'translateY(-50%)',  // Center vertically
+                                                    display: 'grid',      // Use grid instead of flex
+                                                    gridTemplateColumns: '20px 1fr',  // Fixed width for logo, auto for text
+                                                    gap: '8px',
+                                                    alignItems: 'center',
+                                                    width: 'calc(100% - 40px)'  // Account for padding
                                                 }}>
-                                                    {token?.symbol || tokenKey}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
-                                            {formatAmount(data.tokenLockAmount, token?.decimals || 8)}
-                                            <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
-                                                {data.tokenLockCount} lock{data.tokenLockCount !== 1 ? 's' : ''}
-                                            </div>
-                                        </td>
-                                        <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
-                                            {data.positionsLoading ? (
-                                                <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
-                                            ) : (
-                                                <>
-                                                    {formatAmount(data.positionLockAmount, token?.decimals || 8)}
-                                                    <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
-                                                        {data.positionLockCount} position{data.positionLockCount !== 1 ? 's' : ''}
-                                                    </div>
-                                                </>
-                                            )}
-                                        </td>
-                                        <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
-                                            {data.positionsLoading ? (
-                                                <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
-                                            ) : (
-                                                <>
-                                                    {formatAmount(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8)}
-                                                    <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
-                                                        {data.tokenLockCount + data.positionLockCount} total lock{data.tokenLockCount + data.positionLockCount !== 1 ? 's' : ''}
-                                                    </div>
-                                                </>
-                                            )}
-                                        </td>
-                                    </tr>
+                                                    {token?.logo ? (
+                                                        <img 
+                                                            src={token.logo} 
+                                                            alt={token?.symbol || tokenKey} 
+                                                            style={{ 
+                                                                width: '20px', 
+                                                                height: '20px', 
+                                                                borderRadius: '50%',
+                                                                gridColumn: '1'
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <div style={{ 
+                                                            width: '20px', 
+                                                            height: '20px',
+                                                            gridColumn: '1'
+                                                        }} />
+                                                    )}
+                                                    <span style={{ 
+                                                        whiteSpace: 'nowrap',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        gridColumn: '2'
+                                                    }}>
+                                                        {token?.symbol || tokenKey}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
+                                                {data.positionsLoading ? (
+                                                    <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
+                                                ) : (
+                                                    <>
+                                                        {formatAmount(data.tokenLockAmount, token?.decimals || 8)}
+                                                        <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
+                                                            {data.tokenLockCount} lock{data.tokenLockCount !== 1 ? 's' : ''}
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </td>
+                                            <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
+                                                {data.positionsLoading ? (
+                                                    <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
+                                                ) : (
+                                                    <>
+                                                        {formatAmount(data.positionLockAmount, token?.decimals || 8)}
+                                                        <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
+                                                            {data.positionLockCount} position{data.positionLockCount !== 1 ? 's' : ''}
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </td>
+                                            <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
+                                                {data.positionsLoading ? (
+                                                    <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
+                                                ) : (
+                                                    <>
+                                                        {formatAmount(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8)}
+                                                        <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
+                                                            {data.tokenLockCount + data.positionLockCount} total lock{data.tokenLockCount + data.positionLockCount !== 1 ? 's' : ''}
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </td>
+                                        </tr>
+                                        {isExpanded && (
+                                            <>
+                                                {/* Token Locks */}
+                                                {data.tokenLocks.map(lock => (
+                                                    <tr key={`token-${lock.id}`} style={{ backgroundColor: '#222' }}>
+                                                        <td colSpan="4" style={{ padding: '8px 40px' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.9em' }}>
+                                                                <div>
+                                                                    <span style={{ color: '#666' }}>Token Lock</span> #{lock.id?.toString() || 'Unknown'}
+                                                                </div>
+                                                                <div>
+                                                                    Amount: {formatAmount(lock.amount, token?.decimals || 8)}
+                                                                </div>
+                                                                <div>
+                                                                    Expires: {formatTimestamp(lock.expiration || 0)}
+                                                                </div>
+                                                                <div style={{ opacity: 0.7 }}>
+                                                                    Owner: {lock.owner?.toString() || 'Unknown'}
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {/* Position Locks */}
+                                                {data.positionLocks.map(lock => (
+                                                    <tr key={`position-${lock.id}`} style={{ backgroundColor: '#222' }}>
+                                                        <td colSpan="4" style={{ padding: '8px 40px' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.9em' }}>
+                                                                <div>
+                                                                    <span style={{ color: '#666' }}>Position Lock</span> #{lock.id?.toString() || 'Unknown'}
+                                                                </div>
+                                                                <div>
+                                                                    Position: #{lock.positionId?.toString() || 'Unknown'}
+                                                                </div>
+                                                                <div>
+                                                                    Pair Amount: {formatAmount(lock.otherAmount || 0n, token?.decimals || 8)} {tokenMetadata[lock.otherToken?.toText() || '']?.symbol || (lock.otherToken?.toText() || 'Unknown')}
+                                                                </div>
+                                                                <div>
+                                                                    Expires: {formatTimestamp(lock.expiration || 0)}
+                                                                </div>
+                                                                <div style={{ opacity: 0.7 }}>
+                                                                    Owner: {lock.owner?.toString() || 'Unknown'}
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </>
+                                        )}
+                                    </React.Fragment>
                                 );
                             })}
                         </tbody>
