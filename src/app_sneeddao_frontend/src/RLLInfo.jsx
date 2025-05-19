@@ -2878,8 +2878,8 @@ function RLLInfo() {
                                 border: '1px solid #f1c40f',
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    Total Value
+                                <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span>Total Value</span>
                                     <span 
                                         style={styles.infoIcon} 
                                         title="Total value of all DAO assets. GAV includes SNEED holdings in treasury, while NAV excludes them to avoid circular valuation."
@@ -2972,8 +2972,8 @@ function RLLInfo() {
                                 border: '1px solid #2ecc71',
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ color: '#2ecc71', marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    Market Cap & Supply
+                                <h3 style={{ color: '#2ecc71', marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span>Market Cap & Supply</span>
                                     <span 
                                         style={styles.infoIcon} 
                                         title="Overview of SNEED token supply, market metrics, and total value locked (TVL)"
@@ -3109,20 +3109,21 @@ function RLLInfo() {
                                         marginBottom: '15px',
                                         display: 'flex', 
                                         alignItems: 'center', 
-                                        gap: '8px',
+                                        justifyContent: 'space-between',
                                         cursor: 'pointer' 
                                     }}
                                 >
-                                    <span style={{ 
-                                        display: 'inline-block',
-                                        transform: `rotate(${expandedSections.icpAssets ? '90deg' : '0deg'})`,
-                                        transition: 'transform 0.2s ease',
-                                        marginRight: '4px'
-                                    }}>▸</span>
-                                    ICP Assets
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ 
+                                            display: 'inline-block',
+                                            transform: `rotate(${expandedSections.icpAssets ? '90deg' : '0deg'})`,
+                                            transition: 'transform 0.2s ease'
+                                        }}>▸</span>
+                                        ICP Assets
+                                    </div>
                                     <span 
                                         style={styles.infoIcon} 
-                                        title="All ICP holdings across Treasury, Neurons, LP positions, DeFi canister, and other protocols (including ICP from Other Positions)"
+                                        title="Overview of ICP holdings across treasury wallets and investment positions"
                                         onClick={e => e.stopPropagation()}
                                     >
                                         i
