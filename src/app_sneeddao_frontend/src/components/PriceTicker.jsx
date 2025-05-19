@@ -37,7 +37,7 @@ const PriceTicker = ({ icpPrice, sneedPrice, conversionRates }) => {
                 `ICP/USD: ${formatUSD(icpPrice)}`,
                 `SNEED/ICP: ${formatICP(sneedPrice)} ICP`,
                 `SNEED/USD: ${formatUSD(sneedPriceUSD)}`,
-                `SNEED Market Cap: ${formatICP(sneedMarketCapICP)} ICP (${formatUSD(sneedMarketCapUSD)})`
+                `SNEED FDV: ${formatICP(sneedMarketCapICP)} ICP (${formatUSD(sneedMarketCapUSD)})`
             ].join('  •  ');
 
             setTickerText(text + '  •  ' + text);

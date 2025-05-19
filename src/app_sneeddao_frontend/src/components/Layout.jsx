@@ -46,7 +46,7 @@ const Layout = ({ children }) => {
           `ICP/USD: ${formatUSD(icpPrice)}`,
           `SNEED/ICP: ${formatICP(sneedPriceICP)} ICP`,
           `SNEED/USD: ${formatUSD(sneedPriceUSD)}`,
-          `SNEED Market Cap: ${formatICP(sneedMarketCapICP)} ICP (${formatUSD(sneedMarketCapUSD)})`
+          `SNEED FDV: ${formatICP(sneedMarketCapICP)} ICP (${formatUSD(sneedMarketCapUSD)})`
         ].join('  •  ');
 
         console.log('Setting ticker text:', text);
