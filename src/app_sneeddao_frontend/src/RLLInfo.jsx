@@ -2030,6 +2030,68 @@ function RLLInfo() {
                         <span>{(Number(info.billing?.cost_per_day_e8s || 0) / 1e8).toFixed(8)} ICP</span>
                     </div>
                 </div>
+                {/* Sources */}
+                {info.sources && info.sources.length > 0 && (
+                    <div style={{ marginTop: '8px' }}>
+                        <div style={{ marginBottom: '4px' }}>Sources:</div>
+                        {info.sources.map((source, idx) => {
+                            const nodeName = getNodeNameFromAccount(source.endpoint, source.endpoint.ic.ledger);
+                            return (
+                                <div key={idx} style={{ marginLeft: '8px', marginBottom: '8px' }}>
+                                    • {source.name || 'Default'}: {(Number(source.balance) / 1e8).toFixed(8)} {getTokenSymbolFromLedger(source.endpoint.ic.ledger)}
+                                    <div style={{ fontSize: '0.9em', color: '#888' }}>
+                                        Account: 
+                                        <div style={{
+                                            display: 'inline-block',
+                                            maxWidth: '100%',
+                                            wordBreak: 'break-all',
+                                            fontFamily: 'monospace',
+                                            fontSize: '0.9em',
+                                            backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                                            padding: '2px 4px',
+                                            borderRadius: '3px',
+                                            margin: '2px 0'
+                                        }}>
+                                            {formatIcrc1Account(source.endpoint)}
+                                        </div>
+                                        {nodeName && <span style={{ color: '#3498db' }}> ({nodeName})</span>}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+                {/* Destinations */}
+                {info.destinations && info.destinations.length > 0 && (
+                    <div style={{ marginTop: '8px' }}>
+                        <div style={{ marginBottom: '4px' }}>Destinations:</div>
+                        {info.destinations.map((dest, idx) => {
+                            const nodeName = getNodeNameFromAccount(dest.endpoint, dest.endpoint.ic.ledger);
+                            return (
+                                <div key={idx} style={{ marginLeft: '8px', marginBottom: '8px' }}>
+                                    • {dest.name}% {getTokenSymbolFromLedger(dest.endpoint.ic.ledger)}
+                                    <div style={{ fontSize: '0.9em', color: '#888' }}>
+                                        Account: 
+                                        <div style={{
+                                            display: 'inline-block',
+                                            maxWidth: '100%',
+                                            wordBreak: 'break-all',
+                                            fontFamily: 'monospace',
+                                            fontSize: '0.9em',
+                                            backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                                            padding: '2px 4px',
+                                            borderRadius: '3px',
+                                            margin: '2px 0'
+                                        }}>
+                                            {formatIcrc1Account(dest.endpoint)}
+                                        </div>
+                                        {nodeName && <span style={{ color: '#3498db' }}> ({nodeName})</span>}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
         );
     };
