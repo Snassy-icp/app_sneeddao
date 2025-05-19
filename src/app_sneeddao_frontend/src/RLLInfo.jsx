@@ -1964,10 +1964,15 @@ function RLLInfo() {
 
     // Update renderVectorInfo to include node names
     const renderVectorInfo = (vectorName) => {
-        const vectorData = vectorInfo[vectorName];
-        if (!vectorData || !vectorData.length || !vectorData[0] || !vectorData[0][0]) return null;
-        
-        const info = vectorData[0][0];
+        if (isLoadingVectors) {
+            return (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
+                    <div style={styles.spinner} />
+                </div>
+            );
+        }
+
+        const info = vectorInfo[vectorName]?.[0]?.[0];
         if (!info) return null;
 
         return (
@@ -1978,93 +1983,53 @@ function RLLInfo() {
                 borderRadius: '4px'
             }}>
                 <div style={{ marginBottom: '4px' }}>Vector Status:</div>
-                {isLoadingVectors ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
-                        <div style={styles.spinner} />
-                    </div>
-                ) : (
+                <div style={styles.statusItem}>
+                    <span>Active:</span>
+                    <span>{info.active ? 'true' : 'false'}</span>
+                </div>
+                <div style={styles.statusItem}>
+                    <span>Created:</span>
+                    <span>{formatNanoTimestamp(info.created)}</span>
+                </div>
+                <div style={styles.statusItem}>
+                    <span>Last Modified:</span>
+                    <span>{formatNanoTimestamp(info.modified)}</span>
+                </div>
+                {vectorName === 'SNEED Buyback Vector' && info.custom?.[0]?.exchange && (
                     <>
-                        <div>Active: {info.active.toString()}</div>
-                        <div>Created: {formatNanoTimestamp(info.created)}</div>
-                        <div>Last Modified: {formatNanoTimestamp(info.modified)}</div>
-                        
-                        {/* Billing Information */}
-                        {info.billing && (
-                            <div style={{ marginTop: '8px' }}>
-                                <div style={{ fontWeight: 'bold' }}>Billing:</div>
-                                <div style={{ marginLeft: '8px' }}>
-                                    <div>Balance: {(Number(info.billing.current_balance) / 1e8).toFixed(8)} ICP</div>
-                                    <div>Status: {info.billing.frozen ? 'Frozen' : 'Active'}</div>
-                                    <div>Cost per day: {Number(info.billing.cost_per_day)} ICP</div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Sources */}
-                        {info.sources && info.sources.length > 0 && (
-                            <div style={{ marginTop: '8px' }}>
-                                <div style={{ fontWeight: 'bold' }}>Sources:</div>
-                                {info.sources.map((source, idx) => {
-                                    const nodeName = getNodeNameFromAccount(source.endpoint, source.endpoint.ic.ledger);
-                                    return (
-                                        <div key={idx} style={{ marginLeft: '8px' }}>
-                                            • {source.name || 'Default'}: {(Number(source.balance) / 1e8).toFixed(8)} {getTokenSymbolFromLedger(source.endpoint.ic.ledger)}
-                                            <div style={{ fontSize: '0.9em', color: '#888' }}>
-                                                Account: 
-                                                <div style={{
-                                                    display: 'inline-block',
-                                                    maxWidth: '100%',
-                                                    wordBreak: 'break-all',
-                                                    fontFamily: 'monospace',
-                                                    fontSize: '0.9em',
-                                                    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                                                    padding: '2px 4px',
-                                                    borderRadius: '3px',
-                                                    margin: '2px 0'
-                                                }}>
-                                                    {formatIcrc1Account(source.endpoint)}
-                                                </div>
-                                                {nodeName && <span style={{ color: '#3498db' }}> ({nodeName})</span>}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-
-                        {/* Destinations */}
-                        {info.destinations && info.destinations.length > 0 && (
-                            <div style={{ marginTop: '8px' }}>
-                                <div style={{ fontWeight: 'bold' }}>Destinations:</div>
-                                {info.destinations.map((dest, idx) => {
-                                    const nodeName = getNodeNameFromAccount(dest.endpoint, dest.endpoint.ic.ledger);
-                                    return (
-                                        <div key={idx} style={{ marginLeft: '8px' }}>
-                                            • {dest.name}% {getTokenSymbolFromLedger(dest.endpoint.ic.ledger)}
-                                            <div style={{ fontSize: '0.9em', color: '#888' }}>
-                                                Account: 
-                                                <div style={{
-                                                    display: 'inline-block',
-                                                    maxWidth: '100%',
-                                                    wordBreak: 'break-all',
-                                                    fontFamily: 'monospace',
-                                                    fontSize: '0.9em',
-                                                    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                                                    padding: '2px 4px',
-                                                    borderRadius: '3px',
-                                                    margin: '2px 0'
-                                                }}>
-                                                    {formatIcrc1Account(dest.endpoint)}
-                                                </div>
-                                                {nodeName && <span style={{ color: '#3498db' }}> ({nodeName})</span>}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
+                        <div style={styles.statusItem}>
+                            <span>Rate:</span>
+                            <span>{info.custom[0].exchange.internals.current_rate?.[0]?.toFixed(8) || 'N/A'} ICP/SNEED</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Next Buy:</span>
+                            <span>{formatNanoTimestamp(info.custom[0].exchange.internals.next_buy)}</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Buy Amount:</span>
+                            <span>{(Number(info.custom[0].exchange.variables.buy_for_amount) / 1e8).toFixed(2)} ICP</span>
+                        </div>
+                        <div style={styles.statusItem}>
+                            <span>Balance:</span>
+                            <span>{(Number(info.sources?.[0]?.balance || 0) / 1e8).toFixed(2)} ICP</span>
+                        </div>
                     </>
                 )}
+                <div style={{ marginTop: '8px' }}>
+                    <div style={{ marginBottom: '4px' }}>Billing:</div>
+                    <div style={styles.statusItem}>
+                        <span>Balance:</span>
+                        <span>{(Number(info.billing?.balance_e8s || 0) / 1e8).toFixed(8)} ICP</span>
+                    </div>
+                    <div style={styles.statusItem}>
+                        <span>Status:</span>
+                        <span>{info.billing?.status || 'Unknown'}</span>
+                    </div>
+                    <div style={styles.statusItem}>
+                        <span>Cost per day:</span>
+                        <span>{(Number(info.billing?.cost_per_day_e8s || 0) / 1e8).toFixed(8)} ICP</span>
+                    </div>
+                </div>
             </div>
         );
     };
