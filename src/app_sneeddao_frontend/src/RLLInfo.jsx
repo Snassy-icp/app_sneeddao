@@ -3873,6 +3873,23 @@ function RLLInfo() {
                                                         <span>{item.title}</span>
                                                     </div>
                                                     <div style={styles.headerRight}>
+                                                        {item.link && (
+                                                            <a 
+                                                                href={item.link}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                onClick={e => e.stopPropagation()}
+                                                                style={{
+                                                                    color: '#3498db',
+                                                                    cursor: 'pointer',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    marginRight: '8px'
+                                                                }}
+                                                            >
+                                                                🌐
+                                                            </a>
+                                                        )}
                                                         <span 
                                                             style={styles.infoIcon} 
                                                             title={item.description}
