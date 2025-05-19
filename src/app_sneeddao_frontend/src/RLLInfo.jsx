@@ -2913,6 +2913,23 @@ function RLLInfo() {
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* NGAR Section */}
+                                <div style={{ marginTop: '15px' }}>
+                                    <div style={{ color: '#888', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        Net-to-Gross Alignment Ratio (NGAR):
+                                        <span 
+                                            style={styles.infoIcon} 
+                                            title="Ratio between P/NAV and FDV/GAV, indicating the alignment between net and gross valuations"
+                                        >
+                                            i
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: '1.2em' }}>
+                                        {((getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)) / 
+                                          (getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) || 1))).toFixed(2)}x
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Market Cap Card */}
