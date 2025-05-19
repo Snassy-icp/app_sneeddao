@@ -278,7 +278,7 @@ function SneedlockInfo() {
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                             <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                                <th style={{ padding: '10px', textAlign: 'left', color: '#888' }}>Token</th>
+                                <th style={{ padding: '10px 20px', textAlign: 'left', color: '#888', width: '200px' }}>Token</th>
                                 <th style={{ padding: '10px', textAlign: 'right', color: '#888' }}>Token Locks</th>
                                 <th style={{ padding: '10px', textAlign: 'right', color: '#888' }}>Position Locks</th>
                                 <th style={{ padding: '10px', textAlign: 'right', color: '#888' }}>Total Locked</th>
@@ -292,15 +292,42 @@ function SneedlockInfo() {
                                         key={tokenKey}
                                         style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
                                     >
-                                        <td style={{ padding: '10px', color: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                            {token?.logo && (
-                                                <img 
-                                                    src={token.logo} 
-                                                    alt={token?.symbol || tokenKey} 
-                                                    style={{ width: '24px', height: '24px', borderRadius: '50%' }}
-                                                />
-                                            )}
-                                            {token?.symbol || tokenKey}
+                                        <td style={{ 
+                                            padding: '10px 20px', 
+                                            color: '#fff',
+                                            width: '200px'
+                                        }}>
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px'
+                                            }}>
+                                                {token?.logo ? (
+                                                    <img 
+                                                        src={token.logo} 
+                                                        alt={token?.symbol || tokenKey} 
+                                                        style={{ 
+                                                            width: '20px', 
+                                                            height: '20px', 
+                                                            borderRadius: '50%',
+                                                            flexShrink: 0
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <div style={{ 
+                                                        width: '20px', 
+                                                        height: '20px',
+                                                        flexShrink: 0 
+                                                    }} />
+                                                )}
+                                                <span style={{ 
+                                                    whiteSpace: 'nowrap',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis'
+                                                }}>
+                                                    {token?.symbol || tokenKey}
+                                                </span>
+                                            </div>
                                         </td>
                                         <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
                                             {formatAmount(data.tokenLockAmount, token?.decimals || 8)}
