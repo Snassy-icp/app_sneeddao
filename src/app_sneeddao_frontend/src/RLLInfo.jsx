@@ -138,6 +138,16 @@ const styles = {
     heading: {
         display: 'flex',
         alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '20px'
+    },
+    headingLeft: {
+        display: 'flex',
+        alignItems: 'center'
+    },
+    headingRight: {
+        display: 'flex',
+        alignItems: 'center',
         gap: '8px'
     }
 };
@@ -3813,14 +3823,19 @@ function RLLInfo() {
                         maxWidth: '800px',
                         alignSelf: 'start'
                     }}>
-                        <h2 style={{ ...styles.heading }}>
-                            System Components
-                            <span 
-                                style={styles.infoIcon} 
-                                title="Detailed information about each component in the system, including infrastructure nodes, token management canisters, and revenue sources"
-                            >
-                                i
-                            </span>
+                        <h2 style={styles.heading}>
+                            <div style={styles.headingLeft}>
+                                <span>System Components</span>
+                            </div>
+                            <div style={styles.headingRight}>
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="Detailed information about each component in the system, including infrastructure nodes, token management canisters, and revenue sources"
+                                >
+                                    i
+                                </span>
+                                <span style={{ width: '20px' }}></span>
+                            </div>
                         </h2>
                         {Object.entries(nodes).map(([key, section]) => (
                             <div key={key}>
@@ -3881,13 +3896,18 @@ function RLLInfo() {
                         ))}
 
                         <h2 style={{ marginTop: '40px', ...styles.heading }}>
-                            Token Flows
-                            <span 
-                                style={styles.infoIcon} 
-                                title="Detailed breakdown of token movement paths between system components, including percentages and token types"
-                            >
-                                i
-                            </span>
+                            <div style={styles.headingLeft}>
+                                <span>Token Flows</span>
+                            </div>
+                            <div style={styles.headingRight}>
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="Detailed breakdown of token movement paths between system components, including percentages and token types"
+                                >
+                                    i
+                                </span>
+                                <span style={{ width: '20px' }}></span>
+                            </div>
                         </h2>
                         {Object.entries(edges).map(([key, section]) => (
                             <div key={key}>
