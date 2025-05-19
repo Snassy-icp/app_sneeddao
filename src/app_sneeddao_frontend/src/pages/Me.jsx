@@ -26,6 +26,7 @@ import {
 import { useNaming } from '../NamingContext';
 import { Link } from 'react-router-dom';
 import ConfirmationModal from '../ConfirmationModal';
+import { PrincipalDisplay } from '../utils/PrincipalUtils';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -961,24 +962,44 @@ export default function Me() {
                                                             <div style={{ color: '#888' }}>Voting Power</div>
                                                             <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
                                                         </div>
-                                                        {/* Replace debug info with hotkey status */}
+                                                        {/* Replace debug info with permissions */}
                                                         <div style={{ gridColumn: '1 / -1' }}>
-                                                            <div style={{ 
-                                                                color: '#888',
-                                                                fontSize: '14px',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '5px'
-                                                            }}>
-                                                                {neuron.permissions.some(p => 
-                                                                    p.principal?.toString() === identity.getPrincipal().toString() &&
-                                                                    p.permission_type.includes(4) // Check for vote permission
-                                                                ) ? (
-                                                                    <>
-                                                                        <span style={{ color: '#2ecc71' }}>🔑 Hotkey Access</span>
-                                                                    </>
-                                                                ) : null}
-                                                            </div>
+                                                            <div style={{ color: '#888', marginBottom: '8px' }}>Permissions</div>
+                                                            {/* Owner */}
+                                                            {getOwnerPrincipals(neuron).length > 0 && (
+                                                                <div style={{ 
+                                                                    marginBottom: '8px',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '8px'
+                                                                }}>
+                                                                    <span style={{ color: '#888' }}>Owner:</span>
+                                                                    <PrincipalDisplay 
+                                                                        principal={getOwnerPrincipals(neuron)[0]}
+                                                                        showCopyButton={false}
+                                                                    />
+                                                                </div>
+                                                            )}
+                                                            {/* Hotkeys */}
+                                                            {neuron.permissions
+                                                                .filter(p => !getOwnerPrincipals(neuron).includes(p.principal?.toString()))
+                                                                .map((p, index) => (
+                                                                    <div key={index} style={{ 
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '8px',
+                                                                        marginBottom: index < neuron.permissions.length - 1 ? '8px' : 0
+                                                                    }}>
+                                                                        <span style={{ color: '#888', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                            🔑 Hotkey:
+                                                                        </span>
+                                                                        <PrincipalDisplay 
+                                                                            principal={p.principal}
+                                                                            showCopyButton={false}
+                                                                        />
+                                                                    </div>
+                                                                ))
+                                                            }
                                                         </div>
                                                     </div>
                                                 </div>
