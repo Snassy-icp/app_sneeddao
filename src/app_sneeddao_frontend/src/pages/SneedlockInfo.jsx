@@ -8,6 +8,7 @@ import { formatAmount } from '../utils/StringUtils';
 import { getTokenLogo } from '../utils/TokenUtils';
 import Header from '../components/Header';
 import { Principal } from '@dfinity/principal';
+import { createActor as createNeutriniteDappActor, canisterId as neutriniteCanisterId } from 'external/neutrinite_dapp';
 
 function SneedlockInfo() {
     const { identity } = useAuth();
@@ -16,9 +17,55 @@ function SneedlockInfo() {
     const [metadataLoading, setMetadataLoading] = useState(true);
     const [tokenMetadata, setTokenMetadata] = useState({});
     const [expandedRows, setExpandedRows] = useState(new Set());  // Track expanded rows
+    const [usdValues, setUsdValues] = useState({});
+    const [conversionRates, setConversionRates] = useState({});
 
     // Cache for swap canister data
     const swapCanisterCache = {};
+
+    const formatUSD = (value) => {
+        if (value === undefined || value === null || isNaN(value)) return '';
+        return `($${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+    };
+
+    const getUSDValue = (amount, decimals, symbol) => {
+        if (!amount || !decimals || !symbol || !conversionRates[symbol]) return null;
+        const normalizedAmount = Number(amount) / Math.pow(10, decimals);
+        return normalizedAmount * conversionRates[symbol];
+    };
+
+    const fetchConversionRates = async () => {
+        try {
+            const neutriniteActor = createNeutriniteDappActor(neutriniteCanisterId, { agentOptions: { identity } });
+            const tokens = await neutriniteActor.get_latest_wallet_tokens();
+            const rates = {};
+            
+            tokens.latest.forEach(token => {
+                if (token.rates) {
+                    token.rates.forEach(rate => {
+                        if (rate.symbol.endsWith("/USD")) {
+                            const tokenSymbol = rate.symbol.split("/")[0];
+                            rates[tokenSymbol] = rate.rate;
+                        }
+                    });
+                }
+            });
+            
+            setConversionRates(prevRates => ({
+                ...prevRates,
+                ...rates
+            }));
+        } catch (err) {
+            console.error('Error fetching conversion rates:', err);
+        }
+    };
+
+    useEffect(() => {
+        fetchConversionRates();
+        // Refresh rates every 5 minutes
+        const interval = setInterval(fetchConversionRates, 5 * 60 * 1000);
+        return () => clearInterval(interval);
+    }, []);
 
     async function fetchPositionDetails(swapCanisterId) {
         if (swapCanisterCache[swapCanisterId.toText()]) {
@@ -126,6 +173,7 @@ function SneedlockInfo() {
 
     const fetchData = async () => {
         setInitialLoading(true);
+        await fetchConversionRates(); // Fetch conversion rates first
         try {
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
             
@@ -454,7 +502,10 @@ function SneedlockInfo() {
                                                     <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
                                                 ) : (
                                                     <>
-                                                        {formatAmount(data.tokenLockAmount, token?.decimals || 8)}
+                                                        {formatAmount(data.tokenLockAmount, token?.decimals || 8)}{' '}
+                                                        <span style={{ fontSize: '0.9em', color: '#666' }}>
+                                                            {formatUSD(getUSDValue(data.tokenLockAmount, token?.decimals || 8, token?.symbol))}
+                                                        </span>
                                                         <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
                                                             {data.tokenLockCount} lock{data.tokenLockCount !== 1 ? 's' : ''}
                                                         </div>
@@ -466,7 +517,10 @@ function SneedlockInfo() {
                                                     <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
                                                 ) : (
                                                     <>
-                                                        {formatAmount(data.positionLockAmount, token?.decimals || 8)}
+                                                        {formatAmount(data.positionLockAmount, token?.decimals || 8)}{' '}
+                                                        <span style={{ fontSize: '0.9em', color: '#666' }}>
+                                                            {formatUSD(getUSDValue(data.positionLockAmount, token?.decimals || 8, token?.symbol))}
+                                                        </span>
                                                         <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
                                                             {data.positionLockCount} position{data.positionLockCount !== 1 ? 's' : ''}
                                                         </div>
@@ -478,7 +532,10 @@ function SneedlockInfo() {
                                                     <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
                                                 ) : (
                                                     <>
-                                                        {formatAmount(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8)}
+                                                        {formatAmount(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8)}{' '}
+                                                        <span style={{ fontSize: '0.9em', color: '#666' }}>
+                                                            {formatUSD(getUSDValue(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8, token?.symbol))}
+                                                        </span>
                                                         <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
                                                             {data.tokenLockCount + data.positionLockCount} total lock{data.tokenLockCount + data.positionLockCount !== 1 ? 's' : ''}
                                                         </div>
@@ -509,7 +566,10 @@ function SneedlockInfo() {
                                                                     </a>
                                                                 </div>
                                                                 <div>
-                                                                    Amount: {formatAmount(lock.amount, token?.decimals || 8)}
+                                                                    Amount: {formatAmount(lock.amount, token?.decimals || 8)}{' '}
+                                                                    <span style={{ fontSize: '0.9em', color: '#666' }}>
+                                                                        {formatUSD(getUSDValue(lock.amount, token?.decimals || 8, token?.symbol))}
+                                                                    </span>
                                                                 </div>
                                                                 <div>
                                                                     Expires: {formatTimestamp(lock.expiry)}
@@ -568,10 +628,20 @@ function SneedlockInfo() {
                                                                 </div>
                                                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                                                                     <div>
-                                                                        {formatAmount(lock.amount || 0n, token?.decimals || 8)} {token?.symbol || tokenKey}
+                                                                        {formatAmount(lock.amount || 0n, token?.decimals || 8)} {token?.symbol || tokenKey}{' '}
+                                                                        <span style={{ fontSize: '0.9em', color: '#666' }}>
+                                                                            {formatUSD(getUSDValue(lock.amount, token?.decimals || 8, token?.symbol))}
+                                                                        </span>
                                                                     </div>
                                                                     <div>
-                                                                        {formatAmount(lock.otherAmount || 0n, tokenMetadata[lock.otherToken?.toText() || '']?.decimals || 8)} {tokenMetadata[lock.otherToken?.toText() || '']?.symbol || (lock.otherToken?.toText() || 'Unknown')}
+                                                                        {formatAmount(lock.otherAmount || 0n, tokenMetadata[lock.otherToken?.toText() || '']?.decimals || 8)} {tokenMetadata[lock.otherToken?.toText() || '']?.symbol || (lock.otherToken?.toText() || 'Unknown')}{' '}
+                                                                        <span style={{ fontSize: '0.9em', color: '#666' }}>
+                                                                            {formatUSD(getUSDValue(
+                                                                                lock.otherAmount,
+                                                                                tokenMetadata[lock.otherToken?.toText() || '']?.decimals || 8,
+                                                                                tokenMetadata[lock.otherToken?.toText() || '']?.symbol
+                                                                            ))}
+                                                                        </span>
                                                                     </div>
                                                                 </div>
                                                                 <div>

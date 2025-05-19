@@ -3,6 +3,10 @@ import { Actor, HttpAgent } from "@dfinity/agent";
 // Imports and re-exports candid interface
 import { idlFactory } from "./neutrinite_dapp.did.js";
 export { idlFactory } from "./neutrinite_dapp.did.js";
+//Principal.fromText("u45jl-liaaa-aaaam-abppa-cai")
+
+export const canisterId =
+  "u45jl-liaaa-aaaam-abppa-cai"
 
 export const createActor = (canisterId, options = {}) => {
   const agent = options.agent || new HttpAgent({ ...options.agentOptions });
