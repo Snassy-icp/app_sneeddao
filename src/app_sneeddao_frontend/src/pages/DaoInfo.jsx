@@ -695,6 +695,15 @@ function DaoInfo() {
                                         <div style={styles.label}>Total Staked</div>
                                     </div>
                                     <div style={styles.card}>
+                                        <div style={styles.metric}>
+                                            {formatNumber(tokenomics.totalAssets.sneed / 1e8)} SNEED
+                                            <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                                {((tokenomics.totalAssets.sneed / (Number(tokenomics.totalSupply) * 1e8)) * 100).toFixed(2)}% of supply
+                                            </div>
+                                        </div>
+                                        <div style={styles.label}>Treasury SNEED</div>
+                                    </div>
+                                    <div style={styles.card}>
                                         <div style={styles.metric}>{formatUSD(tokenomics.totalAssets.totalUsd)}</div>
                                         <div style={styles.label}>Total Assets (USD)</div>
                                     </div>
