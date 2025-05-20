@@ -100,6 +100,13 @@ export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, sho
         };
     }, [principal]);
     
+    console.log('PrincipalDisplay rendered with:', {
+        principal: principal?.toString(),
+        displayInfo: displayInfo,
+        showCopyButton: showCopyButton,
+        style: style
+    });
+
     // If no display info was provided, just show truncated ID
     if (typeof formatted === 'string') {
         return React.createElement('div', 

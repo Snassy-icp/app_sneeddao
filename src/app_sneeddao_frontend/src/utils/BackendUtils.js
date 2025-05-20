@@ -87,7 +87,10 @@ export const getNeuronName = async (identity, snsRootCanisterId, neuronId) => {
         const neuronIdBytes = typeof neuronId === 'string' ? 
             hexToUint8Array(neuronId) : 
             neuronId;
-
+        console.log('Getting neuron name for:', {
+            snsRootCanisterId,
+            neuronIdBytes
+        });
         const response = await actor.get_neuron_name(
             Principal.fromText(snsRootCanisterId),
             { id: neuronIdBytes }
@@ -109,7 +112,10 @@ export const getNeuronNickname = async (identity, snsRootCanisterId, neuronId) =
         const neuronIdBytes = typeof neuronId === 'string' ? 
             hexToUint8Array(neuronId) : 
             neuronId;
-
+        console.log('Getting neuron nickname for:', {
+            snsRootCanisterId,
+            neuronIdBytes
+        });
         const response = await actor.get_neuron_nickname(
             Principal.fromText(snsRootCanisterId),
             { id: neuronIdBytes }
@@ -128,6 +134,7 @@ export const getAllNeuronNames = async (identity) => {
     
     try {
         const actor = createBackendActor(identity);
+        console.log('Getting all neuron names');
         const response = await actor.get_all_neuron_names();
         return response;
     } catch (error) {
@@ -142,6 +149,7 @@ export const getAllNeuronNicknames = async (identity) => {
     
     try {
         const actor = createBackendActor(identity);
+        console.log('Getting all neuron nicknames');
         const response = await actor.get_all_neuron_nicknames();
         return response;
     } catch (error) {
@@ -150,6 +158,10 @@ export const getAllNeuronNicknames = async (identity) => {
     }
 };
 
+// Cache for principal names and nicknames
+const principalNameCache = new Map();
+const principalNicknameCache = new Map();
+
 // Set a public name for your principal
 export const setPrincipalName = async (identity, name) => {
     if (!identity || name === undefined) return null;
@@ -157,6 +169,11 @@ export const setPrincipalName = async (identity, name) => {
     try {
         const actor = createBackendActor(identity);
         const response = await actor.set_principal_name(name);
+        if ('ok' in response) {
+            // Clear name cache for this principal
+            const cacheKey = `${identity.getPrincipal().toString()}-${identity.getPrincipal().toString()}`;
+            principalNameCache.delete(cacheKey);
+        }
         return response;
     } catch (error) {
         console.error('Error setting principal name:', error);
@@ -174,6 +191,11 @@ export const setPrincipalNickname = async (identity, principal, nickname) => {
             typeof principal === 'string' ? Principal.fromText(principal) : principal,
             nickname
         );
+        if ('ok' in response) {
+            // Clear nickname cache for this principal
+            const cacheKey = `${identity.getPrincipal().toString()}-${principal.toString()}`;
+            principalNicknameCache.delete(cacheKey);
+        }
         return response;
     } catch (error) {
         console.error('Error setting principal nickname:', error);
@@ -185,11 +207,25 @@ export const setPrincipalNickname = async (identity, principal, nickname) => {
 export const getPrincipalName = async (identity, principal) => {
     if (!identity || !principal) return null;
     
+    const principalStr = principal.toString();
+    const cacheKey = `${identity.getPrincipal().toString()}-${principalStr}`;
+    
+    // Check cache first
+    if (principalNameCache.has(cacheKey)) {
+        return principalNameCache.get(cacheKey);
+    }
+    
     try {
         const actor = createBackendActor(identity);
+        console.log('Getting principal name for:', {
+            principal: principalStr
+        });
         const response = await actor.get_principal_name(
             typeof principal === 'string' ? Principal.fromText(principal) : principal
         );
+        
+        // Cache the result
+        principalNameCache.set(cacheKey, response);
         return response;
     } catch (error) {
         console.error('Error getting principal name:', error);
@@ -201,11 +237,25 @@ export const getPrincipalName = async (identity, principal) => {
 export const getPrincipalNickname = async (identity, principal) => {
     if (!identity || !principal) return null;
     
+    const principalStr = principal.toString();
+    const cacheKey = `${identity.getPrincipal().toString()}-${principalStr}`;
+    
+    // Check cache first
+    if (principalNicknameCache.has(cacheKey)) {
+        return principalNicknameCache.get(cacheKey);
+    }
+    
     try {
         const actor = createBackendActor(identity);
+        console.log('Getting principal nickname for:', {
+            principal: principalStr
+        });
         const response = await actor.get_principal_nickname(
             typeof principal === 'string' ? Principal.fromText(principal) : principal
         );
+        
+        // Cache the result
+        principalNicknameCache.set(cacheKey, response);
         return response;
     } catch (error) {
         console.error('Error getting principal nickname:', error);
@@ -219,6 +269,7 @@ export const getAllPrincipalNames = async (identity) => {
     
     try {
         const actor = createBackendActor(identity);
+        console.log('Getting all principal names');
         const response = await actor.get_all_principal_names();
         return response;
     } catch (error) {
@@ -233,6 +284,7 @@ export const getAllPrincipalNicknames = async (identity) => {
     
     try {
         const actor = createBackendActor(identity);
+        console.log('Getting all principal nicknames');
         const response = await actor.get_all_principal_nicknames();
         return response;
     } catch (error) {
