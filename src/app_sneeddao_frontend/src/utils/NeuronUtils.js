@@ -2,6 +2,7 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { Principal } from '@dfinity/principal';
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { HttpAgent } from '@dfinity/agent';
 
 // Helper function to convert Uint8Array to hex string
 export const uint8ArrayToHex = (array) => {
@@ -245,26 +246,39 @@ export const formatProposalIdLink = (proposalId, snsRoot) => {
 const fetchedPrincipals = new Set();
 
 // Main function to fetch user neurons for a specific SNS
-export const fetchUserNeuronsForSns = async (identity, snsGovernanceCanisterId) => {
-    if (!identity || !snsGovernanceCanisterId) return [];
+export const fetchUserNeuronsForSns = async (identity, snsGovernanceCanisterId) => { return fetchPrincipalNeuronsForSns(identity, snsGovernanceCanisterId, identity.getPrincipal().toString()); }
+
+export const fetchPrincipalNeuronsForSns = async (identity, snsGovernanceCanisterId, principalId) => {
+    if (!snsGovernanceCanisterId) return [];
     
     try {
+        // Create an anonymous agent if no identity is provided
+        const agent = identity ? 
+            new HttpAgent({ identity }) : 
+            new HttpAgent();
+
+        if (process.env.DFX_NETWORK !== 'ic') {
+            await agent.fetchRootKey();
+        }
+
         const snsGovActor = createSnsGovernanceActor(snsGovernanceCanisterId, {
-            agentOptions: { identity }
+            agentOptions: { agent }
         });
 
         // Clear the set of fetched principals for this new request
         fetchedPrincipals.clear();
         
-        // Start with the user's principal
-        const userPrincipal = identity.getPrincipal().toString();
-        fetchedPrincipals.add(userPrincipal);
+        let principalsToFetch = [];
+        if (principalId) {
+            fetchedPrincipals.add(principalId);
+            principalsToFetch.push(principalId);
+        }
         
         // Initialize result map to store unique neurons by ID
         const neuronsMap = new Map();
         
         // Queue of principals to fetch neurons for
-        let principalsToFetch = [userPrincipal];
+        //let principalsToFetch = [userPrincipal];
         
         // Process each principal in the queue
         while (principalsToFetch.length > 0) {

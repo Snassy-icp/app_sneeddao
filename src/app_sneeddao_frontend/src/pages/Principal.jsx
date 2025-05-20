@@ -6,10 +6,11 @@ import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalN
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import ConfirmationModal from '../ConfirmationModal';
-import { fetchUserNeuronsForSns, getOwnerPrincipals, formatNeuronIdLink } from '../utils/NeuronUtils';
+import { fetchPrincipalNeuronsForSns, getOwnerPrincipals, formatNeuronIdLink } from '../utils/NeuronUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { getSnsById, fetchAndCacheSnsData } from '../utils/SnsUtils';
 import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
+import { HttpAgent } from '@dfinity/agent';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -98,11 +99,10 @@ export default function PrincipalPage() {
         let currentFetchKey = null;
 
         const fetchNeurons = async () => {
-            const currentIdentity = stableIdentity.current;
             const currentSnsRoot = searchParams.get('sns') || SNEED_SNS_ROOT;
             const currentPrincipalId = stablePrincipalId.current;
 
-            if (!currentIdentity || !currentSnsRoot || !currentPrincipalId) {
+            if (!currentSnsRoot || !currentPrincipalId) {
                 if (mounted) {
                     setLoadingNeurons(false);
                     setNeurons([]);
@@ -127,7 +127,7 @@ export default function PrincipalPage() {
                     throw new Error('Selected SNS not found');
                 }
 
-                const neuronsList = await fetchUserNeuronsForSns(currentIdentity, selectedSns.canisters.governance);
+                const neuronsList = await fetchPrincipalNeuronsForSns(null, selectedSns.canisters.governance, currentPrincipalId.toString());
                 const relevantNeurons = neuronsList.filter(neuron => 
                     neuron.permissions.some(p => 
                         p.principal?.toString() === currentPrincipalId.toString()
@@ -137,9 +137,9 @@ export default function PrincipalPage() {
                 if (mounted) {
                     setNeurons(relevantNeurons);
 
-                    // Get token symbol
+                    // Get token symbol - we can do this anonymously
                     const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
-                        agentOptions: { identity: currentIdentity }
+                        agentOptions: { agent: new HttpAgent() }
                     });
                     const metadata = await icrc1Actor.icrc1_metadata();
                     const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
