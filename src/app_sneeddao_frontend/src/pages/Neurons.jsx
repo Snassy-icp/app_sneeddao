@@ -6,9 +6,10 @@ import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
 import { formatNeuronIdLink, formatE8s, getDissolveState } from '../utils/NeuronUtils';
+import { Actor, HttpAgent } from '@dfinity/agent';
 
 function Neurons() {
-    const { isAuthenticated, identity } = useAuth();
+    const { identity } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
@@ -50,10 +51,8 @@ function Neurons() {
             }
         }
 
-        if (isAuthenticated) {
-            loadSnsData();
-        }
-    }, [isAuthenticated, identity]);
+        loadSnsData();
+    }, [identity]);
 
     // Fetch neurons when SNS changes
     useEffect(() => {
@@ -72,10 +71,17 @@ function Neurons() {
                 return;
             }
 
+            // Create an anonymous agent if no identity is available
+            const agent = identity ? 
+                new HttpAgent({ identity }) : 
+                new HttpAgent();
+
+            if (process.env.DFX_NETWORK !== 'ic') {
+                await agent.fetchRootKey();
+            }
+
             const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
-                agentOptions: {
-                    identity,
-                },
+                agent
             });
 
             // Fetch all neurons
@@ -95,9 +101,7 @@ function Neurons() {
             setNeurons(sortedNeurons);
 
             // Get token symbol
-            const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
-                agentOptions: { identity }
-            });
+            const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, { agent });
             const metadata = await icrc1Actor.icrc1_metadata();
             const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
             if (symbolEntry && symbolEntry[1]) {
