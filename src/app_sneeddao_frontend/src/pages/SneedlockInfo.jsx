@@ -993,6 +993,24 @@ function SneedlockInfo() {
                                 );
                             })}
                         </tbody>
+                        {metadataLoading && (
+                            <tbody>
+                                <tr>
+                                    <td colSpan="4" style={{ padding: '20px', textAlign: 'center' }}>
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'center',
+                                            gap: '10px',
+                                            color: '#888'
+                                        }}>
+                                            <div className="spinner" style={{ width: '20px', height: '20px' }} />
+                                            <span>Loading more locks...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        )}
                         <tfoot>
                             <tr style={{ 
                                 borderTop: '2px solid #2ecc71',
