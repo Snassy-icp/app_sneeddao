@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import Header from '../components/Header';
 import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname } from '../utils/BackendUtils';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import ConfirmationModal from '../ConfirmationModal';
-import { fetchUserNeuronsForSns, getOwnerPrincipals } from '../utils/NeuronUtils';
+import { fetchUserNeuronsForSns, getOwnerPrincipals, formatNeuronIdLink } from '../utils/NeuronUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { getSnsById, fetchAndCacheSnsData } from '../utils/SnsUtils';
 import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
@@ -605,35 +605,7 @@ export default function PrincipalPage() {
                                                 gap: '8px',
                                                 marginBottom: '10px'
                                             }}>
-                                                <a
-                                                    href={`/neuron?neuronid=${neuronId}&sns=${SNEED_SNS_ROOT}`}
-                                                    style={{ 
-                                                        fontFamily: 'monospace',
-                                                        color: '#888',
-                                                        fontSize: '14px',
-                                                        textDecoration: 'none'
-                                                    }}
-                                                    title={neuronId}
-                                                    onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                                    onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                                                >
-                                                    {`${neuronId.slice(0, 6)}...${neuronId.slice(-6)}`}
-                                                </a>
-                                                <button
-                                                    onClick={() => navigator.clipboard.writeText(neuronId)}
-                                                    style={{
-                                                        background: 'none',
-                                                        border: 'none',
-                                                        padding: '4px',
-                                                        cursor: 'pointer',
-                                                        color: '#888',
-                                                        display: 'flex',
-                                                        alignItems: 'center'
-                                                    }}
-                                                    title="Copy neuron ID to clipboard"
-                                                >
-                                                    📋
-                                                </button>
+                                                {formatNeuronIdLink(neuronId, searchParams.get('sns') || SNEED_SNS_ROOT)}
                                             </div>
                                         </div>
 
