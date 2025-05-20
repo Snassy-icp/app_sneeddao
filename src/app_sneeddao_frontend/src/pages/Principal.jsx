@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
@@ -21,7 +21,8 @@ const spinKeyframes = `
 export default function PrincipalPage() {
     const { identity } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
-    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || '');
+    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
+    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || SNEED_SNS_ROOT);
     const [principalInfo, setPrincipalInfo] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -37,7 +38,8 @@ export default function PrincipalPage() {
     const [confirmAction, setConfirmAction] = useState(null);
     const [confirmMessage, setConfirmMessage] = useState('');
     const [neurons, setNeurons] = useState([]);
-    const [loadingNeurons, setLoadingNeurons] = useState(true);
+    const [loadingNeurons, setLoadingNeurons] = useState(false);
+    const [neuronError, setNeuronError] = useState(null);
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [snsList, setSnsList] = useState([]);
 
@@ -51,7 +53,10 @@ export default function PrincipalPage() {
 
     const handleSnsChange = (newSnsRoot) => {
         setSelectedSnsRoot(newSnsRoot);
-        setSearchParams({ id: principalParam, sns: newSnsRoot });
+        setSearchParams(prev => {
+            prev.set('sns', newSnsRoot);
+            return prev;
+        });
     };
 
     // Validation function
@@ -68,6 +73,29 @@ export default function PrincipalPage() {
         return "";
     };
 
+    // Load SNS data once on mount
+    useEffect(() => {
+        const fetchSnsData = async () => {
+            try {
+                const data = await fetchAndCacheSnsData();
+                setSnsList(data);
+            } catch (err) {
+                console.error('Error fetching SNS data:', err);
+                setError('Failed to load SNS data');
+            }
+        };
+        fetchSnsData();
+    }, [identity]);
+
+    // Sync URL SNS param with state
+    useEffect(() => {
+        const snsParam = searchParams.get('sns');
+        if (snsParam && snsParam !== selectedSnsRoot) {
+            setSelectedSnsRoot(snsParam);
+        }
+    }, [searchParams]);
+
+    // Load principal info
     useEffect(() => {
         const fetchPrincipalInfo = async () => {
             if (!identity || !principalId) {
@@ -97,53 +125,53 @@ export default function PrincipalPage() {
         fetchPrincipalInfo();
     }, [identity, principalId]);
 
+    // Load neurons when SNS or principal changes
     useEffect(() => {
-        const fetchSnsData = async () => {
-            try {
-                const data = await fetchAndCacheSnsData();
-                setSnsList(data);
-                
-                // If no SNS is selected in URL, default to Sneed SNS
-                if (!searchParams.get('sns')) {
-                    const sneedSns = data.find(sns => sns.rootCanisterId === 'fp274-iaaaa-aaaaq-aacha-cai');
-                    if (sneedSns) {
-                        const newSnsRoot = sneedSns.rootCanisterId;
-                        setSelectedSnsRoot(newSnsRoot);
-                        setSearchParams(prev => {
-                            prev.set('sns', newSnsRoot);
-                            return prev;
-                        });
-                    }
-                }
-            } catch (err) {
-                console.error('Error fetching SNS data:', err);
-                setError('Failed to load SNS data');
-            }
-        };
-        fetchSnsData();
-    }, [identity]);
+        console.log('Neuron effect triggered with:', {
+            hasIdentity: !!identity,
+            selectedSnsRoot,
+            principalId: principalId?.toString()
+        });
 
-    useEffect(() => {
         const fetchNeurons = async () => {
-            if (!identity || !selectedSnsRoot || !principalId) return;
-            
+            if (!identity || !selectedSnsRoot || !principalId) {
+                console.log('Skipping neuron fetch - missing dependency:', {
+                    hasIdentity: !!identity,
+                    selectedSnsRoot,
+                    principalId: principalId?.toString()
+                });
+                setLoadingNeurons(false);
+                setNeurons([]);
+                return;
+            }
+
+            // Prevent duplicate fetches for same data
+            const fetchKey = `${selectedSnsRoot}-${principalId.toString()}`;
+            console.log('Fetching neurons with key:', fetchKey);
+
             setLoadingNeurons(true);
+            setNeuronError(null);
+
             try {
                 const selectedSns = getSnsById(selectedSnsRoot);
                 if (!selectedSns) {
                     throw new Error('Selected SNS not found');
                 }
-                
+
+                console.log('Found SNS:', selectedSns.rootCanisterId);
                 const neuronsList = await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
-                // Filter neurons where the given principal is a hotkey
+                console.log('Fetched neurons:', neuronsList.length);
+                
                 const relevantNeurons = neuronsList.filter(neuron => 
                     neuron.permissions.some(p => 
                         p.principal?.toString() === principalId.toString()
                     )
                 );
+                console.log('Filtered to relevant neurons:', relevantNeurons.length);
+                
                 setNeurons(relevantNeurons);
 
-                // Fetch token metadata for the selected SNS
+                // Get token symbol
                 const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
                     agentOptions: { identity }
                 });
@@ -154,13 +182,14 @@ export default function PrincipalPage() {
                 }
             } catch (err) {
                 console.error('Error fetching neurons:', err);
-                setError('Failed to load neurons');
+                setNeuronError('Failed to load neurons');
             } finally {
                 setLoadingNeurons(false);
             }
         };
+
         fetchNeurons();
-    }, [identity, selectedSnsRoot, principalId]);
+    }, [identity, selectedSnsRoot, principalId?.toString()]); // Stabilize principalId dependency
 
     const handleNameSubmit = async () => {
         const error = validateNameInput(nameInput);
@@ -569,7 +598,7 @@ export default function PrincipalPage() {
                         <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
                             Loading neurons...
                         </div>
-                    ) : error ? (
+                    ) : neuronError ? (
                         <div style={{ 
                             backgroundColor: 'rgba(231, 76, 60, 0.2)', 
                             border: '1px solid #e74c3c',
@@ -578,7 +607,7 @@ export default function PrincipalPage() {
                             borderRadius: '6px',
                             marginBottom: '20px'
                         }}>
-                            {error}
+                            {neuronError}
                         </div>
                     ) : neurons.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
