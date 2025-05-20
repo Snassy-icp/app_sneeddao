@@ -30,75 +30,87 @@ function Neurons() {
 
     const [loadingProgress, setLoadingProgress] = useState({ count: 0, message: '', percent: 0 });
 
-    // Add cache management functions at the top of the component
-    const getNeuronCacheKey = (snsRoot) => `neurons_cache_${snsRoot}`;
-    const getMetadataCacheKey = (snsRoot) => `neurons_metadata_${snsRoot}`;
-
-    // Helper function to serialize BigInt values
-    const serializeWithBigInt = (obj) => {
-        return JSON.stringify(obj, (key, value) => {
-            if (typeof value === 'bigint') {
-                return value.toString() + 'n';
-            }
-            return value;
-        });
-    };
-
-    // Helper function to deserialize BigInt values and reconstruct Uint8Arrays
-    const deserializeWithBigInt = (str) => {
-        return JSON.parse(str, (key, value) => {
-            // Handle BigInt values
-            if (typeof value === 'string' && value.endsWith('n')) {
-                return BigInt(value.slice(0, -1));
-            }
-            // Handle neuron IDs (they're in the id array of each neuron)
-            if (key === 'id' && Array.isArray(value) && value.length > 0 && value[0]?.id) {
-                return value.map(item => ({
-                    ...item,
-                    id: new Uint8Array(Object.values(item.id))
-                }));
-            }
-            return value;
-        });
-    };
-
-    // Function to get cached data
-    const getCachedData = (snsRoot) => {
-        try {
-            const neuronData = sessionStorage.getItem(getNeuronCacheKey(snsRoot));
-            const metadataData = sessionStorage.getItem(getMetadataCacheKey(snsRoot));
-            if (neuronData && metadataData) {
-                const neurons = deserializeWithBigInt(neuronData);
-                // Verify the neuron data is valid
-                if (!Array.isArray(neurons) || !neurons.every(n => n.id?.[0]?.id instanceof Uint8Array)) {
-                    console.warn('Invalid neuron data in cache');
-                    sessionStorage.removeItem(getNeuronCacheKey(snsRoot));
-                    return null;
+    // Add IndexedDB initialization at the top of the component
+    const initializeDB = () => {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open('NeuronsDB', 1);
+            
+            request.onerror = () => reject(request.error);
+            
+            request.onsuccess = () => resolve(request.result);
+            
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains('neurons')) {
+                    db.createObjectStore('neurons', { keyPath: 'snsRoot' });
                 }
-                return {
-                    neurons,
-                    metadata: JSON.parse(metadataData)
-                };
-            }
-        } catch (error) {
-            console.warn('Error reading from cache:', error);
-            // If there's an error reading the cache, clear it
-            sessionStorage.removeItem(getNeuronCacheKey(snsRoot));
-            sessionStorage.removeItem(getMetadataCacheKey(snsRoot));
-        }
-        return null;
+            };
+        });
     };
 
-    // Function to set cache data
-    const setCacheData = (snsRoot, neurons, metadata) => {
+    // Function to get cached data from IndexedDB
+    const getCachedData = async (snsRoot) => {
         try {
-            sessionStorage.setItem(getNeuronCacheKey(snsRoot), serializeWithBigInt(neurons));
-            sessionStorage.setItem(getMetadataCacheKey(snsRoot), JSON.stringify(metadata));
+            const db = await initializeDB();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['neurons'], 'readonly');
+                const store = transaction.objectStore('neurons');
+                const request = store.get(snsRoot);
+                
+                request.onsuccess = () => {
+                    const data = request.result;
+                    if (data) {
+                        // Reconstruct Uint8Arrays for neuron IDs
+                        const neurons = data.neurons.map(neuron => ({
+                            ...neuron,
+                            id: neuron.id.map(idObj => ({
+                                ...idObj,
+                                id: new Uint8Array(idObj.id)
+                            }))
+                        }));
+                        resolve({ neurons, metadata: data.metadata });
+                    } else {
+                        resolve(null);
+                    }
+                };
+                
+                request.onerror = () => reject(request.error);
+            });
         } catch (error) {
-            console.warn('Error writing to cache:', error);
-            // If there's an error writing to the cache, clear it
-            sessionStorage.removeItem(getNeuronCacheKey(snsRoot));
-            sessionStorage.removeItem(getMetadataCacheKey(snsRoot));
+            console.warn('Error reading from IndexedDB:', error);
+            return null;
+        }
+    };
+
+    // Function to set cache data in IndexedDB
+    const setCacheData = async (snsRoot, neurons, metadata) => {
+        try {
+            const db = await initializeDB();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['neurons'], 'readwrite');
+                const store = transaction.objectStore('neurons');
+                
+                // Convert Uint8Arrays to regular arrays for storage
+                const serializedNeurons = neurons.map(neuron => ({
+                    ...neuron,
+                    id: neuron.id.map(idObj => ({
+                        ...idObj,
+                        id: Array.from(idObj.id)
+                    }))
+                }));
+                
+                const request = store.put({
+                    snsRoot,
+                    neurons: serializedNeurons,
+                    metadata,
+                    timestamp: Date.now()
+                });
+                
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        } catch (error) {
+            console.warn('Error writing to IndexedDB:', error);
         }
     };
 
@@ -132,20 +144,23 @@ function Neurons() {
 
     // Fetch neurons when SNS changes
     useEffect(() => {
-        if (selectedSnsRoot) {
-            const cachedData = getCachedData(selectedSnsRoot);
-            if (cachedData) {
-                console.log('Loading from cache for SNS:', selectedSnsRoot);
-                setLoadingProgress({ count: cachedData.neurons.length, message: 'Loading from cache...' });
-                setNeurons(cachedData.neurons);
-                setTokenSymbol(cachedData.metadata.symbol);
-                setLoading(false);
-            } else {
-                console.log('No cache found for SNS:', selectedSnsRoot);
-                fetchNeurons();
+        async function loadData() {
+            if (selectedSnsRoot) {
+                const cachedData = await getCachedData(selectedSnsRoot);
+                if (cachedData) {
+                    console.log('Loading from cache for SNS:', selectedSnsRoot);
+                    setLoadingProgress({ count: cachedData.neurons.length, message: 'Loading from cache...' });
+                    setNeurons(cachedData.neurons);
+                    setTokenSymbol(cachedData.metadata.symbol);
+                    setLoading(false);
+                } else {
+                    console.log('No cache found for SNS:', selectedSnsRoot);
+                    fetchNeurons();
+                }
+                fetchTotalSupply();
             }
-            fetchTotalSupply();
         }
+        loadData();
     }, [selectedSnsRoot]);
 
     const fetchNeurons = async () => {
@@ -252,7 +267,7 @@ function Neurons() {
             }
 
             // Cache the fetched data
-            setCacheData(selectedSnsRoot, sortedNeurons, { symbol });
+            await setCacheData(selectedSnsRoot, sortedNeurons, { symbol });
             
             setLoadingProgress(prev => ({ 
                 count: sortedNeurons.length,
@@ -381,6 +396,23 @@ function Neurons() {
     const paginatedNeurons = neurons.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
     const totalPages = Math.ceil(neurons.length / itemsPerPage);
 
+    // Add function to clear cache
+    const clearCache = async (snsRoot) => {
+        try {
+            const db = await initializeDB();
+            const transaction = db.transaction(['neurons'], 'readwrite');
+            const store = transaction.objectStore('neurons');
+            await store.delete(snsRoot);
+        } catch (error) {
+            console.warn('Error clearing cache:', error);
+        }
+    };
+
+    const handleRefresh = async () => {
+        await clearCache(selectedSnsRoot);
+        fetchNeurons();
+    };
+
     return (
         <div className='page-container'>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
@@ -389,12 +421,7 @@ function Neurons() {
                     <h1 style={{ color: '#ffffff' }}>Neurons</h1>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <button
-                            onClick={() => {
-                                // Clear cache for current SNS and refetch
-                                sessionStorage.removeItem(getNeuronCacheKey(selectedSnsRoot));
-                                sessionStorage.removeItem(getMetadataCacheKey(selectedSnsRoot));
-                                fetchNeurons();
-                            }}
+                            onClick={handleRefresh}
                             style={{
                                 backgroundColor: '#3a3a3a',
                                 color: '#fff',
