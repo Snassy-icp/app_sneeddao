@@ -42,16 +42,30 @@ export default function PrincipalPage() {
     const [neuronError, setNeuronError] = useState(null);
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [snsList, setSnsList] = useState([]);
+    
+    // Keep stable references to dependencies
+    const stableIdentity = useRef(identity);
+    const stableSelectedSnsRoot = useRef(selectedSnsRoot);
+    const stablePrincipalId = useRef(null);
 
     const principalParam = searchParams.get('id');
-    let principalId = null;
     try {
-        principalId = principalParam ? Principal.fromText(principalParam) : null;
+        stablePrincipalId.current = principalParam ? Principal.fromText(principalParam) : null;
     } catch (e) {
         console.error('Invalid principal ID:', e);
     }
 
+    // Update stable refs when values change
+    useEffect(() => {
+        stableIdentity.current = identity;
+    }, [identity]);
+
+    useEffect(() => {
+        stableSelectedSnsRoot.current = selectedSnsRoot;
+    }, [selectedSnsRoot]);
+
     const handleSnsChange = (newSnsRoot) => {
+        if (newSnsRoot === selectedSnsRoot) return;
         setSelectedSnsRoot(newSnsRoot);
         setSearchParams(prev => {
             prev.set('sns', newSnsRoot);
@@ -75,38 +89,38 @@ export default function PrincipalPage() {
 
     // Load SNS data once on mount
     useEffect(() => {
+        let mounted = true;
+        
         const fetchSnsData = async () => {
             try {
                 const data = await fetchAndCacheSnsData();
-                setSnsList(data);
+                if (mounted) {
+                    setSnsList(data);
+                }
             } catch (err) {
                 console.error('Error fetching SNS data:', err);
-                setError('Failed to load SNS data');
+                if (mounted) {
+                    setError('Failed to load SNS data');
+                }
             }
         };
-        fetchSnsData();
-    }, [identity]);
 
-    // Sync URL SNS param with state
-    useEffect(() => {
-        const snsParam = searchParams.get('sns');
-        if (snsParam && snsParam !== selectedSnsRoot) {
-            setSelectedSnsRoot(snsParam);
-        }
-    }, [searchParams]);
+        fetchSnsData();
+        return () => { mounted = false; };
+    }, []); // Remove identity dependency since we're using cached data
 
     // Load principal info
     useEffect(() => {
         const fetchPrincipalInfo = async () => {
-            if (!identity || !principalId) {
+            if (!identity || !stablePrincipalId.current) {
                 setLoading(false);
                 return;
             }
 
             try {
                 const [nameResponse, nicknameResponse] = await Promise.all([
-                    getPrincipalName(identity, principalId),
-                    getPrincipalNickname(identity, principalId)
+                    getPrincipalName(identity, stablePrincipalId.current),
+                    getPrincipalNickname(identity, stablePrincipalId.current)
                 ]);
                 
                 setPrincipalInfo({
@@ -123,73 +137,78 @@ export default function PrincipalPage() {
         };
 
         fetchPrincipalInfo();
-    }, [identity, principalId]);
+    }, [identity, stablePrincipalId.current]);
 
-    // Load neurons when SNS or principal changes
+    // Load neurons when dependencies change
     useEffect(() => {
-        console.log('Neuron effect triggered with:', {
-            hasIdentity: !!identity,
-            selectedSnsRoot,
-            principalId: principalId?.toString()
-        });
+        let mounted = true;
+        let currentFetchKey = null;
 
         const fetchNeurons = async () => {
-            if (!identity || !selectedSnsRoot || !principalId) {
-                console.log('Skipping neuron fetch - missing dependency:', {
-                    hasIdentity: !!identity,
-                    selectedSnsRoot,
-                    principalId: principalId?.toString()
-                });
-                setLoadingNeurons(false);
-                setNeurons([]);
+            const currentIdentity = stableIdentity.current;
+            const currentSnsRoot = stableSelectedSnsRoot.current;
+            const currentPrincipalId = stablePrincipalId.current;
+
+            if (!currentIdentity || !currentSnsRoot || !currentPrincipalId) {
+                if (mounted) {
+                    setLoadingNeurons(false);
+                    setNeurons([]);
+                }
                 return;
             }
 
-            // Prevent duplicate fetches for same data
-            const fetchKey = `${selectedSnsRoot}-${principalId.toString()}`;
-            console.log('Fetching neurons with key:', fetchKey);
+            const fetchKey = `${currentSnsRoot}-${currentPrincipalId.toString()}`;
+            if (fetchKey === currentFetchKey) {
+                return;
+            }
+            currentFetchKey = fetchKey;
 
-            setLoadingNeurons(true);
-            setNeuronError(null);
+            if (mounted) {
+                setLoadingNeurons(true);
+                setNeuronError(null);
+            }
 
             try {
-                const selectedSns = getSnsById(selectedSnsRoot);
+                const selectedSns = getSnsById(currentSnsRoot);
                 if (!selectedSns) {
                     throw new Error('Selected SNS not found');
                 }
 
-                console.log('Found SNS:', selectedSns.rootCanisterId);
-                const neuronsList = await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
-                console.log('Fetched neurons:', neuronsList.length);
-                
+                const neuronsList = await fetchUserNeuronsForSns(currentIdentity, selectedSns.canisters.governance);
                 const relevantNeurons = neuronsList.filter(neuron => 
                     neuron.permissions.some(p => 
-                        p.principal?.toString() === principalId.toString()
+                        p.principal?.toString() === currentPrincipalId.toString()
                     )
                 );
-                console.log('Filtered to relevant neurons:', relevantNeurons.length);
-                
-                setNeurons(relevantNeurons);
 
-                // Get token symbol
-                const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
-                    agentOptions: { identity }
-                });
-                const metadata = await icrc1Actor.icrc1_metadata();
-                const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
-                if (symbolEntry && symbolEntry[1]) {
-                    setTokenSymbol(symbolEntry[1].Text);
+                if (mounted) {
+                    setNeurons(relevantNeurons);
+
+                    // Get token symbol
+                    const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
+                        agentOptions: { identity: currentIdentity }
+                    });
+                    const metadata = await icrc1Actor.icrc1_metadata();
+                    const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
+                    if (symbolEntry && symbolEntry[1]) {
+                        setTokenSymbol(symbolEntry[1].Text);
+                    }
                 }
             } catch (err) {
                 console.error('Error fetching neurons:', err);
-                setNeuronError('Failed to load neurons');
+                if (mounted) {
+                    setNeuronError('Failed to load neurons');
+                }
             } finally {
-                setLoadingNeurons(false);
+                if (mounted) {
+                    setLoadingNeurons(false);
+                }
             }
         };
 
         fetchNeurons();
-    }, [identity, selectedSnsRoot, principalId?.toString()]); // Stabilize principalId dependency
+        return () => { mounted = false; };
+    }, [identity, selectedSnsRoot, principalParam]); // Use principalParam instead of principalId
 
     const handleNameSubmit = async () => {
         const error = validateNameInput(nameInput);
@@ -206,7 +225,7 @@ export default function PrincipalPage() {
             try {
                 const response = await setPrincipalName(identity, nameInput);
                 if ('ok' in response) {
-                    const newInfo = await getPrincipalName(identity, principalId);
+                    const newInfo = await getPrincipalName(identity, stablePrincipalId.current);
                     setPrincipalInfo(prev => ({
                         ...prev,
                         name: newInfo ? newInfo[0] : null,
@@ -246,10 +265,10 @@ export default function PrincipalPage() {
 
         setIsSubmittingNickname(true);
         try {
-            const response = await setPrincipalNickname(identity, principalId, nicknameInput);
+            const response = await setPrincipalNickname(identity, stablePrincipalId.current, nicknameInput);
             if ('ok' in response) {
                 // Fetch the updated nickname to ensure consistency
-                const nicknameResponse = await getPrincipalNickname(identity, principalId);
+                const nicknameResponse = await getPrincipalNickname(identity, stablePrincipalId.current);
                 setPrincipalInfo(prev => ({
                     ...prev,
                     nickname: nicknameResponse ? nicknameResponse[0] : null
@@ -268,7 +287,7 @@ export default function PrincipalPage() {
         }
     };
 
-    if (!principalId) {
+    if (!stablePrincipalId.current) {
         return (
             <div className='page-container'>
                 <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
@@ -326,7 +345,7 @@ export default function PrincipalPage() {
                                         Principal Details
                                     </h2>
                                     <PrincipalDisplay 
-                                        principal={principalId}
+                                        principal={stablePrincipalId.current}
                                         displayInfo={{
                                             name: principalInfo?.name,
                                             nickname: principalInfo?.nickname,
@@ -353,7 +372,7 @@ export default function PrincipalPage() {
                                             >
                                                 {principalInfo?.nickname ? 'Change Nickname' : 'Set Nickname'}
                                             </button>
-                                            {identity?.getPrincipal().toString() === principalId.toString() && (
+                                            {identity?.getPrincipal().toString() === stablePrincipalId.current.toString() && (
                                                 <button
                                                     onClick={() => setEditingName(true)}
                                                     style={{
