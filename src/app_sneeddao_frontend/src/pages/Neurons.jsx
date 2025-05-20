@@ -22,12 +22,13 @@ function Neurons() {
     const [loadingSnses, setLoadingSnses] = useState(true);
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [totalSupply, setTotalSupply] = useState(null);
+    const [totalNeuronCount, setTotalNeuronCount] = useState(null);
     
     // Pagination state
     const [itemsPerPage, setItemsPerPage] = useState(20);
     const [currentPage, setCurrentPage] = useState(1);
 
-    const [loadingProgress, setLoadingProgress] = useState({ count: 0, message: '' });
+    const [loadingProgress, setLoadingProgress] = useState({ count: 0, message: '', percent: 0 });
 
     // Add cache management functions at the top of the component
     const getNeuronCacheKey = (snsRoot) => `neurons_cache_${snsRoot}`;
@@ -150,13 +151,21 @@ function Neurons() {
     const fetchNeurons = async () => {
         setLoading(true);
         setError('');
-        setLoadingProgress({ count: 0, message: 'Initializing...' });
+        setLoadingProgress({ count: 0, message: 'Initializing...', percent: 0 });
         try {
             const selectedSns = getSnsById(selectedSnsRoot);
             if (!selectedSns) {
                 setError('Selected SNS not found');
                 return;
             }
+
+            // Fetch total neuron count first
+            const totalCount = await fetchNeuronCount();
+            setLoadingProgress(prev => ({ 
+                ...prev, 
+                message: 'Connected to governance canister',
+                percent: 5
+            }));
 
             // Create an anonymous agent if no identity is available
             const agent = identity ? 
@@ -166,8 +175,6 @@ function Neurons() {
             if (process.env.DFX_NETWORK !== 'ic') {
                 await agent.fetchRootKey();
             }
-
-            setLoadingProgress(prev => ({ ...prev, message: 'Connected to governance canister' }));
 
             const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
                 agent
@@ -181,9 +188,19 @@ function Neurons() {
 
             while (hasMore) {
                 pageCount++;
+                // Calculate progress based on actual neurons fetched vs total count
+                const baseProgress = 5; // Starting progress after initial connection
+                const maxProgress = 90; // Maximum progress before sorting
+                const progressRange = maxProgress - baseProgress;
+                // Use actual neuron count for progress calculation
+                const progressPercent = totalCount > 0 
+                    ? baseProgress + ((allNeurons.length / totalCount) * progressRange)
+                    : baseProgress + (pageCount * 2); // Fallback if we don't have total count
+                
                 setLoadingProgress(prev => ({ 
                     count: allNeurons.length,
-                    message: `Fetching page ${pageCount} (${allNeurons.length} neurons so far)...`
+                    message: `Fetching page ${pageCount} (${allNeurons.length}${totalCount ? ` of ${totalCount}` : ''} neurons)...`,
+                    percent: Math.min(maxProgress, progressPercent)
                 }));
 
                 const response = await snsGovActor.list_neurons({
@@ -209,7 +226,8 @@ function Neurons() {
 
             setLoadingProgress(prev => ({ 
                 count: allNeurons.length,
-                message: `Sorting ${allNeurons.length} neurons by stake...`
+                message: `Sorting ${allNeurons.length}${totalCount ? ` of ${totalCount}` : ''} neurons by stake...`,
+                percent: 95
             }));
             
             // Sort neurons by stake (highest first)
@@ -221,7 +239,7 @@ function Neurons() {
 
             setNeurons(sortedNeurons);
 
-            setLoadingProgress(prev => ({ ...prev, message: 'Fetching token metadata...' }));
+            setLoadingProgress(prev => ({ ...prev, message: `Fetching token metadata (${allNeurons.length}${totalCount ? ` of ${totalCount}` : ''} neurons loaded)...`, percent: 97 }));
 
             // Get token symbol
             const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, { agent });
@@ -238,7 +256,8 @@ function Neurons() {
             
             setLoadingProgress(prev => ({ 
                 count: sortedNeurons.length,
-                message: 'Caching data for future use...'
+                message: `Caching ${sortedNeurons.length}${totalCount ? ` of ${totalCount}` : ''} neurons for future use...`,
+                percent: 100
             }));
 
         } catch (err) {
@@ -271,6 +290,18 @@ function Neurons() {
             setTotalSupply(supply);
         } catch (err) {
             console.error('Error fetching total supply:', err);
+        }
+    };
+
+    const fetchNeuronCount = async () => {
+        try {
+            const response = await fetch(`https://sns-api.internetcomputer.org/api/v2/snses/${selectedSnsRoot}/neurons/count`);
+            const data = await response.json();
+            setTotalNeuronCount(data.count || 0);
+            return data.count || 0;
+        } catch (error) {
+            console.error('Error fetching neuron count:', error);
+            return 0;
         }
     };
 
@@ -512,11 +543,31 @@ function Neurons() {
                         <div style={{ marginTop: '10px' }}>
                             {loadingProgress.message}
                         </div>
-                        {loadingProgress.count > 0 && (
-                            <div style={{ color: '#888', fontSize: '14px' }}>
-                                Found {loadingProgress.count} neurons
-                            </div>
-                        )}
+                        {/* Progress bar */}
+                        <div style={{
+                            width: '100%',
+                            maxWidth: '400px',
+                            backgroundColor: '#2a2a2a',
+                            borderRadius: '4px',
+                            overflow: 'hidden',
+                            height: '8px',
+                            margin: '10px 0'
+                        }}>
+                            <div style={{
+                                width: `${loadingProgress.percent}%`,
+                                backgroundColor: '#3498db',
+                                height: '100%',
+                                transition: 'width 0.3s ease'
+                            }} />
+                        </div>
+                        <div style={{ color: '#888', fontSize: '14px' }}>
+                            {loadingProgress.count > 0 && (
+                                <>Found {loadingProgress.count} neurons</>
+                            )}
+                            {totalNeuronCount !== null && loadingProgress.count > 0 && (
+                                <> (Total: {totalNeuronCount})</>
+                            )}
+                        </div>
                     </div>
                 ) : (
                     <div>
