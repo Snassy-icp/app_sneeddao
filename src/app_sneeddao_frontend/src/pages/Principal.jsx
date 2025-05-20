@@ -6,6 +6,10 @@ import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalN
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor } from '../utils/PrincipalUtils';
 import ConfirmationModal from '../ConfirmationModal';
+import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
+import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
+import { getSnsById, fetchAndCacheSnsData } from '../utils/SnsUtils';
+import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -32,6 +36,10 @@ export default function PrincipalPage() {
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [confirmAction, setConfirmAction] = useState(null);
     const [confirmMessage, setConfirmMessage] = useState('');
+    const [neurons, setNeurons] = useState([]);
+    const [loadingNeurons, setLoadingNeurons] = useState(true);
+    const [tokenSymbol, setTokenSymbol] = useState('SNS');
+    const [snsList, setSnsList] = useState([]);
 
     const principalParam = searchParams.get('id');
     let principalId = null;
@@ -88,6 +96,71 @@ export default function PrincipalPage() {
 
         fetchPrincipalInfo();
     }, [identity, principalId]);
+
+    useEffect(() => {
+        const fetchSnsData = async () => {
+            try {
+                const data = await fetchAndCacheSnsData();
+                setSnsList(data);
+                
+                // If no SNS is selected in URL, default to Sneed SNS
+                if (!searchParams.get('sns')) {
+                    const sneedSns = data.find(sns => sns.rootCanisterId === 'fp274-iaaaa-aaaaq-aacha-cai');
+                    if (sneedSns) {
+                        const newSnsRoot = sneedSns.rootCanisterId;
+                        setSelectedSnsRoot(newSnsRoot);
+                        setSearchParams(prev => {
+                            prev.set('sns', newSnsRoot);
+                            return prev;
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching SNS data:', err);
+                setError('Failed to load SNS data');
+            }
+        };
+        fetchSnsData();
+    }, [identity]);
+
+    useEffect(() => {
+        const fetchNeurons = async () => {
+            if (!identity || !selectedSnsRoot || !principalId) return;
+            
+            setLoadingNeurons(true);
+            try {
+                const selectedSns = getSnsById(selectedSnsRoot);
+                if (!selectedSns) {
+                    throw new Error('Selected SNS not found');
+                }
+                
+                const neuronsList = await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
+                // Filter neurons where the given principal is a hotkey
+                const relevantNeurons = neuronsList.filter(neuron => 
+                    neuron.permissions.some(p => 
+                        p.principal?.toString() === principalId.toString()
+                    )
+                );
+                setNeurons(relevantNeurons);
+
+                // Fetch token metadata for the selected SNS
+                const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
+                    agentOptions: { identity }
+                });
+                const metadata = await icrc1Actor.icrc1_metadata();
+                const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
+                if (symbolEntry && symbolEntry[1]) {
+                    setTokenSymbol(symbolEntry[1].Text);
+                }
+            } catch (err) {
+                console.error('Error fetching neurons:', err);
+                setError('Failed to load neurons');
+            } finally {
+                setLoadingNeurons(false);
+            }
+        };
+        fetchNeurons();
+    }, [identity, selectedSnsRoot, principalId]);
 
     const handleNameSubmit = async () => {
         const error = validateNameInput(nameInput);
@@ -473,6 +546,142 @@ export default function PrincipalPage() {
                                 </div>
                             )}
                         </>
+                    )}
+                </div>
+
+                <div style={{ 
+                    backgroundColor: '#2a2a2a',
+                    borderRadius: '8px',
+                    padding: '20px',
+                    marginBottom: '30px',
+                    border: '1px solid #3a3a3a'
+                }}>
+                    <h2 style={{ 
+                        color: '#ffffff',
+                        marginBottom: '20px',
+                        fontSize: '18px',
+                        fontWeight: '500'
+                    }}>
+                        Hotkeyed Neurons
+                    </h2>
+
+                    {loadingNeurons ? (
+                        <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                            Loading neurons...
+                        </div>
+                    ) : error ? (
+                        <div style={{ 
+                            backgroundColor: 'rgba(231, 76, 60, 0.2)', 
+                            border: '1px solid #e74c3c',
+                            color: '#e74c3c',
+                            padding: '15px',
+                            borderRadius: '6px',
+                            marginBottom: '20px'
+                        }}>
+                            {error}
+                        </div>
+                    ) : neurons.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                            No neurons found where this principal is a hotkey.
+                        </div>
+                    ) : (
+                        <div style={{ 
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                            gap: '20px'
+                        }}>
+                            {neurons.map((neuron) => {
+                                const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
+                                if (!neuronId) return null;
+
+                                return (
+                                    <div
+                                        key={neuronId}
+                                        style={{
+                                            backgroundColor: '#2a2a2a',
+                                            borderRadius: '8px',
+                                            padding: '20px',
+                                            border: '1px solid #3a3a3a'
+                                        }}
+                                    >
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                marginBottom: '10px'
+                                            }}>
+                                                <a
+                                                    href={`/neuron?neuronid=${neuronId}&sns=${selectedSnsRoot}`}
+                                                    style={{ 
+                                                        fontFamily: 'monospace',
+                                                        color: '#888',
+                                                        fontSize: '14px',
+                                                        textDecoration: 'none'
+                                                    }}
+                                                    title={neuronId}
+                                                    onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                    onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                                >
+                                                    {`${neuronId.slice(0, 6)}...${neuronId.slice(-6)}`}
+                                                </a>
+                                                <button
+                                                    onClick={() => navigator.clipboard.writeText(neuronId)}
+                                                    style={{
+                                                        background: 'none',
+                                                        border: 'none',
+                                                        padding: '4px',
+                                                        cursor: 'pointer',
+                                                        color: '#888',
+                                                        display: 'flex',
+                                                        alignItems: 'center'
+                                                    }}
+                                                    title="Copy neuron ID to clipboard"
+                                                >
+                                                    📋
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ marginBottom: '20px' }}>
+                                            <div style={{ 
+                                                fontSize: '24px',
+                                                fontWeight: 'bold',
+                                                color: '#3498db'
+                                            }}>
+                                                {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
+                                            </div>
+                                        </div>
+
+                                        <div style={{ 
+                                            display: 'grid',
+                                            gridTemplateColumns: '1fr 1fr',
+                                            gap: '15px',
+                                            fontSize: '14px'
+                                        }}>
+                                            <div>
+                                                <div style={{ color: '#888' }}>Created</div>
+                                                <div style={{ color: '#ffffff' }}>
+                                                    {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div style={{ color: '#888' }}>Dissolve State</div>
+                                                <div style={{ color: '#ffffff' }}>{getDissolveState(neuron)}</div>
+                                            </div>
+                                            <div>
+                                                <div style={{ color: '#888' }}>Maturity</div>
+                                                <div style={{ color: '#ffffff' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
+                                            </div>
+                                            <div>
+                                                <div style={{ color: '#888' }}>Voting Power</div>
+                                                <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     )}
                 </div>
             </main>
