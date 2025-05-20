@@ -205,10 +205,11 @@ export const setPrincipalNickname = async (identity, principal, nickname) => {
 
 // Get the public name of a principal
 export const getPrincipalName = async (identity, principal) => {
-    if (!identity || !principal) return null;
+    if (!principal) return null;
     
     const principalStr = principal.toString();
-    const cacheKey = `${identity.getPrincipal().toString()}-${principalStr}`;
+    const identityStr = identity ? identity.getPrincipal().toString() : 'anonymous';
+    const cacheKey = `${identityStr}-${principalStr}`;
     
     // Check cache first
     if (principalNameCache.has(cacheKey)) {

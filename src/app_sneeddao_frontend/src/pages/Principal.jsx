@@ -61,16 +61,20 @@ export default function PrincipalPage() {
     // Fetch initial principal info
     useEffect(() => {
         const fetchInitialPrincipalInfo = async () => {
-            if (!identity || !stablePrincipalId.current) {
+            if (!stablePrincipalId.current) {
                 setLoading(false);
                 return;
             }
 
             try {
-                const [nameResponse, nicknameResponse] = await Promise.all([
-                    getPrincipalName(identity, stablePrincipalId.current),
-                    getPrincipalNickname(identity, stablePrincipalId.current)
-                ]);
+                // Always fetch public name, even when not logged in
+                const nameResponse = await getPrincipalName(null, stablePrincipalId.current);
+                console.log("NAME RESPONSE", nameResponse, stablePrincipalId.current);
+                // Only fetch nickname if user is logged in
+                let nicknameResponse = null;
+                if (identity) {
+                    nicknameResponse = await getPrincipalNickname(identity, stablePrincipalId.current);
+                }
 
                 setPrincipalInfo({
                     name: nameResponse ? nameResponse[0] : null,
