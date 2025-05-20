@@ -84,15 +84,38 @@ function Neurons() {
                 agent
             });
 
-            // Fetch all neurons
-            const response = await snsGovActor.list_neurons({
-                limit: 1000, // Set a high limit to get all neurons
-                of_principal: [], // Empty to get all neurons
-                start_page_at: []
-            });
+            // Fetch all neurons using pagination
+            let allNeurons = [];
+            let hasMore = true;
+            let lastNeuron = [];  // Empty array for first page
+
+            while (hasMore) {
+                console.log('Fetching neurons page, starting from:', lastNeuron);
+                const response = await snsGovActor.list_neurons({
+                    limit: 100,
+                    of_principal: [], // Empty to get all neurons
+                    start_page_at: lastNeuron
+                });
+                
+                if (response.neurons.length === 0) {
+                    hasMore = false;
+                } else {
+                    allNeurons = [...allNeurons, ...response.neurons];
+                    // Get the last neuron's ID for next page
+                    const lastNeuronId = response.neurons[response.neurons.length - 1].id;
+                    lastNeuron = lastNeuronId;
+                    
+                    // If we got less than the limit, we've reached the end
+                    if (response.neurons.length < 100) {
+                        hasMore = false;
+                    }
+                }
+            }
+
+            console.log(`Fetched total of ${allNeurons.length} neurons`);
             
             // Sort neurons by stake (highest first)
-            const sortedNeurons = response.neurons.sort((a, b) => {
+            const sortedNeurons = allNeurons.sort((a, b) => {
                 const stakeA = BigInt(a.cached_neuron_stake_e8s || 0);
                 const stakeB = BigInt(b.cached_neuron_stake_e8s || 0);
                 return stakeB > stakeA ? 1 : stakeB < stakeA ? -1 : 0;
