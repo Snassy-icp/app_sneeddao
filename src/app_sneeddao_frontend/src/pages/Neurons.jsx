@@ -158,6 +158,7 @@ function Neurons() {
     // Calculate stakes by dissolve state
     const stakes = neurons.reduce((acc, neuron) => {
         const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
+        const hasStake = stake > 0n;
         
         if (neuron.dissolve_state?.[0]) {
             if ('WhenDissolvedTimestampSeconds' in neuron.dissolve_state[0]) {
@@ -166,18 +167,22 @@ function Neurons() {
                 if (dissolveTime <= now) {
                     acc.dissolvedStake += stake;
                     acc.dissolvedCount += 1;
+                    if (hasStake) acc.dissolvedWithStakeCount += 1;
                 } else {
                     acc.dissolvingStake += stake;
                     acc.dissolvingCount += 1;
+                    if (hasStake) acc.dissolvingWithStakeCount += 1;
                 }
             } else if ('DissolveDelaySeconds' in neuron.dissolve_state[0]) {
                 acc.notDissolvedStake += stake;
                 acc.notDissolvedCount += 1;
+                if (hasStake) acc.notDissolvedWithStakeCount += 1;
             }
         } else {
-            // If no dissolve state, consider it not dissolved
+            // If no dissolve state, consider it not dissolving
             acc.notDissolvedStake += stake;
             acc.notDissolvedCount += 1;
+            if (hasStake) acc.notDissolvedWithStakeCount += 1;
         }
         
         return acc;
@@ -187,11 +192,16 @@ function Neurons() {
         notDissolvedStake: BigInt(0),
         dissolvedCount: 0,
         dissolvingCount: 0,
-        notDissolvedCount: 0
+        notDissolvedCount: 0,
+        dissolvedWithStakeCount: 0,
+        dissolvingWithStakeCount: 0,
+        notDissolvedWithStakeCount: 0
     });
 
-    const totalStake = stakes.dissolvedStake + stakes.dissolvingStake + stakes.notDissolvedStake;
+    // Total stake excludes dissolved neurons
+    const totalStake = stakes.dissolvingStake + stakes.notDissolvedStake;
     const totalCount = stakes.dissolvedCount + stakes.dissolvingCount + stakes.notDissolvedCount;
+    const totalWithStakeCount = stakes.dissolvedWithStakeCount + stakes.dissolvingWithStakeCount + stakes.notDissolvedWithStakeCount;
 
     // Get paginated neurons
     const paginatedNeurons = neurons.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -240,21 +250,27 @@ function Neurons() {
                         textAlign: 'center'
                     }}>
                         <div>
-                            <div style={{ color: '#888', marginBottom: '8px' }}>Total Stake</div>
+                            <div style={{ color: '#888', marginBottom: '8px' }}>Total Active Stake</div>
                             <div style={{ color: '#ffffff', fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8s(totalStake)} {tokenSymbol}
                             </div>
                             <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
-                                {totalCount} neurons
+                                {totalCount} neurons total
+                            </div>
+                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
+                                ({totalWithStakeCount} with stake)
                             </div>
                         </div>
                         <div>
-                            <div style={{ color: '#888', marginBottom: '8px' }}>Not Dissolved</div>
+                            <div style={{ color: '#888', marginBottom: '8px' }}>Not Dissolving</div>
                             <div style={{ color: '#2ecc71', fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8s(stakes.notDissolvedStake)} {tokenSymbol}
                             </div>
                             <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
                                 {stakes.notDissolvedCount} neurons
+                            </div>
+                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
+                                ({stakes.notDissolvedWithStakeCount} with stake)
                             </div>
                         </div>
                         <div>
@@ -265,6 +281,9 @@ function Neurons() {
                             <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
                                 {stakes.dissolvingCount} neurons
                             </div>
+                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
+                                ({stakes.dissolvingWithStakeCount} with stake)
+                            </div>
                         </div>
                         <div>
                             <div style={{ color: '#888', marginBottom: '8px' }}>Dissolved</div>
@@ -273,6 +292,9 @@ function Neurons() {
                             </div>
                             <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
                                 {stakes.dissolvedCount} neurons
+                            </div>
+                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
+                                ({stakes.dissolvedWithStakeCount} with stake)
                             </div>
                         </div>
                     </div>
