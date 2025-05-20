@@ -58,6 +58,36 @@ export default function PrincipalPage() {
         stableIdentity.current = identity;
     }, [identity]);
 
+    // Fetch initial principal info
+    useEffect(() => {
+        const fetchInitialPrincipalInfo = async () => {
+            if (!identity || !stablePrincipalId.current) {
+                setLoading(false);
+                return;
+            }
+
+            try {
+                const [nameResponse, nicknameResponse] = await Promise.all([
+                    getPrincipalName(identity, stablePrincipalId.current),
+                    getPrincipalNickname(identity, stablePrincipalId.current)
+                ]);
+
+                setPrincipalInfo({
+                    name: nameResponse ? nameResponse[0] : null,
+                    isVerified: nameResponse ? nameResponse[1] : false,
+                    nickname: nicknameResponse ? nicknameResponse[0] : null
+                });
+            } catch (err) {
+                console.error('Error fetching principal info:', err);
+                setError('Failed to load principal information');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchInitialPrincipalInfo();
+    }, [identity, principalParam]);
+
     // Load neurons when dependencies change
     useEffect(() => {
         let mounted = true;
