@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { fetchAndCacheSnsData, clearSnsCache } from '../utils/SnsUtils';
 
-function SnsDropdown({ onSnsChange }) {
+function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
     const { identity } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
@@ -82,6 +82,11 @@ function SnsDropdown({ onSnsChange }) {
 
     // Find Sneed SNS data
     const sneedSns = snsList.find(sns => sns.rootCanisterId === SNEED_SNS_ROOT) || { name: 'Sneed', logo: '' };
+
+    // If showSnsDropdown is false, return null (don't render anything)
+    if (!showSnsDropdown) {
+        return null;
+    }
 
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
