@@ -35,7 +35,7 @@ export const getPrincipalColor = (principal) => {
 
 // Get the display name for a principal, including name and verification status
 export const getPrincipalDisplayInfo = async (identity, principal) => {
-    if (!identity || !principal) return { name: null, nickname: null, isVerified: false };
+    if (!principal) return { name: null, nickname: null, isVerified: false };
 
     try {
         // Get public name and verification status
@@ -43,8 +43,8 @@ export const getPrincipalDisplayInfo = async (identity, principal) => {
         const name = nameResponse ? nameResponse[0] : null;
         const isVerified = nameResponse ? nameResponse[1] : false;
 
-        // Get private nickname
-        const nickname = await getPrincipalNickname(identity, principal);
+        // Get private nickname only if identity is provided
+        const nickname = identity ? await getPrincipalNickname(identity, principal) : null;
 
         return { name, nickname, isVerified };
     } catch (error) {

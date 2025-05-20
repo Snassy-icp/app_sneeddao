@@ -166,7 +166,7 @@ export default function PrincipalPage() {
     // Add effect to fetch principal display info
     useEffect(() => {
         const fetchPrincipalInfo = async () => {
-            if (!identity || neurons.length === 0) return;
+            if (neurons.length === 0) return;
 
             const uniquePrincipals = new Set();
             neurons.forEach(neuron => {
