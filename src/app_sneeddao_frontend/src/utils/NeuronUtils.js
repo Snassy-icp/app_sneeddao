@@ -75,7 +75,12 @@ export const getDissolveState = (neuron) => {
 // Helper function to format e8s values
 export const formatE8s = (e8s) => {
     if (!e8s) return '0';
-    return (Number(e8s) / 100000000).toFixed(8);
+    const value = Number(e8s) / 100000000;
+    // Split into integer and decimal parts
+    const [integerPart, decimalPart] = value.toFixed(8).split('.');
+    // Add commas to integer part
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return `${formattedInteger}.${decimalPart}`;
 };
 
 // Helper function to format vote
