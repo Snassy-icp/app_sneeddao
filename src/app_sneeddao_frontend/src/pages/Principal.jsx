@@ -6,7 +6,7 @@ import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalN
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor } from '../utils/PrincipalUtils';
 import ConfirmationModal from '../ConfirmationModal';
-import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
+import { fetchUserNeuronsForSns, getOwnerPrincipals } from '../utils/NeuronUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { getSnsById, fetchAndCacheSnsData } from '../utils/SnsUtils';
 import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
@@ -41,6 +41,7 @@ export default function PrincipalPage() {
     const [loadingNeurons, setLoadingNeurons] = useState(false);
     const [neuronError, setNeuronError] = useState(null);
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
+    const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     
     // Keep stable references to dependencies
     const stableIdentity = useRef(identity);
@@ -186,6 +187,33 @@ export default function PrincipalPage() {
         fetchNeurons();
         return () => { mounted = false; };
     }, [identity, selectedSnsRoot, principalParam]); // Use principalParam instead of principalId
+
+    // Add effect to fetch principal display info
+    useEffect(() => {
+        const fetchPrincipalInfo = async () => {
+            if (!identity || neurons.length === 0) return;
+
+            const uniquePrincipals = new Set();
+            neurons.forEach(neuron => {
+                // Add owner principals
+                getOwnerPrincipals(neuron).forEach(p => uniquePrincipals.add(p));
+                // Add all principals with permissions
+                neuron.permissions.forEach(p => {
+                    if (p.principal) uniquePrincipals.add(p.principal.toString());
+                });
+            });
+
+            const displayInfoMap = new Map();
+            await Promise.all(Array.from(uniquePrincipals).map(async principal => {
+                const displayInfo = await getPrincipalDisplayInfo(identity, Principal.fromText(principal));
+                displayInfoMap.set(principal, displayInfo);
+            }));
+
+            setPrincipalDisplayInfo(displayInfoMap);
+        };
+
+        fetchPrincipalInfo();
+    }, [identity, neurons]);
 
     const handleNameSubmit = async () => {
         const error = validateNameInput(nameInput);
@@ -701,6 +729,47 @@ export default function PrincipalPage() {
                                             <div>
                                                 <div style={{ color: '#888' }}>Voting Power</div>
                                                 <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
+                                            </div>
+                                            {/* Add permissions section */}
+                                            <div style={{ gridColumn: '1 / -1' }}>
+                                                <div style={{ color: '#888', marginBottom: '8px' }}>Permissions</div>
+                                                {/* Owner */}
+                                                {getOwnerPrincipals(neuron).length > 0 && (
+                                                    <div style={{ 
+                                                        marginBottom: '8px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px'
+                                                    }}>
+                                                        <span style={{ color: '#888' }}>Owner:</span>
+                                                        <PrincipalDisplay 
+                                                            principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
+                                                            displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
+                                                            showCopyButton={false}
+                                                        />
+                                                    </div>
+                                                )}
+                                                {/* Hotkeys */}
+                                                {neuron.permissions
+                                                    .filter(p => !getOwnerPrincipals(neuron).includes(p.principal?.toString()))
+                                                    .map((p, index) => (
+                                                        <div key={index} style={{ 
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '8px',
+                                                            marginBottom: index < neuron.permissions.length - 1 ? '8px' : 0
+                                                        }}>
+                                                            <span style={{ color: '#888', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                🔑 Hotkey:
+                                                            </span>
+                                                            <PrincipalDisplay 
+                                                                principal={p.principal}
+                                                                displayInfo={principalDisplayInfo.get(p.principal?.toString())}
+                                                                showCopyButton={false}
+                                                            />
+                                                        </div>
+                                                    ))
+                                                }
                                             </div>
                                         </div>
                                     </div>
