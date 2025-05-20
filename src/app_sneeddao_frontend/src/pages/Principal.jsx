@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname } from '../utils/BackendUtils';
 import { Principal } from '@dfinity/principal';
-import { PrincipalDisplay, getPrincipalColor } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import ConfirmationModal from '../ConfirmationModal';
 import { fetchUserNeuronsForSns, getOwnerPrincipals } from '../utils/NeuronUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
