@@ -155,18 +155,35 @@ function Neurons() {
         setCurrentPage(1);
     };
 
-    // Calculate total stake
-    const totalStake = neurons.reduce((sum, neuron) => {
-        // Skip dissolved neurons
-        if (neuron.dissolve_state?.[0]?.WhenDissolvedTimestampSeconds) {
-            const dissolveTime = Number(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds);
-            const now = Math.floor(Date.now() / 1000);
-            if (dissolveTime <= now) {
-                return sum; // Skip this neuron if it's dissolved
+    // Calculate stakes by dissolve state
+    const stakes = neurons.reduce((acc, neuron) => {
+        const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
+        
+        if (neuron.dissolve_state?.[0]) {
+            if ('WhenDissolvedTimestampSeconds' in neuron.dissolve_state[0]) {
+                const dissolveTime = Number(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds);
+                const now = Math.floor(Date.now() / 1000);
+                if (dissolveTime <= now) {
+                    acc.dissolvedStake += stake;
+                } else {
+                    acc.dissolvingStake += stake;
+                }
+            } else if ('DissolveDelaySeconds' in neuron.dissolve_state[0]) {
+                acc.notDissolvedStake += stake;
             }
+        } else {
+            // If no dissolve state, consider it not dissolved
+            acc.notDissolvedStake += stake;
         }
-        return sum + BigInt(neuron.cached_neuron_stake_e8s || 0);
-    }, BigInt(0));
+        
+        return acc;
+    }, {
+        dissolvedStake: BigInt(0),
+        dissolvingStake: BigInt(0),
+        notDissolvedStake: BigInt(0)
+    });
+
+    const totalStake = stakes.dissolvedStake + stakes.dissolvingStake + stakes.notDissolvedStake;
 
     // Get paginated neurons
     const paginatedNeurons = neurons.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -201,21 +218,43 @@ function Neurons() {
 
                 {error && <div style={{ color: '#e74c3c', marginBottom: '20px' }}>{error}</div>}
 
-                {/* Total Stake Display */}
+                {/* Stakes Display */}
                 <div style={{ 
                     backgroundColor: '#2a2a2a',
                     borderRadius: '8px',
                     padding: '20px',
-                    marginBottom: '20px',
-                    textAlign: 'center'
+                    marginBottom: '20px'
                 }}>
-                    <div style={{ color: '#888', marginBottom: '8px' }}>Total Stake</div>
                     <div style={{ 
-                        color: '#ffffff',
-                        fontSize: '24px',
-                        fontWeight: 'bold'
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: '20px',
+                        textAlign: 'center'
                     }}>
-                        {formatE8s(totalStake)} {tokenSymbol}
+                        <div>
+                            <div style={{ color: '#888', marginBottom: '8px' }}>Total Stake</div>
+                            <div style={{ color: '#ffffff', fontSize: '24px', fontWeight: 'bold' }}>
+                                {formatE8s(totalStake)} {tokenSymbol}
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ color: '#888', marginBottom: '8px' }}>Not Dissolved</div>
+                            <div style={{ color: '#2ecc71', fontSize: '24px', fontWeight: 'bold' }}>
+                                {formatE8s(stakes.notDissolvedStake)} {tokenSymbol}
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ color: '#888', marginBottom: '8px' }}>Dissolving</div>
+                            <div style={{ color: '#f1c40f', fontSize: '24px', fontWeight: 'bold' }}>
+                                {formatE8s(stakes.dissolvingStake)} {tokenSymbol}
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ color: '#888', marginBottom: '8px' }}>Dissolved</div>
+                            <div style={{ color: '#e74c3c', fontSize: '24px', fontWeight: 'bold' }}>
+                                {formatE8s(stakes.dissolvedStake)} {tokenSymbol}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
