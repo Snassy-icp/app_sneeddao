@@ -132,9 +132,11 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
     // Create container div for link and copy button
     return React.createElement('div', {
         style: {
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px'
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '8px',
+            flexWrap: 'wrap',
+            width: '100%'
         }
     }, [
         // Link with name and truncated ID
@@ -145,23 +147,26 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
                 color: neuronColor,
                 textDecoration: 'none',
                 fontFamily: 'monospace',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px'
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '4px',
+                flexWrap: 'wrap',
+                flex: '1'
             },
             title: displayId,
             onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
             onMouseLeave: (e) => e.target.style.textDecoration = 'none'
-        }, [
+        },
             // If there's a name, show it with verification badge
             name && React.createElement('span', {
                 key: 'name-container',
                 style: {
-                    display: 'inline-flex',
+                    display: 'flex',
                     alignItems: 'center',
                     gap: '4px',
                     color: neuronColor,
-                    fontWeight: 'bold'
+                    fontWeight: 'bold',
+                    flexWrap: 'wrap'
                 }
             }, [
                 isVerified && React.createElement('span', {
@@ -193,7 +198,7 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
                     opacity: 0.7
                 }
             }, `[${truncatedId}]`)
-        ]),
+        ),
         
         // Copy button
         React.createElement('button', {
@@ -209,7 +214,8 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
                 cursor: 'pointer',
                 color: '#888',
                 display: 'flex',
-                alignItems: 'center'
+                alignItems: 'center',
+                flexShrink: 0
             },
             title: 'Copy neuron ID to clipboard'
         }, '📋')

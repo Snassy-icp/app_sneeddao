@@ -601,9 +601,10 @@ export default function PrincipalPage() {
                                         <div style={{ marginBottom: '15px' }}>
                                             <div style={{ 
                                                 display: 'flex', 
-                                                alignItems: 'center',
+                                                alignItems: 'flex-start',
                                                 gap: '8px',
-                                                marginBottom: '10px'
+                                                marginBottom: '10px',
+                                                flexWrap: 'wrap'
                                             }}>
                                                 {formatNeuronIdLink(neuronId, searchParams.get('sns') || SNEED_SNS_ROOT)}
                                             </div>
