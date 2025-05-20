@@ -41,7 +41,6 @@ export default function PrincipalPage() {
     const [loadingNeurons, setLoadingNeurons] = useState(false);
     const [neuronError, setNeuronError] = useState(null);
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
-    const [snsList, setSnsList] = useState([]);
     
     // Keep stable references to dependencies
     const stableIdentity = useRef(identity);
@@ -86,28 +85,6 @@ export default function PrincipalPage() {
         
         return "";
     };
-
-    // Load SNS data once on mount
-    useEffect(() => {
-        let mounted = true;
-        
-        const fetchSnsData = async () => {
-            try {
-                const data = await fetchAndCacheSnsData();
-                if (mounted) {
-                    setSnsList(data);
-                }
-            } catch (err) {
-                console.error('Error fetching SNS data:', err);
-                if (mounted) {
-                    setError('Failed to load SNS data');
-                }
-            }
-        };
-
-        fetchSnsData();
-        return () => { mounted = false; };
-    }, []); // Remove identity dependency since we're using cached data
 
     // Load principal info
     useEffect(() => {
