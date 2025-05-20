@@ -76,7 +76,7 @@ export default function PrincipalPage() {
                 setPrincipalInfo({
                     name: nameResponse ? nameResponse[0] : null,
                     isVerified: nameResponse ? nameResponse[1] : false,
-                    nickname: nicknameResponse || null
+                    nickname: nicknameResponse ? nicknameResponse[0] : null
                 });
             } catch (err) {
                 console.error('Error fetching principal info:', err);
@@ -146,9 +146,11 @@ export default function PrincipalPage() {
         try {
             const response = await setPrincipalNickname(identity, principalId, nicknameInput);
             if ('ok' in response) {
+                // Fetch the updated nickname to ensure consistency
+                const nicknameResponse = await getPrincipalNickname(identity, principalId);
                 setPrincipalInfo(prev => ({
                     ...prev,
-                    nickname: nicknameInput
+                    nickname: nicknameResponse ? nicknameResponse[0] : null
                 }));
                 setNicknameError('');
             } else {

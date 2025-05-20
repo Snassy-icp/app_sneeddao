@@ -60,10 +60,10 @@ export const formatPrincipal = (principal, displayInfo = null) => {
     const truncated = truncatePrincipal(principal);
     if (!displayInfo) return truncated;
 
-    // Handle array format for name and verification status
-    const name = Array.isArray(displayInfo.name) ? displayInfo.name[0] : displayInfo.name;
-    const isVerified = Array.isArray(displayInfo.name) ? displayInfo.name[1] : displayInfo.isVerified;
-    const nickname = Array.isArray(displayInfo.nickname) ? displayInfo.nickname[0] : displayInfo.nickname;
+    // Handle array format for name, verification status, and nickname
+    const name = displayInfo.name ? (Array.isArray(displayInfo.name) ? displayInfo.name[0] : displayInfo.name) : null;
+    const isVerified = displayInfo.name ? (Array.isArray(displayInfo.name) ? displayInfo.name[1] : displayInfo.isVerified) : false;
+    const nickname = displayInfo.nickname ? (Array.isArray(displayInfo.nickname) ? displayInfo.nickname[0] : displayInfo.nickname) : null;
 
     if (!name && !nickname) return truncated;
 
@@ -77,30 +77,28 @@ export const formatPrincipal = (principal, displayInfo = null) => {
 };
 
 // React component for displaying a principal
-export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton = true, style = {} }) => {
+export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, showCopyButton = true, style = {} }) => {
     const formatted = formatPrincipal(principal, displayInfo);
     const principalColor = getPrincipalColor(principal);
     
-    // Debug logging
-    console.log('PrincipalDisplay displayInfo:', displayInfo);
-    console.log('PrincipalDisplay formatted:', formatted);
-    
     // Create a link wrapper component
-    const LinkWrapper = ({ children }) => {
-        const href = `/principal?id=${principal?.toString()}`;
-        return React.createElement('a', 
-            {
-                href,
-                style: {
-                    textDecoration: 'none',
-                    color: 'inherit'
+    const LinkWrapper = React.useMemo(() => {
+        return ({ children }) => {
+            const href = `/principal?id=${principal?.toString()}`;
+            return React.createElement('a', 
+                {
+                    href,
+                    style: {
+                        textDecoration: 'none',
+                        color: 'inherit'
+                    },
+                    onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
+                    onMouseLeave: (e) => e.target.style.textDecoration = 'none'
                 },
-                onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
-                onMouseLeave: (e) => e.target.style.textDecoration = 'none'
-            },
-            children
-        );
-    };
+                children
+            );
+        };
+    }, [principal]);
     
     // If no display info was provided, just show truncated ID
     if (typeof formatted === 'string') {
@@ -225,4 +223,12 @@ export const PrincipalDisplay = ({ principal, displayInfo = null, showCopyButton
             "📋"
         )
     );
-}; 
+}, (prevProps, nextProps) => {
+    // Custom comparison function for React.memo
+    return (
+        prevProps.principal?.toString() === nextProps.principal?.toString() &&
+        JSON.stringify(prevProps.displayInfo) === JSON.stringify(nextProps.displayInfo) &&
+        prevProps.showCopyButton === nextProps.showCopyButton &&
+        JSON.stringify(prevProps.style) === JSON.stringify(nextProps.style)
+    );
+}); 
