@@ -156,7 +156,17 @@ function Neurons() {
     };
 
     // Calculate total stake
-    const totalStake = neurons.reduce((sum, neuron) => sum + BigInt(neuron.cached_neuron_stake_e8s || 0), BigInt(0));
+    const totalStake = neurons.reduce((sum, neuron) => {
+        // Skip dissolved neurons
+        if (neuron.dissolve_state?.[0]?.WhenDissolvedTimestampSeconds) {
+            const dissolveTime = Number(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds);
+            const now = Math.floor(Date.now() / 1000);
+            if (dissolveTime <= now) {
+                return sum; // Skip this neuron if it's dissolved
+            }
+        }
+        return sum + BigInt(neuron.cached_neuron_stake_e8s || 0);
+    }, BigInt(0));
 
     // Get paginated neurons
     const paginatedNeurons = neurons.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
