@@ -76,118 +76,154 @@ function SnsDropdown({ onSnsChange }) {
         return snsList.find(sns => sns.rootCanisterId === selectedSnsRoot) || { name: 'Select an SNS', logo: '' };
     };
 
+    const handleSneedLogoClick = () => {
+        handleSnsChange(SNEED_SNS_ROOT);
+    };
+
+    // Find Sneed SNS data
+    const sneedSns = snsList.find(sns => sns.rootCanisterId === SNEED_SNS_ROOT) || { name: 'Sneed', logo: '' };
+
     return (
-        <div 
-            ref={dropdownRef}
-            style={{ 
-                position: 'relative',
-                marginRight: '15px',
-                minWidth: '200px'
-            }}
-        >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            {/* Sneed Logo - Always visible */}
             <div
-                onClick={() => !loadingSnses && setIsOpen(!isOpen)}
+                onClick={handleSneedLogoClick}
                 style={{
-                    backgroundColor: '#3a3a3a',
-                    border: '1px solid #4a4a4a',
-                    borderRadius: '4px',
-                    color: '#ffffff',
-                    padding: '8px 12px',
-                    fontSize: '14px',
-                    cursor: loadingSnses ? 'wait' : 'pointer',
+                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'flex-start',
-                    userSelect: 'none',
-                    minWidth: '250px'
                 }}
+                title="Switch to Sneed SNS"
             >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-                    {loadingSnses ? (
-                        <span>Loading SNSes...</span>
-                    ) : (
-                        <>
-                            {getSelectedSns().logo && (
-                                <img 
-                                    src={getSelectedSns().logo} 
-                                    alt={getSelectedSns().name}
-                                    style={{ 
-                                        width: '20px', 
-                                        height: '20px',
-                                        borderRadius: '50%',
-                                        objectFit: 'cover',
-                                        flexShrink: 0
-                                    }} 
-                                />
-                            )}
-                            <span style={{ flex: 1 }}>{getSelectedSns().name}</span>
-                        </>
-                    )}
-                </div>
-                <span style={{ 
-                    marginLeft: '8px',
-                    transform: isOpen ? 'rotate(180deg)' : 'none',
-                    transition: 'transform 0.2s ease',
-                    flexShrink: 0
-                }}>▼</span>
+                {sneedSns.logo && (
+                    <img 
+                        src={sneedSns.logo} 
+                        alt="Sneed"
+                        style={{ 
+                            width: '24px', 
+                            height: '24px',
+                            borderRadius: '50%',
+                            objectFit: 'cover',
+                            border: selectedSnsRoot === SNEED_SNS_ROOT ? '2px solid #3498db' : 'none',
+                            padding: '2px'
+                        }} 
+                    />
+                )}
             </div>
 
-            {isOpen && !loadingSnses && (
-                <div style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: '0',
-                    backgroundColor: '#2a2a2a',
-                    border: '1px solid #4a4a4a',
-                    borderRadius: '4px',
-                    marginTop: '4px',
-                    maxHeight: '300px',
-                    overflowY: 'auto',
-                    overflowX: 'hidden',
-                    zIndex: 1000,
-                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-                    minWidth: '250px'
-                }}>
-                    {snsList.map(sns => (
-                        <div
-                            key={sns.rootCanisterId}
-                            onClick={() => handleSnsChange(sns.rootCanisterId)}
-                            style={{
-                                padding: '8px 12px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                color: '#ffffff',
-                                backgroundColor: selectedSnsRoot === sns.rootCanisterId ? '#3498db' : 'transparent',
-                                transition: 'background-color 0.2s ease',
-                                width: '100%'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor = selectedSnsRoot === sns.rootCanisterId ? '#3498db' : '#3a3a3a';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = selectedSnsRoot === sns.rootCanisterId ? '#3498db' : 'transparent';
-                            }}
-                        >
-                            {sns.logo && (
-                                <img 
-                                    src={sns.logo} 
-                                    alt={sns.name}
-                                    style={{ 
-                                        width: '20px', 
-                                        height: '20px',
-                                        borderRadius: '50%',
-                                        objectFit: 'cover',
-                                        flexShrink: 0
-                                    }} 
-                                />
-                            )}
-                            <span style={{ flex: 1 }}>{sns.name}</span>
-                        </div>
-                    ))}
+            {/* SNS Dropdown */}
+            <div 
+                ref={dropdownRef}
+                style={{ 
+                    position: 'relative',
+                    marginRight: '15px',
+                    minWidth: '200px'
+                }}
+            >
+                <div
+                    onClick={() => !loadingSnses && setIsOpen(!isOpen)}
+                    style={{
+                        backgroundColor: '#3a3a3a',
+                        border: '1px solid #4a4a4a',
+                        borderRadius: '4px',
+                        color: '#ffffff',
+                        padding: '8px 12px',
+                        fontSize: '14px',
+                        cursor: loadingSnses ? 'wait' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'flex-start',
+                        userSelect: 'none',
+                        minWidth: '250px'
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                        {loadingSnses ? (
+                            <span>Loading SNSes...</span>
+                        ) : (
+                            <>
+                                {getSelectedSns().logo && selectedSnsRoot !== SNEED_SNS_ROOT && (
+                                    <img 
+                                        src={getSelectedSns().logo} 
+                                        alt={getSelectedSns().name}
+                                        style={{ 
+                                            width: '20px', 
+                                            height: '20px',
+                                            borderRadius: '50%',
+                                            objectFit: 'cover',
+                                            flexShrink: 0
+                                        }} 
+                                    />
+                                )}
+                                <span style={{ flex: 1 }}>{getSelectedSns().name}</span>
+                            </>
+                        )}
+                    </div>
+                    <span style={{ 
+                        marginLeft: '8px',
+                        transform: isOpen ? 'rotate(180deg)' : 'none',
+                        transition: 'transform 0.2s ease',
+                        flexShrink: 0
+                    }}>▼</span>
                 </div>
-            )}
+
+                {isOpen && !loadingSnses && (
+                    <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: '0',
+                        backgroundColor: '#2a2a2a',
+                        border: '1px solid #4a4a4a',
+                        borderRadius: '4px',
+                        marginTop: '4px',
+                        maxHeight: '300px',
+                        overflowY: 'auto',
+                        overflowX: 'hidden',
+                        zIndex: 1000,
+                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                        minWidth: '250px'
+                    }}>
+                        {snsList.map(sns => (
+                            <div
+                                key={sns.rootCanisterId}
+                                onClick={() => handleSnsChange(sns.rootCanisterId)}
+                                style={{
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    color: '#ffffff',
+                                    backgroundColor: selectedSnsRoot === sns.rootCanisterId ? '#3498db' : 'transparent',
+                                    transition: 'background-color 0.2s ease',
+                                    width: '100%'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = selectedSnsRoot === sns.rootCanisterId ? '#3498db' : '#3a3a3a';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = selectedSnsRoot === sns.rootCanisterId ? '#3498db' : 'transparent';
+                                }}
+                            >
+                                {sns.logo && (
+                                    <img 
+                                        src={sns.logo} 
+                                        alt={sns.name}
+                                        style={{ 
+                                            width: '20px', 
+                                            height: '20px',
+                                            borderRadius: '50%',
+                                            objectFit: 'cover',
+                                            flexShrink: 0
+                                        }} 
+                                    />
+                                )}
+                                <span style={{ flex: 1 }}>{sns.name}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
