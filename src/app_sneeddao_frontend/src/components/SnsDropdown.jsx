@@ -34,9 +34,12 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
     }, [searchParams]);
 
     const loadSnsData = async () => {
+        console.log('SnsDropdown: Starting to load SNS data...'); // Debug log
         setLoadingSnses(true);
         try {
-            const data = await fetchAndCacheSnsData(identity);
+            console.log('SnsDropdown: Calling fetchAndCacheSnsData...'); // Debug log
+            const data = await fetchAndCacheSnsData();  // Remove identity parameter
+            console.log('SnsDropdown: Received SNS data:', data); // Debug log
             setSnsList(data);
             
             // If no SNS is selected in the URL, set it to Sneed
@@ -48,17 +51,17 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                 });
             }
         } catch (err) {
-            console.error('Error loading SNS data:', err);
+            console.error('SnsDropdown: Error loading SNS data:', err);
         } finally {
             setLoadingSnses(false);
         }
     };
 
     useEffect(() => {
-        if (identity) {
-            loadSnsData();
-        }
-    }, [identity]);
+        console.log('SnsDropdown: Initial mount, loading SNS data...'); // Debug log
+        loadSnsData();
+        // Remove identity from dependency array
+    }, []); // Only run once on mount
 
     const handleSnsChange = (snsRoot) => {
         setSelectedSnsRoot(snsRoot);

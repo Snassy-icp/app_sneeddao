@@ -1,6 +1,7 @@
 import { createActor as createNnsSnsWActor } from 'external/nns_snsw';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { Principal } from '@dfinity/principal';
+import { HttpAgent } from '@dfinity/agent';
 
 const SNS_CACHE_KEY = 'sns_data_cache';
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
@@ -42,16 +43,44 @@ export async function fetchAndCacheSnsData(identity) {
 
     try {
         console.log('Creating NNS SNS Wrapper actor...'); // Debug log
+        
+        // Create an agent with proper host configuration
+        const host = process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943';
+        console.log('Using host:', host);
+        
+        const agentConfig = {
+            host,
+            ...(identity && { identity })
+        };
+        console.log('Agent config:', { ...agentConfig, identity: identity ? 'present' : 'none' });
+        
+        const agent = new HttpAgent(agentConfig);
+
+        try {
+            if (process.env.DFX_NETWORK !== 'ic') {
+                console.log('Fetching root key for local development...');
+                await agent.fetchRootKey();
+            }
+        } catch (rootKeyError) {
+            console.error('Error fetching root key:', rootKeyError);
+            // Continue anyway as this might not be critical for IC
+        }
+
         // Fetch deployed SNSes
+        console.log('Creating NNS SNS Wrapper actor with canister:', 'qaa6y-5yaaa-aaaaa-aaafa-cai');
         const nnsSnsWActor = createNnsSnsWActor('qaa6y-5yaaa-aaaaa-aaafa-cai', {
-            agentOptions: {
-                identity,
-            },
+            agent
         });
 
         console.log('Calling list_deployed_snses...'); // Debug log
-        const response = await nnsSnsWActor.list_deployed_snses({});
-        console.log('Raw response from list_deployed_snses:', response); // Debug log
+        let response;
+        try {
+            response = await nnsSnsWActor.list_deployed_snses({});
+            console.log('Raw response from list_deployed_snses:', response); // Debug log
+        } catch (listError) {
+            console.error('Error calling list_deployed_snses:', listError);
+            throw listError;
+        }
         
         const deployedSnses = response?.instances || [];
         console.log('Deployed SNSes:', deployedSnses); // Debug log
@@ -85,11 +114,9 @@ export async function fetchAndCacheSnsData(identity) {
                 console.log('Processing SNS with governance canister:', governanceId); // Debug log
 
                 try {
-                    // Create governance actor to get metadata
+                    // Create governance actor with the same agent
                     const governanceActor = createSnsGovernanceActor(governanceId, {
-                        agentOptions: {
-                            identity,
-                        },
+                        agent
                     });
 
                     // Get metadata from governance canister
