@@ -29,6 +29,63 @@ function Neurons() {
 
     const [loadingProgress, setLoadingProgress] = useState({ count: 0, message: '' });
 
+    // Add cache management functions at the top of the component
+    const getNeuronCacheKey = (snsRoot) => `neurons_cache_${snsRoot}`;
+    const getMetadataCacheKey = (snsRoot) => `neurons_metadata_${snsRoot}`;
+
+    // Helper function to serialize BigInt values
+    const serializeWithBigInt = (obj) => {
+        return JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'bigint') {
+                return value.toString() + 'n';
+            }
+            return value;
+        });
+    };
+
+    // Helper function to deserialize BigInt values
+    const deserializeWithBigInt = (str) => {
+        return JSON.parse(str, (key, value) => {
+            if (typeof value === 'string' && value.endsWith('n')) {
+                return BigInt(value.slice(0, -1));
+            }
+            return value;
+        });
+    };
+
+    // Function to get cached data
+    const getCachedData = (snsRoot) => {
+        try {
+            const neuronData = sessionStorage.getItem(getNeuronCacheKey(snsRoot));
+            const metadataData = sessionStorage.getItem(getMetadataCacheKey(snsRoot));
+            if (neuronData && metadataData) {
+                return {
+                    neurons: deserializeWithBigInt(neuronData),
+                    metadata: JSON.parse(metadataData)
+                };
+            }
+        } catch (error) {
+            console.warn('Error reading from cache:', error);
+            // If there's an error reading the cache, clear it
+            sessionStorage.removeItem(getNeuronCacheKey(snsRoot));
+            sessionStorage.removeItem(getMetadataCacheKey(snsRoot));
+        }
+        return null;
+    };
+
+    // Function to set cache data
+    const setCacheData = (snsRoot, neurons, metadata) => {
+        try {
+            sessionStorage.setItem(getNeuronCacheKey(snsRoot), serializeWithBigInt(neurons));
+            sessionStorage.setItem(getMetadataCacheKey(snsRoot), JSON.stringify(metadata));
+        } catch (error) {
+            console.warn('Error writing to cache:', error);
+            // If there's an error writing to the cache, clear it
+            sessionStorage.removeItem(getNeuronCacheKey(snsRoot));
+            sessionStorage.removeItem(getMetadataCacheKey(snsRoot));
+        }
+    };
+
     // Listen for URL parameter changes
     useEffect(() => {
         const snsParam = searchParams.get('sns');
@@ -60,7 +117,17 @@ function Neurons() {
     // Fetch neurons when SNS changes
     useEffect(() => {
         if (selectedSnsRoot) {
-            fetchNeurons();
+            const cachedData = getCachedData(selectedSnsRoot);
+            if (cachedData) {
+                console.log('Loading from cache for SNS:', selectedSnsRoot);
+                setLoadingProgress({ count: cachedData.neurons.length, message: 'Loading from cache...' });
+                setNeurons(cachedData.neurons);
+                setTokenSymbol(cachedData.metadata.symbol);
+                setLoading(false);
+            } else {
+                console.log('No cache found for SNS:', selectedSnsRoot);
+                fetchNeurons();
+            }
             fetchTotalSupply();
         }
     }, [selectedSnsRoot]);
@@ -145,9 +212,20 @@ function Neurons() {
             const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, { agent });
             const metadata = await icrc1Actor.icrc1_metadata();
             const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
+            let symbol = 'SNS';
             if (symbolEntry && symbolEntry[1]) {
-                setTokenSymbol(symbolEntry[1].Text);
+                symbol = symbolEntry[1].Text;
+                setTokenSymbol(symbol);
             }
+
+            // Cache the fetched data
+            setCacheData(selectedSnsRoot, sortedNeurons, { symbol });
+            
+            setLoadingProgress(prev => ({ 
+                count: sortedNeurons.length,
+                message: 'Caching data for future use...'
+            }));
+
         } catch (err) {
             console.error('Error fetching neurons:', err);
             setError('Failed to fetch neurons');
@@ -264,6 +342,34 @@ function Neurons() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                     <h1 style={{ color: '#ffffff' }}>Neurons</h1>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <button
+                            onClick={() => {
+                                // Clear cache for current SNS and refetch
+                                sessionStorage.removeItem(getNeuronCacheKey(selectedSnsRoot));
+                                sessionStorage.removeItem(getMetadataCacheKey(selectedSnsRoot));
+                                fetchNeurons();
+                            }}
+                            style={{
+                                backgroundColor: '#3a3a3a',
+                                color: '#fff',
+                                border: '1px solid #4a4a4a',
+                                borderRadius: '4px',
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}
+                            disabled={loading}
+                        >
+                            <span style={{ 
+                                display: 'inline-block',
+                                transform: loading ? 'rotate(360deg)' : 'none',
+                                transition: 'transform 1s linear',
+                                fontSize: '14px'
+                            }}>⟳</span>
+                            Refresh
+                        </button>
                         <label style={{ color: '#ffffff' }}>Items per page:</label>
                         <select
                             value={itemsPerPage}

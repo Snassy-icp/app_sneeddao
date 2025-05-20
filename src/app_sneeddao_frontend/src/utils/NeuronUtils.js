@@ -116,7 +116,11 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
     // Convert the neuron ID to a hex string if it's a byte array
     const displayId = Array.isArray(neuronId) || neuronId instanceof Uint8Array 
         ? uint8ArrayToHex(neuronId)
-        : neuronId;
+        : typeof neuronId === 'string' 
+            ? neuronId 
+            : neuronId.toString();
+
+    if (!displayId) return 'Unknown';
 
     // Get the display name from either the provided function or the global one
     const { name, nickname, isVerified } = getNeuronDisplayNameFn 
