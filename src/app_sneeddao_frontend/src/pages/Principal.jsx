@@ -22,7 +22,6 @@ export default function PrincipalPage() {
     const { identity } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
-    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || SNEED_SNS_ROOT);
     const [principalInfo, setPrincipalInfo] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -45,7 +44,6 @@ export default function PrincipalPage() {
     
     // Keep stable references to dependencies
     const stableIdentity = useRef(identity);
-    const stableSelectedSnsRoot = useRef(selectedSnsRoot);
     const stablePrincipalId = useRef(null);
 
     const principalParam = searchParams.get('id');
@@ -60,63 +58,6 @@ export default function PrincipalPage() {
         stableIdentity.current = identity;
     }, [identity]);
 
-    useEffect(() => {
-        stableSelectedSnsRoot.current = selectedSnsRoot;
-    }, [selectedSnsRoot]);
-
-    const handleSnsChange = (newSnsRoot) => {
-        if (newSnsRoot === selectedSnsRoot) return;
-        setSelectedSnsRoot(newSnsRoot);
-        setSearchParams(prev => {
-            prev.set('sns', newSnsRoot);
-            return prev;
-        });
-    };
-
-    // Validation function
-    const validateNameInput = (input) => {
-        if (input.length > 32) {
-            return "Name must not exceed 32 characters";
-        }
-        
-        const validPattern = /^[a-zA-Z0-9\s\-_.']*$/;
-        if (!validPattern.test(input)) {
-            return "Only alphanumeric characters, spaces, hyphens, underscores, dots, and apostrophes are allowed";
-        }
-        
-        return "";
-    };
-
-    // Load principal info
-    useEffect(() => {
-        const fetchPrincipalInfo = async () => {
-            if (!identity || !stablePrincipalId.current) {
-                setLoading(false);
-                return;
-            }
-
-            try {
-                const [nameResponse, nicknameResponse] = await Promise.all([
-                    getPrincipalName(identity, stablePrincipalId.current),
-                    getPrincipalNickname(identity, stablePrincipalId.current)
-                ]);
-                
-                setPrincipalInfo({
-                    name: nameResponse ? nameResponse[0] : null,
-                    isVerified: nameResponse ? nameResponse[1] : false,
-                    nickname: nicknameResponse ? nicknameResponse[0] : null
-                });
-            } catch (err) {
-                console.error('Error fetching principal info:', err);
-                setError('Failed to load principal information');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchPrincipalInfo();
-    }, [identity, stablePrincipalId.current]);
-
     // Load neurons when dependencies change
     useEffect(() => {
         let mounted = true;
@@ -124,7 +65,7 @@ export default function PrincipalPage() {
 
         const fetchNeurons = async () => {
             const currentIdentity = stableIdentity.current;
-            const currentSnsRoot = stableSelectedSnsRoot.current;
+            const currentSnsRoot = searchParams.get('sns') || SNEED_SNS_ROOT;
             const currentPrincipalId = stablePrincipalId.current;
 
             if (!currentIdentity || !currentSnsRoot || !currentPrincipalId) {
@@ -186,7 +127,7 @@ export default function PrincipalPage() {
 
         fetchNeurons();
         return () => { mounted = false; };
-    }, [identity, selectedSnsRoot, principalParam]); // Use principalParam instead of principalId
+    }, [identity, searchParams, principalParam]);
 
     // Add effect to fetch principal display info
     useEffect(() => {
@@ -295,7 +236,7 @@ export default function PrincipalPage() {
     if (!stablePrincipalId.current) {
         return (
             <div className='page-container'>
-                <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
+                <Header showSnsDropdown={true} />
                 <main className="wallet-container">
                     <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                         <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Invalid Principal ID</h1>
@@ -308,7 +249,7 @@ export default function PrincipalPage() {
 
     return (
         <div className='page-container'>
-            <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
+            <Header showSnsDropdown={true} />
             <main className="wallet-container">
                 <div style={{ 
                     backgroundColor: '#2a2a2a',
@@ -665,7 +606,7 @@ export default function PrincipalPage() {
                                                 marginBottom: '10px'
                                             }}>
                                                 <a
-                                                    href={`/neuron?neuronid=${neuronId}&sns=${selectedSnsRoot}`}
+                                                    href={`/neuron?neuronid=${neuronId}&sns=${SNEED_SNS_ROOT}`}
                                                     style={{ 
                                                         fontFamily: 'monospace',
                                                         color: '#888',
