@@ -80,7 +80,7 @@ export const setNeuronNickname = async (identity, snsRootCanisterId, neuronId, n
 
 // Get the public name of a neuron
 export const getNeuronName = async (identity, snsRootCanisterId, neuronId) => {
-    if (!identity || !snsRootCanisterId || !neuronId) return null;
+    if (!snsRootCanisterId || !neuronId) return null;
     
     try {
         const actor = createBackendActor(identity);
@@ -130,8 +130,6 @@ export const getNeuronNickname = async (identity, snsRootCanisterId, neuronId) =
 
 // Get all neuron names
 export const getAllNeuronNames = async (identity) => {
-    if (!identity) return null;
-    
     try {
         const actor = createBackendActor(identity);
         console.log('Getting all neuron names');

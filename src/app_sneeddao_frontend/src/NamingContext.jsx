@@ -13,19 +13,11 @@ export function NamingProvider({ children }) {
     const [loading, setLoading] = useState(true);
 
     const fetchAllNames = async () => {
-        if (!identity) {
-            setNeuronNames(new Map());
-            setNeuronNicknames(new Map());
-            setVerifiedNames(new Map());
-            setLoading(false);
-            return;
-        }
-
         try {
             setLoading(true);
             const [names, nicknames] = await Promise.all([
                 getAllNeuronNames(identity),
-                getAllNeuronNicknames(identity)
+                identity ? getAllNeuronNicknames(identity) : null
             ]);
 
             // Process names
