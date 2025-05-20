@@ -43,11 +43,19 @@ function Neurons() {
         });
     };
 
-    // Helper function to deserialize BigInt values
+    // Helper function to deserialize BigInt values and reconstruct Uint8Arrays
     const deserializeWithBigInt = (str) => {
         return JSON.parse(str, (key, value) => {
+            // Handle BigInt values
             if (typeof value === 'string' && value.endsWith('n')) {
                 return BigInt(value.slice(0, -1));
+            }
+            // Handle neuron IDs (they're in the id array of each neuron)
+            if (key === 'id' && Array.isArray(value) && value.length > 0 && value[0]?.id) {
+                return value.map(item => ({
+                    ...item,
+                    id: new Uint8Array(Object.values(item.id))
+                }));
             }
             return value;
         });
@@ -59,8 +67,15 @@ function Neurons() {
             const neuronData = sessionStorage.getItem(getNeuronCacheKey(snsRoot));
             const metadataData = sessionStorage.getItem(getMetadataCacheKey(snsRoot));
             if (neuronData && metadataData) {
+                const neurons = deserializeWithBigInt(neuronData);
+                // Verify the neuron data is valid
+                if (!Array.isArray(neurons) || !neurons.every(n => n.id?.[0]?.id instanceof Uint8Array)) {
+                    console.warn('Invalid neuron data in cache');
+                    sessionStorage.removeItem(getNeuronCacheKey(snsRoot));
+                    return null;
+                }
                 return {
-                    neurons: deserializeWithBigInt(neuronData),
+                    neurons,
                     metadata: JSON.parse(metadataData)
                 };
             }
