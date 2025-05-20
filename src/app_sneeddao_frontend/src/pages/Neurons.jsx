@@ -27,6 +27,8 @@ function Neurons() {
     const [itemsPerPage, setItemsPerPage] = useState(20);
     const [currentPage, setCurrentPage] = useState(1);
 
+    const [loadingProgress, setLoadingProgress] = useState({ count: 0, message: '' });
+
     // Listen for URL parameter changes
     useEffect(() => {
         const snsParam = searchParams.get('sns');
@@ -66,6 +68,7 @@ function Neurons() {
     const fetchNeurons = async () => {
         setLoading(true);
         setError('');
+        setLoadingProgress({ count: 0, message: 'Initializing...' });
         try {
             const selectedSns = getSnsById(selectedSnsRoot);
             if (!selectedSns) {
@@ -82,6 +85,8 @@ function Neurons() {
                 await agent.fetchRootKey();
             }
 
+            setLoadingProgress(prev => ({ ...prev, message: 'Connected to governance canister' }));
+
             const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
                 agent
             });
@@ -90,9 +95,15 @@ function Neurons() {
             let allNeurons = [];
             let hasMore = true;
             let lastNeuron = [];  // Empty array for first page
+            let pageCount = 0;
 
             while (hasMore) {
-                console.log('Fetching neurons page, starting from:', lastNeuron);
+                pageCount++;
+                setLoadingProgress(prev => ({ 
+                    count: allNeurons.length,
+                    message: `Fetching page ${pageCount} (${allNeurons.length} neurons so far)...`
+                }));
+
                 const response = await snsGovActor.list_neurons({
                     limit: 100,
                     of_principal: [], // Empty to get all neurons
@@ -114,7 +125,10 @@ function Neurons() {
                 }
             }
 
-            console.log(`Fetched total of ${allNeurons.length} neurons`);
+            setLoadingProgress(prev => ({ 
+                count: allNeurons.length,
+                message: `Sorting ${allNeurons.length} neurons by stake...`
+            }));
             
             // Sort neurons by stake (highest first)
             const sortedNeurons = allNeurons.sort((a, b) => {
@@ -124,6 +138,8 @@ function Neurons() {
             });
 
             setNeurons(sortedNeurons);
+
+            setLoadingProgress(prev => ({ ...prev, message: 'Fetching token metadata...' }));
 
             // Get token symbol
             const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, { agent });
@@ -355,8 +371,31 @@ function Neurons() {
                 </div>
 
                 {loading ? (
-                    <div style={{ color: '#ffffff', textAlign: 'center', padding: '20px' }}>
-                        Loading...
+                    <div style={{ 
+                        color: '#ffffff', 
+                        textAlign: 'center', 
+                        padding: '20px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '10px'
+                    }}>
+                        <div className="spinner" style={{ 
+                            width: '32px', 
+                            height: '32px',
+                            border: '3px solid #3498db',
+                            borderTop: '3px solid transparent',
+                            borderRadius: '50%',
+                            animation: 'spin 1s linear infinite'
+                        }} />
+                        <div style={{ marginTop: '10px' }}>
+                            {loadingProgress.message}
+                        </div>
+                        {loadingProgress.count > 0 && (
+                            <div style={{ color: '#888', fontSize: '14px' }}>
+                                Found {loadingProgress.count} neurons
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div>
