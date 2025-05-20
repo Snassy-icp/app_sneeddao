@@ -208,34 +208,34 @@ function Neurons() {
                     if (hasStake) acc.dissolvingWithStakeCount += 1;
                 }
             } else if ('DissolveDelaySeconds' in neuron.dissolve_state[0]) {
-                acc.notDissolvedStake += stake;
-                acc.notDissolvedCount += 1;
-                if (hasStake) acc.notDissolvedWithStakeCount += 1;
+                acc.notDissolvingStake += stake;
+                acc.notDissolvingCount += 1;
+                if (hasStake) acc.notDissolvingWithStakeCount += 1;
             }
         } else {
-            // If no dissolve state, consider it not dissolved
-            acc.notDissolvedStake += stake;
-            acc.notDissolvedCount += 1;
-            if (hasStake) acc.notDissolvedWithStakeCount += 1;
+            // If no dissolve state, consider it not dissolving
+            acc.notDissolvingStake += stake;
+            acc.notDissolvingCount += 1;
+            if (hasStake) acc.notDissolvingWithStakeCount += 1;
         }
         
         return acc;
     }, {
         dissolvedStake: BigInt(0),
         dissolvingStake: BigInt(0),
-        notDissolvedStake: BigInt(0),
+        notDissolvingStake: BigInt(0),
         dissolvedCount: 0,
         dissolvingCount: 0,
-        notDissolvedCount: 0,
+        notDissolvingCount: 0,
         dissolvedWithStakeCount: 0,
         dissolvingWithStakeCount: 0,
-        notDissolvedWithStakeCount: 0
+        notDissolvingWithStakeCount: 0
     });
 
     // Total stake excludes dissolved neurons
-    const totalStake = stakes.dissolvingStake + stakes.notDissolvedStake;
-    const totalCount = stakes.dissolvedCount + stakes.dissolvingCount + stakes.notDissolvedCount;
-    const totalWithStakeCount = stakes.dissolvedWithStakeCount + stakes.dissolvingWithStakeCount + stakes.notDissolvedWithStakeCount;
+    const totalStake = stakes.dissolvingStake + stakes.notDissolvingStake;
+    const totalCount = stakes.dissolvedCount + stakes.dissolvingCount + stakes.notDissolvingCount;
+    const totalWithStakeCount = stakes.dissolvedWithStakeCount + stakes.dissolvingWithStakeCount + stakes.notDissolvingWithStakeCount;
 
     // Get paginated neurons
     const paginatedNeurons = neurons.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -301,20 +301,20 @@ function Neurons() {
                             </div>
                         </div>
                         <div>
-                            <div style={{ color: '#888', marginBottom: '8px' }}>Not Dissolved</div>
+                            <div style={{ color: '#888', marginBottom: '8px' }}>Not Dissolving</div>
                             <div style={{ color: '#2ecc71', fontSize: '24px', fontWeight: 'bold' }}>
-                                {formatE8s(stakes.notDissolvedStake)} {tokenSymbol}
+                                {formatE8s(stakes.notDissolvingStake)} {tokenSymbol}
                                 {totalSupply && (
                                     <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
-                                        ({calculatePercentage(stakes.notDissolvedStake)}% of supply)
+                                        ({calculatePercentage(stakes.notDissolvingStake)}% of supply)
                                     </div>
                                 )}
                             </div>
                             <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
-                                {stakes.notDissolvedCount} neurons
+                                {stakes.notDissolvingCount} neurons
                             </div>
                             <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
-                                ({stakes.notDissolvedWithStakeCount} with stake)
+                                ({stakes.notDissolvingWithStakeCount} with stake)
                             </div>
                         </div>
                         <div>
