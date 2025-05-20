@@ -312,8 +312,9 @@ function Neurons() {
         try {
             const response = await fetch(`https://sns-api.internetcomputer.org/api/v2/snses/${selectedSnsRoot}/neurons/count`);
             const data = await response.json();
-            setTotalNeuronCount(data.count || 0);
-            return data.count || 0;
+            const total = data.total || 0;
+            setTotalNeuronCount(total);
+            return total;
         } catch (error) {
             console.error('Error fetching neuron count:', error);
             return 0;
