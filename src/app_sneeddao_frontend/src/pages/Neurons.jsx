@@ -21,6 +21,7 @@ function Neurons() {
     const [loading, setLoading] = useState(false);
     const [loadingSnses, setLoadingSnses] = useState(true);
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
+    const [totalSupply, setTotalSupply] = useState(null);
     
     // Pagination state
     const [itemsPerPage, setItemsPerPage] = useState(20);
@@ -58,6 +59,7 @@ function Neurons() {
     useEffect(() => {
         if (selectedSnsRoot) {
             fetchNeurons();
+            fetchTotalSupply();
         }
     }, [selectedSnsRoot]);
 
@@ -138,6 +140,31 @@ function Neurons() {
         }
     };
 
+    const fetchTotalSupply = async () => {
+        try {
+            const selectedSns = getSnsById(selectedSnsRoot);
+            if (!selectedSns) {
+                console.error('Selected SNS not found');
+                return;
+            }
+
+            // Create an anonymous agent if no identity is available
+            const agent = identity ? 
+                new HttpAgent({ identity }) : 
+                new HttpAgent();
+
+            if (process.env.DFX_NETWORK !== 'ic') {
+                await agent.fetchRootKey();
+            }
+
+            const ledgerActor = createIcrc1Actor(selectedSns.canisters.ledger, { agent });
+            const supply = await ledgerActor.icrc1_total_supply();
+            setTotalSupply(supply);
+        } catch (err) {
+            console.error('Error fetching total supply:', err);
+        }
+    };
+
     const handleSnsChange = (newSnsRoot) => {
         // Update URL parameter
         const newSearchParams = new URLSearchParams(searchParams);
@@ -153,6 +180,13 @@ function Neurons() {
     const handleItemsPerPageChange = (e) => {
         setItemsPerPage(Number(e.target.value));
         setCurrentPage(1);
+    };
+
+    // Calculate percentages
+    const calculatePercentage = (amount) => {
+        if (!totalSupply || !amount) return null;
+        const percentage = (Number(amount) / Number(totalSupply)) * 100;
+        return percentage.toFixed(2);
     };
 
     // Calculate stakes by dissolve state
@@ -179,7 +213,7 @@ function Neurons() {
                 if (hasStake) acc.notDissolvedWithStakeCount += 1;
             }
         } else {
-            // If no dissolve state, consider it not dissolving
+            // If no dissolve state, consider it not dissolved
             acc.notDissolvedStake += stake;
             acc.notDissolvedCount += 1;
             if (hasStake) acc.notDissolvedWithStakeCount += 1;
@@ -253,6 +287,11 @@ function Neurons() {
                             <div style={{ color: '#888', marginBottom: '8px' }}>Total Active Stake</div>
                             <div style={{ color: '#ffffff', fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8s(totalStake)} {tokenSymbol}
+                                {totalSupply && (
+                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
+                                        ({calculatePercentage(totalStake)}% of supply)
+                                    </div>
+                                )}
                             </div>
                             <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
                                 {totalCount} neurons total
@@ -262,9 +301,14 @@ function Neurons() {
                             </div>
                         </div>
                         <div>
-                            <div style={{ color: '#888', marginBottom: '8px' }}>Not Dissolving</div>
+                            <div style={{ color: '#888', marginBottom: '8px' }}>Not Dissolved</div>
                             <div style={{ color: '#2ecc71', fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8s(stakes.notDissolvedStake)} {tokenSymbol}
+                                {totalSupply && (
+                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
+                                        ({calculatePercentage(stakes.notDissolvedStake)}% of supply)
+                                    </div>
+                                )}
                             </div>
                             <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
                                 {stakes.notDissolvedCount} neurons
@@ -277,6 +321,11 @@ function Neurons() {
                             <div style={{ color: '#888', marginBottom: '8px' }}>Dissolving</div>
                             <div style={{ color: '#f1c40f', fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8s(stakes.dissolvingStake)} {tokenSymbol}
+                                {totalSupply && (
+                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
+                                        ({calculatePercentage(stakes.dissolvingStake)}% of supply)
+                                    </div>
+                                )}
                             </div>
                             <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
                                 {stakes.dissolvingCount} neurons
@@ -289,6 +338,11 @@ function Neurons() {
                             <div style={{ color: '#888', marginBottom: '8px' }}>Dissolved</div>
                             <div style={{ color: '#e74c3c', fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8s(stakes.dissolvedStake)} {tokenSymbol}
+                                {totalSupply && (
+                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
+                                        ({calculatePercentage(stakes.dissolvedStake)}% of supply)
+                                    </div>
+                                )}
                             </div>
                             <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
                                 {stakes.dissolvedCount} neurons
