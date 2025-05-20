@@ -165,25 +165,33 @@ function Neurons() {
                 const now = Math.floor(Date.now() / 1000);
                 if (dissolveTime <= now) {
                     acc.dissolvedStake += stake;
+                    acc.dissolvedCount += 1;
                 } else {
                     acc.dissolvingStake += stake;
+                    acc.dissolvingCount += 1;
                 }
             } else if ('DissolveDelaySeconds' in neuron.dissolve_state[0]) {
                 acc.notDissolvedStake += stake;
+                acc.notDissolvedCount += 1;
             }
         } else {
             // If no dissolve state, consider it not dissolved
             acc.notDissolvedStake += stake;
+            acc.notDissolvedCount += 1;
         }
         
         return acc;
     }, {
         dissolvedStake: BigInt(0),
         dissolvingStake: BigInt(0),
-        notDissolvedStake: BigInt(0)
+        notDissolvedStake: BigInt(0),
+        dissolvedCount: 0,
+        dissolvingCount: 0,
+        notDissolvedCount: 0
     });
 
     const totalStake = stakes.dissolvedStake + stakes.dissolvingStake + stakes.notDissolvedStake;
+    const totalCount = stakes.dissolvedCount + stakes.dissolvingCount + stakes.notDissolvedCount;
 
     // Get paginated neurons
     const paginatedNeurons = neurons.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -236,11 +244,17 @@ function Neurons() {
                             <div style={{ color: '#ffffff', fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8s(totalStake)} {tokenSymbol}
                             </div>
+                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
+                                {totalCount} neurons
+                            </div>
                         </div>
                         <div>
                             <div style={{ color: '#888', marginBottom: '8px' }}>Not Dissolved</div>
                             <div style={{ color: '#2ecc71', fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8s(stakes.notDissolvedStake)} {tokenSymbol}
+                            </div>
+                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
+                                {stakes.notDissolvedCount} neurons
                             </div>
                         </div>
                         <div>
@@ -248,11 +262,17 @@ function Neurons() {
                             <div style={{ color: '#f1c40f', fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8s(stakes.dissolvingStake)} {tokenSymbol}
                             </div>
+                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
+                                {stakes.dissolvingCount} neurons
+                            </div>
                         </div>
                         <div>
                             <div style={{ color: '#888', marginBottom: '8px' }}>Dissolved</div>
                             <div style={{ color: '#e74c3c', fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8s(stakes.dissolvedStake)} {tokenSymbol}
+                            </div>
+                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
+                                {stakes.dissolvedCount} neurons
                             </div>
                         </div>
                     </div>
