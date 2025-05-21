@@ -47,8 +47,11 @@ const styles = {
     },
     grid: {
         display: 'grid',
-        gridTemplateColumns: '1fr',
+        gridTemplateColumns: 'repeat(2, 1fr)',
         gap: '1rem',
+        '@media (max-width: 600px)': {
+            gridTemplateColumns: '1fr',
+        },
     },
     card: {
         backgroundColor: '#3a3a3a',
