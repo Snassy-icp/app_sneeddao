@@ -117,7 +117,7 @@ const LoadingSpinner = () => (
     </div>
 );
 
-function StatCard({ value, label, isLoading }) {
+function StatCard({ value, label, isLoading, isParentComplete }) {
     const [displayValue, setDisplayValue] = useState('0');
     const [isComplete, setIsComplete] = useState(false);
     
@@ -154,10 +154,10 @@ function StatCard({ value, label, isLoading }) {
             return;
         }
 
-        // For total value, only complete when it matches token + position value
+        // For total value, use parent completion state
         if (label === "Total Value Locked" && isUSD) {
             setDisplayValue(value);
-            setIsComplete(false);
+            setIsComplete(isParentComplete);
             return;
         }
 
@@ -183,7 +183,7 @@ function StatCard({ value, label, isLoading }) {
 
         timer = setInterval(updateNumber, 16);
         return () => clearInterval(timer);
-    }, [value, isLoading, label]);
+    }, [value, isLoading, label, isParentComplete]);
 
     return (
         <div style={styles.stat}>
@@ -209,6 +209,12 @@ function Products() {
     const [conversionRates, setConversionRates] = useState({});
     const swapCanisterCache = {};
     const [ratesLoaded, setRatesLoaded] = useState(false);
+    const [tokenValueComplete, setTokenValueComplete] = useState(false);
+    const [positionValueComplete, setPositionValueComplete] = useState(false);
+
+    // Track completion of individual USD values
+    const [tokenRef, setTokenRef] = useState(null);
+    const [positionRef, setPositionRef] = useState(null);
 
     const formatUSD = (value) => {
         if (value === undefined || value === null || isNaN(value)) return '$0.00';
@@ -490,6 +496,30 @@ function Products() {
         return () => clearInterval(interval);
     }, []);
 
+    // Function to check if a StatCard is complete
+    const isCardComplete = (ref) => {
+        if (!ref) return false;
+        return ref.querySelector('[style*="color: rgb(52, 152, 219)"]') !== null;
+    };
+
+    // Effect to check completion states
+    useEffect(() => {
+        const checkCompletion = () => {
+            setTokenValueComplete(isCardComplete(tokenRef));
+            setPositionValueComplete(isCardComplete(positionRef));
+        };
+
+        const observer = new MutationObserver(checkCompletion);
+        if (tokenRef) {
+            observer.observe(tokenRef, { attributes: true, subtree: true });
+        }
+        if (positionRef) {
+            observer.observe(positionRef, { attributes: true, subtree: true });
+        }
+
+        return () => observer.disconnect();
+    }, [tokenRef, positionRef]);
+
     const isValueLoading = (value) => isLoading || value === 0;
 
     return (
@@ -520,16 +550,20 @@ function Products() {
                                     label="Position Locks"
                                     isLoading={sneedLockStats.totalPositionLocks === 0}
                                 />
-                                <StatCard 
-                                    value={formatUSD(sneedLockStats.tokenLocksValue)} 
-                                    label="Token Locks Value"
-                                    isLoading={false}
-                                />
-                                <StatCard 
-                                    value={formatUSD(sneedLockStats.positionLocksValue)} 
-                                    label="Position Locks Value"
-                                    isLoading={false}
-                                />
+                                <div ref={setTokenRef}>
+                                    <StatCard 
+                                        value={formatUSD(sneedLockStats.tokenLocksValue)} 
+                                        label="Token Locks Value"
+                                        isLoading={false}
+                                    />
+                                </div>
+                                <div ref={setPositionRef}>
+                                    <StatCard 
+                                        value={formatUSD(sneedLockStats.positionLocksValue)} 
+                                        label="Position Locks Value"
+                                        isLoading={false}
+                                    />
+                                </div>
                                 <StatCard 
                                     value={sneedLockStats.activeUsers.toString()} 
                                     label="Active Users"
@@ -539,6 +573,7 @@ function Products() {
                                     value={formatUSD(sneedLockStats.totalValue)} 
                                     label="Total Value Locked"
                                     isLoading={false}
+                                    isParentComplete={tokenValueComplete && positionValueComplete}
                                 />
                             </div>
                             
