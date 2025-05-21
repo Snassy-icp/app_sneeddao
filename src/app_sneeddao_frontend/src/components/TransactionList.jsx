@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Principal } from '@dfinity/principal';
 import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createSnsArchiveActor } from 'external/sns_archive';
@@ -111,6 +111,17 @@ const styles = {
         padding: '8px',
         color: '#fff',
         cursor: 'pointer'
+    },
+    sortableHeader: {
+        cursor: 'pointer',
+        userSelect: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px'
+    },
+    sortIcon: {
+        fontSize: '12px',
+        opacity: 0.7
     }
 };
 
@@ -134,6 +145,10 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
     const [indexCanisterId, setIndexCanisterId] = useState(null);
     const [archiveCanisterId, setArchiveCanisterId] = useState(null);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    const [sortConfig, setSortConfig] = useState({
+        key: 'timestamp',
+        direction: 'desc'
+    });
 
     // Fetch canister IDs from SNS root
     const fetchCanisterIds = async () => {
@@ -319,6 +334,99 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
         updateDisplayedTransactions(allTransactions, 0, selectedType, newSize);
     };
 
+    // Add sorting function
+    const sortTransactions = (transactions) => {
+        if (!sortConfig.key) return transactions;
+
+        return [...transactions].sort((a, b) => {
+            let aValue, bValue;
+
+            switch (sortConfig.key) {
+                case 'type':
+                    aValue = a.transaction.kind;
+                    bValue = b.transaction.kind;
+                    break;
+                case 'from':
+                    aValue = getFromPrincipal(a)?.toString() || '';
+                    bValue = getFromPrincipal(b)?.toString() || '';
+                    break;
+                case 'to':
+                    aValue = getToPrincipal(a)?.toString() || '';
+                    bValue = getToPrincipal(b)?.toString() || '';
+                    break;
+                case 'amount':
+                    aValue = getTransactionAmount(a) || 0n;
+                    bValue = getTransactionAmount(b) || 0n;
+                    return sortConfig.direction === 'asc' 
+                        ? (aValue < bValue ? -1 : aValue > bValue ? 1 : 0)
+                        : (bValue < aValue ? -1 : bValue > aValue ? 1 : 0);
+                case 'timestamp':
+                    aValue = Number(a.transaction.timestamp);
+                    bValue = Number(b.transaction.timestamp);
+                    return sortConfig.direction === 'asc' 
+                        ? aValue - bValue 
+                        : bValue - aValue;
+                default:
+                    return 0;
+            }
+
+            if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+    };
+
+    // Helper functions to get transaction details
+    const getFromPrincipal = (tx) => {
+        if (tx.transaction.transfer?.[0]?.from?.owner) return tx.transaction.transfer[0].from.owner;
+        if (tx.transaction.burn?.[0]?.from?.owner) return tx.transaction.burn[0].from.owner;
+        if (tx.transaction.approve?.[0]?.from?.owner) return tx.transaction.approve[0].from.owner;
+        return null;
+    };
+
+    const getToPrincipal = (tx) => {
+        if (tx.transaction.transfer?.[0]?.to?.owner) return tx.transaction.transfer[0].to.owner;
+        if (tx.transaction.mint?.[0]?.to?.owner) return tx.transaction.mint[0].to.owner;
+        if (tx.transaction.approve?.[0]?.spender?.owner) return tx.transaction.approve[0].spender.owner;
+        return null;
+    };
+
+    const getTransactionAmount = (tx) => {
+        if (tx.transaction.transfer?.[0]?.amount) return BigInt(tx.transaction.transfer[0].amount);
+        if (tx.transaction.mint?.[0]?.amount) return BigInt(tx.transaction.mint[0].amount);
+        if (tx.transaction.burn?.[0]?.amount) return BigInt(tx.transaction.burn[0].amount);
+        if (tx.transaction.approve?.[0]?.amount) return BigInt(tx.transaction.approve[0].amount);
+        return 0n;
+    };
+
+    // Add sort handler
+    const handleSort = (key) => {
+        setSortConfig(prevConfig => ({
+            key,
+            direction: prevConfig.key === key && prevConfig.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
+
+    // Update displayed transactions to include sorting
+    useEffect(() => {
+        if (principalId) {
+            const filtered = selectedType === TransactionType.ALL 
+                ? allTransactions 
+                : allTransactions.filter(tx => tx.transaction.kind === selectedType);
+            
+            const sorted = sortTransactions(filtered);
+            const start = page * pageSize;
+            const end = start + pageSize;
+            setDisplayedTransactions(sorted.slice(start, end));
+        }
+    }, [page, selectedType, allTransactions, pageSize, sortConfig]);
+
+    // Render sort indicator
+    const renderSortIndicator = (key) => {
+        if (sortConfig.key !== key) return '↕';
+        return sortConfig.direction === 'asc' ? '↑' : '↓';
+    };
+
     if (loading) {
         return <div style={styles.loadingSpinner}>Loading transactions...</div>;
     }
@@ -350,10 +458,42 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
             <table style={styles.table}>
                 <thead>
                     <tr>
-                        <th style={{...styles.th, width: '10%'}}>Type</th>
-                        <th style={{...styles.th, width: '45%'}}>From / To</th>
-                        <th style={{...styles.th, width: '15%'}}>Amount</th>
-                        <th style={{...styles.th, width: '20%'}}>Time</th>
+                        <th 
+                            style={{...styles.th, width: '10%'}}
+                            onClick={() => handleSort('type')}
+                        >
+                            <div style={styles.sortableHeader}>
+                                Type
+                                <span style={styles.sortIcon}>{renderSortIndicator('type')}</span>
+                            </div>
+                        </th>
+                        <th 
+                            style={{...styles.th, width: '45%'}}
+                            onClick={() => handleSort('from')}
+                        >
+                            <div style={styles.sortableHeader}>
+                                From / To
+                                <span style={styles.sortIcon}>{renderSortIndicator('from')}</span>
+                            </div>
+                        </th>
+                        <th 
+                            style={{...styles.th, width: '15%'}}
+                            onClick={() => handleSort('amount')}
+                        >
+                            <div style={styles.sortableHeader}>
+                                Amount
+                                <span style={styles.sortIcon}>{renderSortIndicator('amount')}</span>
+                            </div>
+                        </th>
+                        <th 
+                            style={{...styles.th, width: '20%'}}
+                            onClick={() => handleSort('timestamp')}
+                        >
+                            <div style={styles.sortableHeader}>
+                                Time
+                                <span style={styles.sortIcon}>{renderSortIndicator('timestamp')}</span>
+                            </div>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
