@@ -361,7 +361,7 @@ function SneedlockInfo() {
                     lockId: lock[2].lock_id,  // Numerical lock ID
                     amount: amount,
                     expiry: lock[2].expiry,
-                    owner: lock[0].toText()  // Use the lock ID as owner since it contains the principal
+                    owner: lock[0].toText()  // Use the actual owner principal
                 };
 
                 if (!aggregatedData[tokenKey]) {
@@ -510,7 +510,7 @@ function SneedlockInfo() {
                                 swapCanisterId,
                                 amount: token0Amount,
                                 expiry,
-                                owner: lockId.toText(),  // Use the lock ID as owner
+                                owner: lock[0].toText(),  // Use the actual owner principal
                                 otherToken: token1,
                                 otherAmount: BigInt(matchingPosition.token1Amount)
                             });
@@ -539,7 +539,7 @@ function SneedlockInfo() {
                                 swapCanisterId,
                                 amount: token1Amount,
                                 expiry,
-                                owner: lockId.toText(),  // Use the lock ID as owner
+                                owner: lock[0].toText(),  // Use the actual owner principal
                                 otherToken: token0,
                                 otherAmount: BigInt(matchingPosition.token0Amount)
                             });

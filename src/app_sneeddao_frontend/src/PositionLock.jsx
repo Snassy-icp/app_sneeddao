@@ -112,7 +112,8 @@ function PositionLock() {
                         tokensUnused0: 0n,
                         tokensUnused1: 0n,
                         frontendOwnership: null,
-                        lockInfo: lock ? lock[2] : null
+                        lockInfo: lock ? lock[2] : null,
+                        owner: lock ? lock[0] : null
                     }
                 }
                 return position_detailed;

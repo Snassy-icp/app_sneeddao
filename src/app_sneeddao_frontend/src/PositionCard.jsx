@@ -2,6 +2,7 @@ import React from 'react';
 import { formatAmount, getUSD } from './utils/StringUtils';
 import { bigDateToReadable } from './utils/DateUtils';
 import { getIcpSwapLink, isLockedPosition, getPositionTVL } from './utils/PositionUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfo } from './utils/PrincipalUtils';
 
 const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, withdraw_position_rewards, hideButtons, hideUnclaimedFees }) => {
 
@@ -72,6 +73,17 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     ? bigDateToReadable(positionDetails.lockInfo.expiry)
                     : 'No lock'}
                 </div>
+                {positionDetails.owner && (
+                    <>
+                        <div className="locks-header" style={{ marginTop: '10px' }}>Owner</div>
+                        <div className="lock-item">
+                            <PrincipalDisplay 
+                                principal={positionDetails.owner}
+                                showCopyButton={true}
+                            />
+                        </div>
+                    </>
+                )}
             </div>
             {!hideButtons &&
                 <div className="action-buttons">
