@@ -170,6 +170,21 @@ const styles = {
         cursor: 'pointer',
         fontSize: '14px',
         minWidth: '80px'
+    },
+    headerTitle: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        cursor: 'pointer',
+        userSelect: 'none'
+    },
+    collapseIcon: {
+        fontSize: '18px',
+        color: '#888',
+        transition: 'transform 0.2s'
+    },
+    collapsedIcon: {
+        transform: 'rotate(-90deg)'
     }
 };
 
@@ -181,7 +196,7 @@ const TransactionType = {
     APPROVE: 'approve'
 };
 
-function TransactionList({ snsRootCanisterId, principalId = null }) {
+function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, onToggleCollapse }) {
     const { identity } = useAuth();
     const [allTransactions, setAllTransactions] = useState([]); // Store all fetched transactions
     const [displayedTransactions, setDisplayedTransactions] = useState([]); // Current page of transactions
@@ -550,256 +565,275 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
     return (
         <div style={styles.container}>
             <div style={styles.header}>
-                <h2>Transactions</h2>
-                <div style={styles.filtersContainer}>
-                    <div style={styles.filterGroup}>
-                        <span style={styles.filterLabel}>From:</span>
-                        <input
-                            type="text"
-                            value={fromFilter}
-                            onChange={(e) => {
-                                setFromFilter(e.target.value);
-                                setPage(0);
-                            }}
-                            placeholder="Filter by sender"
-                            style={styles.filterInput}
-                        />
-                    </div>
-                    <select
-                        value={filterOperator}
-                        onChange={(e) => {
-                            setFilterOperator(e.target.value);
-                            setPage(0);
+                <div 
+                    style={styles.headerTitle}
+                    onClick={onToggleCollapse}
+                >
+                    <span 
+                        style={{
+                            ...styles.collapseIcon,
+                            ...(isCollapsed ? styles.collapsedIcon : {})
                         }}
-                        style={styles.filterSelect}
                     >
-                        <option value="and">AND</option>
-                        <option value="or">OR</option>
-                    </select>
-                    <div style={styles.filterGroup}>
-                        <span style={styles.filterLabel}>To:</span>
-                        <input
-                            type="text"
-                            value={toFilter}
-                            onChange={(e) => {
-                                setToFilter(e.target.value);
-                                setPage(0);
-                            }}
-                            placeholder="Filter by recipient"
-                            style={styles.filterInput}
-                        />
-                    </div>
-                    <div style={styles.filters}>
-                        {Object.values(TransactionType).map(type => (
-                            <button
-                                key={type}
-                                style={{
-                                    ...styles.filterButton,
-                                    ...(selectedType === type ? styles.filterButtonActive : {})
-                                }}
-                                onClick={() => {
-                                    setSelectedType(type);
+                        ▼
+                    </span>
+                    <h2 style={{ margin: 0 }}>Transactions</h2>
+                </div>
+                {!isCollapsed && (
+                    <div style={styles.filtersContainer}>
+                        <div style={styles.filterGroup}>
+                            <span style={styles.filterLabel}>From:</span>
+                            <input
+                                type="text"
+                                value={fromFilter}
+                                onChange={(e) => {
+                                    setFromFilter(e.target.value);
                                     setPage(0);
                                 }}
-                            >
-                                {type.charAt(0).toUpperCase() + type.slice(1)}
-                            </button>
-                        ))}
+                                placeholder="Filter by sender"
+                                style={styles.filterInput}
+                            />
+                        </div>
+                        <select
+                            value={filterOperator}
+                            onChange={(e) => {
+                                setFilterOperator(e.target.value);
+                                setPage(0);
+                            }}
+                            style={styles.filterSelect}
+                        >
+                            <option value="and">AND</option>
+                            <option value="or">OR</option>
+                        </select>
+                        <div style={styles.filterGroup}>
+                            <span style={styles.filterLabel}>To:</span>
+                            <input
+                                type="text"
+                                value={toFilter}
+                                onChange={(e) => {
+                                    setToFilter(e.target.value);
+                                    setPage(0);
+                                }}
+                                placeholder="Filter by recipient"
+                                style={styles.filterInput}
+                            />
+                        </div>
+                        <div style={styles.filters}>
+                            {Object.values(TransactionType).map(type => (
+                                <button
+                                    key={type}
+                                    style={{
+                                        ...styles.filterButton,
+                                        ...(selectedType === type ? styles.filterButtonActive : {})
+                                    }}
+                                    onClick={() => {
+                                        setSelectedType(type);
+                                        setPage(0);
+                                    }}
+                                >
+                                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
-            <table style={styles.table}>
-                <thead>
-                    <tr>
-                        <th 
-                            style={{...styles.th, width: '10%'}}
-                            onClick={() => handleSort('type')}
-                        >
-                            <div style={styles.sortableHeader}>
-                                Type
-                                <span style={styles.sortIcon}>{renderSortIndicator('type')}</span>
-                            </div>
-                        </th>
-                        <th style={{...styles.th, width: '45%'}}>
-                            <div style={styles.sortableHeaderGroup}>
-                                <div 
-                                    style={styles.sortableSubHeader}
-                                    onClick={() => handleSort('fromAddress')}
+            {!isCollapsed && (
+                <>
+                    <table style={styles.table}>
+                        <thead>
+                            <tr>
+                                <th 
+                                    style={{...styles.th, width: '10%'}}
+                                    onClick={() => handleSort('type')}
                                 >
-                                    From
-                                    <span style={styles.sortIcon}>{renderSortIndicator('fromAddress')}</span>
-                                </div>
-                                <span style={styles.headerDivider}>/</span>
-                                <div 
-                                    style={styles.sortableSubHeader}
-                                    onClick={() => handleSort('toAddress')}
+                                    <div style={styles.sortableHeader}>
+                                        Type
+                                        <span style={styles.sortIcon}>{renderSortIndicator('type')}</span>
+                                    </div>
+                                </th>
+                                <th style={{...styles.th, width: '45%'}}>
+                                    <div style={styles.sortableHeaderGroup}>
+                                        <div 
+                                            style={styles.sortableSubHeader}
+                                            onClick={() => handleSort('fromAddress')}
+                                        >
+                                            From
+                                            <span style={styles.sortIcon}>{renderSortIndicator('fromAddress')}</span>
+                                        </div>
+                                        <span style={styles.headerDivider}>/</span>
+                                        <div 
+                                            style={styles.sortableSubHeader}
+                                            onClick={() => handleSort('toAddress')}
+                                        >
+                                            To
+                                            <span style={styles.sortIcon}>{renderSortIndicator('toAddress')}</span>
+                                        </div>
+                                    </div>
+                                </th>
+                                <th 
+                                    style={{...styles.th, width: '15%'}}
+                                    onClick={() => handleSort('amount')}
                                 >
-                                    To
-                                    <span style={styles.sortIcon}>{renderSortIndicator('toAddress')}</span>
-                                </div>
-                            </div>
-                        </th>
-                        <th 
-                            style={{...styles.th, width: '15%'}}
-                            onClick={() => handleSort('amount')}
-                        >
-                            <div style={styles.sortableHeader}>
-                                Amount
-                                <span style={styles.sortIcon}>{renderSortIndicator('amount')}</span>
-                            </div>
-                        </th>
-                        <th 
-                            style={{...styles.th, width: '20%'}}
-                            onClick={() => handleSort('timestamp')}
-                        >
-                            <div style={styles.sortableHeader}>
-                                Time
-                                <span style={styles.sortIcon}>{renderSortIndicator('timestamp')}</span>
-                            </div>
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {(principalId ? displayedTransactions : allTransactions).map((tx, index) => {
-                        console.log("Processing transaction:", tx);
-                        
-                        // Extract transaction details safely
-                        const txType = tx.transaction.kind;
-                        let fromPrincipal = null;
-                        let toPrincipal = null;
-                        let amount = null;
-                        let transfer = null;
-
-                        // Handle different transaction types
-                        switch (txType) {
-                            case 'transfer':
-                                if (tx.transaction.transfer && tx.transaction.transfer.length > 0) {
-                                    transfer = tx.transaction.transfer[0];
-                                    fromPrincipal = transfer.from?.owner;
-                                    toPrincipal = transfer.to?.owner;
-                                    amount = transfer.amount;
-                                }
-                                break;
-                            case 'mint':
-                                if (tx.transaction.mint && tx.transaction.mint.length > 0) {
-                                    const mint = tx.transaction.mint[0];
-                                    toPrincipal = mint.to?.owner;
-                                    amount = mint.amount;
-                                }
-                                break;
-                            case 'burn':
-                                if (tx.transaction.burn && tx.transaction.burn.length > 0) {
-                                    const burn = tx.transaction.burn[0];
-                                    fromPrincipal = burn.from?.owner;
-                                    amount = burn.amount;
-                                }
-                                break;
-                            case 'approve':
-                                if (tx.transaction.approve && tx.transaction.approve.length > 0) {
-                                    const approve = tx.transaction.approve[0];
-                                    fromPrincipal = approve.from?.owner;
-                                    toPrincipal = approve.spender?.owner;
-                                    amount = approve.amount;
-                                }
-                                break;
-                        }
-
-                        return (
-                            <tr key={index}>
-                                <td style={styles.td}>{txType}</td>
-                                <td style={{...styles.td, ...styles.principalCell}}>
-                                    {fromPrincipal && (
-                                        <div>
-                                            <span style={{color: '#888'}}>From: </span>
-                                            <PrincipalDisplay 
-                                                principal={fromPrincipal}
-                                                displayInfo={principalDisplayInfo.get(fromPrincipal.toString())}
-                                                showCopyButton={false}
-                                            />
-                                            {transfer?.from?.subaccount?.length > 0 && (
-                                                <div style={styles.subaccount}>
-                                                    Subaccount: {transfer.from.subaccount[0]}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    {toPrincipal && (
-                                        <div style={{marginTop: fromPrincipal ? '8px' : '0'}}>
-                                            <span style={{color: '#888'}}>To: </span>
-                                            <PrincipalDisplay 
-                                                principal={toPrincipal}
-                                                displayInfo={principalDisplayInfo.get(toPrincipal.toString())}
-                                                showCopyButton={false}
-                                            />
-                                            {transfer?.to?.subaccount?.length > 0 && (
-                                                <div style={styles.subaccount}>
-                                                    Subaccount: {transfer.to.subaccount[0]}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    {!fromPrincipal && !toPrincipal && '-'}
-                                </td>
-                                <td style={styles.td}>
-                                    {amount ? formatAmount(amount) : '-'}
-                                </td>
-                                <td style={styles.td}>
-                                    {formatTimestamp(tx.transaction.timestamp)}
-                                </td>
+                                    <div style={styles.sortableHeader}>
+                                        Amount
+                                        <span style={styles.sortIcon}>{renderSortIndicator('amount')}</span>
+                                    </div>
+                                </th>
+                                <th 
+                                    style={{...styles.th, width: '20%'}}
+                                    onClick={() => handleSort('timestamp')}
+                                >
+                                    <div style={styles.sortableHeader}>
+                                        Time
+                                        <span style={styles.sortIcon}>{renderSortIndicator('timestamp')}</span>
+                                    </div>
+                                </th>
                             </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
+                        </thead>
+                        <tbody>
+                            {(principalId ? displayedTransactions : allTransactions).map((tx, index) => {
+                                console.log("Processing transaction:", tx);
+                                
+                                // Extract transaction details safely
+                                const txType = tx.transaction.kind;
+                                let fromPrincipal = null;
+                                let toPrincipal = null;
+                                let amount = null;
+                                let transfer = null;
 
-            <div style={styles.pagination}>
-                <div style={styles.paginationControls}>
-                    <button
-                        style={{
-                            ...styles.pageButton,
-                            ...(page === 0 ? styles.pageButtonDisabled : {})
-                        }}
-                        onClick={() => setPage(p => Math.max(0, p - 1))}
-                        disabled={page === 0}
-                    >
-                        Previous
-                    </button>
-                    <span style={{ color: '#fff', alignSelf: 'center' }}>
-                        Page {page + 1} of {Math.ceil((principalId ? 
-                            (selectedType === TransactionType.ALL ? allTransactions.length : 
-                            allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
-                            : allTransactions.length) / pageSize) || 1}
-                    </span>
-                    <button
-                        style={{
-                            ...styles.pageButton,
-                            ...((page + 1) * pageSize >= (principalId ? 
-                                (selectedType === TransactionType.ALL ? allTransactions.length : 
-                                allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
-                                : allTransactions.length) ? styles.pageButtonDisabled : {})
-                        }}
-                        onClick={() => setPage(p => p + 1)}
-                        disabled={(page + 1) * pageSize >= (principalId ? 
-                            (selectedType === TransactionType.ALL ? allTransactions.length : 
-                            allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
-                            : allTransactions.length)}
-                    >
-                        Next
-                    </button>
-                </div>
-                <select 
-                    value={pageSize} 
-                    onChange={handlePageSizeChange}
-                    style={styles.select}
-                >
-                    {PAGE_SIZES.map(size => (
-                        <option key={size} value={size}>
-                            {size} per page
-                        </option>
-                    ))}
-                </select>
-            </div>
+                                // Handle different transaction types
+                                switch (txType) {
+                                    case 'transfer':
+                                        if (tx.transaction.transfer && tx.transaction.transfer.length > 0) {
+                                            transfer = tx.transaction.transfer[0];
+                                            fromPrincipal = transfer.from?.owner;
+                                            toPrincipal = transfer.to?.owner;
+                                            amount = transfer.amount;
+                                        }
+                                        break;
+                                    case 'mint':
+                                        if (tx.transaction.mint && tx.transaction.mint.length > 0) {
+                                            const mint = tx.transaction.mint[0];
+                                            toPrincipal = mint.to?.owner;
+                                            amount = mint.amount;
+                                        }
+                                        break;
+                                    case 'burn':
+                                        if (tx.transaction.burn && tx.transaction.burn.length > 0) {
+                                            const burn = tx.transaction.burn[0];
+                                            fromPrincipal = burn.from?.owner;
+                                            amount = burn.amount;
+                                        }
+                                        break;
+                                    case 'approve':
+                                        if (tx.transaction.approve && tx.transaction.approve.length > 0) {
+                                            const approve = tx.transaction.approve[0];
+                                            fromPrincipal = approve.from?.owner;
+                                            toPrincipal = approve.spender?.owner;
+                                            amount = approve.amount;
+                                        }
+                                        break;
+                                }
+
+                                return (
+                                    <tr key={index}>
+                                        <td style={styles.td}>{txType}</td>
+                                        <td style={{...styles.td, ...styles.principalCell}}>
+                                            {fromPrincipal && (
+                                                <div>
+                                                    <span style={{color: '#888'}}>From: </span>
+                                                    <PrincipalDisplay 
+                                                        principal={fromPrincipal}
+                                                        displayInfo={principalDisplayInfo.get(fromPrincipal.toString())}
+                                                        showCopyButton={false}
+                                                    />
+                                                    {transfer?.from?.subaccount?.length > 0 && (
+                                                        <div style={styles.subaccount}>
+                                                            Subaccount: {transfer.from.subaccount[0]}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {toPrincipal && (
+                                                <div style={{marginTop: fromPrincipal ? '8px' : '0'}}>
+                                                    <span style={{color: '#888'}}>To: </span>
+                                                    <PrincipalDisplay 
+                                                        principal={toPrincipal}
+                                                        displayInfo={principalDisplayInfo.get(toPrincipal.toString())}
+                                                        showCopyButton={false}
+                                                    />
+                                                    {transfer?.to?.subaccount?.length > 0 && (
+                                                        <div style={styles.subaccount}>
+                                                            Subaccount: {transfer.to.subaccount[0]}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {!fromPrincipal && !toPrincipal && '-'}
+                                        </td>
+                                        <td style={styles.td}>
+                                            {amount ? formatAmount(amount) : '-'}
+                                        </td>
+                                        <td style={styles.td}>
+                                            {formatTimestamp(tx.transaction.timestamp)}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+
+                    <div style={styles.pagination}>
+                        <div style={styles.paginationControls}>
+                            <button
+                                style={{
+                                    ...styles.pageButton,
+                                    ...(page === 0 ? styles.pageButtonDisabled : {})
+                                }}
+                                onClick={() => setPage(p => Math.max(0, p - 1))}
+                                disabled={page === 0}
+                            >
+                                Previous
+                            </button>
+                            <span style={{ color: '#fff', alignSelf: 'center' }}>
+                                Page {page + 1} of {Math.ceil((principalId ? 
+                                    (selectedType === TransactionType.ALL ? allTransactions.length : 
+                                    allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
+                                    : allTransactions.length) / pageSize) || 1}
+                            </span>
+                            <button
+                                style={{
+                                    ...styles.pageButton,
+                                    ...((page + 1) * pageSize >= (principalId ? 
+                                        (selectedType === TransactionType.ALL ? allTransactions.length : 
+                                        allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
+                                        : allTransactions.length) ? styles.pageButtonDisabled : {})
+                                }}
+                                onClick={() => setPage(p => p + 1)}
+                                disabled={(page + 1) * pageSize >= (principalId ? 
+                                    (selectedType === TransactionType.ALL ? allTransactions.length : 
+                                    allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
+                                    : allTransactions.length)}
+                            >
+                                Next
+                            </button>
+                        </div>
+                        <select 
+                            value={pageSize} 
+                            onChange={handlePageSizeChange}
+                            style={styles.select}
+                        >
+                            {PAGE_SIZES.map(size => (
+                                <option key={size} value={size}>
+                                    {size} per page
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                </>
+            )}
         </div>
     );
 }

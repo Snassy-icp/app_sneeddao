@@ -54,6 +54,8 @@ export default function PrincipalPage() {
     const [neuronError, setNeuronError] = useState(null);
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    const [isNeuronsCollapsed, setIsNeuronsCollapsed] = useState(false);
+    const [isTransactionsCollapsed, setIsTransactionsCollapsed] = useState(false);
     
     // Keep stable references to dependencies
     const stableIdentity = useRef(identity);
@@ -596,153 +598,179 @@ export default function PrincipalPage() {
                     marginBottom: '30px',
                     border: '1px solid #3a3a3a'
                 }}>
-                    <h2 style={{ 
-                        color: '#ffffff',
-                        marginBottom: '20px',
-                        fontSize: '18px',
-                        fontWeight: '500'
-                    }}>
-                        Hotkeyed Neurons
-                    </h2>
-
-                    {loadingNeurons ? (
-                        <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
-                            Loading neurons...
-                        </div>
-                    ) : neuronError ? (
-                        <div style={{ 
-                            backgroundColor: 'rgba(231, 76, 60, 0.2)', 
-                            border: '1px solid #e74c3c',
-                            color: '#e74c3c',
-                            padding: '15px',
-                            borderRadius: '6px',
-                            marginBottom: '20px'
+                    <div 
+                        style={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            marginBottom: isNeuronsCollapsed ? 0 : '20px'
+                        }}
+                        onClick={() => setIsNeuronsCollapsed(!isNeuronsCollapsed)}
+                    >
+                        <span style={{
+                            fontSize: '18px',
+                            color: '#888',
+                            transition: 'transform 0.2s',
+                            transform: isNeuronsCollapsed ? 'rotate(-90deg)' : 'none'
                         }}>
-                            {neuronError}
-                        </div>
-                    ) : neurons.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
-                            No neurons found where this principal is a hotkey.
-                        </div>
-                    ) : (
-                        <div style={{ 
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                            gap: '20px'
+                            ▼
+                        </span>
+                        <h2 style={{ 
+                            color: '#ffffff',
+                            fontSize: '18px',
+                            fontWeight: '500',
+                            margin: 0
                         }}>
-                            {neurons.map((neuron) => {
-                                const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
-                                if (!neuronId) return null;
+                            Hotkeyed Neurons
+                        </h2>
+                    </div>
 
-                                return (
-                                    <div
-                                        key={neuronId}
-                                        style={{
-                                            backgroundColor: '#2a2a2a',
-                                            borderRadius: '8px',
-                                            padding: '20px',
-                                            border: '1px solid #3a3a3a'
-                                        }}
-                                    >
-                                        <div style={{ marginBottom: '15px' }}>
-                                            <div style={{ 
-                                                display: 'flex', 
-                                                alignItems: 'flex-start',
-                                                gap: '8px',
-                                                marginBottom: '10px',
-                                                flexWrap: 'wrap'
-                                            }}>
-                                                {formatNeuronIdLink(neuronId, searchParams.get('sns') || SNEED_SNS_ROOT)}
-                                            </div>
-                                        </div>
+                    {!isNeuronsCollapsed && (
+                        <>
+                            {loadingNeurons ? (
+                                <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                    Loading neurons...
+                                </div>
+                            ) : neuronError ? (
+                                <div style={{ 
+                                    backgroundColor: 'rgba(231, 76, 60, 0.2)', 
+                                    border: '1px solid #e74c3c',
+                                    color: '#e74c3c',
+                                    padding: '15px',
+                                    borderRadius: '6px',
+                                    marginBottom: '20px'
+                                }}>
+                                    {neuronError}
+                                </div>
+                            ) : neurons.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                    No neurons found where this principal is a hotkey.
+                                </div>
+                            ) : (
+                                <div style={{ 
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                                    gap: '20px'
+                                }}>
+                                    {neurons.map((neuron) => {
+                                        const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
+                                        if (!neuronId) return null;
 
-                                        <div style={{ marginBottom: '20px' }}>
-                                            <div style={{ 
-                                                fontSize: '24px',
-                                                fontWeight: 'bold',
-                                                color: '#3498db'
-                                            }}>
-                                                {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
-                                            </div>
-                                        </div>
+                                        return (
+                                            <div
+                                                key={neuronId}
+                                                style={{
+                                                    backgroundColor: '#2a2a2a',
+                                                    borderRadius: '8px',
+                                                    padding: '20px',
+                                                    border: '1px solid #3a3a3a'
+                                                }}
+                                            >
+                                                <div style={{ marginBottom: '15px' }}>
+                                                    <div style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'flex-start',
+                                                        gap: '8px',
+                                                        marginBottom: '10px',
+                                                        flexWrap: 'wrap'
+                                                    }}>
+                                                        {formatNeuronIdLink(neuronId, searchParams.get('sns') || SNEED_SNS_ROOT)}
+                                                    </div>
+                                                </div>
 
-                                        <div style={{ 
-                                            display: 'grid',
-                                            gridTemplateColumns: '1fr 1fr',
-                                            gap: '15px',
-                                            fontSize: '14px'
-                                        }}>
-                                            <div>
-                                                <div style={{ color: '#888' }}>Created</div>
-                                                <div style={{ color: '#ffffff' }}>
-                                                    {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
+                                                <div style={{ marginBottom: '20px' }}>
+                                                    <div style={{ 
+                                                        fontSize: '24px',
+                                                        fontWeight: 'bold',
+                                                        color: '#3498db'
+                                                    }}>
+                                                        {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ 
+                                                    display: 'grid',
+                                                    gridTemplateColumns: '1fr 1fr',
+                                                    gap: '15px',
+                                                    fontSize: '14px'
+                                                }}>
+                                                    <div>
+                                                        <div style={{ color: '#888' }}>Created</div>
+                                                        <div style={{ color: '#ffffff' }}>
+                                                            {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ color: '#888' }}>Dissolve State</div>
+                                                        <div style={{ color: '#ffffff' }}>{getDissolveState(neuron)}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ color: '#888' }}>Maturity</div>
+                                                        <div style={{ color: '#ffffff' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ color: '#888' }}>Voting Power</div>
+                                                        <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
+                                                    </div>
+                                                    {/* Add permissions section */}
+                                                    <div style={{ gridColumn: '1 / -1' }}>
+                                                        <div style={{ color: '#888', marginBottom: '8px' }}>Permissions</div>
+                                                        {/* Owner */}
+                                                        {getOwnerPrincipals(neuron).length > 0 && (
+                                                            <div style={{ 
+                                                                marginBottom: '8px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '8px'
+                                                            }}>
+                                                                <span style={{ color: '#888' }}>Owner:</span>
+                                                                <PrincipalDisplay 
+                                                                    principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
+                                                                    displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
+                                                                    showCopyButton={false}
+                                                                />
+                                                            </div>
+                                                        )}
+                                                        {/* Hotkeys */}
+                                                        {neuron.permissions
+                                                            .filter(p => !getOwnerPrincipals(neuron).includes(p.principal?.toString()))
+                                                            .map((p, index) => (
+                                                                <div key={index} style={{ 
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '8px',
+                                                                    marginBottom: index < neuron.permissions.length - 1 ? '8px' : 0
+                                                                }}>
+                                                                    <span style={{ color: '#888', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                        🔑 Hotkey:
+                                                                    </span>
+                                                                    <PrincipalDisplay 
+                                                                        principal={p.principal}
+                                                                        displayInfo={principalDisplayInfo.get(p.principal?.toString())}
+                                                                        showCopyButton={false}
+                                                                    />
+                                                                </div>
+                                                            ))
+                                                        }
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div>
-                                                <div style={{ color: '#888' }}>Dissolve State</div>
-                                                <div style={{ color: '#ffffff' }}>{getDissolveState(neuron)}</div>
-                                            </div>
-                                            <div>
-                                                <div style={{ color: '#888' }}>Maturity</div>
-                                                <div style={{ color: '#ffffff' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
-                                            </div>
-                                            <div>
-                                                <div style={{ color: '#888' }}>Voting Power</div>
-                                                <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
-                                            </div>
-                                            {/* Add permissions section */}
-                                            <div style={{ gridColumn: '1 / -1' }}>
-                                                <div style={{ color: '#888', marginBottom: '8px' }}>Permissions</div>
-                                                {/* Owner */}
-                                                {getOwnerPrincipals(neuron).length > 0 && (
-                                                    <div style={{ 
-                                                        marginBottom: '8px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '8px'
-                                                    }}>
-                                                        <span style={{ color: '#888' }}>Owner:</span>
-                                                        <PrincipalDisplay 
-                                                            principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
-                                                            displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
-                                                            showCopyButton={false}
-                                                        />
-                                                    </div>
-                                                )}
-                                                {/* Hotkeys */}
-                                                {neuron.permissions
-                                                    .filter(p => !getOwnerPrincipals(neuron).includes(p.principal?.toString()))
-                                                    .map((p, index) => (
-                                                        <div key={index} style={{ 
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '8px',
-                                                            marginBottom: index < neuron.permissions.length - 1 ? '8px' : 0
-                                                        }}>
-                                                            <span style={{ color: '#888', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                🔑 Hotkey:
-                                                            </span>
-                                                            <PrincipalDisplay 
-                                                                principal={p.principal}
-                                                                displayInfo={principalDisplayInfo.get(p.principal?.toString())}
-                                                                showCopyButton={false}
-                                                            />
-                                                        </div>
-                                                    ))
-                                                }
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
 
-                {/* Add Transaction List */}
+                {/* Wrap TransactionList with collapse state */}
                 <TransactionList 
                     snsRootCanisterId={searchParams.get('sns') || SNEED_SNS_ROOT}
                     principalId={stablePrincipalId.current?.toString()}
+                    isCollapsed={isTransactionsCollapsed}
+                    onToggleCollapse={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
                 />
             </main>
             <style>{spinKeyframes}</style>
