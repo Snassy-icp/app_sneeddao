@@ -21,7 +21,7 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "twapx-riaaa-aaaak-qlojq-cai"
+          "ic": "lvc4n-7aaaa-aaaam-adm6a-cai"
         }
       }
     },
@@ -32,7 +32,7 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "25fsc-7yaaa-aaaal-qjt5q-cai"
+          "ic": "pqsms-lqaaa-aaaal-ajjza-cai"
         }
       }
     },
@@ -43,7 +43,7 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "rxaqa-eyaaa-aaaao-a356q-cai"
+          "ic": "tt72q-zqaaa-aaaaj-az4va-cai"
         }
       }
     },
@@ -69,6 +69,28 @@
         }
       }
     },
+    "sns_archive": {
+      "type": "custom",
+      "candid": "src/external/sns_archive/sns_archive.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "h4f44-ayaaa-aaaaq-aacjq-cai"
+        }
+      }
+    },
+    "sns_index": {
+      "type": "custom",
+      "candid": "src/external/sns_index/sns_index.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "h3e2i-naaaa-aaaaq-aacja-cai"
+        }
+      }
+    },
     "nns_gov": {
       "type": "custom",
       "candid": "src/external/nns_gov/nns_gov.did",
@@ -91,7 +113,6 @@
         }
       }
     }
-
   },
   "defaults": {
     "build": {

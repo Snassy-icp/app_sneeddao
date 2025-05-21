@@ -69,6 +69,28 @@
         }
       }
     },
+    "sns_archive": {
+      "type": "custom",
+      "candid": "src/external/sns_archive/sns_archive.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "h4f44-ayaaa-aaaaq-aacjq-cai"
+        }
+      }
+    },
+    "sns_index": {
+      "type": "custom",
+      "candid": "src/external/sns_index/sns_index.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "h3e2i-naaaa-aaaaq-aacja-cai"
+        }
+      }
+    },
     "nns_gov": {
       "type": "custom",
       "candid": "src/external/nns_gov/nns_gov.did",
