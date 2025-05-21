@@ -17,7 +17,7 @@ const validateNameInput = (input) => {
     return '';
 };
 
-const PAGE_SIZE = 10;
+const PAGE_SIZES = [10, 20, 50, 100];
 const FETCH_SIZE = 100; // How many transactions to fetch per request
 
 const styles = {
@@ -98,6 +98,19 @@ const styles = {
         fontSize: '12px',
         color: '#888',
         wordBreak: 'break-all'
+    },
+    paginationControls: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
+    },
+    select: {
+        backgroundColor: '#3a3a3a',
+        border: '1px solid #4a4a4a',
+        borderRadius: '4px',
+        padding: '8px',
+        color: '#fff',
+        cursor: 'pointer'
     }
 };
 
@@ -116,6 +129,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [page, setPage] = useState(0);
+    const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
     const [selectedType, setSelectedType] = useState(TransactionType.ALL);
     const [indexCanisterId, setIndexCanisterId] = useState(null);
     const [archiveCanisterId, setArchiveCanisterId] = useState(null);
@@ -175,7 +189,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
 
             console.log("Total transactions fetched:", allTxs.length);
             setAllTransactions(allTxs);
-            updateDisplayedTransactions(allTxs, 0, selectedType);
+            updateDisplayedTransactions(allTxs, 0, selectedType, pageSize);
         } catch (err) {
             setError('Failed to fetch transactions from index');
             console.error('Error fetching from index:', err);
@@ -185,13 +199,13 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
     };
 
     // Update displayed transactions based on page and filter
-    const updateDisplayedTransactions = (transactions, pageNum, type) => {
+    const updateDisplayedTransactions = (transactions, pageNum, type, size) => {
         const filtered = type === TransactionType.ALL 
             ? transactions 
             : transactions.filter(tx => tx.transaction.kind === type);
         
-        const start = pageNum * PAGE_SIZE;
-        const end = start + PAGE_SIZE;
+        const start = pageNum * size;
+        const end = start + size;
         setDisplayedTransactions(filtered.slice(start, end));
     };
 
@@ -200,15 +214,15 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
         try {
             const archiveActor = createSnsArchiveActor(archiveCanisterId);
             const response = await archiveActor.get_transactions({
-                start: BigInt(page * PAGE_SIZE),
-                length: BigInt(PAGE_SIZE)
+                start: BigInt(page * pageSize),
+                length: BigInt(pageSize)
             });
 
             const filteredTransactions = filterTransactions(response.transactions);
             setTransactions(filteredTransactions);
             
             // If we got less than a full page, we know we've reached the end
-            setHasMoreArchiveTransactions(filteredTransactions.length === PAGE_SIZE);
+            setHasMoreArchiveTransactions(filteredTransactions.length === pageSize);
         } catch (err) {
             setError('Failed to fetch transactions from archive');
             console.error('Error fetching from archive:', err);
@@ -235,12 +249,12 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
         }
     }, [indexCanisterId, archiveCanisterId, principalId]);
 
-    // Effect to update displayed transactions when page or filter changes
+    // Effect to update displayed transactions when page, filter, or page size changes
     useEffect(() => {
         if (principalId) {
-            updateDisplayedTransactions(allTransactions, page, selectedType);
+            updateDisplayedTransactions(allTransactions, page, selectedType, pageSize);
         }
-    }, [page, selectedType, allTransactions]);
+    }, [page, selectedType, allTransactions, pageSize]);
 
     // Add effect to fetch principal display info
     useEffect(() => {
@@ -294,6 +308,15 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
 
     const formatTimestamp = (timestamp) => {
         return new Date(Number(timestamp) / 1_000_000).toLocaleString();
+    };
+
+    // Handle page size change
+    const handlePageSizeChange = (event) => {
+        const newSize = Number(event.target.value);
+        setPageSize(newSize);
+        // Reset to first page when changing page size
+        setPage(0);
+        updateDisplayedTransactions(allTransactions, 0, selectedType, newSize);
     };
 
     if (loading) {
@@ -427,38 +450,51 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
             </table>
 
             <div style={styles.pagination}>
-                <button
-                    style={{
-                        ...styles.pageButton,
-                        ...(page === 0 ? styles.pageButtonDisabled : {})
-                    }}
-                    onClick={() => setPage(p => Math.max(0, p - 1))}
-                    disabled={page === 0}
-                >
-                    Previous
-                </button>
-                <span style={{ color: '#fff', alignSelf: 'center' }}>
-                    Page {page + 1} of {Math.ceil((principalId ? 
-                        (selectedType === TransactionType.ALL ? allTransactions.length : 
-                        allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
-                        : allTransactions.length) / PAGE_SIZE) || 1}
-                </span>
-                <button
-                    style={{
-                        ...styles.pageButton,
-                        ...((page + 1) * PAGE_SIZE >= (principalId ? 
+                <div style={styles.paginationControls}>
+                    <button
+                        style={{
+                            ...styles.pageButton,
+                            ...(page === 0 ? styles.pageButtonDisabled : {})
+                        }}
+                        onClick={() => setPage(p => Math.max(0, p - 1))}
+                        disabled={page === 0}
+                    >
+                        Previous
+                    </button>
+                    <span style={{ color: '#fff', alignSelf: 'center' }}>
+                        Page {page + 1} of {Math.ceil((principalId ? 
                             (selectedType === TransactionType.ALL ? allTransactions.length : 
                             allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
-                            : allTransactions.length) ? styles.pageButtonDisabled : {})
-                    }}
-                    onClick={() => setPage(p => p + 1)}
-                    disabled={(page + 1) * PAGE_SIZE >= (principalId ? 
-                        (selectedType === TransactionType.ALL ? allTransactions.length : 
-                        allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
-                        : allTransactions.length)}
+                            : allTransactions.length) / pageSize) || 1}
+                    </span>
+                    <button
+                        style={{
+                            ...styles.pageButton,
+                            ...((page + 1) * pageSize >= (principalId ? 
+                                (selectedType === TransactionType.ALL ? allTransactions.length : 
+                                allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
+                                : allTransactions.length) ? styles.pageButtonDisabled : {})
+                        }}
+                        onClick={() => setPage(p => p + 1)}
+                        disabled={(page + 1) * pageSize >= (principalId ? 
+                            (selectedType === TransactionType.ALL ? allTransactions.length : 
+                            allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
+                            : allTransactions.length)}
+                    >
+                        Next
+                    </button>
+                </div>
+                <select 
+                    value={pageSize} 
+                    onChange={handlePageSizeChange}
+                    style={styles.select}
                 >
-                    Next
-                </button>
+                    {PAGE_SIZES.map(size => (
+                        <option key={size} value={size}>
+                            {size} per page
+                        </option>
+                    ))}
+                </select>
             </div>
         </div>
     );
