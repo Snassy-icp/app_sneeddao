@@ -6,9 +6,11 @@ import { useAuth } from './AuthContext';
 import Header from './components/Header';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
-import { formatProposalIdLink, uint8ArrayToHex, getNeuronColor } from './utils/NeuronUtils';
+import { formatProposalIdLink, uint8ArrayToHex, getNeuronColor, getOwnerPrincipals } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 import { setNeuronNickname } from './utils/BackendUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfo } from './utils/PrincipalUtils';
+import { Principal } from '@dfinity/principal';
 
 // Add keyframes for spin animation after imports
 const spinKeyframes = `
@@ -43,6 +45,8 @@ function Neuron() {
     const [nicknameInput, setNicknameInput] = useState('');
     const [inputError, setInputError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    // Add principal display info state
+    const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames, fetchAllNames } = useNaming();
@@ -337,6 +341,33 @@ function Neuron() {
         }
     };
 
+    // Add effect to fetch principal display info
+    useEffect(() => {
+        const fetchPrincipalInfo = async () => {
+            if (!neuronData?.permissions) return;
+
+            const uniquePrincipals = new Set();
+            
+            // Add owner principals
+            getOwnerPrincipals(neuronData).forEach(p => uniquePrincipals.add(p));
+            
+            // Add all principals with permissions
+            neuronData.permissions.forEach(p => {
+                if (p.principal) uniquePrincipals.add(p.principal.toString());
+            });
+
+            const displayInfoMap = new Map();
+            await Promise.all(Array.from(uniquePrincipals).map(async principal => {
+                const displayInfo = await getPrincipalDisplayInfo(identity, Principal.fromText(principal));
+                displayInfoMap.set(principal, displayInfo);
+            }));
+
+            setPrincipalDisplayInfo(displayInfoMap);
+        };
+
+        fetchPrincipalInfo();
+    }, [identity, neuronData]);
+
     return (
         <div className='page-container'>
             <Header showSnsDropdown={true} />
@@ -606,6 +637,48 @@ function Neuron() {
                                 <p><strong>Dissolve State:</strong> {getDissolveState(neuronData)}</p>
                                 <p><strong>Maturity:</strong> {formatE8s(neuronData.maturity_e8s_equivalent)} {selectedSns?.name || 'SNS'}</p>
                                 <p><strong>Voting Power Multiplier:</strong> {(Number(neuronData.voting_power_percentage_multiplier || 0) / 100).toFixed(2)}x</p>
+
+                                {/* Add permissions section */}
+                                <div style={{ marginTop: '20px' }}>
+                                    <h3 style={{ color: '#888', marginBottom: '12px' }}>Permissions</h3>
+                                    {/* Owner */}
+                                    {getOwnerPrincipals(neuronData).length > 0 && (
+                                        <div style={{ 
+                                            marginBottom: '12px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px'
+                                        }}>
+                                            <span style={{ color: '#888' }}>Owner:</span>
+                                            <PrincipalDisplay 
+                                                principal={Principal.fromText(getOwnerPrincipals(neuronData)[0])}
+                                                displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuronData)[0])}
+                                                showCopyButton={true}
+                                            />
+                                        </div>
+                                    )}
+                                    {/* Hotkeys */}
+                                    {neuronData.permissions
+                                        .filter(p => !getOwnerPrincipals(neuronData).includes(p.principal?.toString()))
+                                        .map((p, index) => (
+                                            <div key={index} style={{ 
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                marginBottom: index < neuronData.permissions.length - 1 ? '12px' : 0
+                                            }}>
+                                                <span style={{ color: '#888', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    🔑 Hotkey:
+                                                </span>
+                                                <PrincipalDisplay 
+                                                    principal={p.principal}
+                                                    displayInfo={principalDisplayInfo.get(p.principal?.toString())}
+                                                    showCopyButton={true}
+                                                />
+                                            </div>
+                                        ))
+                                    }
+                                </div>
                             </div>
 
                             {selectedSnsRoot === SNEED_SNS_ROOT && votingHistory && votingHistory.length > 0 && (

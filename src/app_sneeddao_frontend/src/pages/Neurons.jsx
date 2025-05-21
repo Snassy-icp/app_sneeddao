@@ -5,8 +5,9 @@ import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
-import { formatNeuronIdLink, formatE8s, getDissolveState } from '../utils/NeuronUtils';
+import { formatNeuronIdLink, formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { Actor, HttpAgent } from '@dfinity/agent';
+import { useNaming } from '../NamingContext';
 
 function Neurons() {
     const { identity } = useAuth();
@@ -17,12 +18,17 @@ function Neurons() {
     const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || SNEED_SNS_ROOT);
     const [snsList, setSnsList] = useState([]);
     const [neurons, setNeurons] = useState([]);
+    const [filteredNeurons, setFilteredNeurons] = useState([]);
+    const [searchTerm, setSearchTerm] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [loadingSnses, setLoadingSnses] = useState(true);
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [totalSupply, setTotalSupply] = useState(null);
     const [totalNeuronCount, setTotalNeuronCount] = useState(null);
+    
+    // Get naming context
+    const { neuronNames, neuronNicknames } = useNaming();
     
     // Pagination state
     const [itemsPerPage, setItemsPerPage] = useState(20);
@@ -393,9 +399,16 @@ function Neurons() {
     const totalCount = stakes.dissolvedCount + stakes.dissolvingCount + stakes.notDissolvingCount;
     const totalWithStakeCount = stakes.dissolvedWithStakeCount + stakes.dissolvingWithStakeCount + stakes.notDissolvingWithStakeCount;
 
-    // Get paginated neurons
-    const paginatedNeurons = neurons.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-    const totalPages = Math.ceil(neurons.length / itemsPerPage);
+    // Update the paginated neurons calculation to use filteredNeurons
+    const paginatedNeurons = filteredNeurons.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    // Update the effect that sets filtered neurons when neurons change
+    useEffect(() => {
+        setFilteredNeurons(neurons);
+    }, [neurons]);
 
     // Add function to clear cache
     const clearCache = async (snsRoot) => {
@@ -414,12 +427,73 @@ function Neurons() {
         fetchNeurons();
     };
 
+    // Add effect to filter neurons based on search term
+    useEffect(() => {
+        if (!searchTerm.trim()) {
+            setFilteredNeurons(neurons);
+            return;
+        }
+
+        const searchLower = searchTerm.toLowerCase();
+        const filtered = neurons.filter(neuron => {
+            const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
+            if (!neuronId) return false;
+
+            // Check neuron ID
+            if (neuronId.toLowerCase().includes(searchLower)) {
+                return true;
+            }
+
+            // Check names and nicknames
+            const mapKey = `${selectedSnsRoot}:${neuronId}`;
+            const name = neuronNames.get(mapKey)?.toLowerCase();
+            const nickname = neuronNicknames.get(mapKey)?.toLowerCase();
+
+            return (name && name.includes(searchLower)) || 
+                   (nickname && nickname.includes(searchLower));
+        });
+
+        setFilteredNeurons(filtered);
+        setCurrentPage(1); // Reset to first page when filtering
+    }, [searchTerm, neurons, selectedSnsRoot, neuronNames, neuronNicknames]);
+
     return (
         <div className='page-container'>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             <main className="wallet-container">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    marginBottom: '20px',
+                    flexWrap: 'wrap',
+                    gap: '10px'
+                }}>
                     <h1 style={{ color: '#ffffff' }}>Neurons</h1>
+                    <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '10px',
+                        flex: 1,
+                        maxWidth: '600px',
+                        marginLeft: '20px'
+                    }}>
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Search by neuron ID, name, or nickname..."
+                            style={{
+                                backgroundColor: '#3a3a3a',
+                                color: '#ffffff',
+                                border: '1px solid #4a4a4a',
+                                borderRadius: '4px',
+                                padding: '8px 12px',
+                                flex: 1,
+                                minWidth: '200px'
+                            }}
+                        />
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <button
                             onClick={handleRefresh}
@@ -661,19 +735,19 @@ function Neurons() {
                                 Previous
                             </button>
                             <span style={{ color: '#ffffff', alignSelf: 'center' }}>
-                                Page {currentPage} of {totalPages}
+                                Page {currentPage} of {Math.ceil(filteredNeurons.length / itemsPerPage)}
                             </span>
                             <button
-                                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                                disabled={currentPage === totalPages}
+                                onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredNeurons.length / itemsPerPage), prev + 1))}
+                                disabled={currentPage === Math.ceil(filteredNeurons.length / itemsPerPage)}
                                 style={{
                                     backgroundColor: '#3498db',
                                     color: '#ffffff',
                                     border: 'none',
                                     borderRadius: '4px',
                                     padding: '8px 16px',
-                                    cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                                    opacity: currentPage === totalPages ? 0.7 : 1
+                                    cursor: currentPage === Math.ceil(filteredNeurons.length / itemsPerPage) ? 'not-allowed' : 'pointer',
+                                    opacity: currentPage === Math.ceil(filteredNeurons.length / itemsPerPage) ? 0.7 : 1
                                 }}
                             >
                                 Next
