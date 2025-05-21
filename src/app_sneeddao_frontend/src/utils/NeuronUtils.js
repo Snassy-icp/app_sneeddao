@@ -258,28 +258,16 @@ const fetchedPrincipalsBySns = new Map();
 const neuronsBySns = new Map();
 
 // Main function to fetch user neurons for a specific SNS
-export const fetchUserNeuronsForSns = async (identity, snsGovernanceCanisterId) => { return fetchPrincipalNeuronsForSns(identity, snsGovernanceCanisterId, identity?.getPrincipal().toString()); }
+export const fetchUserNeuronsForSns = async (identity, snsGovernanceCanisterId) => { 
+    if (!identity) return [];
+    return fetchPrincipalNeuronsForSns(identity, snsGovernanceCanisterId, identity.getPrincipal().toString()); 
+}
 
 export const fetchPrincipalNeuronsForSns = async (identity, snsGovernanceCanisterId, principalId) => {
-    if (!snsGovernanceCanisterId) return [];
+    if (!snsGovernanceCanisterId || !principalId) return [];
     
     try {
-        // Get or create the caches for this SNS
-        if (!fetchedPrincipalsBySns.has(snsGovernanceCanisterId)) {
-            fetchedPrincipalsBySns.set(snsGovernanceCanisterId, new Set());
-        }
-        if (!neuronsBySns.has(snsGovernanceCanisterId)) {
-            neuronsBySns.set(snsGovernanceCanisterId, new Map());
-        }
-        const fetchedPrincipals = fetchedPrincipalsBySns.get(snsGovernanceCanisterId);
-        const neuronsMap = neuronsBySns.get(snsGovernanceCanisterId);
-
-        // If we have neurons cached and the principal has been fetched, return cached neurons
-        if (neuronsMap.size > 0 && (!principalId || fetchedPrincipals.has(principalId))) {
-            return Array.from(neuronsMap.values());
-        }
-
-        // Create an anonymous agent if no identity is provided
+        // Create an agent
         const agent = identity ? 
             new HttpAgent({ identity }) : 
             new HttpAgent();
@@ -292,61 +280,53 @@ export const fetchPrincipalNeuronsForSns = async (identity, snsGovernanceCaniste
             agentOptions: { agent }
         });
         
-        let principalsToFetch = [];
-        if (principalId) {
-            if (!fetchedPrincipals.has(principalId)) {
-                fetchedPrincipals.add(principalId);
-                principalsToFetch.push(principalId);
-            }
-        }
+        // Map to store all unique neurons by their ID
+        const neuronsById = new Map();
         
-        // If we have no principals to fetch (anonymous), just fetch all neurons
-        if (principalsToFetch.length === 0 && neuronsMap.size === 0) {
-            const result = await snsGovActor.list_neurons({
-                of_principal: [], // Empty array means fetch all neurons
-                limit: 100,
-                start_page_at: []
-            });
-            
-            // Add these neurons to our map, deduplicating by ID
-            for (const neuron of result.neurons) {
-                const neuronId = getNeuronId(neuron);
-                if (neuronId) {
-                    neuronsMap.set(neuronId, neuron);
-                }
-            }
-        } else {
-            // Process each principal in the queue
-            while (principalsToFetch.length > 0) {
-                const currentPrincipal = principalsToFetch.shift();
+        // Set to track which principals we've already fetched neurons for
+        const fetchedPrincipals = new Set([principalId]);
+        
+        // First get all neurons where the user is a hotkey
+        const hotkeyResult = await snsGovActor.list_neurons({
+            of_principal: [Principal.fromText(principalId)],
+            limit: 100,
+            start_page_at: []
+        });
+        
+        // Add all hotkeyed neurons to our map
+        for (const neuron of hotkeyResult.neurons) {
+            const neuronId = getNeuronId(neuron);
+            if (neuronId) {
+                neuronsById.set(neuronId, neuron);
                 
-                // Fetch neurons for the current principal
-                const result = await snsGovActor.list_neurons({
-                    of_principal: [Principal.fromText(currentPrincipal)],
-                    limit: 100,
-                    start_page_at: []
-                });
-                
-                // Add these neurons to our map, deduplicating by ID
-                for (const neuron of result.neurons) {
-                    const neuronId = getNeuronId(neuron);
-                    if (neuronId) {
-                        neuronsMap.set(neuronId, neuron);
-                    }
-                    
-                    // Find owner principals and add to queue if not already fetched
-                    const ownerPrincipals = getOwnerPrincipals(neuron);
-                    for (const ownerPrincipal of ownerPrincipals) {
-                        if (!fetchedPrincipals.has(ownerPrincipal)) {
-                            fetchedPrincipals.add(ownerPrincipal);
-                            principalsToFetch.push(ownerPrincipal);
+                // Get owner principals for this neuron
+                const ownerPrincipals = getOwnerPrincipals(neuron);
+                // Add any owner principals we haven't fetched yet
+                for (const ownerPrincipal of ownerPrincipals) {
+                    if (!fetchedPrincipals.has(ownerPrincipal)) {
+                        fetchedPrincipals.add(ownerPrincipal);
+                        
+                        // Fetch neurons for this owner
+                        const ownerResult = await snsGovActor.list_neurons({
+                            of_principal: [Principal.fromText(ownerPrincipal)],
+                            limit: 100,
+                            start_page_at: []
+                        });
+                        
+                        // Add any new neurons we find
+                        for (const ownerNeuron of ownerResult.neurons) {
+                            const ownerNeuronId = getNeuronId(ownerNeuron);
+                            if (ownerNeuronId && !neuronsById.has(ownerNeuronId)) {
+                                neuronsById.set(ownerNeuronId, ownerNeuron);
+                            }
                         }
                     }
                 }
             }
         }
         
-        return Array.from(neuronsMap.values());
+        return Array.from(neuronsById.values());
+        
     } catch (error) {
         console.error('Error fetching neurons from SNS:', error);
         return [];
