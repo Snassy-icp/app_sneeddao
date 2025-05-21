@@ -160,6 +160,16 @@ const styles = {
         gap: '20px',
         alignItems: 'center',
         marginBottom: '20px'
+    },
+    filterSelect: {
+        backgroundColor: '#3a3a3a',
+        border: '1px solid #4a4a4a',
+        borderRadius: '4px',
+        padding: '8px',
+        color: '#fff',
+        cursor: 'pointer',
+        fontSize: '14px',
+        minWidth: '80px'
     }
 };
 
@@ -189,6 +199,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
     });
     const [fromFilter, setFromFilter] = useState('');
     const [toFilter, setToFilter] = useState('');
+    const [filterOperator, setFilterOperator] = useState('and');
 
     // Fetch canister IDs from SNS root
     const fetchCanisterIds = async () => {
@@ -512,7 +523,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                     toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null
                 );
 
-                return fromMatches && toMatches;
+                return filterOperator === 'and' ? (fromMatches && toMatches) : (fromMatches || toMatches);
             });
             
             const sorted = sortTransactions(filteredByAddress);
@@ -520,7 +531,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
             const end = start + pageSize;
             setDisplayedTransactions(sorted.slice(start, end));
         }
-    }, [page, selectedType, allTransactions, pageSize, sortConfig, fromFilter, toFilter, principalDisplayInfo]);
+    }, [page, selectedType, allTransactions, pageSize, sortConfig, fromFilter, toFilter, principalDisplayInfo, filterOperator]);
 
     // Render sort indicator
     const renderSortIndicator = (key) => {
@@ -541,6 +552,43 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
             <div style={styles.header}>
                 <h2>Transactions</h2>
                 <div style={styles.filtersContainer}>
+                    <div style={styles.filterGroup}>
+                        <span style={styles.filterLabel}>From:</span>
+                        <input
+                            type="text"
+                            value={fromFilter}
+                            onChange={(e) => {
+                                setFromFilter(e.target.value);
+                                setPage(0);
+                            }}
+                            placeholder="Filter by sender"
+                            style={styles.filterInput}
+                        />
+                    </div>
+                    <select
+                        value={filterOperator}
+                        onChange={(e) => {
+                            setFilterOperator(e.target.value);
+                            setPage(0);
+                        }}
+                        style={styles.filterSelect}
+                    >
+                        <option value="and">AND</option>
+                        <option value="or">OR</option>
+                    </select>
+                    <div style={styles.filterGroup}>
+                        <span style={styles.filterLabel}>To:</span>
+                        <input
+                            type="text"
+                            value={toFilter}
+                            onChange={(e) => {
+                                setToFilter(e.target.value);
+                                setPage(0);
+                            }}
+                            placeholder="Filter by recipient"
+                            style={styles.filterInput}
+                        />
+                    </div>
                     <div style={styles.filters}>
                         {Object.values(TransactionType).map(type => (
                             <button
@@ -551,38 +599,12 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                                 }}
                                 onClick={() => {
                                     setSelectedType(type);
-                                    setPage(0); // Reset to first page when changing filter
+                                    setPage(0);
                                 }}
                             >
                                 {type.charAt(0).toUpperCase() + type.slice(1)}
                             </button>
                         ))}
-                    </div>
-                    <div style={styles.filterGroup}>
-                        <span style={styles.filterLabel}>From:</span>
-                        <input
-                            type="text"
-                            value={fromFilter}
-                            onChange={(e) => {
-                                setFromFilter(e.target.value);
-                                setPage(0); // Reset to first page when changing filter
-                            }}
-                            placeholder="Filter by sender"
-                            style={styles.filterInput}
-                        />
-                    </div>
-                    <div style={styles.filterGroup}>
-                        <span style={styles.filterLabel}>To:</span>
-                        <input
-                            type="text"
-                            value={toFilter}
-                            onChange={(e) => {
-                                setToFilter(e.target.value);
-                                setPage(0); // Reset to first page when changing filter
-                            }}
-                            placeholder="Filter by recipient"
-                            style={styles.filterInput}
-                        />
                     </div>
                 </div>
             </div>
