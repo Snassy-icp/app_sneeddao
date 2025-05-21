@@ -154,6 +154,13 @@ function StatCard({ value, label, isLoading }) {
             return;
         }
 
+        // For total value, only complete when it matches token + position value
+        if (label === "Total Value Locked" && isUSD) {
+            setDisplayValue(value);
+            setIsComplete(false);
+            return;
+        }
+
         const duration = 2000;
         const increment = end / (duration / 16);
         let timer;
@@ -176,7 +183,7 @@ function StatCard({ value, label, isLoading }) {
 
         timer = setInterval(updateNumber, 16);
         return () => clearInterval(timer);
-    }, [value, isLoading]);
+    }, [value, isLoading, label]);
 
     return (
         <div style={styles.stat}>
@@ -380,12 +387,10 @@ function Products() {
             // Update token locks value
             setSneedLockStats(prev => {
                 console.log('Updating token locks value:', { old: prev.tokenLocksValue, new: tokenLocksValue });
-                const newTotal = tokenLocksValue + prev.positionLocksValue;
-                console.log('New total after token locks update:', newTotal);
                 return {
                     ...prev,
                     tokenLocksValue,
-                    totalValue: newTotal
+                    totalValue: tokenLocksValue // Start total with just token locks
                 };
             });
 
@@ -454,12 +459,13 @@ function Products() {
                         oldPositionValue: prev.positionLocksValue,
                         newPositionValue: runningPositionValue,
                         oldTotal: prev.totalValue,
-                        newTotal
+                        newTotal,
+                        tokenLocksValue: prev.tokenLocksValue
                     });
                     return {
                         ...prev,
                         positionLocksValue: runningPositionValue,
-                        totalValue: newTotal
+                        totalValue: newTotal // Always include token locks value
                     };
                 });
             }
