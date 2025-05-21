@@ -217,6 +217,20 @@ function DaoInfo() {
         return (amount / Math.pow(10, decimals)) * (conversionRates[symbol] || 0);
     };
 
+    const fetchProposalCount = async () => {
+        try {
+            const response = await fetch('https://sns-api.internetcomputer.org/api/v2/snses/fp274-iaaaa-aaaaq-aacha-cai/proposals/count');
+            if (!response.ok) {
+                throw new Error('Failed to fetch proposal count');
+            }
+            const data = await response.json();
+            return data.total;
+        } catch (error) {
+            console.error('Error fetching proposal count:', error);
+            return null;
+        }
+    };
+
     // Fetch DAO data
     useEffect(() => {
         const fetchData = async () => {
@@ -237,23 +251,16 @@ function DaoInfo() {
                 // Fetch metrics data
                 setLoading(prev => ({ ...prev, metrics: true }));
                 try {
-                    const [listNeuronsResponse, listProposalsResponse, neuronStats] = await Promise.all([
+                    const [listNeuronsResponse, proposalCount, neuronStats] = await Promise.all([
                         snsGovActor.list_neurons({
                             limit: 0,
                             start_page_at: [],
                             of_principal: []
                         }),
-                        snsGovActor.list_proposals({
-                            limit: 0,
-                            before_proposal: [],
-                            exclude_type: [],
-                            include_reward_status: [],
-                            include_status: [],
-                            include_topics: []
-                        }),
+                        fetchProposalCount(),
                         rllActor.get_neuron_statistics()
                     ]);
-                    console.log("neuronStats", neuronStats);
+
                     // Count active neurons (not dissolved)
                     const activeNeurons = listNeuronsResponse.neurons.filter(neuron => {
                         if (!neuron.dissolve_state?.[0]) return false;
@@ -263,7 +270,7 @@ function DaoInfo() {
                     setDaoMetrics({
                         memberCount: listNeuronsResponse.neurons.length,
                         activeNeurons: activeNeurons,
-                        proposalCount: listProposalsResponse.proposals.length,
+                        proposalCount: proposalCount || 0,
                         neuronStats: {
                             totalNeurons: neuronStats.total_neurons,
                             activeNeurons: neuronStats.active_neurons,
