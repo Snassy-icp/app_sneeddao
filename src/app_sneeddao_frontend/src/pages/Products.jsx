@@ -69,6 +69,12 @@ const styles = {
         color: '#3498db',
         marginBottom: '0.5rem',
     },
+    statValuePending: {
+        fontSize: '1.5rem',
+        fontWeight: 'bold',
+        color: '#888',
+        marginBottom: '0.5rem',
+    },
     statLabel: {
         color: '#888',
         fontSize: '0.9rem',
@@ -113,6 +119,7 @@ const LoadingSpinner = () => (
 
 function StatCard({ value, label, isLoading }) {
     const [displayValue, setDisplayValue] = useState('0');
+    const [isAnimating, setIsAnimating] = useState(false);
     
     useEffect(() => {
         if (isLoading) {
@@ -124,8 +131,11 @@ function StatCard({ value, label, isLoading }) {
         const end = parseFloat(value.replace(/[^0-9.-]+/g, ''));
         if (isNaN(end) || end === 0) {
             setDisplayValue(value);
+            setIsAnimating(false);
             return;
         }
+        
+        setIsAnimating(true);
         const duration = 2000;
         const increment = end / (duration / 16);
         let timer;
@@ -134,6 +144,7 @@ function StatCard({ value, label, isLoading }) {
             start += increment;
             if (start >= end) {
                 setDisplayValue(value);
+                setIsAnimating(false);
                 clearInterval(timer);
             } else {
                 if (value.includes('$')) {
@@ -150,7 +161,7 @@ function StatCard({ value, label, isLoading }) {
 
     return (
         <div style={styles.stat}>
-            <div style={styles.statValue}>
+            <div style={isAnimating ? styles.statValuePending : styles.statValue}>
                 {isLoading ? <LoadingSpinner /> : displayValue}
             </div>
             <div style={styles.statLabel}>{label}</div>
@@ -171,6 +182,7 @@ function Products() {
     const [isLoading, setIsLoading] = useState(true);
     const [conversionRates, setConversionRates] = useState({});
     const swapCanisterCache = {};
+    const [ratesLoaded, setRatesLoaded] = useState(false);
 
     const formatUSD = (value) => {
         if (value === undefined || value === null || isNaN(value)) return '$0.00';
@@ -178,10 +190,17 @@ function Products() {
     };
 
     const getUSDValue = (amount, decimals, symbol) => {
-        if (!amount || !decimals || !symbol || !conversionRates[symbol]) return 0;
+        if (!amount || !decimals || !symbol) return 0;
         const normalizedAmount = Number(amount) / Math.pow(10, Number(decimals));
-        const rate = Number(conversionRates[symbol]);
-        return normalizedAmount * rate;
+        const rate = conversionRates[symbol];
+        console.log(`Calculating USD value for ${symbol}:`, {
+            amount: amount.toString(),
+            decimals,
+            normalizedAmount,
+            rate,
+            hasRate: symbol in conversionRates
+        });
+        return rate ? normalizedAmount * Number(rate) : 0;
     };
 
     const fetchConversionRates = async () => {
@@ -201,7 +220,9 @@ function Products() {
                 }
             });
             
+            console.log('Conversion rates:', rates);
             setConversionRates(rates);
+            setRatesLoaded(true);
         } catch (err) {
             console.error('Error fetching conversion rates:', err);
         }
@@ -251,13 +272,13 @@ function Products() {
         setIsLoading(true);
         console.time('Total fetchSneedLockStats');
         try {
-            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
-            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
-            
-            // Fetch conversion rates first
+            // Fetch conversion rates first and wait for them
             console.time('Fetch conversion rates');
             await fetchConversionRates();
             console.timeEnd('Fetch conversion rates');
+
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             
             // Fetch all locks and whitelisted tokens
             console.time('Fetch locks and tokens');
@@ -304,7 +325,14 @@ function Products() {
                 const amount = BigInt(lock[2].amount);
                 const token = whitelistedTokenMap.get(tokenId);
                 if (token) {
+                    console.log('Processing token lock:', {
+                        tokenId,
+                        symbol: token.symbol,
+                        amount: amount.toString(),
+                        decimals: token.decimals
+                    });
                     const usdValue = getUSDValue(amount, token.decimals, token.symbol);
+                    console.log('USD value calculated:', usdValue);
                     if (!isNaN(usdValue)) {
                         tokenLocksValue += usdValue;
                     }
@@ -438,12 +466,12 @@ function Products() {
                                 <StatCard 
                                     value={formatUSD(sneedLockStats.tokenLocksValue)} 
                                     label="Token Locks Value"
-                                    isLoading={sneedLockStats.tokenLocksValue === 0}
+                                    isLoading={false}
                                 />
                                 <StatCard 
                                     value={formatUSD(sneedLockStats.positionLocksValue)} 
                                     label="Position Locks Value"
-                                    isLoading={sneedLockStats.positionLocksValue === 0}
+                                    isLoading={false}
                                 />
                                 <StatCard 
                                     value={sneedLockStats.activeUsers.toString()} 
@@ -453,7 +481,7 @@ function Products() {
                                 <StatCard 
                                     value={formatUSD(sneedLockStats.totalValue)} 
                                     label="Total Value Locked"
-                                    isLoading={sneedLockStats.totalValue === 0}
+                                    isLoading={false}
                                 />
                             </div>
                             
