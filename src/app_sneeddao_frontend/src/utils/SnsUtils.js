@@ -9,6 +9,9 @@ const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
 // Memory fallback when localStorage fails
 let memoryCache = null;
 
+// In-memory cache for SNS logos
+const logoCache = new Map();
+
 // Safe localStorage wrapper with memory fallback
 const safeStorage = {
     getItem: (key) => {
@@ -60,6 +63,32 @@ function safeGetCanisterId(canisterIdArray) {
         console.error('Error extracting canister ID:', err);
         return null;
     }
+}
+
+// New function to fetch SNS logo
+export async function fetchSnsLogo(governanceId, agent) {
+    // Check memory cache first
+    if (logoCache.has(governanceId)) {
+        return logoCache.get(governanceId);
+    }
+
+    try {
+        const governanceActor = createSnsGovernanceActor(governanceId, { agent });
+        const metadataResponse = await governanceActor.get_metadata({});
+        const logo = metadataResponse?.logo?.[0] || '';
+        
+        // Store in memory cache
+        logoCache.set(governanceId, logo);
+        return logo;
+    } catch (error) {
+        console.error(`Error fetching logo for SNS ${governanceId}:`, error);
+        return '';
+    }
+}
+
+// Clear logo cache (useful when debugging or if logos aren't loading correctly)
+export function clearLogoCache() {
+    logoCache.clear();
 }
 
 export async function fetchAndCacheSnsData(identity) {
