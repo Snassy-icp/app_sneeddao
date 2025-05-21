@@ -117,7 +117,7 @@ const LoadingSpinner = () => (
     </div>
 );
 
-function StatCard({ value, label, isLoading, isParentComplete }) {
+function StatCard({ value, label, isLoading, isParentComplete, isFinalValue }) {
     const [displayValue, setDisplayValue] = useState('0');
     const [isComplete, setIsComplete] = useState(false);
     
@@ -161,6 +161,13 @@ function StatCard({ value, label, isLoading, isParentComplete }) {
             return;
         }
 
+        // For position locks value, only complete when it's the final value
+        if (label === "Position Locks Value" && isUSD) {
+            setDisplayValue(value);
+            setIsComplete(isFinalValue && end > 0);
+            return;
+        }
+
         const duration = 2000;
         const increment = end / (duration / 16);
         let timer;
@@ -183,7 +190,7 @@ function StatCard({ value, label, isLoading, isParentComplete }) {
 
         timer = setInterval(updateNumber, 16);
         return () => clearInterval(timer);
-    }, [value, isLoading, label, isParentComplete]);
+    }, [value, isLoading, label, isParentComplete, isFinalValue]);
 
     return (
         <div style={styles.stat}>
@@ -215,6 +222,8 @@ function Products() {
     // Track completion of individual USD values
     const [tokenRef, setTokenRef] = useState(null);
     const [positionRef, setPositionRef] = useState(null);
+
+    const [isLastPositionProcessed, setIsLastPositionProcessed] = useState(false);
 
     const formatUSD = (value) => {
         if (value === undefined || value === null || isNaN(value)) return '$0.00';
@@ -302,6 +311,7 @@ function Products() {
 
     const fetchSneedLockStats = async () => {
         setIsLoading(true);
+        setIsLastPositionProcessed(false);
         console.time('Total fetchSneedLockStats');
         try {
             // Reset USD values to trigger updates
@@ -424,6 +434,7 @@ function Products() {
             for (let i = 0; i < canisterIds.length; i++) {
                 const canisterId = canisterIds[i];
                 const locks = positionsByCanister.get(canisterId);
+                const isLastCanister = i === canisterIds.length - 1;
                 
                 // Wait for this canister's data
                 const canisterData = await canisterDetailsPromises[i];
@@ -457,7 +468,7 @@ function Products() {
 
                 // Update running total and state after each canister is processed
                 runningPositionValue += canisterValue;
-                console.log(`Processed canister ${canisterId}, value: ${canisterValue}, running total: ${runningPositionValue}`);
+                console.log(`Processed canister ${canisterId}, value: ${canisterValue}, running total: ${runningPositionValue}, isLastCanister: ${isLastCanister}`);
                 
                 setSneedLockStats(prev => {
                     const newTotal = prev.tokenLocksValue + runningPositionValue;
@@ -466,14 +477,19 @@ function Products() {
                         newPositionValue: runningPositionValue,
                         oldTotal: prev.totalValue,
                         newTotal,
-                        tokenLocksValue: prev.tokenLocksValue
+                        tokenLocksValue: prev.tokenLocksValue,
+                        isLastCanister
                     });
                     return {
                         ...prev,
                         positionLocksValue: runningPositionValue,
-                        totalValue: newTotal // Always include token locks value
+                        totalValue: newTotal
                     };
                 });
+
+                if (isLastCanister) {
+                    setIsLastPositionProcessed(true);
+                }
             }
             
             console.timeEnd('Calculate position locks value');
@@ -562,6 +578,7 @@ function Products() {
                                         value={formatUSD(sneedLockStats.positionLocksValue)} 
                                         label="Position Locks Value"
                                         isLoading={false}
+                                        isFinalValue={isLastPositionProcessed}
                                     />
                                 </div>
                                 <StatCard 
