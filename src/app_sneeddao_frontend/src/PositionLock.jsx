@@ -36,7 +36,7 @@ function PositionLock() {
             setShowSpinner(true);
             const backendActor = createBackendActor(backendCanisterId);
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId);
-            const swapActor = createIcpSwapActor(swap_canister_id);
+            const swapActor = createIcpSwapActor(swap_canister_id, { agentOptions: { identity } });
 
             const swap_meta = await swapActor.metadata();
 
@@ -93,7 +93,7 @@ function PositionLock() {
 
                 // Get the ICPSwap owner
                 const icpSwapOwnerResult = await swapActor.getUserByPositionId(position.id);
-                const icpSwapOwner = icpSwapOwnerResult.ok ? Principal.fromText(icpSwapOwnerResult.ok) : null;
+                const icpSwapOwner = icpSwapOwnerResult.ok || null;
 
                 var position_detailed = {
                     swap_canister_id,
@@ -118,7 +118,7 @@ function PositionLock() {
                         frontendOwnership: null,
                         lockInfo: lock ? lock[2] : null,
                         owner: lock ? lock[0] : null,
-                        icpSwapOwner: icpSwapOwner
+                        icpSwapOwner
                     }
                 }
                 return position_detailed;

@@ -13,6 +13,17 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
         return url;
     }
 
+    const truncateText = (text) => {
+        if (!text) return '';
+        const start = text.slice(0, 8);
+        const end = text.slice(-8);
+        return `${start}...${end}`;
+    };
+
+    const copyToClipboard = (text) => {
+        navigator.clipboard.writeText(text);
+    };
+
     return (
         <div className="card">
             <div className="card-header">
@@ -88,12 +99,30 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                 {positionDetails.icpSwapOwner && (
                     <>
                         <div className="locks-header" style={{ marginTop: '10px', color: '#888' }}>ICPSwap Owner</div>
-                        <div className="lock-item">
-                            <PrincipalDisplay 
-                                principal={positionDetails.icpSwapOwner}
-                                showCopyButton={true}
-                                displayInfo={getPrincipalDisplayInfo(positionDetails.icpSwapOwner)}
-                            />
+                        <div className="lock-item" style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '8px',
+                            color: '#fff',
+                            fontSize: '14px'
+                        }}>
+                            <div title={positionDetails.icpSwapOwner} style={{ cursor: 'help' }}>
+                                {truncateText(positionDetails.icpSwapOwner)}
+                            </div>
+                            <button 
+                                onClick={() => copyToClipboard(positionDetails.icpSwapOwner)}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#888',
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    fontSize: '12px'
+                                }}
+                                title="Copy to clipboard"
+                            >
+                                📋
+                            </button>
                         </div>
                     </>
                 )}
