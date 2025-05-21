@@ -87,9 +87,13 @@ function PositionLock() {
 
             var position_locks = await sneedLockActor.get_swap_position_locks(Principal.fromText(swap_canister_id));
 
-            const positions_detailed = positions.map((position) => {
+            const positions_detailed = await Promise.all(positions.map(async (position) => {
 
                 const lock = lockFromLocks(position.id, position_locks);
+
+                // Get the ICPSwap owner
+                const icpSwapOwnerResult = await swapActor.getUserByPositionId(position.id);
+                const icpSwapOwner = icpSwapOwnerResult.ok ? Principal.fromText(icpSwapOwnerResult.ok) : null;
 
                 var position_detailed = {
                     swap_canister_id,
@@ -113,11 +117,12 @@ function PositionLock() {
                         tokensUnused1: 0n,
                         frontendOwnership: null,
                         lockInfo: lock ? lock[2] : null,
-                        owner: lock ? lock[0] : null
+                        owner: lock ? lock[0] : null,
+                        icpSwapOwner: icpSwapOwner
                     }
                 }
                 return position_detailed;
-            });
+            }));
             setPositions(positions_detailed);
         } catch (error) {
             console.error('Error fetching position details:', error);

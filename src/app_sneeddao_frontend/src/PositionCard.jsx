@@ -75,12 +75,24 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                 </div>
                 {positionDetails.owner && (
                     <>
-                        <div className="locks-header" style={{ marginTop: '10px' }}>Owner</div>
+                        <div className="locks-header" style={{ marginTop: '10px' }}>SneedLock Owner</div>
                         <div className="lock-item">
                             <PrincipalDisplay 
                                 principal={positionDetails.owner}
                                 showCopyButton={true}
                                 displayInfo={getPrincipalDisplayInfo(positionDetails.owner)}
+                            />
+                        </div>
+                    </>
+                )}
+                {positionDetails.icpSwapOwner && (
+                    <>
+                        <div className="locks-header" style={{ marginTop: '10px', color: '#888' }}>ICPSwap Owner</div>
+                        <div className="lock-item">
+                            <PrincipalDisplay 
+                                principal={positionDetails.icpSwapOwner}
+                                showCopyButton={true}
+                                displayInfo={getPrincipalDisplayInfo(positionDetails.icpSwapOwner)}
                             />
                         </div>
                     </>
