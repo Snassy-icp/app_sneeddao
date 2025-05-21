@@ -593,6 +593,11 @@ function Products() {
                                     label="Position Locks"
                                     isLoading={sneedLockStats.totalPositionLocks === 0}
                                 />
+                                <StatCard 
+                                    value={sneedLockStats.activeUsers.toString()} 
+                                    label="Active Users"
+                                    isLoading={sneedLockStats.activeUsers === 0}
+                                />
                                 <div ref={setTokenRef}>
                                     <StatCard 
                                         value={formatUSD(sneedLockStats.tokenLocksValue)} 
@@ -608,11 +613,6 @@ function Products() {
                                         isFinalValue={isLastPositionProcessed}
                                     />
                                 </div>
-                                <StatCard 
-                                    value={sneedLockStats.activeUsers.toString()} 
-                                    label="Active Users"
-                                    isLoading={sneedLockStats.activeUsers === 0}
-                                />
                                 <StatCard 
                                     value={formatUSD(sneedLockStats.totalValue)} 
                                     label="Total Value Locked"
