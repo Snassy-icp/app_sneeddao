@@ -148,7 +148,13 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         display: 'flex',
                         alignItems: 'center'
                     }}>
-                        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                        <div style={{ 
+                            display: 'flex', 
+                            gap: '20px', 
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            rowGap: '10px'
+                        }}>
                             {menuSections[activeSection].subMenu.map((item) => (
                                 <Link
                                     key={item.name}
