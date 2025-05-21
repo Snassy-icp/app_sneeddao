@@ -99,11 +99,12 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
     const fetchCanisterIds = async () => {
         try {
             const snsRootActor = createSnsRootActor(snsRootCanisterId);
-            const response = await snsRootActor.list_sns_canisters();
-            
-            // Set the index and archive canister IDs
-            setIndexCanisterId(response.index_canister_id);
-            setArchiveCanisterId(response.archive_canister_id);
+            const response = await snsRootActor.list_sns_canisters({});
+            console.log("list_sns_canisters", response);
+
+            // Set the index and archive canister IDs - they are already Principal objects
+            setIndexCanisterId(response.index[0]);
+            setArchiveCanisterId(response.archives[0]);
         } catch (err) {
             setError('Failed to fetch canister IDs');
             console.error('Error fetching canister IDs:', err);
@@ -113,6 +114,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
     // Fetch transactions from index canister
     const fetchFromIndex = async () => {
         try {
+            // indexCanisterId is already a Principal, no need to convert
             const indexActor = createSnsIndexActor(indexCanisterId);
             const account = {
                 owner: Principal.fromText(principalId),
@@ -141,6 +143,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
     // Fetch transactions from archive canister
     const fetchFromArchive = async () => {
         try {
+            // archiveCanisterId is already a Principal, no need to convert
             const archiveActor = createSnsArchiveActor(archiveCanisterId);
             const response = await archiveActor.get_transactions({
                 start: BigInt(page * PAGE_SIZE),
