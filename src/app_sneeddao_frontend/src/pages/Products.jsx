@@ -164,7 +164,7 @@ function StatCard({ value, label, isLoading, isParentComplete, isFinalValue }) {
         }
 
         // For position locks value, only complete when it's the final value
-        if (label === "Position Locks Value" && isUSD) {
+        if (label === "Pos. Locks Value" && isUSD) {
             setDisplayValue(value);
             setIsComplete(isFinalValue && end > 0);
             return;
@@ -178,7 +178,8 @@ function StatCard({ value, label, isLoading, isParentComplete, isFinalValue }) {
             start += increment;
             if (start >= end) {
                 setDisplayValue(value);
-                setIsComplete(true);
+                // Only set complete if not position locks value (which needs isFinalValue)
+                setIsComplete(label !== "Pos. Locks Value");
                 clearInterval(timer);
             } else {
                 if (isUSD) {
