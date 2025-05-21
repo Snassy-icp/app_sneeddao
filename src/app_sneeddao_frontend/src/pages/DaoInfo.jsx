@@ -28,11 +28,8 @@ const styles = {
     },
     sectionsGrid: {
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr 1fr',
+        gridTemplateColumns: '1fr 1fr',
         gap: '2rem',
-        '@media (max-width: 1600px)': {
-            gridTemplateColumns: '1fr 1fr',
-        },
         '@media (max-width: 900px)': {
             gridTemplateColumns: '1fr',
         },
@@ -87,11 +84,6 @@ const styles = {
 
 // Add media query styles
 const mediaStyles = `
-    @media (max-width: 1600px) {
-        .sections-grid {
-            grid-template-columns: 1fr 1fr !important;
-        }
-    }
     @media (max-width: 900px) {
         .sections-grid {
             grid-template-columns: 1fr !important;
