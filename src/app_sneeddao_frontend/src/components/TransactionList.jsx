@@ -122,6 +122,18 @@ const styles = {
     sortIcon: {
         fontSize: '12px',
         opacity: 0.7
+    },
+    sortableHeaderGroup: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '4px'
+    },
+    sortableSubHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
+        cursor: 'pointer',
+        fontSize: '14px'
     }
 };
 
@@ -334,6 +346,18 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
         updateDisplayedTransactions(allTransactions, 0, selectedType, newSize);
     };
 
+    // Get display value for principal sorting
+    const getPrincipalSortValue = (principal) => {
+        if (!principal) return '';
+        const displayInfo = principalDisplayInfo.get(principal.toString());
+        if (!displayInfo) return principal.toString();
+        
+        // Prioritize name > nickname > principal ID
+        if (displayInfo.name) return displayInfo.name;
+        if (displayInfo.nickname) return displayInfo.nickname;
+        return principal.toString();
+    };
+
     // Add sorting function
     const sortTransactions = (transactions) => {
         if (!sortConfig.key) return transactions;
@@ -346,13 +370,17 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                     aValue = a.transaction.kind;
                     bValue = b.transaction.kind;
                     break;
-                case 'from':
-                    aValue = getFromPrincipal(a)?.toString() || '';
-                    bValue = getFromPrincipal(b)?.toString() || '';
+                case 'fromAddress':
+                    const aFromPrincipal = getFromPrincipal(a);
+                    const bFromPrincipal = getFromPrincipal(b);
+                    aValue = getPrincipalSortValue(aFromPrincipal);
+                    bValue = getPrincipalSortValue(bFromPrincipal);
                     break;
-                case 'to':
-                    aValue = getToPrincipal(a)?.toString() || '';
-                    bValue = getToPrincipal(b)?.toString() || '';
+                case 'toAddress':
+                    const aToPrincipal = getToPrincipal(a);
+                    const bToPrincipal = getToPrincipal(b);
+                    aValue = getPrincipalSortValue(aToPrincipal);
+                    bValue = getPrincipalSortValue(bToPrincipal);
                     break;
                 case 'amount':
                     aValue = getTransactionAmount(a) || 0n;
@@ -467,13 +495,22 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                                 <span style={styles.sortIcon}>{renderSortIndicator('type')}</span>
                             </div>
                         </th>
-                        <th 
-                            style={{...styles.th, width: '45%'}}
-                            onClick={() => handleSort('from')}
-                        >
-                            <div style={styles.sortableHeader}>
-                                From / To
-                                <span style={styles.sortIcon}>{renderSortIndicator('from')}</span>
+                        <th style={{...styles.th, width: '45%'}}>
+                            <div style={styles.sortableHeaderGroup}>
+                                <div 
+                                    style={styles.sortableSubHeader}
+                                    onClick={() => handleSort('fromAddress')}
+                                >
+                                    From
+                                    <span style={styles.sortIcon}>{renderSortIndicator('fromAddress')}</span>
+                                </div>
+                                <div 
+                                    style={styles.sortableSubHeader}
+                                    onClick={() => handleSort('toAddress')}
+                                >
+                                    To
+                                    <span style={styles.sortIcon}>{renderSortIndicator('toAddress')}</span>
+                                </div>
                             </div>
                         </th>
                         <th 
