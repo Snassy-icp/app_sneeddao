@@ -13,6 +13,17 @@ import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUti
 import { HttpAgent } from '@dfinity/agent';
 import TransactionList from '../components/TransactionList';
 
+const validateNameInput = (input) => {
+    if (!input.trim()) return 'Name cannot be empty';
+    if (input.length > 32) return 'Name cannot be longer than 32 characters';
+    // Only allow letters, numbers, spaces, hyphens, underscores, dots, and apostrophes
+    const validPattern = /^[a-zA-Z0-9\s\-_.']+$/;
+    if (!validPattern.test(input)) {
+        return 'Name can only contain letters, numbers, spaces, hyphens (-), underscores (_), dots (.), and apostrophes (\')';
+    }
+    return '';
+};
+
 const spinKeyframes = `
 @keyframes spin {
     from { transform: rotate(0deg); }

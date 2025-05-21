@@ -6,6 +6,17 @@ import { createActor as createSnsIndexActor } from 'external/sns_index';
 import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import { useAuth } from '../AuthContext';
 
+const validateNameInput = (input) => {
+    if (!input.trim()) return 'Name cannot be empty';
+    if (input.length > 32) return 'Name cannot be longer than 32 characters';
+    // Only allow letters, numbers, spaces, hyphens, underscores, dots, and apostrophes
+    const validPattern = /^[a-zA-Z0-9\s\-_.']+$/;
+    if (!validPattern.test(input)) {
+        return 'Name can only contain letters, numbers, spaces, hyphens (-), underscores (_), dots (.), and apostrophes (\')';
+    }
+    return '';
+};
+
 const PAGE_SIZE = 10;
 const FETCH_SIZE = 100; // How many transactions to fetch per request
 
