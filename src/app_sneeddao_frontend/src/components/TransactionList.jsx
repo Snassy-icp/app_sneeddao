@@ -128,6 +128,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
             });
 
             if (response.Ok) {
+                console.log("Transaction response:", response.Ok.transactions[0]); // Log first transaction for debugging
                 const filteredTransactions = filterTransactions(response.Ok.transactions);
                 setTransactions(filteredTransactions);
                 setTotalTransactions(Number(response.Ok.oldest_tx_id) + 1);
@@ -162,7 +163,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
     // Filter transactions based on selected type
     const filterTransactions = (txs) => {
         if (selectedType === TransactionType.ALL) return txs;
-        return txs.filter(tx => tx.transaction.kind.toLowerCase() === selectedType);
+        return txs.filter(tx => tx.transaction.kind === selectedType);
     };
 
     // Fetch transactions based on whether principalId is provided
@@ -239,6 +240,8 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                 </thead>
                 <tbody>
                     {transactions.map((tx, index) => {
+                        console.log("Processing transaction:", tx);
+                        
                         // Extract transaction details safely
                         const txType = tx.transaction.kind;
                         let fromPrincipal = null;
@@ -247,23 +250,35 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
 
                         // Handle different transaction types
                         switch (txType) {
-                            case 'Transfer':
-                                fromPrincipal = tx.transaction.transfer?.from?.owner;
-                                toPrincipal = tx.transaction.transfer?.to?.owner;
-                                amount = tx.transaction.transfer?.amount;
+                            case 'transfer':
+                                if (tx.transaction.transfer && tx.transaction.transfer.length > 0) {
+                                    const transfer = tx.transaction.transfer[0];
+                                    fromPrincipal = transfer.from?.owner;
+                                    toPrincipal = transfer.to?.owner;
+                                    amount = transfer.amount;
+                                }
                                 break;
-                            case 'Mint':
-                                toPrincipal = tx.transaction.mint?.to?.owner;
-                                amount = tx.transaction.mint?.amount;
+                            case 'mint':
+                                if (tx.transaction.mint && tx.transaction.mint.length > 0) {
+                                    const mint = tx.transaction.mint[0];
+                                    toPrincipal = mint.to?.owner;
+                                    amount = mint.amount;
+                                }
                                 break;
-                            case 'Burn':
-                                fromPrincipal = tx.transaction.burn?.from?.owner;
-                                amount = tx.transaction.burn?.amount;
+                            case 'burn':
+                                if (tx.transaction.burn && tx.transaction.burn.length > 0) {
+                                    const burn = tx.transaction.burn[0];
+                                    fromPrincipal = burn.from?.owner;
+                                    amount = burn.amount;
+                                }
                                 break;
-                            case 'Approve':
-                                fromPrincipal = tx.transaction.approve?.from?.owner;
-                                toPrincipal = tx.transaction.approve?.spender?.owner;
-                                amount = tx.transaction.approve?.amount;
+                            case 'approve':
+                                if (tx.transaction.approve && tx.transaction.approve.length > 0) {
+                                    const approve = tx.transaction.approve[0];
+                                    fromPrincipal = approve.from?.owner;
+                                    toPrincipal = approve.spender?.owner;
+                                    amount = approve.amount;
+                                }
                                 break;
                         }
 
@@ -271,10 +286,10 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                             <tr key={index}>
                                 <td style={styles.td}>{txType}</td>
                                 <td style={styles.td}>
-                                    {fromPrincipal?.toString() || '-'}
+                                    {fromPrincipal ? fromPrincipal.toString() : '-'}
                                 </td>
                                 <td style={styles.td}>
-                                    {toPrincipal?.toString() || '-'}
+                                    {toPrincipal ? toPrincipal.toString() : '-'}
                                 </td>
                                 <td style={styles.td}>
                                     {amount ? formatAmount(amount) : '-'}
