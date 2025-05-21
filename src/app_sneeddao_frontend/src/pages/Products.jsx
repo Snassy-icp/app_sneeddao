@@ -8,6 +8,8 @@ import { createActor as createNeutriniteDappActor, canisterId as neutriniteCanis
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
+import { createActor as createSwapRunnerActor } from 'external/swaprunner_backend';
+import { canisterId as swapRunnerCanisterId } from 'external/swaprunner_backend';
 import { formatAmount } from '../utils/StringUtils';
 import { getTokenLogo } from '../utils/TokenUtils';
 
@@ -211,6 +213,12 @@ function Products() {
         positionLocksValue: 0,
         activeUsers: 0,
         totalValue: 0,
+    });
+    const [swapRunnerStats, setSwapRunnerStats] = useState({
+        total_swaps: 0,
+        split_swaps: 0,
+        kong_swaps: 0,
+        icpswap_swaps: 0
     });
     const [isLoading, setIsLoading] = useState(true);
     const [conversionRates, setConversionRates] = useState({});
@@ -503,11 +511,30 @@ function Products() {
         }
     };
 
+    const fetchSwapRunnerStats = async () => {
+        try {
+            const swapRunnerActor = createSwapRunnerActor(swapRunnerCanisterId, { agentOptions: { identity } });
+            const stats = await swapRunnerActor.get_global_stats();
+            setSwapRunnerStats({
+                total_swaps: Number(stats.total_swaps),
+                split_swaps: Number(stats.split_swaps),
+                kong_swaps: Number(stats.kong_swaps),
+                icpswap_swaps: Number(stats.icpswap_swaps)
+            });
+        } catch (error) {
+            console.error('Error fetching SwapRunner stats:', error);
+        }
+    };
+
     useEffect(() => {
         fetchSneedLockStats();
+        fetchSwapRunnerStats();
         
         // Refresh data every 5 minutes
-        const interval = setInterval(fetchSneedLockStats, 5 * 60 * 1000);
+        const interval = setInterval(() => {
+            fetchSneedLockStats();
+            fetchSwapRunnerStats();
+        }, 5 * 60 * 1000);
 
         return () => clearInterval(interval);
     }, []);
@@ -612,16 +639,24 @@ function Products() {
                         <div style={styles.statsSection}>
                             <div style={styles.statsGrid}>
                                 <StatCard 
-                                    value="1,234" 
-                                    label="Total Swaps" 
+                                    value={swapRunnerStats.total_swaps.toString()} 
+                                    label="Total Swaps"
+                                    isLoading={swapRunnerStats.total_swaps === 0}
                                 />
                                 <StatCard 
-                                    value="$500K" 
-                                    label="Daily Volume" 
+                                    value={swapRunnerStats.split_swaps.toString()} 
+                                    label="Split Swaps"
+                                    isLoading={swapRunnerStats.split_swaps === 0}
                                 />
                                 <StatCard 
-                                    value="789" 
-                                    label="Unique Users" 
+                                    value={swapRunnerStats.kong_swaps.toString()} 
+                                    label="Kong Swaps"
+                                    isLoading={swapRunnerStats.kong_swaps === 0}
+                                />
+                                <StatCard 
+                                    value={swapRunnerStats.icpswap_swaps.toString()} 
+                                    label="ICPSwap Swaps"
+                                    isLoading={swapRunnerStats.icpswap_swaps === 0}
                                 />
                             </div>
                             
