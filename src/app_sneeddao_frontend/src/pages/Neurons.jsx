@@ -36,7 +36,8 @@ function Neurons() {
 
     const [loadingProgress, setLoadingProgress] = useState({ count: 0, message: '', percent: 0 });
 
-    const [dissolveFilter, setDissolveFilter] = useState('all'); // Add dissolve state filter
+    const [dissolveFilter, setDissolveFilter] = useState('all');
+    const [sortBy, setSortBy] = useState('stake');
 
     // Add IndexedDB initialization at the top of the component
     const initializeDB = () => {
@@ -407,26 +408,93 @@ function Neurons() {
         currentPage * itemsPerPage
     );
 
-    // Update the effect that sets filtered neurons when neurons change
-    useEffect(() => {
-        setFilteredNeurons(neurons);
-    }, [neurons]);
+    // Add sorting function
+    const getSortedNeurons = (neurons) => {
+        return [...neurons].sort((a, b) => {
+            if (sortBy === 'stake') {
+                // Sort by stake (descending)
+                const stakeA = BigInt(a.cached_neuron_stake_e8s || 0);
+                const stakeB = BigInt(b.cached_neuron_stake_e8s || 0);
+                return stakeB > stakeA ? 1 : stakeB < stakeA ? -1 : 0;
+            }
+            
+            if (sortBy === 'name') {
+                // Get display info for both neurons
+                const neuronIdA = uint8ArrayToHex(a.id[0]?.id);
+                const neuronIdB = uint8ArrayToHex(b.id[0]?.id);
+                const mapKeyA = `${selectedSnsRoot}:${neuronIdA}`;
+                const mapKeyB = `${selectedSnsRoot}:${neuronIdB}`;
+                const nameA = neuronNames.get(mapKeyA);
+                const nameB = neuronNames.get(mapKeyB);
+                const nicknameA = neuronNicknames.get(mapKeyA);
+                const nicknameB = neuronNicknames.get(mapKeyB);
 
-    // Add function to clear cache
-    const clearCache = async (snsRoot) => {
-        try {
-            const db = await initializeDB();
-            const transaction = db.transaction(['neurons'], 'readwrite');
-            const store = transaction.objectStore('neurons');
-            await store.delete(snsRoot);
-        } catch (error) {
-            console.warn('Error clearing cache:', error);
-        }
+                // Sort logic for names
+                if (nameA && nameB) return nameA.localeCompare(nameB);
+                if (nameA) return -1; // Named neurons come first
+                if (nameB) return 1;
+                if (nicknameA && nicknameB) return nicknameA.localeCompare(nicknameB);
+                if (nicknameA) return -1; // Nicknamed neurons come after named ones
+                if (nicknameB) return 1;
+                return neuronIdA.localeCompare(neuronIdB); // Sort by ID if no name/nickname
+            }
+
+            if (sortBy === 'lock') {
+                const stateA = getDissolveStateDetails(a);
+                const stateB = getDissolveStateDetails(b);
+
+                // First compare by dissolve state category
+                if (stateA.category !== stateB.category) {
+                    // Not Dissolving comes first, then Dissolving, then Dissolved
+                    const order = { 'not_dissolving': 0, 'dissolving': 1, 'dissolved': 2 };
+                    return order[stateA.category] - order[stateB.category];
+                }
+
+                // Within the same category
+                if (stateA.category === 'not_dissolving') {
+                    // Sort by lock time (DissolveDelaySeconds)
+                    return Number(stateB.dissolveDelaySeconds || 0) - Number(stateA.dissolveDelaySeconds || 0);
+                }
+                if (stateA.category === 'dissolving') {
+                    // Sort by time left until dissolution
+                    return Number(stateB.timeLeft || 0) - Number(stateA.timeLeft || 0);
+                }
+                // For dissolved neurons, sort by stake
+                const stakeA = BigInt(a.cached_neuron_stake_e8s || 0);
+                const stakeB = BigInt(b.cached_neuron_stake_e8s || 0);
+                return stakeB > stakeA ? 1 : stakeB < stakeA ? -1 : 0;
+            }
+
+            return 0;
+        });
     };
 
-    const handleRefresh = async () => {
-        await clearCache(selectedSnsRoot);
-        fetchNeurons();
+    // Helper function to get detailed dissolve state information
+    const getDissolveStateDetails = (neuron) => {
+        if (!neuron.dissolve_state?.[0]) {
+            return { category: 'not_dissolving', dissolveDelaySeconds: 0 };
+        }
+
+        if ('WhenDissolvedTimestampSeconds' in neuron.dissolve_state[0]) {
+            const dissolveTime = Number(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds);
+            const now = Math.floor(Date.now() / 1000);
+            
+            if (dissolveTime <= now) {
+                return { category: 'dissolved' };
+            } else {
+                return { 
+                    category: 'dissolving',
+                    timeLeft: dissolveTime - now
+                };
+            }
+        } else if ('DissolveDelaySeconds' in neuron.dissolve_state[0]) {
+            return { 
+                category: 'not_dissolving',
+                dissolveDelaySeconds: neuron.dissolve_state[0].DissolveDelaySeconds
+            };
+        }
+
+        return { category: 'not_dissolving', dissolveDelaySeconds: 0 };
     };
 
     // Update the effect that filters neurons
@@ -458,30 +526,34 @@ function Neurons() {
         // Apply dissolve state filter
         if (dissolveFilter !== 'all') {
             filtered = filtered.filter(neuron => {
-                if (!neuron.dissolve_state?.[0]) {
-                    return dissolveFilter === 'not_dissolving';
-                }
-
-                if ('WhenDissolvedTimestampSeconds' in neuron.dissolve_state[0]) {
-                    const dissolveTime = Number(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds);
-                    const now = Math.floor(Date.now() / 1000);
-                    
-                    if (dissolveTime <= now) {
-                        return dissolveFilter === 'dissolved';
-                    } else {
-                        return dissolveFilter === 'dissolving';
-                    }
-                } else if ('DissolveDelaySeconds' in neuron.dissolve_state[0]) {
-                    return dissolveFilter === 'not_dissolving';
-                }
-
-                return dissolveFilter === 'not_dissolving';
+                const state = getDissolveStateDetails(neuron);
+                return state.category === dissolveFilter;
             });
         }
 
+        // Apply sorting
+        filtered = getSortedNeurons(filtered);
+
         setFilteredNeurons(filtered);
         setCurrentPage(1); // Reset to first page when filtering
-    }, [searchTerm, dissolveFilter, neurons, selectedSnsRoot, neuronNames, neuronNicknames]);
+    }, [searchTerm, dissolveFilter, sortBy, neurons, selectedSnsRoot, neuronNames, neuronNicknames]);
+
+    // Add function to clear cache
+    const clearCache = async (snsRoot) => {
+        try {
+            const db = await initializeDB();
+            const transaction = db.transaction(['neurons'], 'readwrite');
+            const store = transaction.objectStore('neurons');
+            await store.delete(snsRoot);
+        } catch (error) {
+            console.warn('Error clearing cache:', error);
+        }
+    };
+
+    const handleRefresh = async () => {
+        await clearCache(selectedSnsRoot);
+        fetchNeurons();
+    };
 
     return (
         <div className='page-container'>
@@ -535,6 +607,22 @@ function Neurons() {
                             <option value="not_dissolving">Not Dissolving</option>
                             <option value="dissolving">Dissolving</option>
                             <option value="dissolved">Dissolved</option>
+                        </select>
+                        <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value)}
+                            style={{
+                                backgroundColor: '#3a3a3a',
+                                color: '#ffffff',
+                                border: '1px solid #4a4a4a',
+                                borderRadius: '4px',
+                                padding: '8px 12px',
+                                minWidth: '150px'
+                            }}
+                        >
+                            <option value="stake">Sort by Stake</option>
+                            <option value="name">Sort by Name</option>
+                            <option value="lock">Sort by Lock</option>
                         </select>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
