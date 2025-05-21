@@ -6,6 +6,37 @@ import { HttpAgent } from '@dfinity/agent';
 const SNS_CACHE_KEY = 'sns_data_cache';
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
 
+// Memory fallback when localStorage fails
+let memoryCache = null;
+
+// Safe localStorage wrapper with memory fallback
+const safeStorage = {
+    getItem: (key) => {
+        try {
+            return localStorage.getItem(key);
+        } catch (error) {
+            console.warn('localStorage access failed, using memory fallback:', error);
+            return memoryCache;
+        }
+    },
+    setItem: (key, value) => {
+        try {
+            localStorage.setItem(key, value);
+        } catch (error) {
+            console.warn('localStorage write failed, using memory fallback:', error);
+            memoryCache = value;
+        }
+    },
+    removeItem: (key) => {
+        try {
+            localStorage.removeItem(key);
+        } catch (error) {
+            console.warn('localStorage remove failed, using memory fallback:', error);
+            memoryCache = null;
+        }
+    }
+};
+
 // Helper function to safely get canister ID
 function safeGetCanisterId(canisterIdArray) {
     try {
@@ -123,18 +154,13 @@ export async function fetchAndCacheSnsData(identity) {
                     const metadataResponse = await governanceActor.get_metadata({});
                     console.log('Metadata response:', metadataResponse); // Debug log
 
-                    // Extract metadata, handling the direct response structure
+                    // Extract only essential metadata
                     const name = metadataResponse?.name?.[0] || `SNS ${rootCanisterId.slice(0, 8)}...`;
-                    const description = metadataResponse?.description?.[0] || '';
-                    const url = metadataResponse?.url?.[0] || '';
-                    const logo = metadataResponse?.logo?.[0] || '';
                     
+                    // Store only essential data
                     const snsData = {
                         rootCanisterId,
                         name,
-                        description,
-                        url,
-                        logo,
                         canisters: {
                             governance: governanceId,
                             ledger: ledgerId,
@@ -170,7 +196,7 @@ export async function fetchAndCacheSnsData(identity) {
         } else {
             console.log('No valid SNS data to cache'); // Debug log
             // Clear invalid cache
-            localStorage.removeItem(SNS_CACHE_KEY);
+            safeStorage.removeItem(SNS_CACHE_KEY);
         }
         
         return snsData;
@@ -185,7 +211,7 @@ export async function fetchAndCacheSnsData(identity) {
 }
 
 function getCachedSnsData() {
-    const cachedString = localStorage.getItem(SNS_CACHE_KEY);
+    const cachedString = safeStorage.getItem(SNS_CACHE_KEY);
     if (!cachedString) return null;
 
     try {
@@ -195,11 +221,11 @@ function getCachedSnsData() {
             return data;
         }
         // Clear invalid or empty cache
-        localStorage.removeItem(SNS_CACHE_KEY);
+        safeStorage.removeItem(SNS_CACHE_KEY);
     } catch (error) {
         console.error('Error parsing cached SNS data:', error);
         // Clear invalid cache
-        localStorage.removeItem(SNS_CACHE_KEY);
+        safeStorage.removeItem(SNS_CACHE_KEY);
     }
     return null;
 }
@@ -210,7 +236,7 @@ function cacheSnsData(data) {
             data,
             timestamp: Date.now()
         };
-        localStorage.setItem(SNS_CACHE_KEY, JSON.stringify(cacheObject));
+        safeStorage.setItem(SNS_CACHE_KEY, JSON.stringify(cacheObject));
     } catch (error) {
         console.error('Error caching SNS data:', error);
     }
@@ -227,5 +253,5 @@ export function getAllSnses() {
 
 export function clearSnsCache() {
     console.log('Clearing SNS cache...'); // Debug log
-    localStorage.removeItem(SNS_CACHE_KEY);
+    safeStorage.removeItem(SNS_CACHE_KEY);
 } 
