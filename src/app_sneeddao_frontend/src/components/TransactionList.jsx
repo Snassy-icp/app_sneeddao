@@ -193,7 +193,11 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
     }, [indexCanisterId, archiveCanisterId, page, selectedType, principalId]);
 
     const formatAmount = (amount, decimals = 8) => {
-        return (Number(amount) / Math.pow(10, decimals)).toLocaleString();
+        const value = Number(amount) / Math.pow(10, decimals);
+        return value.toLocaleString(undefined, {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 8
+        });
     };
 
     const formatTimestamp = (timestamp) => {
