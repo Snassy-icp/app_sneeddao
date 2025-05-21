@@ -124,7 +124,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                     gap: '4px'
                                 }}>
                                     {positionDetails.ownershipStatus === 'match' ? '✓ Match!' :
-                                     positionDetails.ownershipStatus === 'locked' ? '✓ Locked!' :
+                                     positionDetails.ownershipStatus === 'locked' ? '✓ Match!' :
                                      '✗ Mismatch!'}
                                 </span>
                             )}
