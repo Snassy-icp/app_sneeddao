@@ -98,17 +98,25 @@ function PositionLock() {
                 const icpSwapOwnerResult = await swapActor.getUserByPositionId(position.id);
                 const icpSwapOwner = icpSwapOwnerResult.ok || null;
 
-                // If we have a SneedLock owner, check if they own this position in ICPSwap
-                let ownershipMatches = false;
+                // Check ownership status
+                let ownershipStatus = 'mismatch';  // Can be 'match', 'locked', or 'mismatch'
                 if (lock && lock[0]) {
                     try {
                         // Create a new actor for this specific call to ensure we have the right identity
                         const ownerCheckActor = createIcpSwapActor(swap_canister_id, { 
                             agentOptions: identity ? { identity } : undefined 
                         });
+                        
+                        // First check: does the SneedLock owner own it directly?
                         const ownerPositions = await ownerCheckActor.getUserPositionIdsByPrincipal(lock[0]);
-                        if (ownerPositions.ok) {
-                            ownershipMatches = ownerPositions.ok.some(pos => pos === position.id);
+                        if (ownerPositions.ok && ownerPositions.ok.some(pos => pos === position.id)) {
+                            ownershipStatus = 'match';
+                        } else {
+                            // Second check: does the SneedLock canister own it?
+                            const canisterPositions = await ownerCheckActor.getUserPositionIdsByPrincipal(Principal.fromText(sneedLockCanisterId));
+                            if (canisterPositions.ok && canisterPositions.ok.some(pos => pos === position.id)) {
+                                ownershipStatus = 'locked';
+                            }
                         }
                     } catch (error) {
                         console.error('Error checking position ownership:', error);
@@ -139,7 +147,7 @@ function PositionLock() {
                         lockInfo: lock ? lock[2] : null,
                         owner: lock ? lock[0] : null,
                         icpSwapOwner,
-                        ownershipMatches
+                        ownershipStatus
                     }
                 }
                 return position_detailed;

@@ -111,13 +111,21 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                     padding: '2px 8px',
                                     borderRadius: '4px',
                                     fontSize: '12px',
-                                    backgroundColor: positionDetails.ownershipMatches ? 'rgba(46, 204, 113, 0.2)' : 'rgba(231, 76, 60, 0.2)',
-                                    color: positionDetails.ownershipMatches ? '#2ecc71' : '#e74c3c',
+                                    backgroundColor: 
+                                        positionDetails.ownershipStatus === 'match' ? 'rgba(46, 204, 113, 0.2)' :
+                                        positionDetails.ownershipStatus === 'locked' ? 'rgba(46, 204, 113, 0.2)' :
+                                        'rgba(231, 76, 60, 0.2)',
+                                    color: 
+                                        positionDetails.ownershipStatus === 'match' ? '#2ecc71' :
+                                        positionDetails.ownershipStatus === 'locked' ? '#2ecc71' :
+                                        '#e74c3c',
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '4px'
                                 }}>
-                                    {positionDetails.ownershipMatches ? '✓ Match!' : '✗ Mismatch!'}
+                                    {positionDetails.ownershipStatus === 'match' ? '✓ Match!' :
+                                     positionDetails.ownershipStatus === 'locked' ? '✓ Locked!' :
+                                     '✗ Mismatch!'}
                                 </span>
                             )}
                         </div>
