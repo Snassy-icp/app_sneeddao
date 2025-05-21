@@ -380,9 +380,12 @@ function Products() {
             // Update token locks value
             setSneedLockStats(prev => {
                 console.log('Updating token locks value:', { old: prev.tokenLocksValue, new: tokenLocksValue });
+                const newTotal = tokenLocksValue + prev.positionLocksValue;
+                console.log('New total after token locks update:', newTotal);
                 return {
                     ...prev,
                     tokenLocksValue,
+                    totalValue: newTotal
                 };
             });
 
@@ -397,25 +400,25 @@ function Products() {
                 positionsByCanister.get(canisterId).push(lock);
             });
 
-            // Fetch all position details in parallel
-            const canisterDetailsPromises = Array.from(positionsByCanister.keys()).map(canisterId => 
+            // Process each canister's positions sequentially but fetch details in parallel
+            let runningPositionValue = 0;
+            const canisterIds = Array.from(positionsByCanister.keys());
+            
+            // First fetch all position details in parallel
+            const canisterDetailsPromises = canisterIds.map(canisterId => 
                 fetchPositionDetails(Principal.fromText(canisterId))
             );
             
-            const canisterDetails = await Promise.all(canisterDetailsPromises);
-            const canisterDataMap = new Map(
-                Array.from(positionsByCanister.keys()).map((canisterId, index) => [
-                    canisterId,
-                    canisterDetails[index]
-                ])
-            );
-
-            // Calculate position values
-            let positionLocksValue = 0;
-            for (const [canisterId, locks] of positionsByCanister) {
-                const canisterData = canisterDataMap.get(canisterId);
+            // Process each canister's data as it comes in
+            for (let i = 0; i < canisterIds.length; i++) {
+                const canisterId = canisterIds[i];
+                const locks = positionsByCanister.get(canisterId);
+                
+                // Wait for this canister's data
+                const canisterData = await canisterDetailsPromises[i];
                 if (!canisterData || canisterData.error) continue;
 
+                let canisterValue = 0;
                 for (const lock of locks) {
                     const positionId = lock[2].position_id;
                     const token0 = lock[2].token0;
@@ -428,7 +431,7 @@ function Products() {
                         if (token0Data) {
                             const token0Value = rates[token0Data.symbol] ? 
                                 (Number(matchingPosition.token0Amount) / Math.pow(10, Number(token0Data.decimals))) * Number(rates[token0Data.symbol]) : 0;
-                            if (!isNaN(token0Value)) positionLocksValue += token0Value;
+                            if (!isNaN(token0Value)) canisterValue += token0Value;
                         }
 
                         // Add token1 value
@@ -436,28 +439,33 @@ function Products() {
                         if (token1Data) {
                             const token1Value = rates[token1Data.symbol] ?
                                 (Number(matchingPosition.token1Amount) / Math.pow(10, Number(token1Data.decimals))) * Number(rates[token1Data.symbol]) : 0;
-                            if (!isNaN(token1Value)) positionLocksValue += token1Value;
+                            if (!isNaN(token1Value)) canisterValue += token1Value;
                         }
                     }
                 }
-            }
-            console.timeEnd('Calculate position locks value');
-            console.log('Final position locks value:', positionLocksValue);
 
-            // Final update with position locks value and total
-            setSneedLockStats(prev => {
-                const totalValue = prev.tokenLocksValue + positionLocksValue;
-                console.log('Updating final values:', {
-                    tokenLocksValue: prev.tokenLocksValue,
-                    positionLocksValue,
-                    totalValue
+                // Update running total and state after each canister is processed
+                runningPositionValue += canisterValue;
+                console.log(`Processed canister ${canisterId}, value: ${canisterValue}, running total: ${runningPositionValue}`);
+                
+                setSneedLockStats(prev => {
+                    const newTotal = prev.tokenLocksValue + runningPositionValue;
+                    console.log('Updating position value:', {
+                        oldPositionValue: prev.positionLocksValue,
+                        newPositionValue: runningPositionValue,
+                        oldTotal: prev.totalValue,
+                        newTotal
+                    });
+                    return {
+                        ...prev,
+                        positionLocksValue: runningPositionValue,
+                        totalValue: newTotal
+                    };
                 });
-                return {
-                    ...prev,
-                    positionLocksValue,
-                    totalValue
-                };
-            });
+            }
+            
+            console.timeEnd('Calculate position locks value');
+            console.log('Final position locks value:', runningPositionValue);
 
         } catch (error) {
             console.error('Error fetching SneedLock stats:', error);
