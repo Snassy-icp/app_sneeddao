@@ -327,8 +327,8 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
             <table style={styles.table}>
                 <thead>
                     <tr>
-                        <th style={styles.th}>Type</th>
-                        <th style={{...styles.th, width: '30%'}}>From / To</th>
+                        <th style={{...styles.th, width: '10%'}}>Type</th>
+                        <th style={{...styles.th, width: '45%'}}>From / To</th>
                         <th style={{...styles.th, width: '15%'}}>Amount</th>
                         <th style={{...styles.th, width: '20%'}}>Time</th>
                     </tr>
