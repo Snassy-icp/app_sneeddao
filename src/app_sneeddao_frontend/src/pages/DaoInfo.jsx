@@ -130,6 +130,30 @@ const styles = {
         alignItems: 'center',
         padding: '5px 0',
     },
+    productsGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: '1rem',
+    },
+    productCard: {
+        backgroundColor: '#3a3a3a',
+        borderRadius: '8px',
+        padding: '1.5rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1rem',
+    },
+    productTitle: {
+        fontSize: '1.4rem',
+        color: '#3498db',
+        fontWeight: 'bold',
+    },
+    productDescription: {
+        color: '#888',
+        fontSize: '0.9rem',
+        lineHeight: '1.4',
+        flex: 1,
+    },
 };
 
 // Add media query styles
@@ -820,8 +844,30 @@ function DaoInfo() {
                             <h2 style={styles.subheading}>Products</h2>
                             <Link to="/products" style={styles.drillDownLink}>Drill down →</Link>
                         </div>
-                        <div style={styles.emptySection}>
-                            Coming Soon
+                        <div style={styles.productsGrid}>
+                            <div style={styles.productCard}>
+                                <div style={styles.productTitle}>SneedLock</div>
+                                <div style={styles.productDescription}>
+                                    A secure and flexible token locking solution built on the Internet Computer.
+                                    Create customizable token locks with various vesting schedules and conditions.
+                                </div>
+                                <Link to="/sneedlock" style={styles.drillDownLink}>Drill down →</Link>
+                            </div>
+                            <div style={styles.productCard}>
+                                <div style={styles.productTitle}>SwapRunner</div>
+                                <div style={styles.productDescription}>
+                                    A high-performance decentralized exchange (DEX) aggregator built for speed and efficiency.
+                                    Experience lightning-fast token swaps with minimal slippage.
+                                </div>
+                                <a 
+                                    href="https://swaprunner.com" 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    style={styles.drillDownLink}
+                                >
+                                    Drill down →
+                                </a>
+                            </div>
                         </div>
                     </section>
                 </div>
