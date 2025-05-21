@@ -119,23 +119,41 @@ const LoadingSpinner = () => (
 
 function StatCard({ value, label, isLoading }) {
     const [displayValue, setDisplayValue] = useState('0');
-    const [isAnimating, setIsAnimating] = useState(false);
+    const [isComplete, setIsComplete] = useState(false);
     
     useEffect(() => {
         if (isLoading) {
             setDisplayValue(null);
+            setIsComplete(false);
             return;
         }
 
         let start = 0;
         const end = parseFloat(value.replace(/[^0-9.-]+/g, ''));
-        if (isNaN(end) || end === 0) {
-            setDisplayValue(value);
-            setIsAnimating(false);
+        const isUSD = value.startsWith('$');
+        
+        // For USD values, stay gray until we have a non-zero value
+        if (isUSD && end === 0) {
+            setDisplayValue('$0.00');
+            setIsComplete(false);
             return;
         }
         
-        setIsAnimating(true);
+        // For non-USD values, show the actual value even if it's zero
+        if (!isUSD) {
+            if (end === 0) {
+                setDisplayValue('0');
+                setIsComplete(true);
+                return;
+            }
+        }
+
+        if (isNaN(end)) {
+            setDisplayValue(value);
+            setIsComplete(!isUSD); // USD values need to be non-zero to be complete
+            return;
+        }
+
         const duration = 2000;
         const increment = end / (duration / 16);
         let timer;
@@ -144,14 +162,15 @@ function StatCard({ value, label, isLoading }) {
             start += increment;
             if (start >= end) {
                 setDisplayValue(value);
-                setIsAnimating(false);
+                setIsComplete(true);
                 clearInterval(timer);
             } else {
-                if (value.includes('$')) {
+                if (isUSD) {
                     setDisplayValue(`$${start.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
                 } else {
                     setDisplayValue(Math.floor(start).toLocaleString());
                 }
+                setIsComplete(false);
             }
         };
 
@@ -161,7 +180,7 @@ function StatCard({ value, label, isLoading }) {
 
     return (
         <div style={styles.stat}>
-            <div style={isAnimating ? styles.statValuePending : styles.statValue}>
+            <div style={isComplete ? styles.statValue : styles.statValuePending}>
                 {isLoading ? <LoadingSpinner /> : displayValue}
             </div>
             <div style={styles.statLabel}>{label}</div>
@@ -221,10 +240,10 @@ function Products() {
             });
             
             console.log('Conversion rates:', rates);
-            setConversionRates(rates);
-            setRatesLoaded(true);
+            return rates;
         } catch (err) {
             console.error('Error fetching conversion rates:', err);
+            return {};
         }
     };
 
@@ -272,9 +291,19 @@ function Products() {
         setIsLoading(true);
         console.time('Total fetchSneedLockStats');
         try {
+            // Reset USD values to trigger updates
+            setSneedLockStats(prev => ({
+                ...prev,
+                tokenLocksValue: 0,
+                positionLocksValue: 0,
+                totalValue: 0
+            }));
+
             // Fetch conversion rates first and wait for them
             console.time('Fetch conversion rates');
-            await fetchConversionRates();
+            const rates = await fetchConversionRates();
+            setConversionRates(rates);
+            setRatesLoaded(true);
             console.timeEnd('Fetch conversion rates');
 
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
@@ -331,20 +360,31 @@ function Products() {
                         amount: amount.toString(),
                         decimals: token.decimals
                     });
-                    const usdValue = getUSDValue(amount, token.decimals, token.symbol);
-                    console.log('USD value calculated:', usdValue);
+                    const normalizedAmount = Number(amount) / Math.pow(10, Number(token.decimals));
+                    const rate = rates[token.symbol];
+                    const usdValue = rate ? normalizedAmount * Number(rate) : 0;
+                    console.log('USD value calculated:', {
+                        symbol: token.symbol,
+                        normalizedAmount,
+                        rate,
+                        usdValue
+                    });
                     if (!isNaN(usdValue)) {
                         tokenLocksValue += usdValue;
                     }
                 }
             }
             console.timeEnd('Calculate token locks value');
+            console.log('Final token locks value:', tokenLocksValue);
 
             // Update token locks value
-            setSneedLockStats(prev => ({
-                ...prev,
-                tokenLocksValue,
-            }));
+            setSneedLockStats(prev => {
+                console.log('Updating token locks value:', { old: prev.tokenLocksValue, new: tokenLocksValue });
+                return {
+                    ...prev,
+                    tokenLocksValue,
+                };
+            });
 
             // Group position locks by swap canister
             console.time('Calculate position locks value');
@@ -386,35 +426,38 @@ function Products() {
                         // Add token0 value
                         const token0Data = whitelistedTokenMap.get(token0.toText());
                         if (token0Data) {
-                            const token0Value = getUSDValue(
-                                BigInt(matchingPosition.token0Amount),
-                                token0Data.decimals,
-                                token0Data.symbol
-                            );
+                            const token0Value = rates[token0Data.symbol] ? 
+                                (Number(matchingPosition.token0Amount) / Math.pow(10, Number(token0Data.decimals))) * Number(rates[token0Data.symbol]) : 0;
                             if (!isNaN(token0Value)) positionLocksValue += token0Value;
                         }
 
                         // Add token1 value
                         const token1Data = whitelistedTokenMap.get(token1.toText());
                         if (token1Data) {
-                            const token1Value = getUSDValue(
-                                BigInt(matchingPosition.token1Amount),
-                                token1Data.decimals,
-                                token1Data.symbol
-                            );
+                            const token1Value = rates[token1Data.symbol] ?
+                                (Number(matchingPosition.token1Amount) / Math.pow(10, Number(token1Data.decimals))) * Number(rates[token1Data.symbol]) : 0;
                             if (!isNaN(token1Value)) positionLocksValue += token1Value;
                         }
                     }
                 }
             }
             console.timeEnd('Calculate position locks value');
+            console.log('Final position locks value:', positionLocksValue);
 
             // Final update with position locks value and total
-            setSneedLockStats(prev => ({
-                ...prev,
-                positionLocksValue,
-                totalValue: prev.tokenLocksValue + positionLocksValue
-            }));
+            setSneedLockStats(prev => {
+                const totalValue = prev.tokenLocksValue + positionLocksValue;
+                console.log('Updating final values:', {
+                    tokenLocksValue: prev.tokenLocksValue,
+                    positionLocksValue,
+                    totalValue
+                });
+                return {
+                    ...prev,
+                    positionLocksValue,
+                    totalValue
+                };
+            });
 
         } catch (error) {
             console.error('Error fetching SneedLock stats:', error);
