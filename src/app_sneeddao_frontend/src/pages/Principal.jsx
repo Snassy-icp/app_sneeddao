@@ -54,8 +54,8 @@ export default function PrincipalPage() {
     const [neuronError, setNeuronError] = useState(null);
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
-    const [isNeuronsCollapsed, setIsNeuronsCollapsed] = useState(false);
-    const [isTransactionsCollapsed, setIsTransactionsCollapsed] = useState(false);
+    const [isNeuronsCollapsed, setIsNeuronsCollapsed] = useState(true);
+    const [isTransactionsCollapsed, setIsTransactionsCollapsed] = useState(true);
     
     // Keep stable references to dependencies
     const stableIdentity = useRef(identity);
@@ -203,6 +203,13 @@ export default function PrincipalPage() {
 
         fetchPrincipalInfo();
     }, [identity, neurons]);
+
+    // Add effect to auto-expand neurons section if there are neurons
+    useEffect(() => {
+        if (neurons.length > 0) {
+            setIsNeuronsCollapsed(false);  // Auto-expand if neurons exist
+        }
+    }, [neurons]);
 
     const handleNameSubmit = async () => {
         const error = validateNameInput(nameInput);
