@@ -250,38 +250,56 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                                         display: 'flex',
                                         alignItems: 'center',
                                         gap: '8px',
+                                        width: '100%',
                                         ':hover': {
                                             backgroundColor: '#3a3a3a'
                                         }
                                     }}
                                 >
-                                    {isLoading ? (
-                                        <div style={{ 
-                                            width: '20px', 
-                                            height: '20px',
-                                            borderRadius: '50%',
-                                            backgroundColor: '#3a3a3a'
-                                        }} />
-                                    ) : logo ? (
-                                        <img 
-                                            src={logo} 
-                                            alt={sns.name}
-                                            style={{ 
+                                    <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '20px 1fr',
+                                        gap: '8px',
+                                        alignItems: 'center',
+                                        width: '100%'
+                                    }}>
+                                        {isLoading ? (
+                                            <div style={{ 
                                                 width: '20px', 
                                                 height: '20px',
                                                 borderRadius: '50%',
-                                                objectFit: 'cover'
-                                            }} 
-                                        />
-                                    ) : (
-                                        <div style={{ 
-                                            width: '20px', 
-                                            height: '20px',
-                                            borderRadius: '50%',
-                                            backgroundColor: '#3a3a3a'
-                                        }} />
-                                    )}
-                                    <span>{sns.name}</span>
+                                                backgroundColor: '#3a3a3a',
+                                                gridColumn: '1'
+                                            }} />
+                                        ) : logo ? (
+                                            <img 
+                                                src={logo} 
+                                                alt={sns.name}
+                                                style={{ 
+                                                    width: '20px', 
+                                                    height: '20px',
+                                                    borderRadius: '50%',
+                                                    objectFit: 'cover',
+                                                    gridColumn: '1'
+                                                }} 
+                                            />
+                                        ) : (
+                                            <div style={{ 
+                                                width: '20px', 
+                                                height: '20px',
+                                                borderRadius: '50%',
+                                                backgroundColor: '#3a3a3a',
+                                                gridColumn: '1'
+                                            }} />
+                                        )}
+                                        <span style={{
+                                            gridColumn: '2',
+                                            textAlign: 'left',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis'
+                                        }}>{sns.name}</span>
+                                    </div>
                                 </div>
                             );
                         })}
