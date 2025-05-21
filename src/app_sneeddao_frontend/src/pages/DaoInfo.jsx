@@ -13,6 +13,7 @@ import {
     calculateTotalAssetsValue,
     getTokenLogo 
 } from '../utils/TokenUtils';
+import { Link } from 'react-router-dom';
 
 const styles = {
     container: {
@@ -82,6 +83,26 @@ const styles = {
         color: '#888',
         backgroundColor: '#3a3a3a',
         borderRadius: '8px',
+    },
+    sectionHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '1rem',
+        marginBottom: '1.5rem',
+    },
+    drillDownLink: {
+        color: '#3498db',
+        textDecoration: 'none',
+        fontSize: '1rem',
+        '&:hover': {
+            textDecoration: 'underline',
+        },
+    },
+    cardHeader: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '0.5rem',
     },
 };
 
@@ -529,7 +550,10 @@ function DaoInfo() {
                 <div className="sections-grid" style={styles.sectionsGrid}>
                     {/* DAO Metrics Section */}
                     <section style={styles.section}>
-                        <h2 style={styles.subheading}>DAO Metrics</h2>
+                        <div style={styles.sectionHeader}>
+                            <h2 style={styles.subheading}>DAO Metrics</h2>
+                            <Link to="/neurons" style={styles.drillDownLink}>View All →</Link>
+                        </div>
                         {loading.metrics ? (
                             <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
                                 <div style={styles.spinner} />
@@ -599,7 +623,10 @@ function DaoInfo() {
                                     <div style={styles.label}>Hotkeys</div>
                                 </div>
                                 <div style={styles.card}>
-                                    <div style={styles.metric}>{formatNumber(daoMetrics.proposalCount)}</div>
+                                    <div style={styles.cardHeader}>
+                                        <div style={styles.metric}>{formatNumber(daoMetrics.proposalCount)}</div>
+                                        <Link to="/proposals" style={styles.drillDownLink}>Details →</Link>
+                                    </div>
                                     <div style={styles.label}>Total Proposals</div>
                                 </div>
                             </div>
@@ -608,7 +635,10 @@ function DaoInfo() {
 
                     {/* Tokenomics Section */}
                     <section style={styles.section}>
-                        <h2 style={styles.subheading}>Tokenomics</h2>
+                        <div style={styles.sectionHeader}>
+                            <h2 style={styles.subheading}>Tokenomics</h2>
+                            <Link to="/rll_info" style={styles.drillDownLink}>View All →</Link>
+                        </div>
                         {loading.tokenomics ? (
                             <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
                                 <div style={styles.spinner} />
@@ -699,34 +729,37 @@ function DaoInfo() {
                                         <div style={styles.label}>Total Staked</div>
                                     </div>
                                     <div style={styles.card}>
-                                        <div style={styles.metric}>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                                {Object.entries(tokenomics.tokenDistributions || {}).map(([tokenId, data]) => {
-                                                    const { amount, metadata } = data;
-                                                    const symbol = metadata?.symbol || tokenId;
-                                                    const decimals = metadata?.decimals || 8;
-                                                    const tokenAmount = formatNumber(Number(amount) / Math.pow(10, decimals));
-                                                    const usdValue = getUSDValue(Number(amount), decimals, symbol);
-                                                    
-                                                    return (
-                                                        <div key={tokenId} style={{ textAlign: 'center' }}>
-                                                            {tokenAmount} {symbol}
-                                                            <div style={{ fontSize: '0.7em', color: '#888' }}>
-                                                                ({formatUSD(usdValue)})
+                                        <div style={styles.cardHeader}>
+                                            <div style={styles.metric}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                    {Object.entries(tokenomics.tokenDistributions || {}).map(([tokenId, data]) => {
+                                                        const { amount, metadata } = data;
+                                                        const symbol = metadata?.symbol || tokenId;
+                                                        const decimals = metadata?.decimals || 8;
+                                                        const tokenAmount = formatNumber(Number(amount) / Math.pow(10, decimals));
+                                                        const usdValue = getUSDValue(Number(amount), decimals, symbol);
+                                                        
+                                                        return (
+                                                            <div key={tokenId} style={{ textAlign: 'center' }}>
+                                                                {tokenAmount} {symbol}
+                                                                <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                                                    ({formatUSD(usdValue)})
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                                <div style={{ 
-                                                    borderTop: '1px solid #4a4a4a',
-                                                    paddingTop: '10px',
-                                                    marginTop: '5px',
-                                                    textAlign: 'center',
-                                                    color: '#3498db'
-                                                }}>
-                                                    {formatUSD(tokenomics.totalDistributionsUsd)}
+                                                        );
+                                                    })}
+                                                    <div style={{ 
+                                                        borderTop: '1px solid #4a4a4a',
+                                                        paddingTop: '10px',
+                                                        marginTop: '5px',
+                                                        textAlign: 'center',
+                                                        color: '#3498db'
+                                                    }}>
+                                                        {formatUSD(tokenomics.totalDistributionsUsd)}
+                                                    </div>
                                                 </div>
                                             </div>
+                                            <Link to="/rll" style={styles.drillDownLink}>Details →</Link>
                                         </div>
                                         <div style={styles.label}>Total Rewards Distributed</div>
                                     </div>
@@ -737,7 +770,10 @@ function DaoInfo() {
 
                     {/* Partners Section */}
                     <section style={styles.section}>
-                        <h2 style={styles.subheading}>Partners</h2>
+                        <div style={styles.sectionHeader}>
+                            <h2 style={styles.subheading}>Partners</h2>
+                            <Link to="/partners" style={styles.drillDownLink}>View All →</Link>
+                        </div>
                         <div style={styles.emptySection}>
                             Coming Soon
                         </div>
@@ -745,7 +781,10 @@ function DaoInfo() {
 
                     {/* Products Section */}
                     <section style={styles.section}>
-                        <h2 style={styles.subheading}>Products</h2>
+                        <div style={styles.sectionHeader}>
+                            <h2 style={styles.subheading}>Products</h2>
+                            <Link to="/products" style={styles.drillDownLink}>View All →</Link>
+                        </div>
                         <div style={styles.emptySection}>
                             Coming Soon
                         </div>
