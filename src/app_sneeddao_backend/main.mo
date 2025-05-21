@@ -288,27 +288,38 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   public shared ({ caller }) func send_tokens(icrc1_ledger_canister_id: Principal, amount: Nat, to: Principal) : async T.TransferResult {
     assert(is_admin(caller));
 
-        let from_subaccount = PrincipalToSubaccount(to);
+    let from_subaccount = PrincipalToSubaccount(to);
 
-        let transfer_args : T.TransferArgs = {
-            from_subaccount = ?from_subaccount;
-            to = {
-                owner = to;
-                subaccount = null;
-            };
-            amount = amount;
-            fee = null;
-            memo = null;
-            created_at_time = null;
+    let transfer_args : T.TransferArgs = {
+        from_subaccount = ?from_subaccount;
+        to = {
+            owner = to;
+            subaccount = null;
         };
+        amount = amount;
+        fee = null;
+        memo = null;
+        created_at_time = null;
+    };
 
 
-        let icrc1_ledger_canister = actor (Principal.toText(icrc1_ledger_canister_id)) : actor {
-            icrc1_transfer(args : T.TransferArgs) : async T.TransferResult;
-        };  
+    let icrc1_ledger_canister = actor (Principal.toText(icrc1_ledger_canister_id)) : actor {
+        icrc1_transfer(args : T.TransferArgs) : async T.TransferResult;
+    };  
 
-        await icrc1_ledger_canister.icrc1_transfer(transfer_args);
+    await icrc1_ledger_canister.icrc1_transfer(transfer_args);
   };
+
+  public shared ({ caller }) func transfer_position(swap_canister_id: Principal, to: Principal, position_id: Nat) : async T.TransferPositionResult {
+    assert(is_admin(caller));
+
+    let swap_canister = actor (Principal.toText(swap_canister_id)) : actor {
+        transferPosition(from : Principal, to : Principal, positionId : Nat) : async T.TransferPositionResult;
+    };
+
+    await swap_canister.transferPosition(this_canister_id(), to, position_id);
+  };
+
 
   private func PrincipalToSubaccount(p : Principal) : [Nat8] {
     //let a = List.nil<Nat8>();

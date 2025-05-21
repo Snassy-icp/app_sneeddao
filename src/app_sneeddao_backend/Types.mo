@@ -60,6 +60,15 @@ module {
         #GenericError : { error_code : Nat; message : Text };
     };
 
+    public type TransferPositionResult = { #ok : Bool; #err : TransferPositionError };
+
+    type TransferPositionError = {
+        #CommonError;
+        #InternalError: Text;
+        #UnsupportedToken: Text;
+        #InsufficientFunds;
+    };
+    
     public type SwapRunnerTokenMetadata = {
         decimals: ?Nat8;
         fee: ?Nat;
