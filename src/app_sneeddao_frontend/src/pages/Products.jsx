@@ -608,7 +608,7 @@ function Products() {
                                 <div ref={setPositionRef}>
                                     <StatCard 
                                         value={formatUSD(sneedLockStats.positionLocksValue)} 
-                                        label="Position Locks Value"
+                                        label="Pos. Locks Value"
                                         isLoading={false}
                                         isFinalValue={isLastPositionProcessed}
                                     />
