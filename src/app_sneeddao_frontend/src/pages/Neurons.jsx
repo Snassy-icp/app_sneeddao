@@ -36,6 +36,8 @@ function Neurons() {
 
     const [loadingProgress, setLoadingProgress] = useState({ count: 0, message: '', percent: 0 });
 
+    const [dissolveFilter, setDissolveFilter] = useState('all'); // Add dissolve state filter
+
     // Add IndexedDB initialization at the top of the component
     const initializeDB = () => {
         return new Promise((resolve, reject) => {
@@ -427,35 +429,59 @@ function Neurons() {
         fetchNeurons();
     };
 
-    // Add effect to filter neurons based on search term
+    // Update the effect that filters neurons
     useEffect(() => {
-        if (!searchTerm.trim()) {
-            setFilteredNeurons(neurons);
-            return;
+        let filtered = neurons;
+
+        // Apply search term filter
+        if (searchTerm.trim()) {
+            const searchLower = searchTerm.toLowerCase();
+            filtered = filtered.filter(neuron => {
+                const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
+                if (!neuronId) return false;
+
+                // Check neuron ID
+                if (neuronId.toLowerCase().includes(searchLower)) {
+                    return true;
+                }
+
+                // Check names and nicknames
+                const mapKey = `${selectedSnsRoot}:${neuronId}`;
+                const name = neuronNames.get(mapKey)?.toLowerCase();
+                const nickname = neuronNicknames.get(mapKey)?.toLowerCase();
+
+                return (name && name.includes(searchLower)) || 
+                       (nickname && nickname.includes(searchLower));
+            });
         }
 
-        const searchLower = searchTerm.toLowerCase();
-        const filtered = neurons.filter(neuron => {
-            const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
-            if (!neuronId) return false;
+        // Apply dissolve state filter
+        if (dissolveFilter !== 'all') {
+            filtered = filtered.filter(neuron => {
+                if (!neuron.dissolve_state?.[0]) {
+                    return dissolveFilter === 'not_dissolving';
+                }
 
-            // Check neuron ID
-            if (neuronId.toLowerCase().includes(searchLower)) {
-                return true;
-            }
+                if ('WhenDissolvedTimestampSeconds' in neuron.dissolve_state[0]) {
+                    const dissolveTime = Number(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds);
+                    const now = Math.floor(Date.now() / 1000);
+                    
+                    if (dissolveTime <= now) {
+                        return dissolveFilter === 'dissolved';
+                    } else {
+                        return dissolveFilter === 'dissolving';
+                    }
+                } else if ('DissolveDelaySeconds' in neuron.dissolve_state[0]) {
+                    return dissolveFilter === 'not_dissolving';
+                }
 
-            // Check names and nicknames
-            const mapKey = `${selectedSnsRoot}:${neuronId}`;
-            const name = neuronNames.get(mapKey)?.toLowerCase();
-            const nickname = neuronNicknames.get(mapKey)?.toLowerCase();
-
-            return (name && name.includes(searchLower)) || 
-                   (nickname && nickname.includes(searchLower));
-        });
+                return dissolveFilter === 'not_dissolving';
+            });
+        }
 
         setFilteredNeurons(filtered);
         setCurrentPage(1); // Reset to first page when filtering
-    }, [searchTerm, neurons, selectedSnsRoot, neuronNames, neuronNicknames]);
+    }, [searchTerm, dissolveFilter, neurons, selectedSnsRoot, neuronNames, neuronNicknames]);
 
     return (
         <div className='page-container'>
@@ -493,6 +519,23 @@ function Neurons() {
                                 minWidth: '200px'
                             }}
                         />
+                        <select
+                            value={dissolveFilter}
+                            onChange={(e) => setDissolveFilter(e.target.value)}
+                            style={{
+                                backgroundColor: '#3a3a3a',
+                                color: '#ffffff',
+                                border: '1px solid #4a4a4a',
+                                borderRadius: '4px',
+                                padding: '8px 12px',
+                                minWidth: '150px'
+                            }}
+                        >
+                            <option value="all">All States</option>
+                            <option value="not_dissolving">Not Dissolving</option>
+                            <option value="dissolving">Dissolving</option>
+                            <option value="dissolved">Dissolved</option>
+                        </select>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <button
