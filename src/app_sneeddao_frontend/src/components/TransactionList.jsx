@@ -125,15 +125,18 @@ const styles = {
     },
     sortableHeaderGroup: {
         display: 'flex',
-        flexDirection: 'column',
-        gap: '4px'
+        alignItems: 'center',
+        gap: '16px'
     },
     sortableSubHeader: {
         display: 'flex',
         alignItems: 'center',
         gap: '4px',
-        cursor: 'pointer',
-        fontSize: '14px'
+        cursor: 'pointer'
+    },
+    headerDivider: {
+        color: '#666',
+        userSelect: 'none'
     }
 };
 
@@ -504,6 +507,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                                     From
                                     <span style={styles.sortIcon}>{renderSortIndicator('fromAddress')}</span>
                                 </div>
+                                <span style={styles.headerDivider}>/</span>
                                 <div 
                                     style={styles.sortableSubHeader}
                                     onClick={() => handleSort('toAddress')}
