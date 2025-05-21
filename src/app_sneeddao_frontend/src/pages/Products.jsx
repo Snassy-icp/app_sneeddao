@@ -219,7 +219,9 @@ function Products() {
         total_swaps: 0,
         split_swaps: 0,
         kong_swaps: 0,
-        icpswap_swaps: 0
+        icpswap_swaps: 0,
+        unique_users: 0,
+        unique_traders: 0
     });
     const [isLoading, setIsLoading] = useState(true);
     const [conversionRates, setConversionRates] = useState({});
@@ -515,12 +517,18 @@ function Products() {
     const fetchSwapRunnerStats = async () => {
         try {
             const swapRunnerActor = createSwapRunnerActor(swapRunnerCanisterId, { agentOptions: { identity } });
-            const stats = await swapRunnerActor.get_global_stats();
+            const [stats, userCount, traderCount] = await Promise.all([
+                swapRunnerActor.get_global_stats(),
+                swapRunnerActor.get_unique_user_count(),
+                swapRunnerActor.get_unique_trader_count()
+            ]);
             setSwapRunnerStats({
                 total_swaps: Number(stats.total_swaps),
                 split_swaps: Number(stats.split_swaps),
                 kong_swaps: Number(stats.kong_swaps),
-                icpswap_swaps: Number(stats.icpswap_swaps)
+                icpswap_swaps: Number(stats.icpswap_swaps),
+                unique_users: Number(userCount),
+                unique_traders: Number(traderCount)
             });
         } catch (error) {
             console.error('Error fetching SwapRunner stats:', error);
@@ -658,6 +666,16 @@ function Products() {
                                     value={swapRunnerStats.icpswap_swaps.toString()} 
                                     label="ICPSwap Swaps"
                                     isLoading={swapRunnerStats.icpswap_swaps === 0}
+                                />
+                                <StatCard 
+                                    value={swapRunnerStats.unique_users.toString()} 
+                                    label="Registered Users"
+                                    isLoading={swapRunnerStats.unique_users === 0}
+                                />
+                                <StatCard 
+                                    value={swapRunnerStats.unique_traders.toString()} 
+                                    label="Active Traders"
+                                    isLoading={swapRunnerStats.unique_traders === 0}
                                 />
                             </div>
                             
