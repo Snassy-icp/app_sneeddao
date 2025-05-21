@@ -238,34 +238,53 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                     </tr>
                 </thead>
                 <tbody>
-                    {transactions.map((tx, index) => (
-                        <tr key={index}>
-                            <td style={styles.td}>{tx.transaction.kind}</td>
-                            <td style={styles.td}>
-                                {tx.transaction.transfer?.from.owner.toString() || 
-                                 tx.transaction.mint?.to.owner.toString() || 
-                                 tx.transaction.burn?.from.owner.toString() || 
-                                 tx.transaction.approve?.from.owner.toString()}
-                            </td>
-                            <td style={styles.td}>
-                                {tx.transaction.transfer?.to.owner.toString() || 
-                                 tx.transaction.mint?.to.owner.toString() || 
-                                 tx.transaction.burn?.from.owner.toString() || 
-                                 tx.transaction.approve?.spender.owner.toString()}
-                            </td>
-                            <td style={styles.td}>
-                                {formatAmount(
-                                    tx.transaction.transfer?.amount || 
-                                    tx.transaction.mint?.amount || 
-                                    tx.transaction.burn?.amount || 
-                                    tx.transaction.approve?.amount || 0
-                                )}
-                            </td>
-                            <td style={styles.td}>
-                                {formatTimestamp(tx.transaction.timestamp)}
-                            </td>
-                        </tr>
-                    ))}
+                    {transactions.map((tx, index) => {
+                        // Extract transaction details safely
+                        const txType = tx.transaction.kind;
+                        let fromPrincipal = null;
+                        let toPrincipal = null;
+                        let amount = null;
+
+                        // Handle different transaction types
+                        switch (txType) {
+                            case 'Transfer':
+                                fromPrincipal = tx.transaction.transfer?.from?.owner;
+                                toPrincipal = tx.transaction.transfer?.to?.owner;
+                                amount = tx.transaction.transfer?.amount;
+                                break;
+                            case 'Mint':
+                                toPrincipal = tx.transaction.mint?.to?.owner;
+                                amount = tx.transaction.mint?.amount;
+                                break;
+                            case 'Burn':
+                                fromPrincipal = tx.transaction.burn?.from?.owner;
+                                amount = tx.transaction.burn?.amount;
+                                break;
+                            case 'Approve':
+                                fromPrincipal = tx.transaction.approve?.from?.owner;
+                                toPrincipal = tx.transaction.approve?.spender?.owner;
+                                amount = tx.transaction.approve?.amount;
+                                break;
+                        }
+
+                        return (
+                            <tr key={index}>
+                                <td style={styles.td}>{txType}</td>
+                                <td style={styles.td}>
+                                    {fromPrincipal?.toString() || '-'}
+                                </td>
+                                <td style={styles.td}>
+                                    {toPrincipal?.toString() || '-'}
+                                </td>
+                                <td style={styles.td}>
+                                    {amount ? formatAmount(amount) : '-'}
+                                </td>
+                                <td style={styles.td}>
+                                    {formatTimestamp(tx.transaction.timestamp)}
+                                </td>
+                            </tr>
+                        );
+                    })}
                 </tbody>
             </table>
 
