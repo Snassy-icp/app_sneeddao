@@ -99,7 +99,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
     const fetchCanisterIds = async () => {
         try {
             const snsRootActor = createSnsRootActor(snsRootCanisterId);
-            const response = await snsRootActor.get_sns_canisters_summary();
+            const response = await snsRootActor.get_sns_canisters_summary({});
             
             // Find index and archive canisters
             const index = response.canisters.find(c => c.canister_type === 'INDEX');
