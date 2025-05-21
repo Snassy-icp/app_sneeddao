@@ -165,7 +165,7 @@ function Products() {
         totalPositionLocks: 0,
         tokenLocksValue: 0,
         positionLocksValue: 0,
-        activeUsers: new Set(),
+        activeUsers: 0,
         totalValue: 0,
     });
     const [isLoading, setIsLoading] = useState(true);
@@ -271,12 +271,25 @@ function Products() {
             console.log('Position locks count:', positionLocks.length);
             console.log('Whitelisted tokens count:', whitelistedTokens.length);
 
+            // Update counts immediately
+            setSneedLockStats(prev => ({
+                ...prev,
+                totalTokenLocks: tokenLocks.length,
+                totalPositionLocks: positionLocks.length,
+            }));
+
             // Calculate unique users
             console.time('Calculate users');
             const uniqueUsers = new Set();
             tokenLocks.forEach(lock => uniqueUsers.add(lock[0].toText()));
             positionLocks.forEach(lock => uniqueUsers.add(lock[0].toText()));
             console.timeEnd('Calculate users');
+
+            // Update user count
+            setSneedLockStats(prev => ({
+                ...prev,
+                activeUsers: uniqueUsers.size,
+            }));
 
             // Create a map of whitelisted tokens
             console.time('Create token map');
@@ -298,6 +311,12 @@ function Products() {
                 }
             }
             console.timeEnd('Calculate token locks value');
+
+            // Update token locks value
+            setSneedLockStats(prev => ({
+                ...prev,
+                tokenLocksValue,
+            }));
 
             // Group position locks by swap canister
             console.time('Calculate position locks value');
@@ -362,16 +381,12 @@ function Products() {
             }
             console.timeEnd('Calculate position locks value');
 
-            console.time('Set final stats');
-            setSneedLockStats({
-                totalTokenLocks: tokenLocks.length,
-                totalPositionLocks: positionLocks.length,
-                tokenLocksValue,
+            // Final update with position locks value and total
+            setSneedLockStats(prev => ({
+                ...prev,
                 positionLocksValue,
-                activeUsers: uniqueUsers.size,
-                totalValue: tokenLocksValue + positionLocksValue
-            });
-            console.timeEnd('Set final stats');
+                totalValue: prev.tokenLocksValue + positionLocksValue
+            }));
 
         } catch (error) {
             console.error('Error fetching SneedLock stats:', error);
@@ -413,32 +428,32 @@ function Products() {
                                 <StatCard 
                                     value={sneedLockStats.totalTokenLocks.toString()} 
                                     label="Token Locks"
-                                    isLoading={isValueLoading(sneedLockStats.totalTokenLocks)}
+                                    isLoading={sneedLockStats.totalTokenLocks === 0}
                                 />
                                 <StatCard 
                                     value={sneedLockStats.totalPositionLocks.toString()} 
                                     label="Position Locks"
-                                    isLoading={isValueLoading(sneedLockStats.totalPositionLocks)}
+                                    isLoading={sneedLockStats.totalPositionLocks === 0}
                                 />
                                 <StatCard 
                                     value={formatUSD(sneedLockStats.tokenLocksValue)} 
                                     label="Token Locks Value"
-                                    isLoading={isValueLoading(sneedLockStats.tokenLocksValue)}
+                                    isLoading={sneedLockStats.tokenLocksValue === 0}
                                 />
                                 <StatCard 
                                     value={formatUSD(sneedLockStats.positionLocksValue)} 
                                     label="Position Locks Value"
-                                    isLoading={isValueLoading(sneedLockStats.positionLocksValue)}
+                                    isLoading={sneedLockStats.positionLocksValue === 0}
                                 />
                                 <StatCard 
                                     value={sneedLockStats.activeUsers.toString()} 
                                     label="Active Users"
-                                    isLoading={isValueLoading(sneedLockStats.activeUsers)}
+                                    isLoading={sneedLockStats.activeUsers === 0}
                                 />
                                 <StatCard 
                                     value={formatUSD(sneedLockStats.totalValue)} 
                                     label="Total Value Locked"
-                                    isLoading={isValueLoading(sneedLockStats.totalValue)}
+                                    isLoading={sneedLockStats.totalValue === 0}
                                 />
                             </div>
                             
