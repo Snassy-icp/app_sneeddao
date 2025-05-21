@@ -58,6 +58,11 @@ const styles = {
         backgroundColor: '#3a3a3a',
         borderRadius: '8px',
         padding: '1.5rem',
+        display: 'flex',
+        flexDirection: 'column',
+    },
+    cardContent: {
+        flex: 1,
     },
     metric: {
         fontSize: '1.8rem',
@@ -87,13 +92,16 @@ const styles = {
     sectionHeader: {
         display: 'flex',
         alignItems: 'center',
-        gap: '1rem',
+        justifyContent: 'space-between',
         marginBottom: '1.5rem',
     },
     drillDownLink: {
         color: '#3498db',
         textDecoration: 'none',
-        fontSize: '1rem',
+        fontSize: '0.9rem',
+        marginTop: '1rem',
+        display: 'inline-block',
+        marginLeft: 'auto',
         '&:hover': {
             textDecoration: 'underline',
         },
@@ -103,6 +111,24 @@ const styles = {
         alignItems: 'center',
         justifyContent: 'space-between',
         marginBottom: '0.5rem',
+    },
+    dissolveStateValue: {
+        fontSize: '0.6em',
+        color: '#888',
+    },
+    doubleWidthCard: {
+        backgroundColor: '#3a3a3a',
+        borderRadius: '8px',
+        padding: '1.5rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gridColumn: 'span 2',
+    },
+    tokenRow: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '5px 0',
     },
 };
 
@@ -552,7 +578,7 @@ function DaoInfo() {
                     <section style={styles.section}>
                         <div style={styles.sectionHeader}>
                             <h2 style={styles.subheading}>DAO Metrics</h2>
-                            <Link to="/neurons" style={styles.drillDownLink}>View All →</Link>
+                            <Link to="/neurons" style={styles.drillDownLink}>Drill down →</Link>
                         </div>
                         {loading.metrics ? (
                             <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
@@ -575,8 +601,10 @@ function DaoInfo() {
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
                                         {formatNumber(Number(daoMetrics.neuronStats.dissolveState.not_dissolving))}
-                                        <div style={{ fontSize: '0.7em', color: '#888' }}>Not Dissolving</div>
-                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                        <div style={styles.dissolveStateValue}>
+                                            Not Dissolving
+                                        </div>
+                                        <div style={styles.dissolveStateValue}>
                                             {formatNumber(Number(daoMetrics.neuronStats.not_dissolving_stake) / 1e8)} SNEED
                                         </div>
                                     </div>
@@ -585,8 +613,10 @@ function DaoInfo() {
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
                                         {formatNumber(Number(daoMetrics.neuronStats.dissolveState.dissolving))}
-                                        <div style={{ fontSize: '0.7em', color: '#888' }}>Dissolving</div>
-                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                        <div style={styles.dissolveStateValue}>
+                                            Dissolving
+                                        </div>
+                                        <div style={styles.dissolveStateValue}>
                                             {formatNumber(Number(daoMetrics.neuronStats.dissolving_stake) / 1e8)} SNEED
                                         </div>
                                     </div>
@@ -595,8 +625,10 @@ function DaoInfo() {
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
                                         {formatNumber(Number(daoMetrics.neuronStats.dissolveState.dissolved))}
-                                        <div style={{ fontSize: '0.7em', color: '#888' }}>Dissolved</div>
-                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                        <div style={styles.dissolveStateValue}>
+                                            Dissolved
+                                        </div>
+                                        <div style={styles.dissolveStateValue}>
                                             {formatNumber(Number(daoMetrics.neuronStats.dissolved_stake) / 1e8)} SNEED
                                         </div>
                                     </div>
@@ -623,11 +655,11 @@ function DaoInfo() {
                                     <div style={styles.label}>Hotkeys</div>
                                 </div>
                                 <div style={styles.card}>
-                                    <div style={styles.cardHeader}>
+                                    <div style={styles.cardContent}>
                                         <div style={styles.metric}>{formatNumber(daoMetrics.proposalCount)}</div>
-                                        <Link to="/proposals" style={styles.drillDownLink}>Details →</Link>
+                                        <div style={styles.label}>Total Proposals</div>
                                     </div>
-                                    <div style={styles.label}>Total Proposals</div>
+                                    <Link to="/proposals" style={styles.drillDownLink}>Drill down →</Link>
                                 </div>
                             </div>
                         )}
@@ -637,7 +669,7 @@ function DaoInfo() {
                     <section style={styles.section}>
                         <div style={styles.sectionHeader}>
                             <h2 style={styles.subheading}>Tokenomics</h2>
-                            <Link to="/rll_info" style={styles.drillDownLink}>View All →</Link>
+                            <Link to="/rll_info" style={styles.drillDownLink}>Drill down →</Link>
                         </div>
                         {loading.tokenomics ? (
                             <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
@@ -728,10 +760,10 @@ function DaoInfo() {
                                         </div>
                                         <div style={styles.label}>Total Staked</div>
                                     </div>
-                                    <div style={styles.card}>
-                                        <div style={styles.cardHeader}>
+                                    <div style={styles.doubleWidthCard}>
+                                        <div style={styles.cardContent}>
                                             <div style={styles.metric}>
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                                                     {Object.entries(tokenomics.tokenDistributions || {}).map(([tokenId, data]) => {
                                                         const { amount, metadata } = data;
                                                         const symbol = metadata?.symbol || tokenId;
@@ -740,10 +772,10 @@ function DaoInfo() {
                                                         const usdValue = getUSDValue(Number(amount), decimals, symbol);
                                                         
                                                         return (
-                                                            <div key={tokenId} style={{ textAlign: 'center' }}>
-                                                                {tokenAmount} {symbol}
-                                                                <div style={{ fontSize: '0.7em', color: '#888' }}>
-                                                                    ({formatUSD(usdValue)})
+                                                            <div key={tokenId} style={styles.tokenRow}>
+                                                                <div>{tokenAmount} {symbol}</div>
+                                                                <div style={{ color: '#888' }}>
+                                                                    {formatUSD(usdValue)}
                                                                 </div>
                                                             </div>
                                                         );
@@ -752,16 +784,19 @@ function DaoInfo() {
                                                         borderTop: '1px solid #4a4a4a',
                                                         paddingTop: '10px',
                                                         marginTop: '5px',
-                                                        textAlign: 'center',
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
                                                         color: '#3498db'
                                                     }}>
-                                                        {formatUSD(tokenomics.totalDistributionsUsd)}
+                                                        <div>Total</div>
+                                                        <div>{formatUSD(tokenomics.totalDistributionsUsd)}</div>
                                                     </div>
                                                 </div>
                                             </div>
-                                            <Link to="/rll" style={styles.drillDownLink}>Details →</Link>
+                                            <div style={styles.label}>Total Rewards Distributed</div>
                                         </div>
-                                        <div style={styles.label}>Total Rewards Distributed</div>
+                                        <Link to="/rll" style={styles.drillDownLink}>Drill down →</Link>
                                     </div>
                                 </div>
                             </>
@@ -772,7 +807,7 @@ function DaoInfo() {
                     <section style={styles.section}>
                         <div style={styles.sectionHeader}>
                             <h2 style={styles.subheading}>Partners</h2>
-                            <Link to="/partners" style={styles.drillDownLink}>View All →</Link>
+                            <Link to="/partners" style={styles.drillDownLink}>Drill down →</Link>
                         </div>
                         <div style={styles.emptySection}>
                             Coming Soon
@@ -783,7 +818,7 @@ function DaoInfo() {
                     <section style={styles.section}>
                         <div style={styles.sectionHeader}>
                             <h2 style={styles.subheading}>Products</h2>
-                            <Link to="/products" style={styles.drillDownLink}>View All →</Link>
+                            <Link to="/products" style={styles.drillDownLink}>Drill down →</Link>
                         </div>
                         <div style={styles.emptySection}>
                             Coming Soon
