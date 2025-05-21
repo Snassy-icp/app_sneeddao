@@ -3,7 +3,8 @@ import { Principal } from '@dfinity/principal';
 import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createSnsArchiveActor } from 'external/sns_archive';
 import { createActor as createSnsIndexActor } from 'external/sns_index';
-import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
+import { useAuth } from '../AuthContext';
 
 const PAGE_SIZE = 10;
 
@@ -97,6 +98,7 @@ const TransactionType = {
 };
 
 function TransactionList({ snsRootCanisterId, principalId = null }) {
+    const { identity } = useAuth();
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -105,6 +107,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
     const [selectedType, setSelectedType] = useState(TransactionType.ALL);
     const [indexCanisterId, setIndexCanisterId] = useState(null);
     const [archiveCanisterId, setArchiveCanisterId] = useState(null);
+    const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
 
     // Fetch canister IDs from SNS root
     const fetchCanisterIds = async () => {
@@ -192,6 +195,48 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
             setLoading(false);
         }
     };
+
+    // Add effect to fetch principal display info
+    useEffect(() => {
+        const fetchPrincipalInfo = async () => {
+            if (!transactions.length) return;
+
+            const uniquePrincipals = new Set();
+            transactions.forEach(tx => {
+                // Add from principals
+                if (tx.transaction.transfer?.[0]?.from?.owner) {
+                    uniquePrincipals.add(tx.transaction.transfer[0].from.owner.toString());
+                }
+                if (tx.transaction.burn?.[0]?.from?.owner) {
+                    uniquePrincipals.add(tx.transaction.burn[0].from.owner.toString());
+                }
+                if (tx.transaction.approve?.[0]?.from?.owner) {
+                    uniquePrincipals.add(tx.transaction.approve[0].from.owner.toString());
+                }
+
+                // Add to/spender principals
+                if (tx.transaction.transfer?.[0]?.to?.owner) {
+                    uniquePrincipals.add(tx.transaction.transfer[0].to.owner.toString());
+                }
+                if (tx.transaction.mint?.[0]?.to?.owner) {
+                    uniquePrincipals.add(tx.transaction.mint[0].to.owner.toString());
+                }
+                if (tx.transaction.approve?.[0]?.spender?.owner) {
+                    uniquePrincipals.add(tx.transaction.approve[0].spender.owner.toString());
+                }
+            });
+
+            const displayInfoMap = new Map();
+            await Promise.all(Array.from(uniquePrincipals).map(async principal => {
+                const displayInfo = await getPrincipalDisplayInfo(identity, Principal.fromText(principal));
+                displayInfoMap.set(principal, displayInfo);
+            }));
+
+            setPrincipalDisplayInfo(displayInfoMap);
+        };
+
+        fetchPrincipalInfo();
+    }, [transactions, identity]);
 
     useEffect(() => {
         fetchCanisterIds();
@@ -306,6 +351,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                                             <span style={{color: '#888'}}>From: </span>
                                             <PrincipalDisplay 
                                                 principal={fromPrincipal}
+                                                displayInfo={principalDisplayInfo.get(fromPrincipal.toString())}
                                                 showCopyButton={false}
                                             />
                                             {transfer?.from?.subaccount?.length > 0 && (
@@ -320,6 +366,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                                             <span style={{color: '#888'}}>To: </span>
                                             <PrincipalDisplay 
                                                 principal={toPrincipal}
+                                                displayInfo={principalDisplayInfo.get(toPrincipal.toString())}
                                                 showCopyButton={false}
                                             />
                                             {transfer?.to?.subaccount?.length > 0 && (
