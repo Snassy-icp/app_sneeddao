@@ -7,6 +7,7 @@ import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUti
 import { useAuth } from '../AuthContext';
 
 const PAGE_SIZE = 10;
+const FETCH_SIZE = 100; // How many transactions to fetch per request
 
 const styles = {
     container: {
@@ -99,11 +100,11 @@ const TransactionType = {
 
 function TransactionList({ snsRootCanisterId, principalId = null }) {
     const { identity } = useAuth();
-    const [transactions, setTransactions] = useState([]);
+    const [allTransactions, setAllTransactions] = useState([]); // Store all fetched transactions
+    const [displayedTransactions, setDisplayedTransactions] = useState([]); // Current page of transactions
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [page, setPage] = useState(0);
-    const [totalTransactions, setTotalTransactions] = useState(0);
     const [selectedType, setSelectedType] = useState(TransactionType.ALL);
     const [indexCanisterId, setIndexCanisterId] = useState(null);
     const [archiveCanisterId, setArchiveCanisterId] = useState(null);
@@ -125,40 +126,67 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
         }
     };
 
-    // Fetch transactions from index canister
-    const fetchFromIndex = async () => {
+    // Fetch all transactions from index canister
+    const fetchAllFromIndex = async () => {
         try {
-            // indexCanisterId is already a Principal, no need to convert
             const indexActor = createSnsIndexActor(indexCanisterId);
             const account = {
                 owner: Principal.fromText(principalId),
                 subaccount: []
             };
             
-            const response = await indexActor.get_account_transactions({
-                account,
-                max_results: PAGE_SIZE,
-                start: page > 0 ? [page * PAGE_SIZE] : []
-            });
+            let allTxs = [];
+            let startIndex = 0;
+            let hasMore = true;
 
-            if (response.Ok) {
-                console.log("Transaction response:", response.Ok.transactions[0]); // Log first transaction for debugging
-                const filteredTransactions = filterTransactions(response.Ok.transactions);
-                setTransactions(filteredTransactions);
-                setTotalTransactions(Number(response.Ok.oldest_tx_id) + 1);
-            } else {
-                throw new Error(response.Err.message);
+            while (hasMore) {
+                console.log("Fetching transactions from index", startIndex);
+                const response = await indexActor.get_account_transactions({
+                    account,
+                    max_results: FETCH_SIZE,
+                    start: startIndex > 0 ? [BigInt(startIndex)] : []
+                });
+
+                if (!response.Ok) {
+                    throw new Error(response.Err.message);
+                }
+
+                const transactions = response.Ok.transactions;
+                allTxs = [...allTxs, ...transactions];
+                
+                // If we got less than the fetch size, we're done
+                if (transactions.length < FETCH_SIZE) {
+                    hasMore = false;
+                } else {
+                    startIndex += FETCH_SIZE;
+                }
             }
+
+            console.log("Total transactions fetched:", allTxs.length);
+            setAllTransactions(allTxs);
+            updateDisplayedTransactions(allTxs, 0, selectedType);
         } catch (err) {
             setError('Failed to fetch transactions from index');
             console.error('Error fetching from index:', err);
+        } finally {
+            setLoading(false);
         }
+    };
+
+    // Update displayed transactions based on page and filter
+    const updateDisplayedTransactions = (transactions, pageNum, type) => {
+        const filtered = type === TransactionType.ALL 
+            ? transactions 
+            : transactions.filter(tx => tx.transaction.kind === type);
+        
+        const start = pageNum * PAGE_SIZE;
+        const end = start + PAGE_SIZE;
+        setDisplayedTransactions(filtered.slice(start, end));
     };
 
     // Fetch transactions from archive canister
     const fetchFromArchive = async () => {
         try {
-            // archiveCanisterId is already a Principal, no need to convert
             const archiveActor = createSnsArchiveActor(archiveCanisterId);
             const response = await archiveActor.get_transactions({
                 start: BigInt(page * PAGE_SIZE),
@@ -167,7 +195,9 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
 
             const filteredTransactions = filterTransactions(response.transactions);
             setTransactions(filteredTransactions);
-            // You might need to implement a way to get total transactions from archive
+            
+            // If we got less than a full page, we know we've reached the end
+            setHasMoreArchiveTransactions(filteredTransactions.length === PAGE_SIZE);
         } catch (err) {
             setError('Failed to fetch transactions from archive');
             console.error('Error fetching from archive:', err);
@@ -180,29 +210,34 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
         return txs.filter(tx => tx.transaction.kind === selectedType);
     };
 
-    // Fetch transactions based on whether principalId is provided
-    const fetchTransactions = async () => {
-        setLoading(true);
-        setError(null);
+    // Effect to fetch canister IDs
+    useEffect(() => {
+        fetchCanisterIds();
+    }, [snsRootCanisterId]);
 
-        try {
-            if (principalId && indexCanisterId) {
-                await fetchFromIndex();
-            } else if (archiveCanisterId) {
-                await fetchFromArchive();
-            }
-        } finally {
-            setLoading(false);
+    // Effect to fetch transactions when we have the canister IDs
+    useEffect(() => {
+        if (indexCanisterId && principalId) {
+            fetchAllFromIndex();
+        } else if (archiveCanisterId && !principalId) {
+            fetchFromArchive();
         }
-    };
+    }, [indexCanisterId, archiveCanisterId, principalId]);
+
+    // Effect to update displayed transactions when page or filter changes
+    useEffect(() => {
+        if (principalId) {
+            updateDisplayedTransactions(allTransactions, page, selectedType);
+        }
+    }, [page, selectedType, allTransactions]);
 
     // Add effect to fetch principal display info
     useEffect(() => {
         const fetchPrincipalInfo = async () => {
-            if (!transactions.length) return;
+            if (!displayedTransactions.length) return;
 
             const uniquePrincipals = new Set();
-            transactions.forEach(tx => {
+            displayedTransactions.forEach(tx => {
                 // Add from principals
                 if (tx.transaction.transfer?.[0]?.from?.owner) {
                     uniquePrincipals.add(tx.transaction.transfer[0].from.owner.toString());
@@ -236,17 +271,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
         };
 
         fetchPrincipalInfo();
-    }, [transactions, identity]);
-
-    useEffect(() => {
-        fetchCanisterIds();
-    }, [snsRootCanisterId]);
-
-    useEffect(() => {
-        if (indexCanisterId || archiveCanisterId) {
-            fetchTransactions();
-        }
-    }, [indexCanisterId, archiveCanisterId, page, selectedType, principalId]);
+    }, [displayedTransactions, identity]);
 
     const formatAmount = (amount, decimals = 8) => {
         const value = Number(amount) / Math.pow(10, decimals);
@@ -298,7 +323,7 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                     </tr>
                 </thead>
                 <tbody>
-                    {transactions.map((tx, index) => {
+                    {(principalId ? displayedTransactions : allTransactions).map((tx, index) => {
                         console.log("Processing transaction:", tx);
                         
                         // Extract transaction details safely
@@ -402,15 +427,24 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                     Previous
                 </button>
                 <span style={{ color: '#fff', alignSelf: 'center' }}>
-                    Page {page + 1}
+                    Page {page + 1} of {Math.ceil((principalId ? 
+                        (selectedType === TransactionType.ALL ? allTransactions.length : 
+                        allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
+                        : allTransactions.length) / PAGE_SIZE) || 1}
                 </span>
                 <button
                     style={{
                         ...styles.pageButton,
-                        ...(transactions.length < PAGE_SIZE ? styles.pageButtonDisabled : {})
+                        ...((page + 1) * PAGE_SIZE >= (principalId ? 
+                            (selectedType === TransactionType.ALL ? allTransactions.length : 
+                            allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
+                            : allTransactions.length) ? styles.pageButtonDisabled : {})
                     }}
                     onClick={() => setPage(p => p + 1)}
-                    disabled={transactions.length < PAGE_SIZE}
+                    disabled={(page + 1) * PAGE_SIZE >= (principalId ? 
+                        (selectedType === TransactionType.ALL ? allTransactions.length : 
+                        allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
+                        : allTransactions.length)}
                 >
                     Next
                 </button>
