@@ -137,6 +137,29 @@ const styles = {
     headerDivider: {
         color: '#666',
         userSelect: 'none'
+    },
+    filterInput: {
+        backgroundColor: '#3a3a3a',
+        border: '1px solid #4a4a4a',
+        borderRadius: '4px',
+        padding: '8px 12px',
+        color: '#fff',
+        width: '200px'
+    },
+    filterGroup: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
+    },
+    filterLabel: {
+        color: '#888',
+        fontSize: '14px'
+    },
+    filtersContainer: {
+        display: 'flex',
+        gap: '20px',
+        alignItems: 'center',
+        marginBottom: '20px'
     }
 };
 
@@ -164,6 +187,8 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
         key: 'timestamp',
         direction: 'desc'
     });
+    const [fromFilter, setFromFilter] = useState('');
+    const [toFilter, setToFilter] = useState('');
 
     // Fetch canister IDs from SNS root
     const fetchCanisterIds = async () => {
@@ -438,19 +463,64 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
         }));
     };
 
-    // Update displayed transactions to include sorting
+    // Add helper function to check if a principal matches the filter
+    const matchesPrincipalFilter = (principal, filter, displayInfo) => {
+        if (!filter) return true;
+        if (!principal) return false;
+
+        const filterLower = filter.toLowerCase();
+        const principalStr = principal.toString().toLowerCase();
+
+        // Check principal ID
+        if (principalStr.includes(filterLower)) return true;
+
+        // Check name and nickname if available
+        if (displayInfo) {
+            // Handle name which might be an array or string
+            const name = Array.isArray(displayInfo.name) ? displayInfo.name[0] : displayInfo.name;
+            if (name && typeof name === 'string' && name.toLowerCase().includes(filterLower)) return true;
+
+            // Handle nickname which might be an array or string
+            const nickname = Array.isArray(displayInfo.nickname) ? displayInfo.nickname[0] : displayInfo.nickname;
+            if (nickname && typeof nickname === 'string' && nickname.toLowerCase().includes(filterLower)) return true;
+        }
+
+        return false;
+    };
+
+    // Update the filtering logic in useEffect
     useEffect(() => {
         if (principalId) {
             const filtered = selectedType === TransactionType.ALL 
                 ? allTransactions 
                 : allTransactions.filter(tx => tx.transaction.kind === selectedType);
+
+            // Apply from/to filters
+            const filteredByAddress = filtered.filter(tx => {
+                const fromPrincipal = getFromPrincipal(tx);
+                const toPrincipal = getToPrincipal(tx);
+
+                const fromMatches = matchesPrincipalFilter(
+                    fromPrincipal,
+                    fromFilter,
+                    fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null
+                );
+
+                const toMatches = matchesPrincipalFilter(
+                    toPrincipal,
+                    toFilter,
+                    toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null
+                );
+
+                return fromMatches && toMatches;
+            });
             
-            const sorted = sortTransactions(filtered);
+            const sorted = sortTransactions(filteredByAddress);
             const start = page * pageSize;
             const end = start + pageSize;
             setDisplayedTransactions(sorted.slice(start, end));
         }
-    }, [page, selectedType, allTransactions, pageSize, sortConfig]);
+    }, [page, selectedType, allTransactions, pageSize, sortConfig, fromFilter, toFilter, principalDisplayInfo]);
 
     // Render sort indicator
     const renderSortIndicator = (key) => {
@@ -470,19 +540,50 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
         <div style={styles.container}>
             <div style={styles.header}>
                 <h2>Transactions</h2>
-                <div style={styles.filters}>
-                    {Object.values(TransactionType).map(type => (
-                        <button
-                            key={type}
-                            style={{
-                                ...styles.filterButton,
-                                ...(selectedType === type ? styles.filterButtonActive : {})
+                <div style={styles.filtersContainer}>
+                    <div style={styles.filters}>
+                        {Object.values(TransactionType).map(type => (
+                            <button
+                                key={type}
+                                style={{
+                                    ...styles.filterButton,
+                                    ...(selectedType === type ? styles.filterButtonActive : {})
+                                }}
+                                onClick={() => {
+                                    setSelectedType(type);
+                                    setPage(0); // Reset to first page when changing filter
+                                }}
+                            >
+                                {type.charAt(0).toUpperCase() + type.slice(1)}
+                            </button>
+                        ))}
+                    </div>
+                    <div style={styles.filterGroup}>
+                        <span style={styles.filterLabel}>From:</span>
+                        <input
+                            type="text"
+                            value={fromFilter}
+                            onChange={(e) => {
+                                setFromFilter(e.target.value);
+                                setPage(0); // Reset to first page when changing filter
                             }}
-                            onClick={() => setSelectedType(type)}
-                        >
-                            {type.charAt(0).toUpperCase() + type.slice(1)}
-                        </button>
-                    ))}
+                            placeholder="Filter by sender"
+                            style={styles.filterInput}
+                        />
+                    </div>
+                    <div style={styles.filterGroup}>
+                        <span style={styles.filterLabel}>To:</span>
+                        <input
+                            type="text"
+                            value={toFilter}
+                            onChange={(e) => {
+                                setToFilter(e.target.value);
+                                setPage(0); // Reset to first page when changing filter
+                            }}
+                            placeholder="Filter by recipient"
+                            style={styles.filterInput}
+                        />
+                    </div>
                 </div>
             </div>
 
