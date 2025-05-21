@@ -11,6 +11,7 @@ import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { getSnsById, fetchAndCacheSnsData } from '../utils/SnsUtils';
 import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { HttpAgent } from '@dfinity/agent';
+import TransactionList from '../components/TransactionList';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -726,6 +727,12 @@ export default function PrincipalPage() {
                         </div>
                     )}
                 </div>
+
+                {/* Add Transaction List */}
+                <TransactionList 
+                    snsRootCanisterId={searchParams.get('sns') || SNEED_SNS_ROOT}
+                    principalId={stablePrincipalId.current?.toString()}
+                />
             </main>
             <style>{spinKeyframes}</style>
             <ConfirmationModal
