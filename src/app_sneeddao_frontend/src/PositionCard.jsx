@@ -80,9 +80,9 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
             <div className="locks-section">
                 <div className="locks-header">Lock Expires</div>
                 <div className="lock-item">
-                {isLockedPosition(positionDetails)
-                    ? bigDateToReadable(positionDetails.lockInfo.expiry)
-                    : 'No lock'}
+                    {isLockedPosition(positionDetails)
+                        ? bigDateToReadable(positionDetails.lockInfo.expiry)
+                        : 'No lock'}
                 </div>
                 {positionDetails.owner && (
                     <>
@@ -98,7 +98,29 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                 )}
                 {positionDetails.icpSwapOwner && (
                     <>
-                        <div className="locks-header" style={{ marginTop: '10px', color: '#888' }}>ICPSwap Owner</div>
+                        <div className="locks-header" style={{ 
+                            marginTop: '10px', 
+                            color: '#888',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                        }}>
+                            <span>ICPSwap Owner</span>
+                            {positionDetails.owner && (
+                                <span style={{
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '12px',
+                                    backgroundColor: positionDetails.ownershipMatches ? 'rgba(46, 204, 113, 0.2)' : 'rgba(231, 76, 60, 0.2)',
+                                    color: positionDetails.ownershipMatches ? '#2ecc71' : '#e74c3c',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}>
+                                    {positionDetails.ownershipMatches ? '✓ Match!' : '✗ Mismatch!'}
+                                </span>
+                            )}
+                        </div>
                         <div className="lock-item" style={{ 
                             display: 'flex', 
                             alignItems: 'center', 

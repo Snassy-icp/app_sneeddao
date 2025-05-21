@@ -10,11 +10,13 @@ import PositionCard from './PositionCard';
 import './Wallet.css';
 import { lockFromLocks } from './utils/PositionUtils';
 import Header from './components/Header';
+import { useAuth } from './AuthContext';
 
 function PositionLock() {
     const [positions, setPositions] = useState([]);
     const [showSpinner, setShowSpinner] = useState(true);
     const location = useLocation();
+    const { identity } = useAuth();
 
     useEffect(() => {
         const searchParams = new URLSearchParams(location.search);
@@ -36,7 +38,9 @@ function PositionLock() {
             setShowSpinner(true);
             const backendActor = createBackendActor(backendCanisterId);
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId);
-            const swapActor = createIcpSwapActor(swap_canister_id, { agentOptions: { identity } });
+            const swapActor = createIcpSwapActor(swap_canister_id, { 
+                agentOptions: identity ? { identity } : undefined 
+            });
 
             const swap_meta = await swapActor.metadata();
 
@@ -88,12 +92,28 @@ function PositionLock() {
             var position_locks = await sneedLockActor.get_swap_position_locks(Principal.fromText(swap_canister_id));
 
             const positions_detailed = await Promise.all(positions.map(async (position) => {
-
                 const lock = lockFromLocks(position.id, position_locks);
-
+                
                 // Get the ICPSwap owner
                 const icpSwapOwnerResult = await swapActor.getUserByPositionId(position.id);
                 const icpSwapOwner = icpSwapOwnerResult.ok || null;
+
+                // If we have a SneedLock owner, check if they own this position in ICPSwap
+                let ownershipMatches = false;
+                if (lock && lock[0]) {
+                    try {
+                        // Create a new actor for this specific call to ensure we have the right identity
+                        const ownerCheckActor = createIcpSwapActor(swap_canister_id, { 
+                            agentOptions: identity ? { identity } : undefined 
+                        });
+                        const ownerPositions = await ownerCheckActor.getUserPositionIdsByPrincipal(lock[0]);
+                        if (ownerPositions.ok) {
+                            ownershipMatches = ownerPositions.ok.some(pos => pos === position.id);
+                        }
+                    } catch (error) {
+                        console.error('Error checking position ownership:', error);
+                    }
+                }
 
                 var position_detailed = {
                     swap_canister_id,
@@ -118,7 +138,8 @@ function PositionLock() {
                         frontendOwnership: null,
                         lockInfo: lock ? lock[2] : null,
                         owner: lock ? lock[0] : null,
-                        icpSwapOwner
+                        icpSwapOwner,
+                        ownershipMatches
                     }
                 }
                 return position_detailed;
