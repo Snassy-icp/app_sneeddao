@@ -99,14 +99,11 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
     const fetchCanisterIds = async () => {
         try {
             const snsRootActor = createSnsRootActor(snsRootCanisterId);
-            const response = await snsRootActor.get_sns_canisters_summary({});
+            const response = await snsRootActor.list_sns_canisters();
             
-            // Find index and archive canisters
-            const index = response.canisters.find(c => c.canister_type === 'INDEX');
-            const archive = response.canisters.find(c => c.canister_type === 'ARCHIVE');
-            
-            if (index) setIndexCanisterId(index.canister_id);
-            if (archive) setArchiveCanisterId(archive.canister_id);
+            // Set the index and archive canister IDs
+            setIndexCanisterId(response.index_canister_id);
+            setArchiveCanisterId(response.archive_canister_id);
         } catch (err) {
             setError('Failed to fetch canister IDs');
             console.error('Error fetching canister IDs:', err);
