@@ -80,6 +80,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                             <PrincipalDisplay 
                                 principal={positionDetails.owner}
                                 showCopyButton={true}
+                                displayInfo={getPrincipalDisplayInfo(positionDetails.owner)}
                             />
                         </div>
                     </>
