@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
+import { Principal } from '@dfinity/principal';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'external/sneed_lock';
 import { createActor as createNeutriniteDappActor, canisterId as neutriniteCanisterId } from 'external/neutrinite_dapp';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
@@ -89,13 +90,39 @@ const styles = {
     },
 };
 
-function StatCard({ value, label }) {
+const LoadingSpinner = () => (
+    <div style={{
+        display: 'inline-block',
+        width: '20px',
+        height: '20px',
+        border: '2px solid #f3f3f3',
+        borderTop: '2px solid #3498db',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite',
+    }}>
+        <style>
+            {`
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `}
+        </style>
+    </div>
+);
+
+function StatCard({ value, label, isLoading }) {
     const [displayValue, setDisplayValue] = useState('0');
     
     useEffect(() => {
+        if (isLoading) {
+            setDisplayValue(null);
+            return;
+        }
+
         let start = 0;
         const end = parseFloat(value.replace(/[^0-9.-]+/g, ''));
-        if (isNaN(end)) {
+        if (isNaN(end) || end === 0) {
             setDisplayValue(value);
             return;
         }
@@ -119,11 +146,13 @@ function StatCard({ value, label }) {
 
         timer = setInterval(updateNumber, 16);
         return () => clearInterval(timer);
-    }, [value]);
+    }, [value, isLoading]);
 
     return (
         <div style={styles.stat}>
-            <div style={styles.statValue}>{displayValue}</div>
+            <div style={styles.statValue}>
+                {isLoading ? <LoadingSpinner /> : displayValue}
+            </div>
             <div style={styles.statLabel}>{label}</div>
         </div>
     );
@@ -139,19 +168,20 @@ function Products() {
         activeUsers: new Set(),
         totalValue: 0,
     });
+    const [isLoading, setIsLoading] = useState(true);
     const [conversionRates, setConversionRates] = useState({});
-    const [tokenMetadata, setTokenMetadata] = useState({});
     const swapCanisterCache = {};
 
     const formatUSD = (value) => {
         if (value === undefined || value === null || isNaN(value)) return '$0.00';
-        return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        return `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
 
     const getUSDValue = (amount, decimals, symbol) => {
         if (!amount || !decimals || !symbol || !conversionRates[symbol]) return 0;
-        const normalizedAmount = Number(amount) / Math.pow(10, decimals);
-        return normalizedAmount * conversionRates[symbol];
+        const normalizedAmount = Number(amount) / Math.pow(10, Number(decimals));
+        const rate = Number(conversionRates[symbol]);
+        return normalizedAmount * rate;
     };
 
     const fetchConversionRates = async () => {
@@ -178,14 +208,19 @@ function Products() {
     };
 
     async function fetchPositionDetails(swapCanisterId) {
-        if (swapCanisterCache[swapCanisterId.toText()]) {
-            return swapCanisterCache[swapCanisterId.toText()];
+        const canisterId = swapCanisterId.toText();
+        if (swapCanisterCache[canisterId]) {
+            return swapCanisterCache[canisterId];
         }
 
         const swapActor = createIcpSwapActor(swapCanisterId, { agentOptions: { identity } });
 
         try {
-            const tokenMeta = await swapActor.getTokenMeta();
+            const [tokenMeta, positionsResult] = await Promise.all([
+                swapActor.getTokenMeta(),
+                swapActor.getUserPositionWithTokenAmount(0, 1000) // Increased limit to avoid pagination
+            ]);
+
             const token0Decimals = tokenMeta.token0[2][1].Nat;
             const token1Decimals = tokenMeta.token1[2][1].Nat;
             const token0Symbol = tokenMeta.token0[1][1].Text;
@@ -193,21 +228,8 @@ function Products() {
             const token0Id = tokenMeta.token0[0];
             const token1Id = tokenMeta.token1[0];
 
-            let offset = 0;
-            const limit = 10;
-            let allPositions = [];
-            let hasMorePositions = true;
-
-            while (hasMorePositions) {
-                const positionsResult = await swapActor.getUserPositionWithTokenAmount(offset, limit);
-                const positions = positionsResult.ok.content;
-                allPositions = [...allPositions, ...positions];
-                offset += limit;
-                hasMorePositions = positions.length === limit;
-            }
-
             const data = {
-                positions: allPositions,
+                positions: positionsResult.ok.content,
                 token0Decimals,
                 token1Decimals,
                 token0Symbol,
@@ -216,69 +238,53 @@ function Products() {
                 token1Id
             };
 
-            swapCanisterCache[swapCanisterId.toText()] = data;
+            swapCanisterCache[canisterId] = data;
             return data;
         } catch (error) {
-            console.error(`Error fetching data for swap canister ${swapCanisterId.toText()}:`, error);
-            swapCanisterCache[swapCanisterId.toText()] = { error: true };
+            console.error(`Error fetching data for swap canister ${canisterId}:`, error);
+            swapCanisterCache[canisterId] = { error: true };
             return { error: true };
         }
     }
 
-    const fetchTokenMetadata = async (tokenId, whitelistedTokenMap) => {
-        if (tokenMetadata[tokenId]) return;
-        
-        const token = whitelistedTokenMap.get(tokenId);
-        if (!token) return;
-
-        try {
-            const ledgerActor = createLedgerActor(token.ledger_id, { agentOptions: { identity } });
-            const metadata = await ledgerActor.icrc1_metadata();
-            const logo = getTokenLogo(metadata);
-            setTokenMetadata(prev => ({
-                ...prev,
-                [tokenId]: {
-                    ...token,
-                    logo
-                }
-            }));
-        } catch (error) {
-            console.error(`Error fetching metadata for token ${tokenId}:`, error);
-        }
-    };
-
     const fetchSneedLockStats = async () => {
+        setIsLoading(true);
+        console.time('Total fetchSneedLockStats');
         try {
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             
+            // Fetch conversion rates first
+            console.time('Fetch conversion rates');
+            await fetchConversionRates();
+            console.timeEnd('Fetch conversion rates');
+            
             // Fetch all locks and whitelisted tokens
+            console.time('Fetch locks and tokens');
             const [tokenLocks, positionLocks, whitelistedTokens] = await Promise.all([
                 sneedLockActor.get_all_token_locks(),
                 sneedLockActor.get_all_position_locks(),
                 backendActor.get_whitelisted_tokens()
             ]);
+            console.timeEnd('Fetch locks and tokens');
+            console.log('Token locks count:', tokenLocks.length);
+            console.log('Position locks count:', positionLocks.length);
+            console.log('Whitelisted tokens count:', whitelistedTokens.length);
 
             // Calculate unique users
+            console.time('Calculate users');
             const uniqueUsers = new Set();
             tokenLocks.forEach(lock => uniqueUsers.add(lock[0].toText()));
             positionLocks.forEach(lock => uniqueUsers.add(lock[0].toText()));
+            console.timeEnd('Calculate users');
 
             // Create a map of whitelisted tokens
+            console.time('Create token map');
             const whitelistedTokenMap = new Map(whitelistedTokens.map(token => [token.ledger_id.toText(), token]));
-
-            // Collect unique token IDs from locks
-            const uniqueTokenIds = new Set();
-            tokenLocks.forEach(lock => uniqueTokenIds.add(lock[1].toText()));
-            
-            // Fetch metadata only for tokens in locks
-            await Promise.all(
-                Array.from(uniqueTokenIds).map(tokenId => 
-                    fetchTokenMetadata(tokenId, whitelistedTokenMap)
-                )
-            );
+            console.timeEnd('Create token map');
 
             // Calculate total value from token locks
+            console.time('Calculate token locks value');
             let tokenLocksValue = 0;
             for (const lock of tokenLocks) {
                 const tokenId = lock[1].toText();
@@ -291,23 +297,43 @@ function Products() {
                     }
                 }
             }
+            console.timeEnd('Calculate token locks value');
 
-            // Calculate total value from position locks
+            // Group position locks by swap canister
+            console.time('Calculate position locks value');
+            const positionsByCanister = new Map();
+            positionLocks.forEach(lock => {
+                const canisterId = lock[1].toText();
+                if (!positionsByCanister.has(canisterId)) {
+                    positionsByCanister.set(canisterId, []);
+                }
+                positionsByCanister.get(canisterId).push(lock);
+            });
+
+            // Fetch all position details in parallel
+            const canisterDetailsPromises = Array.from(positionsByCanister.keys()).map(canisterId => 
+                fetchPositionDetails(Principal.fromText(canisterId))
+            );
+            
+            const canisterDetails = await Promise.all(canisterDetailsPromises);
+            const canisterDataMap = new Map(
+                Array.from(positionsByCanister.keys()).map((canisterId, index) => [
+                    canisterId,
+                    canisterDetails[index]
+                ])
+            );
+
+            // Calculate position values
             let positionLocksValue = 0;
-            for (const lock of positionLocks) {
-                const swapCanisterId = lock[1];
-                const positionId = lock[2].position_id;
-                const token0 = lock[2].token0;
-                const token1 = lock[2].token1;
+            for (const [canisterId, locks] of positionsByCanister) {
+                const canisterData = canisterDataMap.get(canisterId);
+                if (!canisterData || canisterData.error) continue;
 
-                // Add these tokens to metadata fetch queue
-                await Promise.all([
-                    fetchTokenMetadata(token0.toText(), whitelistedTokenMap),
-                    fetchTokenMetadata(token1.toText(), whitelistedTokenMap)
-                ]);
+                for (const lock of locks) {
+                    const positionId = lock[2].position_id;
+                    const token0 = lock[2].token0;
+                    const token1 = lock[2].token1;
 
-                const canisterData = await fetchPositionDetails(swapCanisterId);
-                if (!canisterData.error) {
                     const matchingPosition = canisterData.positions.find(p => p.id === positionId);
                     if (matchingPosition) {
                         // Add token0 value
@@ -334,7 +360,9 @@ function Products() {
                     }
                 }
             }
+            console.timeEnd('Calculate position locks value');
 
+            console.time('Set final stats');
             setSneedLockStats({
                 totalTokenLocks: tokenLocks.length,
                 totalPositionLocks: positionLocks.length,
@@ -343,24 +371,26 @@ function Products() {
                 activeUsers: uniqueUsers.size,
                 totalValue: tokenLocksValue + positionLocksValue
             });
+            console.timeEnd('Set final stats');
 
         } catch (error) {
             console.error('Error fetching SneedLock stats:', error);
+        } finally {
+            setIsLoading(false);
+            console.timeEnd('Total fetchSneedLockStats');
         }
     };
 
     useEffect(() => {
-        fetchConversionRates();
         fetchSneedLockStats();
         
         // Refresh data every 5 minutes
-        const interval = setInterval(() => {
-            fetchConversionRates();
-            fetchSneedLockStats();
-        }, 5 * 60 * 1000);
+        const interval = setInterval(fetchSneedLockStats, 5 * 60 * 1000);
 
         return () => clearInterval(interval);
     }, []);
+
+    const isValueLoading = (value) => isLoading || value === 0;
 
     return (
         <div className="page-container">
@@ -382,27 +412,33 @@ function Products() {
                             <div style={styles.statsGrid}>
                                 <StatCard 
                                     value={sneedLockStats.totalTokenLocks.toString()} 
-                                    label="Token Locks" 
+                                    label="Token Locks"
+                                    isLoading={isValueLoading(sneedLockStats.totalTokenLocks)}
                                 />
                                 <StatCard 
                                     value={sneedLockStats.totalPositionLocks.toString()} 
-                                    label="Position Locks" 
+                                    label="Position Locks"
+                                    isLoading={isValueLoading(sneedLockStats.totalPositionLocks)}
                                 />
                                 <StatCard 
                                     value={formatUSD(sneedLockStats.tokenLocksValue)} 
-                                    label="Token Locks Value" 
+                                    label="Token Locks Value"
+                                    isLoading={isValueLoading(sneedLockStats.tokenLocksValue)}
                                 />
                                 <StatCard 
                                     value={formatUSD(sneedLockStats.positionLocksValue)} 
-                                    label="Position Locks Value" 
+                                    label="Position Locks Value"
+                                    isLoading={isValueLoading(sneedLockStats.positionLocksValue)}
                                 />
                                 <StatCard 
                                     value={sneedLockStats.activeUsers.toString()} 
-                                    label="Active Users" 
+                                    label="Active Users"
+                                    isLoading={isValueLoading(sneedLockStats.activeUsers)}
                                 />
                                 <StatCard 
                                     value={formatUSD(sneedLockStats.totalValue)} 
-                                    label="Total Value Locked" 
+                                    label="Total Value Locked"
+                                    isLoading={isValueLoading(sneedLockStats.totalValue)}
                                 />
                             </div>
                             
