@@ -3,6 +3,7 @@ import { Principal } from '@dfinity/principal';
 import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createSnsArchiveActor } from 'external/sns_archive';
 import { createActor as createSnsIndexActor } from 'external/sns_index';
+import { PrincipalDisplay } from '../utils/PrincipalUtils';
 
 const PAGE_SIZE = 10;
 
@@ -74,6 +75,16 @@ const styles = {
         justifyContent: 'center',
         padding: '20px',
         color: '#888'
+    },
+    principalCell: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '4px'
+    },
+    subaccount: {
+        fontSize: '12px',
+        color: '#888',
+        wordBreak: 'break-all'
     }
 };
 
@@ -236,10 +247,9 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                 <thead>
                     <tr>
                         <th style={styles.th}>Type</th>
-                        <th style={styles.th}>From</th>
-                        <th style={styles.th}>To</th>
-                        <th style={styles.th}>Amount</th>
-                        <th style={styles.th}>Time</th>
+                        <th style={{...styles.th, width: '30%'}}>From / To</th>
+                        <th style={{...styles.th, width: '15%'}}>Amount</th>
+                        <th style={{...styles.th, width: '20%'}}>Time</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -251,12 +261,13 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                         let fromPrincipal = null;
                         let toPrincipal = null;
                         let amount = null;
+                        let transfer = null;
 
                         // Handle different transaction types
                         switch (txType) {
                             case 'transfer':
                                 if (tx.transaction.transfer && tx.transaction.transfer.length > 0) {
-                                    const transfer = tx.transaction.transfer[0];
+                                    transfer = tx.transaction.transfer[0];
                                     fromPrincipal = transfer.from?.owner;
                                     toPrincipal = transfer.to?.owner;
                                     amount = transfer.amount;
@@ -289,11 +300,36 @@ function TransactionList({ snsRootCanisterId, principalId = null }) {
                         return (
                             <tr key={index}>
                                 <td style={styles.td}>{txType}</td>
-                                <td style={styles.td}>
-                                    {fromPrincipal ? fromPrincipal.toString() : '-'}
-                                </td>
-                                <td style={styles.td}>
-                                    {toPrincipal ? toPrincipal.toString() : '-'}
+                                <td style={{...styles.td, ...styles.principalCell}}>
+                                    {fromPrincipal && (
+                                        <div>
+                                            <span style={{color: '#888'}}>From: </span>
+                                            <PrincipalDisplay 
+                                                principal={fromPrincipal}
+                                                showCopyButton={false}
+                                            />
+                                            {transfer?.from?.subaccount?.length > 0 && (
+                                                <div style={styles.subaccount}>
+                                                    Subaccount: {transfer.from.subaccount[0]}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    {toPrincipal && (
+                                        <div style={{marginTop: fromPrincipal ? '8px' : '0'}}>
+                                            <span style={{color: '#888'}}>To: </span>
+                                            <PrincipalDisplay 
+                                                principal={toPrincipal}
+                                                showCopyButton={false}
+                                            />
+                                            {transfer?.to?.subaccount?.length > 0 && (
+                                                <div style={styles.subaccount}>
+                                                    Subaccount: {transfer.to.subaccount[0]}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    {!fromPrincipal && !toPrincipal && '-'}
                                 </td>
                                 <td style={styles.td}>
                                     {amount ? formatAmount(amount) : '-'}
