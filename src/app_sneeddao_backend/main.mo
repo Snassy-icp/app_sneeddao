@@ -936,17 +936,88 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     }
   };
 
+  // Helper function to check if caller owns a principal
+  private func is_principal_owner(caller : Principal, principal : Principal, sns_root_canister_id : ?Principal) : async Bool {
+    // Case 1: If caller is the principal, they own it
+    if (Principal.equal(caller, principal)) {
+      return true;
+    };
+
+    // Case 2: Check if caller has a hotkeyed neuron where principal is the owner
+    switch (sns_root_canister_id) {
+      case (?sns_root_canister_id) {
+        try {
+          let governance_canister_id = await get_sns_governance_canister(sns_root_canister_id);
+          let sns_governance = actor (Principal.toText(governance_canister_id)) : actor {
+            list_neurons : shared query ({
+              of_principal : ?Principal;
+              limit : Nat32;
+              start_page_at : ?NeuronId;
+            }) -> async {
+              neurons : [{
+                id : ?NeuronId;
+                permissions : [{
+                  principal : ?Principal;
+                  permission_type : [Int32];
+                }];
+              }];
+            };        
+          };
+
+          let response = await sns_governance.list_neurons({
+            of_principal = ?caller;
+            limit = 100;
+            start_page_at = null;
+          });
+
+          // For each neuron
+          for (neuron in response.neurons.vals()) {
+            // Find the principal with the most permissions
+            var max_permissions = 0;
+            var owner_principal : ?Principal = null;
+
+            for (permission in neuron.permissions.vals()) {
+              let perm_count = permission.permission_type.size();
+              if (perm_count > max_permissions) {
+                max_permissions := perm_count;
+                owner_principal := permission.principal;
+              };
+            };
+
+            // If the target principal is the owner of this neuron, caller has ownership
+            switch (owner_principal) {
+              case (?p) {
+                if (Principal.equal(p, principal)) {
+                  return true;
+                };
+              };
+              case null {};
+            };
+          };
+        } catch (e) {
+          // If there's an error checking neuron ownership, default to false
+          return false;
+        };
+      };
+      case null {
+        return false;
+      };
+    };
+
+    false
+  };
+
   // Principal name management
   public shared ({ caller }) func set_principal_name(name : Text) : async Result.Result<Text, Text> {
-    await set_principal_name_impl(caller, caller, name)
+    await set_principal_name_impl(caller, caller, name, null)
   };
 
-  public shared ({ caller }) func set_principal_name_for(principal : Principal, name : Text) : async Result.Result<Text, Text> {
-    await set_principal_name_impl(caller, principal, name)
+  public shared ({ caller }) func set_principal_name_for(principal : Principal, name : Text, sns_root_canister_id : ?Principal) : async Result.Result<Text, Text> {
+    await set_principal_name_impl(caller, principal, name, sns_root_canister_id)
   };
 
   // Principal name management
-  private func set_principal_name_impl(caller : Principal, principal : Principal, name : Text) : async Result.Result<Text, Text> {
+  private func set_principal_name_impl(caller : Principal, principal : Principal, name : Text, sns_root_canister_id : ?Principal) : async Result.Result<Text, Text> {
       if (Principal.isAnonymous(caller)) {
           return #err("Anonymous caller not allowed");
       };
@@ -968,6 +1039,12 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
           };
       };
 
+      // Check ownership
+      let is_owner = await is_principal_owner(caller, principal, sns_root_canister_id );
+      if (not is_owner and not is_admin(caller)) {
+          return #err("Caller is not authorized to set name for this principal");
+      };
+
       // Validate name format (unless it's empty)
       if (name != "") {
           switch (await* validate_name_text(name)) {
@@ -987,8 +1064,8 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
 
       // Check name uniqueness (only if setting a new name)
       if (name != "") {
-          for ((principal, (existing_name, _)) in principal_names.entries()) {
-              if (Text.equal(existing_name, name) and principal != principal) {
+          for ((existing_principal, (existing_name, _)) in principal_names.entries()) {
+              if (Text.equal(existing_name, name) and not Principal.equal(existing_principal, principal)) {
                   return #err("Name is already taken by another principal");
               };
           };
