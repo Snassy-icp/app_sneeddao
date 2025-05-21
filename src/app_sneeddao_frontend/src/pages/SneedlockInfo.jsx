@@ -951,9 +951,6 @@ function SneedlockInfo() {
                                                                         </a>
                                                                     </div>
                                                                 </div>
-                                                                <div>
-                                                                    Swap: {lock.swapCanisterId?.toString() || 'Unknown'}
-                                                                </div>
                                                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                                                                     <div>
                                                                         {formatAmount(lock.amount || 0n, token?.decimals || 8)} {token?.symbol || tokenKey}{' '}
