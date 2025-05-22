@@ -160,43 +160,60 @@ function Transaction() {
         decimals: 8
     });
 
-    // Move fetchTransaction outside useEffect
     const fetchTransaction = async () => {
-        if (!archiveCanisterId || !currentId) return;
+        if (!currentId || !snsRootCanisterId) return;
 
         setLoading(true);
         setError(null);
         try {
-            // Validate transaction ID
-            const parsedId = currentId.trim();
-            if (!parsedId) {
-                setError('Please enter a transaction ID');
-                setTransaction(null);
-                return;
+            const selectedSns = getSnsById(snsRootCanisterId);
+            if (!selectedSns) {
+                throw new Error('Selected SNS not found');
             }
 
-            // Try to convert to BigInt
-            let bigIntId;
-            try {
-                bigIntId = BigInt(parsedId);
-            } catch (e) {
-                setError('Invalid transaction ID format. Please enter a valid number.');
-                setTransaction(null);
-                return;
+            // First try to get the transaction directly from the ledger
+            const ledgerActor = createIcrc1Actor(selectedSns.canisters.ledger, {
+                agentOptions: { identity }
+            });
+
+            const response = await ledgerActor.get_transactions({
+                start: BigInt(currentId),
+                length: 1n
+            });
+
+            let tx = null;
+
+            // Check if the transaction is in the direct response
+            if (response.transactions.length > 0) {
+                tx = response.transactions[0];
+            }
+            // If not found in direct response, check if it's archived
+            else if (response.archived_transactions.length > 0) {
+                const archiveInfo = response.archived_transactions[0];
+                const archiveActor = createSnsArchiveActor(archiveInfo.callback.toString());
+                const archiveResponse = await archiveActor.get_transactions({
+                    start: BigInt(currentId),
+                    length: 1n
+                });
+                if (archiveResponse.transactions.length > 0) {
+                    tx = archiveResponse.transactions[0];
+                }
             }
 
-            const archiveActor = createSnsArchiveActor(archiveCanisterId);
-            const response = await archiveActor.get_transaction(bigIntId);
-            if (response.length === 0) {
-                setError('Transaction not found');
-                setTransaction(null);
-            } else {
-                console.log("Transaction:", response[0]);
-                setTransaction(response[0]);
+            if (!tx) {
+                throw new Error('Transaction not found');
             }
+
+            setTransaction(tx);
+            console.log('Full transaction details:', tx);
+            if (tx.transfer?.[0]) {
+                console.log('Transfer details:', tx.transfer[0]);
+                console.log('Amount structure:', tx.transfer[0].amount);
+            }
+
         } catch (err) {
-            setError('Failed to fetch transaction details');
             console.error('Error fetching transaction:', err);
+            setError('Failed to load transaction');
         } finally {
             setLoading(false);
         }
