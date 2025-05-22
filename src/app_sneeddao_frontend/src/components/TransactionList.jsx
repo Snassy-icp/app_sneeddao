@@ -282,16 +282,23 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
 
             // Debug log transaction structure
             console.log('Transaction structure sample:', txs[0]);
+            console.log('All transactions:', txs);
+
+            // Check for invalid transactions
+            const invalidTxs = txs.filter(tx => !tx || !tx.kind);
+            if (invalidTxs.length > 0) {
+                console.warn('Found invalid transactions:', invalidTxs);
+            }
 
             // Apply type filter if needed
             const filteredTxs = selectedType === TransactionType.ALL 
                 ? txs 
                 : txs.filter(tx => {
-                    if (!tx?.transaction?.kind) {
+                    if (!tx?.kind) {
                         console.warn('Transaction missing kind:', tx);
                         return false;
                     }
-                    return tx.transaction.kind === selectedType;
+                    return tx.kind === selectedType;
                 });
 
             // Apply from/to filters
@@ -346,25 +353,25 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
             const uniquePrincipals = new Set();
             transactions.forEach(tx => {
                 // Add from principals
-                if (tx.transaction.transfer?.[0]?.from?.owner) {
-                    uniquePrincipals.add(tx.transaction.transfer[0].from.owner.toString());
+                if (tx.transfer?.[0]?.from?.owner) {
+                    uniquePrincipals.add(tx.transfer[0].from.owner.toString());
                 }
-                if (tx.transaction.burn?.[0]?.from?.owner) {
-                    uniquePrincipals.add(tx.transaction.burn[0].from.owner.toString());
+                if (tx.burn?.[0]?.from?.owner) {
+                    uniquePrincipals.add(tx.burn[0].from.owner.toString());
                 }
-                if (tx.transaction.approve?.[0]?.from?.owner) {
-                    uniquePrincipals.add(tx.transaction.approve[0].from.owner.toString());
+                if (tx.approve?.[0]?.from?.owner) {
+                    uniquePrincipals.add(tx.approve[0].from.owner.toString());
                 }
 
                 // Add to/spender principals
-                if (tx.transaction.transfer?.[0]?.to?.owner) {
-                    uniquePrincipals.add(tx.transaction.transfer[0].to.owner.toString());
+                if (tx.transfer?.[0]?.to?.owner) {
+                    uniquePrincipals.add(tx.transfer[0].to.owner.toString());
                 }
-                if (tx.transaction.mint?.[0]?.to?.owner) {
-                    uniquePrincipals.add(tx.transaction.mint[0].to.owner.toString());
+                if (tx.mint?.[0]?.to?.owner) {
+                    uniquePrincipals.add(tx.mint[0].to.owner.toString());
                 }
-                if (tx.transaction.approve?.[0]?.spender?.owner) {
-                    uniquePrincipals.add(tx.transaction.approve[0].spender.owner.toString());
+                if (tx.approve?.[0]?.spender?.owner) {
+                    uniquePrincipals.add(tx.approve[0].spender.owner.toString());
                 }
             });
 
@@ -420,28 +427,12 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
 
             // Helper to safely get transaction timestamp
             const getTimestamp = (tx) => {
-                // Handle direct ledger transaction format
-                if (tx?.timestamp) {
-                    return Number(tx.timestamp);
-                }
-                // Handle indexed transaction format
-                if (tx?.transaction?.timestamp) {
-                    return Number(tx.transaction.timestamp);
-                }
-                return 0;
+                return Number(tx?.timestamp || 0);
             };
 
             // Helper to safely get transaction kind
             const getKind = (tx) => {
-                // Handle direct ledger transaction format
-                if (tx?.kind) {
-                    return tx.kind;
-                }
-                // Handle indexed transaction format
-                if (tx?.transaction?.kind) {
-                    return tx.transaction.kind;
-                }
-                return '';
+                return tx?.kind || '';
             };
 
             switch (sortConfig.key) {
@@ -485,7 +476,6 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
 
     // Update helper functions to handle both formats
     const getFromPrincipal = (tx) => {
-        // Handle direct ledger transaction format
         if (tx?.kind === 'transfer' && tx.transfer?.[0]?.from?.owner) {
             return tx.transfer[0].from.owner;
         }
@@ -495,23 +485,10 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         if (tx?.kind === 'approve' && tx.approve?.[0]?.from?.owner) {
             return tx.approve[0].from.owner;
         }
-
-        // Handle indexed transaction format
-        if (tx?.transaction?.transfer?.[0]?.from?.owner) {
-            return tx.transaction.transfer[0].from.owner;
-        }
-        if (tx?.transaction?.burn?.[0]?.from?.owner) {
-            return tx.transaction.burn[0].from.owner;
-        }
-        if (tx?.transaction?.approve?.[0]?.from?.owner) {
-            return tx.transaction.approve[0].from.owner;
-        }
-
         return null;
     };
 
     const getToPrincipal = (tx) => {
-        // Handle direct ledger transaction format
         if (tx?.kind === 'transfer' && tx.transfer?.[0]?.to?.owner) {
             return tx.transfer[0].to.owner;
         }
@@ -521,23 +498,10 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         if (tx?.kind === 'approve' && tx.approve?.[0]?.spender?.owner) {
             return tx.approve[0].spender.owner;
         }
-
-        // Handle indexed transaction format
-        if (tx?.transaction?.transfer?.[0]?.to?.owner) {
-            return tx.transaction.transfer[0].to.owner;
-        }
-        if (tx?.transaction?.mint?.[0]?.to?.owner) {
-            return tx.transaction.mint[0].to.owner;
-        }
-        if (tx?.transaction?.approve?.[0]?.spender?.owner) {
-            return tx.transaction.approve[0].spender.owner;
-        }
-
         return null;
     };
 
     const getTransactionAmount = (tx) => {
-        // Handle direct ledger transaction format
         if (tx?.kind === 'transfer' && tx.transfer?.[0]?.amount) {
             return BigInt(tx.transfer[0].amount);
         }
@@ -550,21 +514,6 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         if (tx?.kind === 'approve' && tx.approve?.[0]?.amount) {
             return BigInt(tx.approve[0].amount);
         }
-
-        // Handle indexed transaction format
-        if (tx?.transaction?.transfer?.[0]?.amount) {
-            return BigInt(tx.transaction.transfer[0].amount);
-        }
-        if (tx?.transaction?.mint?.[0]?.amount) {
-            return BigInt(tx.transaction.mint[0].amount);
-        }
-        if (tx?.transaction?.burn?.[0]?.amount) {
-            return BigInt(tx.transaction.burn[0].amount);
-        }
-        if (tx?.transaction?.approve?.[0]?.amount) {
-            return BigInt(tx.transaction.approve[0].amount);
-        }
-
         return 0n;
     };
 
@@ -758,11 +707,11 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                             </tr>
                         </thead>
                         <tbody>
-                            {transactions.map((tx, index) => {
+                            {transactions.filter(tx => tx !== null && tx !== undefined).map((tx, index) => {
                                 console.log("Processing transaction:", tx);
                                 
                                 // Extract transaction details safely
-                                const txType = tx.transaction.kind;
+                                const txType = tx?.kind;
                                 let fromPrincipal = null;
                                 let toPrincipal = null;
                                 let amount = null;
@@ -771,30 +720,30 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 // Handle different transaction types
                                 switch (txType) {
                                     case 'transfer':
-                                        if (tx.transaction.transfer && tx.transaction.transfer.length > 0) {
-                                            transfer = tx.transaction.transfer[0];
+                                        if (tx.transfer && tx.transfer.length > 0) {
+                                            transfer = tx.transfer[0];
                                             fromPrincipal = transfer.from?.owner;
                                             toPrincipal = transfer.to?.owner;
                                             amount = transfer.amount;
                                         }
                                         break;
                                     case 'mint':
-                                        if (tx.transaction.mint && tx.transaction.mint.length > 0) {
-                                            const mint = tx.transaction.mint[0];
+                                        if (tx.mint && tx.mint.length > 0) {
+                                            const mint = tx.mint[0];
                                             toPrincipal = mint.to?.owner;
                                             amount = mint.amount;
                                         }
                                         break;
                                     case 'burn':
-                                        if (tx.transaction.burn && tx.transaction.burn.length > 0) {
-                                            const burn = tx.transaction.burn[0];
+                                        if (tx.burn && tx.burn.length > 0) {
+                                            const burn = tx.burn[0];
                                             fromPrincipal = burn.from?.owner;
                                             amount = burn.amount;
                                         }
                                         break;
                                     case 'approve':
-                                        if (tx.transaction.approve && tx.transaction.approve.length > 0) {
-                                            const approve = tx.transaction.approve[0];
+                                        if (tx.approve && tx.approve.length > 0) {
+                                            const approve = tx.approve[0];
                                             fromPrincipal = approve.from?.owner;
                                             toPrincipal = approve.spender?.owner;
                                             amount = approve.amount;
