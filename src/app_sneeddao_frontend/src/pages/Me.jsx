@@ -40,7 +40,8 @@ export default function Me() {
     const { identity } = useAuth();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || '');
+    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
+    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || SNEED_SNS_ROOT);
     const [snsList, setSnsList] = useState([]);
     const [neurons, setNeurons] = useState([]);
     const [error, setError] = useState(null);
@@ -1045,12 +1046,14 @@ export default function Me() {
                 )}
 
                 {/* Transactions Section */}
-                <TransactionList 
-                    snsRootCanisterId={selectedSnsRoot}
-                    principalId={identity?.getPrincipal().toString()}
-                    isCollapsed={isTransactionsCollapsed}
-                    onToggleCollapse={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
-                />
+                {selectedSnsRoot && (
+                    <TransactionList 
+                        snsRootCanisterId={selectedSnsRoot}
+                        principalId={identity?.getPrincipal().toString()}
+                        isCollapsed={isTransactionsCollapsed}
+                        onToggleCollapse={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
+                    />
+                )}
             </main>
             <style>{spinKeyframes}</style>
             <ConfirmationModal
