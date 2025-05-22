@@ -47,6 +47,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Partners', path: '/partners' },
                 { name: 'Proposals', path: '/proposals' },
                 { name: 'Neurons', path: '/neurons' },
+                { name: 'Transactions', path: '/transactions' },
                 { name: 'Disclaimer', path: '/disclaimer' }
             ]
         },

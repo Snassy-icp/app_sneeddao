@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Principal } from '@dfinity/principal';
 import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createSnsArchiveActor } from 'external/sns_archive';
-import { createActor as createSnsIndexActor } from 'external/sns_index';
+import { createActor as createSnsLedgerActor } from 'external/icrc1_ledger';
 import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import { useAuth } from '../AuthContext';
 import { Link } from 'react-router-dom';
@@ -199,15 +199,13 @@ const TransactionType = {
 
 function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, onToggleCollapse }) {
     const { identity } = useAuth();
-    const [allTransactions, setAllTransactions] = useState([]); // Store all fetched transactions
-    const [displayedTransactions, setDisplayedTransactions] = useState([]); // Current page of transactions
+    const [transactions, setTransactions] = useState([]); // Current page of transactions
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
     const [selectedType, setSelectedType] = useState(TransactionType.ALL);
-    const [indexCanisterId, setIndexCanisterId] = useState(null);
-    const [archiveCanisterId, setArchiveCanisterId] = useState(null);
+    const [ledgerCanisterId, setLedgerCanisterId] = useState(null);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [sortConfig, setSortConfig] = useState({
         key: 'timestamp',
@@ -216,6 +214,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
     const [fromFilter, setFromFilter] = useState('');
     const [toFilter, setToFilter] = useState('');
     const [filterOperator, setFilterOperator] = useState('and');
+    const [totalTransactions, setTotalTransactions] = useState(0);
 
     // Fetch canister IDs from SNS root
     const fetchCanisterIds = async () => {
@@ -224,122 +223,63 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
             const response = await snsRootActor.list_sns_canisters({});
             console.log("list_sns_canisters", response);
 
-            // Set the index and archive canister IDs - they are already Principal objects
-            setIndexCanisterId(response.index[0]);
-            setArchiveCanisterId(response.archives[0]);
+            // Set the ledger canister ID
+            setLedgerCanisterId(response.ledger[0]);
         } catch (err) {
             setError('Failed to fetch canister IDs');
             console.error('Error fetching canister IDs:', err);
         }
     };
 
-    // Fetch all transactions from index canister
-    const fetchAllFromIndex = async () => {
+    // Fetch transactions from ledger and archives if needed
+    const fetchTransactions = async () => {
+        if (!ledgerCanisterId) return;
+
+        setLoading(true);
+        setError(null);
+
         try {
-            const indexActor = createSnsIndexActor(indexCanisterId);
-            const account = {
-                owner: Principal.fromText(principalId),
-                subaccount: []
-            };
-            
-            let allTxs = [];
-            let startIndex = 0;
-            let hasMore = true;
+            const ledgerActor = createSnsLedgerActor(ledgerCanisterId, { agentOptions: { identity } });
+            const startIndex = page * pageSize;
 
-            while (hasMore) {
-                console.log("Fetching transactions from index", startIndex);
-                const response = await indexActor.get_account_transactions({
-                    account,
-                    max_results: FETCH_SIZE,
-                    start: startIndex > 0 ? [BigInt(startIndex)] : []
-                });
-
-                if (!response.Ok) {
-                    throw new Error(response.Err.message);
-                }
-
-                const transactions = response.Ok.transactions;
-                allTxs = [...allTxs, ...transactions];
-                
-                // If we got less than the fetch size, we're done
-                if (transactions.length < FETCH_SIZE) {
-                    hasMore = false;
-                } else {
-                    startIndex += FETCH_SIZE;
-                }
-            }
-
-            console.log("Total transactions fetched:", allTxs.length);
-            setAllTransactions(allTxs);
-            updateDisplayedTransactions(allTxs, 0, selectedType, pageSize);
-        } catch (err) {
-            setError('Failed to fetch transactions from index');
-            console.error('Error fetching from index:', err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Update displayed transactions based on page and filter
-    const updateDisplayedTransactions = (transactions, pageNum, type, size) => {
-        const filtered = type === TransactionType.ALL 
-            ? transactions 
-            : transactions.filter(tx => tx.transaction.kind === type);
-        
-        const start = pageNum * size;
-        const end = start + size;
-        setDisplayedTransactions(filtered.slice(start, end));
-    };
-
-    // Fetch transactions from archive canister
-    const fetchFromArchive = async () => {
-        try {
-            const archiveActor = createSnsArchiveActor(archiveCanisterId);
-            const response = await archiveActor.get_transactions({
-                start: BigInt(page * pageSize),
+            // First try to get transactions from the ledger
+            const response = await ledgerActor.get_transactions({
+                start: BigInt(startIndex),
                 length: BigInt(pageSize)
             });
 
-            const filteredTransactions = filterTransactions(response.transactions);
-            setTransactions(filteredTransactions);
-            
-            // If we got less than a full page, we know we've reached the end
-            setHasMoreArchiveTransactions(filteredTransactions.length === pageSize);
-        } catch (err) {
-            setError('Failed to fetch transactions from archive');
-            console.error('Error fetching from archive:', err);
-        }
-    };
+            console.log("Ledger response:", response);
 
-    // Filter transactions based on selected type
-    const filterTransactions = (txs) => {
-        if (selectedType === TransactionType.ALL) return txs;
-        return txs.filter(tx => tx.transaction.kind === selectedType);
-    };
+            let txs = [...response.transactions];
+            setTotalTransactions(Number(response.log_length));
 
-    // Effect to fetch canister IDs
-    useEffect(() => {
-        fetchCanisterIds();
-    }, [snsRootCanisterId]);
+            // If we have archived transactions to fetch, get them
+            if (response.archived_transactions.length > 0) {
+                for (const archive of response.archived_transactions) {
+                    try {
+                        // Extract the canister ID from the callback
+                        const archiveCanisterId = archive.callback.toText().split('.')[0];
+                        const archiveActor = createSnsArchiveActor(archiveCanisterId, { agentOptions: { identity } });
+                        
+                        const archiveResponse = await archiveActor.get_transactions({
+                            start: archive.start,
+                            length: archive.length
+                        });
 
-    // Effect to fetch transactions when we have the canister IDs
-    useEffect(() => {
-        if (indexCanisterId && principalId) {
-            fetchAllFromIndex();
-        } else if (archiveCanisterId && !principalId) {
-            fetchFromArchive();
-        }
-    }, [indexCanisterId, archiveCanisterId, principalId]);
+                        txs = [...txs, ...archiveResponse.transactions];
+                    } catch (archiveErr) {
+                        console.error('Error fetching from archive:', archiveErr);
+                    }
+                }
+            }
 
-    // Effect to update displayed transactions when page, filter, or page size changes
-    useEffect(() => {
-        if (principalId) {
-            const filtered = selectedType === TransactionType.ALL 
-                ? allTransactions 
-                : allTransactions.filter(tx => tx.transaction.kind === selectedType);
+            // Apply type filter if needed
+            const filteredTxs = selectedType === TransactionType.ALL 
+                ? txs 
+                : txs.filter(tx => tx.transaction.kind === selectedType);
 
             // Apply from/to filters
-            const filteredByAddress = filtered.filter(tx => {
+            const filteredByAddress = filteredTxs.filter(tx => {
                 const fromPrincipal = getFromPrincipal(tx);
                 const toPrincipal = getToPrincipal(tx);
 
@@ -357,21 +297,38 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
 
                 return filterOperator === 'and' ? (fromMatches && toMatches) : (fromMatches || toMatches);
             });
-            
-            const sorted = sortTransactions(filteredByAddress);
-            const start = page * pageSize;
-            const end = start + pageSize;
-            setDisplayedTransactions(sorted.slice(start, end));
+
+            // Sort transactions
+            const sortedTxs = sortTransactions(filteredByAddress);
+
+            setTransactions(sortedTxs);
+        } catch (err) {
+            setError('Failed to fetch transactions');
+            console.error('Error fetching transactions:', err);
+        } finally {
+            setLoading(false);
         }
-    }, [page, selectedType, allTransactions, pageSize, sortConfig, fromFilter, toFilter, filterOperator, principalId]);
+    };
+
+    // Effect to fetch canister IDs
+    useEffect(() => {
+        fetchCanisterIds();
+    }, [snsRootCanisterId]);
+
+    // Effect to fetch transactions when dependencies change
+    useEffect(() => {
+        if (ledgerCanisterId) {
+            fetchTransactions();
+        }
+    }, [ledgerCanisterId, page, pageSize, selectedType, fromFilter, toFilter, filterOperator]);
 
     // Add effect to fetch principal display info
     useEffect(() => {
         const fetchPrincipalInfo = async () => {
-            if (!displayedTransactions.length) return;
+            if (!transactions.length) return;
 
             const uniquePrincipals = new Set();
-            displayedTransactions.forEach(tx => {
+            transactions.forEach(tx => {
                 // Add from principals
                 if (tx.transaction.transfer?.[0]?.from?.owner) {
                     uniquePrincipals.add(tx.transaction.transfer[0].from.owner.toString());
@@ -405,7 +362,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         };
 
         fetchPrincipalInfo();
-    }, [displayedTransactions, identity]);
+    }, [transactions, identity]);
 
     const formatAmount = (amount, decimals = 8) => {
         const value = Number(amount) / Math.pow(10, decimals);
@@ -419,13 +376,11 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         return new Date(Number(timestamp) / 1_000_000).toLocaleString();
     };
 
-    // Handle page size change
+    // Update handlePageSizeChange
     const handlePageSizeChange = (event) => {
         const newSize = Number(event.target.value);
         setPageSize(newSize);
-        // Reset to first page when changing page size
-        setPage(0);
-        updateDisplayedTransactions(allTransactions, 0, selectedType, newSize);
+        setPage(0); // Reset to first page when changing page size
     };
 
     // Get display value for principal sorting
@@ -692,7 +647,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                             </tr>
                         </thead>
                         <tbody>
-                            {(principalId ? displayedTransactions : allTransactions).map((tx, index) => {
+                            {transactions.map((tx, index) => {
                                 console.log("Processing transaction:", tx);
                                 
                                 // Extract transaction details safely
@@ -811,24 +766,15 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 Previous
                             </button>
                             <span style={{ color: '#fff', alignSelf: 'center' }}>
-                                Page {page + 1} of {Math.ceil((principalId ? 
-                                    (selectedType === TransactionType.ALL ? allTransactions.length : 
-                                    allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
-                                    : allTransactions.length) / pageSize) || 1}
+                                Page {page + 1} of {Math.ceil(totalTransactions / pageSize)}
                             </span>
                             <button
                                 style={{
                                     ...styles.pageButton,
-                                    ...((page + 1) * pageSize >= (principalId ? 
-                                        (selectedType === TransactionType.ALL ? allTransactions.length : 
-                                        allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
-                                        : allTransactions.length) ? styles.pageButtonDisabled : {})
+                                    ...((page + 1) * pageSize >= totalTransactions ? styles.pageButtonDisabled : {})
                                 }}
                                 onClick={() => setPage(p => p + 1)}
-                                disabled={(page + 1) * pageSize >= (principalId ? 
-                                    (selectedType === TransactionType.ALL ? allTransactions.length : 
-                                    allTransactions.filter(tx => tx.transaction.kind === selectedType).length) 
-                                    : allTransactions.length)}
+                                disabled={(page + 1) * pageSize >= totalTransactions}
                             >
                                 Next
                             </button>
