@@ -352,33 +352,40 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
 
             const uniquePrincipals = new Set();
             transactions.forEach(tx => {
-                // Add from principals
-                if (tx.transfer?.[0]?.from?.owner) {
-                    uniquePrincipals.add(tx.transfer[0].from.owner.toString());
-                }
-                if (tx.burn?.[0]?.from?.owner) {
-                    uniquePrincipals.add(tx.burn[0].from.owner.toString());
-                }
-                if (tx.approve?.[0]?.from?.owner) {
-                    uniquePrincipals.add(tx.approve[0].from.owner.toString());
-                }
+                // Use our helper functions to get principals
+                const fromPrincipal = getFromPrincipal(tx);
+                const toPrincipal = getToPrincipal(tx);
 
-                // Add to/spender principals
-                if (tx.transfer?.[0]?.to?.owner) {
-                    uniquePrincipals.add(tx.transfer[0].to.owner.toString());
+                if (fromPrincipal) {
+                    try {
+                        console.log('Adding from principal to Set:', fromPrincipal);
+                        uniquePrincipals.add(fromPrincipal.toString());
+                    } catch (error) {
+                        console.error('Error converting fromPrincipal to string:', fromPrincipal, error);
+                    }
                 }
-                if (tx.mint?.[0]?.to?.owner) {
-                    uniquePrincipals.add(tx.mint[0].to.owner.toString());
-                }
-                if (tx.approve?.[0]?.spender?.owner) {
-                    uniquePrincipals.add(tx.approve[0].spender.owner.toString());
+                if (toPrincipal) {
+                    try {
+                        console.log('Adding to principal to Set:', toPrincipal);
+                        uniquePrincipals.add(toPrincipal.toString());
+                    } catch (error) {
+                        console.error('Error converting toPrincipal to string:', toPrincipal, error);
+                    }
                 }
             });
 
+            console.log('Unique principals to fetch:', Array.from(uniquePrincipals));
+
             const displayInfoMap = new Map();
             await Promise.all(Array.from(uniquePrincipals).map(async principal => {
-                const displayInfo = await getPrincipalDisplayInfo(identity, Principal.fromText(principal));
-                displayInfoMap.set(principal, displayInfo);
+                try {
+                    console.log('Fetching display info for principal:', principal);
+                    const displayInfo = await getPrincipalDisplayInfo(identity, Principal.fromText(principal));
+                    console.log('Got display info for principal:', { principal, displayInfo });
+                    displayInfoMap.set(principal, displayInfo);
+                } catch (error) {
+                    console.error('Error processing principal:', principal, error);
+                }
             }));
 
             setPrincipalDisplayInfo(displayInfoMap);
@@ -408,113 +415,150 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
 
     // Get display value for principal sorting
     const getPrincipalSortValue = (principal) => {
-        if (!principal) return '';
-        const displayInfo = principalDisplayInfo.get(principal.toString());
-        if (!displayInfo) return principal.toString();
-        
-        // Prioritize name > nickname > principal ID
-        if (displayInfo.name) return displayInfo.name;
-        if (displayInfo.nickname) return displayInfo.nickname;
-        return principal.toString();
+        console.log('getPrincipalSortValue input:', principal);
+        if (!principal || typeof principal.toString !== 'function') {
+            console.log('Invalid principal in getPrincipalSortValue:', principal);
+            return '';
+        }
+        try {
+            console.log('Converting principal to string:', principal);
+            const principalStr = principal.toString();
+            console.log('Got principal string:', principalStr);
+            const displayInfo = principalDisplayInfo.get(principalStr);
+            if (!displayInfo) return principalStr;
+            
+            // Prioritize name > nickname > principal ID
+            if (displayInfo.name) return displayInfo.name;
+            if (displayInfo.nickname) return displayInfo.nickname;
+            return principalStr;
+        } catch (error) {
+            console.error('Error in getPrincipalSortValue:', error);
+            return '';
+        }
     };
 
     // Add sorting function
     const sortTransactions = (transactions) => {
         if (!sortConfig.key) return transactions;
 
+        console.log('Sorting transactions with config:', sortConfig);
         return [...transactions].sort((a, b) => {
-            let aValue, bValue;
-
-            // Helper to safely get transaction timestamp
-            const getTimestamp = (tx) => {
-                return Number(tx?.timestamp || 0);
-            };
-
-            // Helper to safely get transaction kind
-            const getKind = (tx) => {
-                return tx?.kind || '';
-            };
-
-            switch (sortConfig.key) {
-                case 'type':
-                    aValue = getKind(a);
-                    bValue = getKind(b);
-                    break;
-                case 'fromAddress':
-                    const aFromPrincipal = getFromPrincipal(a);
-                    const bFromPrincipal = getFromPrincipal(b);
-                    aValue = getPrincipalSortValue(aFromPrincipal);
-                    bValue = getPrincipalSortValue(bFromPrincipal);
-                    break;
-                case 'toAddress':
-                    const aToPrincipal = getToPrincipal(a);
-                    const bToPrincipal = getToPrincipal(b);
-                    aValue = getPrincipalSortValue(aToPrincipal);
-                    bValue = getPrincipalSortValue(bToPrincipal);
-                    break;
-                case 'amount':
-                    aValue = getTransactionAmount(a) || 0n;
-                    bValue = getTransactionAmount(b) || 0n;
-                    return sortConfig.direction === 'asc' 
-                        ? (aValue < bValue ? -1 : aValue > bValue ? 1 : 0)
-                        : (bValue < aValue ? -1 : bValue > aValue ? 1 : 0);
-                case 'timestamp':
-                    aValue = getTimestamp(a);
-                    bValue = getTimestamp(b);
-                    return sortConfig.direction === 'asc' 
-                        ? aValue - bValue 
-                        : bValue - aValue;
-                default:
-                    return 0;
+            if (!a || !b) {
+                console.warn('Invalid transaction in sort:', { a, b });
+                return 0;
             }
 
-            if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-            return 0;
+            let aValue, bValue;
+
+            try {
+                switch (sortConfig.key) {
+                    case 'type':
+                        aValue = a.kind || '';
+                        bValue = b.kind || '';
+                        break;
+                    case 'fromAddress':
+                        const aFromPrincipal = getFromPrincipal(a);
+                        const bFromPrincipal = getFromPrincipal(b);
+                        console.log('Sorting fromAddress:', { aFromPrincipal, bFromPrincipal });
+                        aValue = aFromPrincipal ? getPrincipalSortValue(aFromPrincipal) : '';
+                        bValue = bFromPrincipal ? getPrincipalSortValue(bFromPrincipal) : '';
+                        break;
+                    case 'toAddress':
+                        const aToPrincipal = getToPrincipal(a);
+                        const bToPrincipal = getToPrincipal(b);
+                        console.log('Sorting toAddress:', { aToPrincipal, bToPrincipal });
+                        aValue = aToPrincipal ? getPrincipalSortValue(aToPrincipal) : '';
+                        bValue = bToPrincipal ? getPrincipalSortValue(bToPrincipal) : '';
+                        break;
+                    case 'amount':
+                        aValue = getTransactionAmount(a) || 0n;
+                        bValue = getTransactionAmount(b) || 0n;
+                        return sortConfig.direction === 'asc' 
+                            ? (aValue < bValue ? -1 : aValue > bValue ? 1 : 0)
+                            : (bValue < aValue ? -1 : bValue > aValue ? 1 : 0);
+                    case 'timestamp':
+                        aValue = Number(a.timestamp || 0);
+                        bValue = Number(b.timestamp || 0);
+                        return sortConfig.direction === 'asc' 
+                            ? aValue - bValue 
+                            : bValue - aValue;
+                    default:
+                        return 0;
+                }
+
+                console.log('Sort values:', { aValue, bValue });
+
+                if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            } catch (error) {
+                console.error('Error during sort:', error, { a, b });
+                return 0;
+            }
         });
     };
 
     // Update helper functions to handle both formats
     const getFromPrincipal = (tx) => {
-        if (tx?.kind === 'transfer' && tx.transfer?.[0]?.from?.owner) {
-            return tx.transfer[0].from.owner;
+        console.log('getFromPrincipal input:', tx);
+        if (!tx) {
+            console.log('getFromPrincipal: tx is null/undefined');
+            return null;
         }
-        if (tx?.kind === 'burn' && tx.burn?.[0]?.from?.owner) {
-            return tx.burn[0].from.owner;
+
+        let result = null;
+        if (tx.kind === 'transfer' && tx.transfer?.[0]?.from?.owner) {
+            result = tx.transfer[0].from.owner;
+        } else if (tx.kind === 'burn' && tx.burn?.[0]?.from?.owner) {
+            result = tx.burn[0].from.owner;
+        } else if (tx.kind === 'approve' && tx.approve?.[0]?.from?.owner) {
+            result = tx.approve[0].from.owner;
         }
-        if (tx?.kind === 'approve' && tx.approve?.[0]?.from?.owner) {
-            return tx.approve[0].from.owner;
-        }
-        return null;
+
+        console.log('getFromPrincipal result:', result);
+        return result;
     };
 
     const getToPrincipal = (tx) => {
-        if (tx?.kind === 'transfer' && tx.transfer?.[0]?.to?.owner) {
-            return tx.transfer[0].to.owner;
+        console.log('getToPrincipal input:', tx);
+        if (!tx) {
+            console.log('getToPrincipal: tx is null/undefined');
+            return null;
         }
-        if (tx?.kind === 'mint' && tx.mint?.[0]?.to?.owner) {
-            return tx.mint[0].to.owner;
+
+        let result = null;
+        if (tx.kind === 'transfer' && tx.transfer?.[0]?.to?.owner) {
+            result = tx.transfer[0].to.owner;
+        } else if (tx.kind === 'mint' && tx.mint?.[0]?.to?.owner) {
+            result = tx.mint[0].to.owner;
+        } else if (tx.kind === 'approve' && tx.approve?.[0]?.spender?.owner) {
+            result = tx.approve[0].spender.owner;
         }
-        if (tx?.kind === 'approve' && tx.approve?.[0]?.spender?.owner) {
-            return tx.approve[0].spender.owner;
-        }
-        return null;
+
+        console.log('getToPrincipal result:', result);
+        return result;
     };
 
     const getTransactionAmount = (tx) => {
-        if (tx?.kind === 'transfer' && tx.transfer?.[0]?.amount) {
-            return BigInt(tx.transfer[0].amount);
+        console.log('getTransactionAmount input:', tx);
+        if (!tx) {
+            console.log('getTransactionAmount: tx is null/undefined');
+            return 0n;
         }
-        if (tx?.kind === 'mint' && tx.mint?.[0]?.amount) {
-            return BigInt(tx.mint[0].amount);
+
+        let result = 0n;
+        if (tx.kind === 'transfer' && tx.transfer?.[0]?.amount) {
+            result = BigInt(tx.transfer[0].amount);
+        } else if (tx.kind === 'mint' && tx.mint?.[0]?.amount) {
+            result = BigInt(tx.mint[0].amount);
+        } else if (tx.kind === 'burn' && tx.burn?.[0]?.amount) {
+            result = BigInt(tx.burn[0].amount);
+        } else if (tx.kind === 'approve' && tx.approve?.[0]?.amount) {
+            result = BigInt(tx.approve[0].amount);
         }
-        if (tx?.kind === 'burn' && tx.burn?.[0]?.amount) {
-            return BigInt(tx.burn[0].amount);
-        }
-        if (tx?.kind === 'approve' && tx.approve?.[0]?.amount) {
-            return BigInt(tx.approve[0].amount);
-        }
-        return 0n;
+
+        console.log('getTransactionAmount result:', result.toString());
+        return result;
     };
 
     // Add sort handler
@@ -708,55 +752,31 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                         </thead>
                         <tbody>
                             {transactions.filter(tx => tx !== null && tx !== undefined).map((tx, index) => {
-                                console.log("Processing transaction:", tx);
+                                console.log("Processing transaction for render:", tx);
+                                console.log("Transaction ID:", {
+                                    id: tx.id,
+                                    type: typeof tx.id,
+                                    hasToString: tx.id?.toString !== undefined
+                                });
                                 
-                                // Extract transaction details safely
+                                // Extract transaction details safely using our helper functions
                                 const txType = tx?.kind;
-                                let fromPrincipal = null;
-                                let toPrincipal = null;
-                                let amount = null;
-                                let transfer = null;
+                                const fromPrincipal = getFromPrincipal(tx);
+                                const toPrincipal = getToPrincipal(tx);
+                                const amount = getTransactionAmount(tx);
 
-                                // Handle different transaction types
-                                switch (txType) {
-                                    case 'transfer':
-                                        if (tx.transfer && tx.transfer.length > 0) {
-                                            transfer = tx.transfer[0];
-                                            fromPrincipal = transfer.from?.owner;
-                                            toPrincipal = transfer.to?.owner;
-                                            amount = transfer.amount;
-                                        }
-                                        break;
-                                    case 'mint':
-                                        if (tx.mint && tx.mint.length > 0) {
-                                            const mint = tx.mint[0];
-                                            toPrincipal = mint.to?.owner;
-                                            amount = mint.amount;
-                                        }
-                                        break;
-                                    case 'burn':
-                                        if (tx.burn && tx.burn.length > 0) {
-                                            const burn = tx.burn[0];
-                                            fromPrincipal = burn.from?.owner;
-                                            amount = burn.amount;
-                                        }
-                                        break;
-                                    case 'approve':
-                                        if (tx.approve && tx.approve.length > 0) {
-                                            const approve = tx.approve[0];
-                                            fromPrincipal = approve.from?.owner;
-                                            toPrincipal = approve.spender?.owner;
-                                            amount = approve.amount;
-                                        }
-                                        break;
-                                }
+                                // Debug log the principals before rendering
+                                console.log('Rendering transaction principals:', {
+                                    fromPrincipal: fromPrincipal?.toString?.() || null,
+                                    toPrincipal: toPrincipal?.toString?.() || null
+                                });
 
                                 return (
                                     <tr key={index}>
                                         <td style={styles.td}>{txType}</td>
                                         <td style={styles.td}>
                                             <Link 
-                                                to={`/transaction?sns=${snsRootCanisterId}&id=${tx.id}`}
+                                                to={`/transaction?sns=${snsRootCanisterId}&id=${tx.id?.toString?.() || tx.id || 'unknown'}`}
                                                 style={{
                                                     color: '#3498db',
                                                     textDecoration: 'none',
@@ -765,7 +785,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                     }
                                                 }}
                                             >
-                                                #{tx.id.toString()}
+                                                #{tx.id?.toString?.() || tx.id || 'unknown'}
                                             </Link>
                                         </td>
                                         <td style={{...styles.td, ...styles.principalCell}}>
@@ -774,12 +794,12 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                     <span style={{color: '#888'}}>From: </span>
                                                     <PrincipalDisplay 
                                                         principal={fromPrincipal}
-                                                        displayInfo={principalDisplayInfo.get(fromPrincipal.toString())}
+                                                        displayInfo={principalDisplayInfo.get(fromPrincipal?.toString?.() || '')}
                                                         showCopyButton={false}
                                                     />
-                                                    {transfer?.from?.subaccount?.length > 0 && (
+                                                    {tx.kind === 'transfer' && tx.transfer?.[0]?.from?.subaccount?.length > 0 && (
                                                         <div style={styles.subaccount}>
-                                                            Subaccount: {transfer.from.subaccount[0]}
+                                                            Subaccount: {tx.transfer[0].from.subaccount[0]}
                                                         </div>
                                                     )}
                                                 </div>
@@ -789,12 +809,12 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                     <span style={{color: '#888'}}>To: </span>
                                                     <PrincipalDisplay 
                                                         principal={toPrincipal}
-                                                        displayInfo={principalDisplayInfo.get(toPrincipal.toString())}
+                                                        displayInfo={principalDisplayInfo.get(toPrincipal?.toString?.() || '')}
                                                         showCopyButton={false}
                                                     />
-                                                    {transfer?.to?.subaccount?.length > 0 && (
+                                                    {tx.kind === 'transfer' && tx.transfer?.[0]?.to?.subaccount?.length > 0 && (
                                                         <div style={styles.subaccount}>
-                                                            Subaccount: {transfer.to.subaccount[0]}
+                                                            Subaccount: {tx.transfer[0].to.subaccount[0]}
                                                         </div>
                                                     )}
                                                 </div>
@@ -805,7 +825,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                             {amount ? formatAmount(amount) : '-'}
                                         </td>
                                         <td style={styles.td}>
-                                            {formatTimestamp(tx.transaction.timestamp)}
+                                            {formatTimestamp(tx.timestamp)}
                                         </td>
                                     </tr>
                                 );
