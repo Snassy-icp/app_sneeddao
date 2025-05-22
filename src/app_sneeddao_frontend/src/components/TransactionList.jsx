@@ -5,6 +5,7 @@ import { createActor as createSnsArchiveActor } from 'external/sns_archive';
 import { createActor as createSnsIndexActor } from 'external/sns_index';
 import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import { useAuth } from '../AuthContext';
+import { Link } from 'react-router-dom';
 
 const validateNameInput = (input) => {
     if (!input.trim()) return 'Name cannot be empty';
@@ -653,7 +654,12 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                         <span style={styles.sortIcon}>{renderSortIndicator('type')}</span>
                                     </div>
                                 </th>
-                                <th style={{...styles.th, width: '45%'}}>
+                                <th style={{...styles.th, width: '10%'}}>
+                                    <div style={styles.sortableHeader}>
+                                        ID
+                                    </div>
+                                </th>
+                                <th style={{...styles.th, width: '35%'}}>
                                     <div style={styles.sortableHeaderGroup}>
                                         <div 
                                             style={styles.sortableSubHeader}
@@ -740,6 +746,20 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 return (
                                     <tr key={index}>
                                         <td style={styles.td}>{txType}</td>
+                                        <td style={styles.td}>
+                                            <Link 
+                                                to={`/transaction?sns=${snsRootCanisterId}&id=${index}`}
+                                                style={{
+                                                    color: '#3498db',
+                                                    textDecoration: 'none',
+                                                    ':hover': {
+                                                        textDecoration: 'underline'
+                                                    }
+                                                }}
+                                            >
+                                                #{index}
+                                            </Link>
+                                        </td>
                                         <td style={{...styles.td, ...styles.principalCell}}>
                                             {fromPrincipal && (
                                                 <div>
