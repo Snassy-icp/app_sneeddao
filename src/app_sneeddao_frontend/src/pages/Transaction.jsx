@@ -351,6 +351,19 @@ function Transaction() {
     const formatSafeAmount = (amount) => {
         if (amount === undefined || amount === null) return '-';
         try {
+            // Debug log
+            console.log('Amount to format:', amount, 'Type:', typeof amount);
+            
+            // If amount is an object with an e8s field (common in IC transactions)
+            if (typeof amount === 'object' && 'e8s' in amount) {
+                return formatAmount(amount.e8s.toString(), tokenMetadata.decimals);
+            }
+
+            // Handle array of BigInt (e.g., fee array)
+            if (Array.isArray(amount) && amount.length > 0 && typeof amount[0] === 'bigint') {
+                return formatAmount(amount[0].toString(), tokenMetadata.decimals);
+            }
+
             // Handle BigInt, Number, and string inputs
             let amountStr;
             if (typeof amount === 'bigint') {
@@ -360,7 +373,7 @@ function Transaction() {
             } else if (typeof amount === 'string') {
                 amountStr = amount;
             } else {
-                console.error('Invalid amount type:', typeof amount);
+                console.error('Invalid amount type:', typeof amount, 'Amount:', amount);
                 return '-';
             }
             return formatAmount(amountStr, tokenMetadata.decimals);
@@ -369,6 +382,17 @@ function Transaction() {
             return '-';
         }
     };
+
+    // Add debug logging to see transaction structure
+    useEffect(() => {
+        if (transaction) {
+            console.log('Full transaction details:', transaction);
+            if (transaction.transfer?.[0]) {
+                console.log('Transfer details:', transaction.transfer[0]);
+                console.log('Amount structure:', transaction.transfer[0].amount);
+            }
+        }
+    }, [transaction]);
 
     const renderAccountInfo = (account, label) => {
         if (!account || !account.owner) return null;
