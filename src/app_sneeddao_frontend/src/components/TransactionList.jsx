@@ -922,7 +922,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                     }
                                                 }}
                                             >
-                                                #{!principalId ? startTxIndex + index : (tx.id || index)}
+                                                #{!principalId ? startTxIndex + index : (tx.id.toString() || index)}
                                             </Link>
                                         </td>
                                         <td style={{...styles.td, ...styles.principalCell}}>
