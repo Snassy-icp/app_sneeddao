@@ -3,9 +3,12 @@ import { useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createSnsArchiveActor } from 'external/sns_archive';
+import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import { useAuth } from '../AuthContext';
 import { formatAmount } from '../utils/StringUtils';
+import { getTokenLogo } from '../utils/TokenUtils';
+import { getSnsById } from '../utils/SnsUtils';
 
 const styles = {
     container: {
@@ -85,6 +88,35 @@ const styles = {
         fontSize: '12px',
         color: '#888',
         wordBreak: 'break-all'
+    },
+    tokenInfo: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        padding: '12px',
+        backgroundColor: '#222',
+        borderRadius: '4px',
+        marginBottom: '20px'
+    },
+    tokenLogo: {
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        objectFit: 'cover'
+    },
+    tokenDetails: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '4px'
+    },
+    tokenName: {
+        color: '#fff',
+        fontSize: '16px',
+        fontWeight: 'bold'
+    },
+    tokenSymbol: {
+        color: '#888',
+        fontSize: '14px'
     }
 };
 
@@ -98,6 +130,46 @@ function Transaction() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    const [tokenMetadata, setTokenMetadata] = useState({
+        name: '',
+        symbol: '',
+        logo: '',
+        decimals: 8
+    });
+
+    // Fetch token metadata when SNS root changes
+    useEffect(() => {
+        const fetchTokenMetadata = async () => {
+            try {
+                const snsRoot = searchParams.get('sns') || SNEED_SNS_ROOT;
+                const selectedSns = getSnsById(snsRoot);
+                if (!selectedSns) {
+                    throw new Error('Selected SNS not found');
+                }
+
+                const ledgerActor = createIcrc1Actor(selectedSns.canisters.ledger);
+                const [metadata, decimals] = await Promise.all([
+                    ledgerActor.icrc1_metadata(),
+                    ledgerActor.icrc1_decimals()
+                ]);
+
+                const name = metadata.find(([key]) => key === 'icrc1:name')?.[1]?.Text || '';
+                const symbol = metadata.find(([key]) => key === 'icrc1:symbol')?.[1]?.Text || '';
+                const logo = getTokenLogo(metadata);
+
+                setTokenMetadata({
+                    name,
+                    symbol,
+                    logo,
+                    decimals
+                });
+            } catch (err) {
+                console.error('Error fetching token metadata:', err);
+            }
+        };
+
+        fetchTokenMetadata();
+    }, [searchParams]);
 
     // Fetch archive canister ID when SNS root changes
     useEffect(() => {
@@ -267,7 +339,7 @@ function Transaction() {
                 console.error('Invalid amount type:', typeof amount);
                 return '-';
             }
-            return formatAmount(amountStr, 8); // Default to 8 decimals for SNS tokens
+            return formatAmount(amountStr, tokenMetadata.decimals);
         } catch (e) {
             console.error('Error formatting amount:', e, 'Amount:', amount);
             return '-';
@@ -332,6 +404,19 @@ function Transaction() {
 
                     {transaction && (
                         <div>
+                            {/* Token Info */}
+                            <div style={styles.tokenInfo}>
+                                <img 
+                                    src={tokenMetadata.logo || 'icp_symbol.svg'} 
+                                    alt={tokenMetadata.symbol} 
+                                    style={styles.tokenLogo}
+                                />
+                                <div style={styles.tokenDetails}>
+                                    <div style={styles.tokenName}>{tokenMetadata.name}</div>
+                                    <div style={styles.tokenSymbol}>{tokenMetadata.symbol}</div>
+                                </div>
+                            </div>
+
                             <div style={styles.detailRow}>
                                 <div style={styles.label}>Transaction Type</div>
                                 <div style={styles.value}>{transaction.kind}</div>
@@ -352,14 +437,14 @@ function Transaction() {
                                     <div style={styles.detailRow}>
                                         <div style={styles.label}>Amount</div>
                                         <div style={styles.value}>
-                                            {formatSafeAmount(transaction.transfer[0].amount)}
+                                            {formatSafeAmount(transaction.transfer[0].amount)} {tokenMetadata.symbol}
                                         </div>
                                     </div>
                                     {transaction.transfer[0].fee && (
                                         <div style={styles.detailRow}>
                                             <div style={styles.label}>Fee</div>
                                             <div style={styles.value}>
-                                                {formatSafeAmount(transaction.transfer[0].fee)}
+                                                {formatSafeAmount(transaction.transfer[0].fee)} {tokenMetadata.symbol}
                                             </div>
                                         </div>
                                     )}
@@ -373,7 +458,7 @@ function Transaction() {
                                     <div style={styles.detailRow}>
                                         <div style={styles.label}>Amount</div>
                                         <div style={styles.value}>
-                                            {formatSafeAmount(transaction.mint[0].amount)}
+                                            {formatSafeAmount(transaction.mint[0].amount)} {tokenMetadata.symbol}
                                         </div>
                                     </div>
                                 </>
@@ -388,7 +473,7 @@ function Transaction() {
                                     <div style={styles.detailRow}>
                                         <div style={styles.label}>Amount</div>
                                         <div style={styles.value}>
-                                            {formatSafeAmount(transaction.burn[0].amount)}
+                                            {formatSafeAmount(transaction.burn[0].amount)} {tokenMetadata.symbol}
                                         </div>
                                     </div>
                                 </>
@@ -402,14 +487,14 @@ function Transaction() {
                                     <div style={styles.detailRow}>
                                         <div style={styles.label}>Amount</div>
                                         <div style={styles.value}>
-                                            {formatSafeAmount(transaction.approve[0].amount)}
+                                            {formatSafeAmount(transaction.approve[0].amount)} {tokenMetadata.symbol}
                                         </div>
                                     </div>
                                     {transaction.approve[0].fee && (
                                         <div style={styles.detailRow}>
                                             <div style={styles.label}>Fee</div>
                                             <div style={styles.value}>
-                                                {formatSafeAmount(transaction.approve[0].fee)}
+                                                {formatSafeAmount(transaction.approve[0].fee)} {tokenMetadata.symbol}
                                             </div>
                                         </div>
                                     )}
