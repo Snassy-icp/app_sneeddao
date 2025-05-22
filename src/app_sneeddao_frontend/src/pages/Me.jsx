@@ -27,6 +27,7 @@ import { useNaming } from '../NamingContext';
 import { Link } from 'react-router-dom';
 import ConfirmationModal from '../ConfirmationModal';
 import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
+import TransactionList from '../components/TransactionList';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -61,6 +62,7 @@ export default function Me() {
     const [principalNameError, setPrincipalNameError] = useState('');
     const [isSubmittingPrincipalName, setIsSubmittingPrincipalName] = useState(false);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    const [isTransactionsCollapsed, setIsTransactionsCollapsed] = useState(true);
     
     // Get naming context
     const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames } = useNaming();
@@ -1041,6 +1043,14 @@ export default function Me() {
                         ))}
                     </div>
                 )}
+
+                {/* Transactions Section */}
+                <TransactionList 
+                    snsRootCanisterId={selectedSnsRoot}
+                    principalId={identity?.getPrincipal().toString()}
+                    isCollapsed={isTransactionsCollapsed}
+                    onToggleCollapse={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
+                />
             </main>
             <style>{spinKeyframes}</style>
             <ConfirmationModal
