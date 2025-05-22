@@ -257,8 +257,15 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
             if (response.archived_transactions.length > 0) {
                 for (const archive of response.archived_transactions) {
                     try {
-                        // Extract the canister ID from the callback
-                        const archiveCanisterId = archive.callback.toText().split('.')[0];
+                        // The callback is an array where the first element is the Principal
+                        const archiveCanisterId = archive.callback[0].toText();
+                        console.log("Archive info:", {
+                            callback: archive.callback,
+                            archiveCanisterId,
+                            start: archive.start,
+                            length: archive.length
+                        });
+                        
                         const archiveActor = createSnsArchiveActor(archiveCanisterId, { agentOptions: { identity } });
                         
                         const archiveResponse = await archiveActor.get_transactions({
