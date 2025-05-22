@@ -7,6 +7,7 @@ import { createActor as createSnsIndexActor } from 'external/sns_index';
 import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import { useAuth } from '../AuthContext';
 import { Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 
 const validateNameInput = (input) => {
     if (!input.trim()) return 'Name cannot be empty';
@@ -200,6 +201,7 @@ const TransactionType = {
 
 function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, onToggleCollapse }) {
     const { identity } = useAuth();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [allTransactions, setAllTransactions] = useState([]); // Store all fetched transactions
     const [displayedTransactions, setDisplayedTransactions] = useState([]); // Current page of transactions
     const [loading, setLoading] = useState(true);
@@ -218,6 +220,53 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
     const [toFilter, setToFilter] = useState('');
     const [filterOperator, setFilterOperator] = useState('and');
     const [totalTransactions, setTotalTransactions] = useState(0);
+    const [startTxIndex, setStartTxIndex] = useState(() => {
+        const urlStart = searchParams.get('start');
+        return urlStart ? parseInt(urlStart) : 0;
+    });
+    const [txIndexInput, setTxIndexInput] = useState('');
+
+    // Effect to sync page with URL start parameter
+    useEffect(() => {
+        const urlStart = searchParams.get('start');
+        if (urlStart) {
+            const startIndex = parseInt(urlStart);
+            setStartTxIndex(startIndex);
+            setPage(Math.floor(startIndex / pageSize));
+        }
+    }, [searchParams, pageSize]);
+
+    // Update URL when page changes
+    useEffect(() => {
+        if (!principalId) {  // Only update URL in ledger mode
+            const newStart = page * pageSize;
+            if (newStart !== startTxIndex) {
+                setSearchParams(prev => {
+                    const newParams = new URLSearchParams(prev);
+                    newParams.set('start', newStart.toString());
+                    return newParams;
+                });
+                setStartTxIndex(newStart);
+            }
+        }
+    }, [page, pageSize]);
+
+    // Handle direct transaction index input
+    const handleTxIndexSubmit = (e) => {
+        e.preventDefault();
+        const index = parseInt(txIndexInput);
+        if (!isNaN(index) && index >= 0) {
+            const newPage = Math.floor(index / pageSize);
+            setPage(newPage);
+            setSearchParams(prev => {
+                const newParams = new URLSearchParams(prev);
+                newParams.set('start', index.toString());
+                return newParams;
+            });
+            setStartTxIndex(index);
+            setTxIndexInput('');
+        }
+    };
 
     // Fetch canister IDs from SNS root
     const fetchCanisterIds = async () => {
@@ -700,6 +749,41 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                 </div>
                 {!isCollapsed && (
                     <div style={styles.filtersContainer}>
+                        {!principalId && ( // Only show in ledger mode
+                            <form 
+                                onSubmit={handleTxIndexSubmit}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    marginRight: '20px'
+                                }}
+                            >
+                                <input
+                                    type="text"
+                                    value={txIndexInput}
+                                    onChange={(e) => setTxIndexInput(e.target.value)}
+                                    placeholder="Go to tx index"
+                                    style={{
+                                        ...styles.filterInput,
+                                        width: '120px'
+                                    }}
+                                />
+                                <button
+                                    type="submit"
+                                    style={{
+                                        backgroundColor: '#3498db',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '8px 12px',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Go
+                                </button>
+                            </form>
+                        )}
                         <div style={styles.filterGroup}>
                             <span style={styles.filterLabel}>From:</span>
                             <input
