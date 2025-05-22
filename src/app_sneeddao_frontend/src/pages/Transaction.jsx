@@ -148,6 +148,7 @@ function Transaction() {
                     setError('Transaction not found');
                     setTransaction(null);
                 } else {
+                    console.log("Transaction:", response[0]);
                     setTransaction(response[0]);
                 }
             } catch (err) {
@@ -256,7 +257,7 @@ function Transaction() {
         try {
             // Convert to string first to handle both number and BigInt inputs
             const amountStr = amount.toString();
-            return formatAmount(amountStr);
+            return formatAmount(amountStr, 8); // Default to 8 decimals for SNS tokens
         } catch (e) {
             console.error('Error formatting amount:', e);
             return '-';
