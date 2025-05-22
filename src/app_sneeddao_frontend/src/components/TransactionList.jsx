@@ -3,6 +3,7 @@ import { Principal } from '@dfinity/principal';
 import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createSnsArchiveActor } from 'external/sns_archive';
 import { createActor as createSnsLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createSnsIndexActor } from 'external/sns_index';
 import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import { useAuth } from '../AuthContext';
 import { Link } from 'react-router-dom';
@@ -199,13 +200,15 @@ const TransactionType = {
 
 function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, onToggleCollapse }) {
     const { identity } = useAuth();
-    const [transactions, setTransactions] = useState([]); // Current page of transactions
+    const [allTransactions, setAllTransactions] = useState([]); // Store all fetched transactions
+    const [displayedTransactions, setDisplayedTransactions] = useState([]); // Current page of transactions
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
     const [selectedType, setSelectedType] = useState(TransactionType.ALL);
     const [ledgerCanisterId, setLedgerCanisterId] = useState(null);
+    const [indexCanisterId, setIndexCanisterId] = useState(null);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [sortConfig, setSortConfig] = useState({
         key: 'timestamp',
@@ -223,8 +226,9 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
             const response = await snsRootActor.list_sns_canisters({});
             console.log("list_sns_canisters", response);
 
-            // Set the ledger canister ID
+            // Set both ledger and index canister IDs
             setLedgerCanisterId(response.ledger[0]);
+            setIndexCanisterId(response.index[0]);
         } catch (err) {
             setError('Failed to fetch canister IDs');
             console.error('Error fetching canister IDs:', err);
@@ -232,7 +236,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
     };
 
     // Fetch transactions from ledger and archives if needed
-    const fetchTransactions = async () => {
+    const fetchLedgerTransactions = async () => {
         if (!ledgerCanisterId) return;
 
         setLoading(true);
@@ -257,7 +261,6 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
             if (response.archived_transactions.length > 0) {
                 for (const archive of response.archived_transactions) {
                     try {
-                        // The callback is an array where the first element is the Principal
                         const archiveCanisterId = archive.callback[0].toText();
                         console.log("Archive info:", {
                             callback: archive.callback,
@@ -280,26 +283,10 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                 }
             }
 
-            // Debug log transaction structure
-            console.log('Transaction structure sample:', txs[0]);
-            console.log('All transactions:', txs);
-
-            // Check for invalid transactions
-            const invalidTxs = txs.filter(tx => !tx || !tx.kind);
-            if (invalidTxs.length > 0) {
-                console.warn('Found invalid transactions:', invalidTxs);
-            }
-
             // Apply type filter if needed
             const filteredTxs = selectedType === TransactionType.ALL 
                 ? txs 
-                : txs.filter(tx => {
-                    if (!tx?.kind) {
-                        console.warn('Transaction missing kind:', tx);
-                        return false;
-                    }
-                    return tx.kind === selectedType;
-                });
+                : txs.filter(tx => tx?.kind === selectedType);
 
             // Apply from/to filters
             const filteredByAddress = filteredTxs.filter(tx => {
@@ -323,14 +310,95 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
 
             // Sort transactions
             const sortedTxs = sortTransactions(filteredByAddress);
+            setDisplayedTransactions(sortedTxs);
 
-            setTransactions(sortedTxs);
         } catch (err) {
             setError('Failed to fetch transactions');
             console.error('Error fetching transactions:', err);
         } finally {
             setLoading(false);
         }
+    };
+
+    // Fetch all transactions from index canister
+    const fetchAllFromIndex = async () => {
+        try {
+            const indexActor = createSnsIndexActor(indexCanisterId);
+            const account = {
+                owner: Principal.fromText(principalId),
+                subaccount: []
+            };
+            
+            let allTxs = [];
+            let startIndex = 0;
+            let hasMore = true;
+
+            while (hasMore) {
+                console.log("Fetching transactions from index", startIndex);
+                const response = await indexActor.get_account_transactions({
+                    account,
+                    max_results: FETCH_SIZE,
+                    start: startIndex > 0 ? [BigInt(startIndex)] : []
+                });
+
+                if (!response.Ok) {
+                    throw new Error(response.Err.message);
+                }
+
+                const transactions = response.Ok.transactions;
+                allTxs = [...allTxs, ...transactions];
+                
+                // If we got less than the fetch size, we're done
+                if (transactions.length < FETCH_SIZE) {
+                    hasMore = false;
+                } else {
+                    startIndex += FETCH_SIZE;
+                }
+            }
+
+            console.log("Total transactions fetched:", allTxs.length);
+            setAllTransactions(allTxs);
+            setTotalTransactions(allTxs.length);
+            updateDisplayedTransactions(allTxs, 0, selectedType, pageSize);
+        } catch (err) {
+            setError('Failed to fetch transactions from index');
+            console.error('Error fetching from index:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Update displayed transactions based on page and filter
+    const updateDisplayedTransactions = (transactions, pageNum, type, size) => {
+        const filtered = type === TransactionType.ALL 
+            ? transactions 
+            : transactions.filter(tx => tx.transaction?.kind === type);
+        
+        // Apply from/to filters
+        const filteredByAddress = filtered.filter(tx => {
+            const fromPrincipal = getFromPrincipal(tx);
+            const toPrincipal = getToPrincipal(tx);
+
+            const fromMatches = matchesPrincipalFilter(
+                fromPrincipal,
+                fromFilter,
+                fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null
+            );
+
+            const toMatches = matchesPrincipalFilter(
+                toPrincipal,
+                toFilter,
+                toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null
+            );
+
+            return filterOperator === 'and' ? (fromMatches && toMatches) : (fromMatches || toMatches);
+        });
+
+        const sorted = sortTransactions(filteredByAddress);
+        const start = pageNum * size;
+        const end = start + size;
+        setDisplayedTransactions(sorted.slice(start, end));
+        setTotalTransactions(sorted.length);
     };
 
     // Effect to fetch canister IDs
@@ -340,18 +408,31 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
 
     // Effect to fetch transactions when dependencies change
     useEffect(() => {
-        if (ledgerCanisterId) {
-            fetchTransactions();
+        if (!ledgerCanisterId) return;
+
+        if (principalId && indexCanisterId) {
+            // Use index canister for principal-specific queries
+            fetchAllFromIndex();
+        } else {
+            // Use ledger for general transaction list
+            fetchLedgerTransactions();
         }
-    }, [ledgerCanisterId, page, pageSize, selectedType, fromFilter, toFilter, filterOperator]);
+    }, [ledgerCanisterId, indexCanisterId, principalId, page, pageSize, selectedType, fromFilter, toFilter, filterOperator]);
+
+    // Effect to update displayed transactions when filters change (for index transactions)
+    useEffect(() => {
+        if (principalId && allTransactions.length > 0) {
+            updateDisplayedTransactions(allTransactions, page, selectedType, pageSize);
+        }
+    }, [page, selectedType, pageSize, sortConfig, fromFilter, toFilter, filterOperator]);
 
     // Add effect to fetch principal display info
     useEffect(() => {
         const fetchPrincipalInfo = async () => {
-            if (!transactions.length) return;
+            if (!displayedTransactions.length) return;
 
             const uniquePrincipals = new Set();
-            transactions.forEach(tx => {
+            displayedTransactions.forEach(tx => {
                 // Use our helper functions to get principals
                 const fromPrincipal = getFromPrincipal(tx);
                 const toPrincipal = getToPrincipal(tx);
@@ -392,7 +473,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         };
 
         fetchPrincipalInfo();
-    }, [transactions, identity]);
+    }, [displayedTransactions, identity]);
 
     const formatAmount = (amount, decimals = 8) => {
         const value = Number(amount) / Math.pow(10, decimals);
@@ -500,65 +581,28 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
 
     // Update helper functions to handle both formats
     const getFromPrincipal = (tx) => {
-        console.log('getFromPrincipal input:', tx);
-        if (!tx) {
-            console.log('getFromPrincipal: tx is null/undefined');
-            return null;
-        }
-
-        let result = null;
-        if (tx.kind === 'transfer' && tx.transfer?.[0]?.from?.owner) {
-            result = tx.transfer[0].from.owner;
-        } else if (tx.kind === 'burn' && tx.burn?.[0]?.from?.owner) {
-            result = tx.burn[0].from.owner;
-        } else if (tx.kind === 'approve' && tx.approve?.[0]?.from?.owner) {
-            result = tx.approve[0].from.owner;
-        }
-
-        console.log('getFromPrincipal result:', result);
-        return result;
+        const transaction = tx.transaction || tx;
+        if (transaction.transfer?.[0]?.from?.owner) return transaction.transfer[0].from.owner;
+        if (transaction.burn?.[0]?.from?.owner) return transaction.burn[0].from.owner;
+        if (transaction.approve?.[0]?.from?.owner) return transaction.approve[0].from.owner;
+        return null;
     };
 
     const getToPrincipal = (tx) => {
-        console.log('getToPrincipal input:', tx);
-        if (!tx) {
-            console.log('getToPrincipal: tx is null/undefined');
-            return null;
-        }
-
-        let result = null;
-        if (tx.kind === 'transfer' && tx.transfer?.[0]?.to?.owner) {
-            result = tx.transfer[0].to.owner;
-        } else if (tx.kind === 'mint' && tx.mint?.[0]?.to?.owner) {
-            result = tx.mint[0].to.owner;
-        } else if (tx.kind === 'approve' && tx.approve?.[0]?.spender?.owner) {
-            result = tx.approve[0].spender.owner;
-        }
-
-        console.log('getToPrincipal result:', result);
-        return result;
+        const transaction = tx.transaction || tx;
+        if (transaction.transfer?.[0]?.to?.owner) return transaction.transfer[0].to.owner;
+        if (transaction.mint?.[0]?.to?.owner) return transaction.mint[0].to.owner;
+        if (transaction.approve?.[0]?.spender?.owner) return transaction.approve[0].spender.owner;
+        return null;
     };
 
     const getTransactionAmount = (tx) => {
-        console.log('getTransactionAmount input:', tx);
-        if (!tx) {
-            console.log('getTransactionAmount: tx is null/undefined');
-            return 0n;
-        }
-
-        let result = 0n;
-        if (tx.kind === 'transfer' && tx.transfer?.[0]?.amount) {
-            result = BigInt(tx.transfer[0].amount);
-        } else if (tx.kind === 'mint' && tx.mint?.[0]?.amount) {
-            result = BigInt(tx.mint[0].amount);
-        } else if (tx.kind === 'burn' && tx.burn?.[0]?.amount) {
-            result = BigInt(tx.burn[0].amount);
-        } else if (tx.kind === 'approve' && tx.approve?.[0]?.amount) {
-            result = BigInt(tx.approve[0].amount);
-        }
-
-        console.log('getTransactionAmount result:', result.toString());
-        return result;
+        const transaction = tx.transaction || tx;
+        if (transaction.transfer?.[0]?.amount) return BigInt(transaction.transfer[0].amount);
+        if (transaction.mint?.[0]?.amount) return BigInt(transaction.mint[0].amount);
+        if (transaction.burn?.[0]?.amount) return BigInt(transaction.burn[0].amount);
+        if (transaction.approve?.[0]?.amount) return BigInt(transaction.approve[0].amount);
+        return 0n;
     };
 
     // Add sort handler
@@ -773,32 +817,19 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                             </tr>
                         </thead>
                         <tbody>
-                            {transactions.filter(tx => tx !== null && tx !== undefined).map((tx, index) => {
-                                console.log("Processing transaction for render:", tx);
-                                console.log("Transaction ID:", {
-                                    id: tx.id,
-                                    type: typeof tx.id,
-                                    hasToString: tx.id?.toString !== undefined
-                                });
-                                
-                                // Extract transaction details safely using our helper functions
-                                const txType = tx?.kind;
+                            {displayedTransactions.map((tx, index) => {
+                                const transaction = tx.transaction || tx;
+                                const txType = transaction.kind;
                                 const fromPrincipal = getFromPrincipal(tx);
                                 const toPrincipal = getToPrincipal(tx);
                                 const amount = getTransactionAmount(tx);
-
-                                // Debug log the principals before rendering
-                                console.log('Rendering transaction principals:', {
-                                    fromPrincipal: fromPrincipal?.toString?.() || null,
-                                    toPrincipal: toPrincipal?.toString?.() || null
-                                });
 
                                 return (
                                     <tr key={index}>
                                         <td style={styles.td}>{txType}</td>
                                         <td style={styles.td}>
                                             <Link 
-                                                to={`/transaction?sns=${snsRootCanisterId}&id=${getTransactionSequence(tx, index)}`}
+                                                to={`/transaction?sns=${snsRootCanisterId}&id=${tx.id || index}`}
                                                 style={{
                                                     color: '#3498db',
                                                     textDecoration: 'none',
@@ -807,7 +838,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                     }
                                                 }}
                                             >
-                                                #{getTransactionSequence(tx, index)}
+                                                #{tx.id || index}
                                             </Link>
                                         </td>
                                         <td style={{...styles.td, ...styles.principalCell}}>
@@ -819,9 +850,9 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                         displayInfo={principalDisplayInfo.get(fromPrincipal?.toString?.() || '')}
                                                         showCopyButton={false}
                                                     />
-                                                    {tx.kind === 'transfer' && tx.transfer?.[0]?.from?.subaccount?.length > 0 && (
+                                                    {txType === 'transfer' && transaction.transfer?.[0]?.from?.subaccount?.length > 0 && (
                                                         <div style={styles.subaccount}>
-                                                            Subaccount: {tx.transfer[0].from.subaccount[0]}
+                                                            Subaccount: {transaction.transfer[0].from.subaccount[0]}
                                                         </div>
                                                     )}
                                                 </div>
@@ -834,9 +865,9 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                         displayInfo={principalDisplayInfo.get(toPrincipal?.toString?.() || '')}
                                                         showCopyButton={false}
                                                     />
-                                                    {tx.kind === 'transfer' && tx.transfer?.[0]?.to?.subaccount?.length > 0 && (
+                                                    {txType === 'transfer' && transaction.transfer?.[0]?.to?.subaccount?.length > 0 && (
                                                         <div style={styles.subaccount}>
-                                                            Subaccount: {tx.transfer[0].to.subaccount[0]}
+                                                            Subaccount: {transaction.transfer[0].to.subaccount[0]}
                                                         </div>
                                                     )}
                                                 </div>
@@ -847,7 +878,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                             {amount ? formatAmount(amount) : '-'}
                                         </td>
                                         <td style={styles.td}>
-                                            {formatTimestamp(tx.timestamp)}
+                                            {formatTimestamp(transaction.timestamp)}
                                         </td>
                                     </tr>
                                 );
