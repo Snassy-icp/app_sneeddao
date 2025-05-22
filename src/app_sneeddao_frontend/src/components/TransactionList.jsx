@@ -913,7 +913,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                         <td style={styles.td}>{txType}</td>
                                         <td style={styles.td}>
                                             <Link 
-                                                to={`/transaction?sns=${snsRootCanisterId}&id=${tx.id || index}`}
+                                                to={`/transaction?sns=${snsRootCanisterId}&id=${!principalId ? startTxIndex + index : (tx.id || index)}`}
                                                 style={{
                                                     color: '#3498db',
                                                     textDecoration: 'none',
@@ -922,7 +922,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                     }
                                                 }}
                                             >
-                                                #{tx.id || index}
+                                                #{!principalId ? startTxIndex + index : (tx.id || index)}
                                             </Link>
                                         </td>
                                         <td style={{...styles.td, ...styles.principalCell}}>
