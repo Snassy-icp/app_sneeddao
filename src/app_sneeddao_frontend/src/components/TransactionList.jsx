@@ -607,6 +607,28 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         return sortConfig.direction === 'asc' ? '↑' : '↓';
     };
 
+    // Add helper function to get transaction sequence number
+    const getTransactionSequence = (tx, index) => {
+        console.log('Getting sequence number for transaction:', tx, 'at index:', index);
+        let sequence = null;
+
+        if (tx?.transfer?.[0]?.sequence_number) {
+            sequence = tx.transfer[0].sequence_number;
+        } else if (tx?.mint?.[0]?.sequence_number) {
+            sequence = tx.mint[0].sequence_number;
+        } else if (tx?.burn?.[0]?.sequence_number) {
+            sequence = tx.burn[0].sequence_number;
+        } else if (tx?.approve?.[0]?.sequence_number) {
+            sequence = tx.approve[0].sequence_number;
+        } else {
+            // Calculate sequence based on page, pageSize and index
+            sequence = (page * pageSize) + index;
+        }
+
+        console.log('Found sequence number:', sequence);
+        return sequence;
+    };
+
     if (loading) {
         return <div style={styles.loadingSpinner}>Loading transactions...</div>;
     }
@@ -776,7 +798,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                         <td style={styles.td}>{txType}</td>
                                         <td style={styles.td}>
                                             <Link 
-                                                to={`/transaction?sns=${snsRootCanisterId}&id=${tx.id?.toString?.() || tx.id || 'unknown'}`}
+                                                to={`/transaction?sns=${snsRootCanisterId}&id=${getTransactionSequence(tx, index)}`}
                                                 style={{
                                                     color: '#3498db',
                                                     textDecoration: 'none',
@@ -785,7 +807,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                     }
                                                 }}
                                             >
-                                                #{tx.id?.toString?.() || tx.id || 'unknown'}
+                                                #{getTransactionSequence(tx, index)}
                                             </Link>
                                         </td>
                                         <td style={{...styles.td, ...styles.principalCell}}>
