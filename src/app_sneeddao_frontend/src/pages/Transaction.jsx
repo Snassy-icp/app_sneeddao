@@ -253,7 +253,14 @@ function Transaction() {
 
     const formatSafeAmount = (amount) => {
         if (amount === undefined || amount === null) return '-';
-        return formatAmount(amount);
+        try {
+            // Convert to string first to handle both number and BigInt inputs
+            const amountStr = amount.toString();
+            return formatAmount(amountStr);
+        } catch (e) {
+            console.error('Error formatting amount:', e);
+            return '-';
+        }
     };
 
     const renderAccountInfo = (account, label) => {
