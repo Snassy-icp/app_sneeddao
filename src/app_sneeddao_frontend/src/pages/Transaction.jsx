@@ -255,34 +255,49 @@ function Transaction() {
     const formatSafeAmount = (amount) => {
         if (amount === undefined || amount === null) return '-';
         try {
-            // Convert to string first to handle both number and BigInt inputs
-            const amountStr = amount.toString();
+            // Handle BigInt, Number, and string inputs
+            let amountStr;
+            if (typeof amount === 'bigint') {
+                amountStr = amount.toString();
+            } else if (typeof amount === 'number') {
+                amountStr = amount.toString();
+            } else if (typeof amount === 'string') {
+                amountStr = amount;
+            } else {
+                console.error('Invalid amount type:', typeof amount);
+                return '-';
+            }
             return formatAmount(amountStr, 8); // Default to 8 decimals for SNS tokens
         } catch (e) {
-            console.error('Error formatting amount:', e);
+            console.error('Error formatting amount:', e, 'Amount:', amount);
             return '-';
         }
     };
 
     const renderAccountInfo = (account, label) => {
-        if (!account) return null;
-        return (
-            <div style={styles.accountInfo}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ color: '#888' }}>{label}:</span>
-                    <PrincipalDisplay
-                        principal={account.owner}
-                        displayInfo={principalDisplayInfo.get(account.owner.toString())}
-                        showCopyButton={true}
-                    />
-                </div>
-                {account.subaccount && account.subaccount.length > 0 && (
-                    <div style={styles.subaccount}>
-                        Subaccount: {account.subaccount[0]}
+        if (!account || !account.owner) return null;
+        try {
+            return (
+                <div style={styles.accountInfo}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: '#888' }}>{label}:</span>
+                        <PrincipalDisplay
+                            principal={account.owner}
+                            displayInfo={account.owner ? principalDisplayInfo.get(account.owner.toString()) : null}
+                            showCopyButton={true}
+                        />
                     </div>
-                )}
-            </div>
-        );
+                    {account.subaccount && account.subaccount.length > 0 && (
+                        <div style={styles.subaccount}>
+                            Subaccount: {account.subaccount[0]}
+                        </div>
+                    )}
+                </div>
+            );
+        } catch (e) {
+            console.error('Error rendering account info:', e, 'Account:', account);
+            return null;
+        }
     };
 
     return (
