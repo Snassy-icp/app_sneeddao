@@ -280,10 +280,19 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                 }
             }
 
+            // Debug log transaction structure
+            console.log('Transaction structure sample:', txs[0]);
+
             // Apply type filter if needed
             const filteredTxs = selectedType === TransactionType.ALL 
                 ? txs 
-                : txs.filter(tx => tx.transaction.kind === selectedType);
+                : txs.filter(tx => {
+                    if (!tx?.transaction?.kind) {
+                        console.warn('Transaction missing kind:', tx);
+                        return false;
+                    }
+                    return tx.transaction.kind === selectedType;
+                });
 
             // Apply from/to filters
             const filteredByAddress = filteredTxs.filter(tx => {
@@ -409,10 +418,36 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         return [...transactions].sort((a, b) => {
             let aValue, bValue;
 
+            // Helper to safely get transaction timestamp
+            const getTimestamp = (tx) => {
+                // Handle direct ledger transaction format
+                if (tx?.timestamp) {
+                    return Number(tx.timestamp);
+                }
+                // Handle indexed transaction format
+                if (tx?.transaction?.timestamp) {
+                    return Number(tx.transaction.timestamp);
+                }
+                return 0;
+            };
+
+            // Helper to safely get transaction kind
+            const getKind = (tx) => {
+                // Handle direct ledger transaction format
+                if (tx?.kind) {
+                    return tx.kind;
+                }
+                // Handle indexed transaction format
+                if (tx?.transaction?.kind) {
+                    return tx.transaction.kind;
+                }
+                return '';
+            };
+
             switch (sortConfig.key) {
                 case 'type':
-                    aValue = a.transaction.kind;
-                    bValue = b.transaction.kind;
+                    aValue = getKind(a);
+                    bValue = getKind(b);
                     break;
                 case 'fromAddress':
                     const aFromPrincipal = getFromPrincipal(a);
@@ -433,8 +468,8 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                         ? (aValue < bValue ? -1 : aValue > bValue ? 1 : 0)
                         : (bValue < aValue ? -1 : bValue > aValue ? 1 : 0);
                 case 'timestamp':
-                    aValue = Number(a.transaction.timestamp);
-                    bValue = Number(b.transaction.timestamp);
+                    aValue = getTimestamp(a);
+                    bValue = getTimestamp(b);
                     return sortConfig.direction === 'asc' 
                         ? aValue - bValue 
                         : bValue - aValue;
@@ -448,26 +483,88 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         });
     };
 
-    // Helper functions to get transaction details
+    // Update helper functions to handle both formats
     const getFromPrincipal = (tx) => {
-        if (tx.transaction.transfer?.[0]?.from?.owner) return tx.transaction.transfer[0].from.owner;
-        if (tx.transaction.burn?.[0]?.from?.owner) return tx.transaction.burn[0].from.owner;
-        if (tx.transaction.approve?.[0]?.from?.owner) return tx.transaction.approve[0].from.owner;
+        // Handle direct ledger transaction format
+        if (tx?.kind === 'transfer' && tx.transfer?.[0]?.from?.owner) {
+            return tx.transfer[0].from.owner;
+        }
+        if (tx?.kind === 'burn' && tx.burn?.[0]?.from?.owner) {
+            return tx.burn[0].from.owner;
+        }
+        if (tx?.kind === 'approve' && tx.approve?.[0]?.from?.owner) {
+            return tx.approve[0].from.owner;
+        }
+
+        // Handle indexed transaction format
+        if (tx?.transaction?.transfer?.[0]?.from?.owner) {
+            return tx.transaction.transfer[0].from.owner;
+        }
+        if (tx?.transaction?.burn?.[0]?.from?.owner) {
+            return tx.transaction.burn[0].from.owner;
+        }
+        if (tx?.transaction?.approve?.[0]?.from?.owner) {
+            return tx.transaction.approve[0].from.owner;
+        }
+
         return null;
     };
 
     const getToPrincipal = (tx) => {
-        if (tx.transaction.transfer?.[0]?.to?.owner) return tx.transaction.transfer[0].to.owner;
-        if (tx.transaction.mint?.[0]?.to?.owner) return tx.transaction.mint[0].to.owner;
-        if (tx.transaction.approve?.[0]?.spender?.owner) return tx.transaction.approve[0].spender.owner;
+        // Handle direct ledger transaction format
+        if (tx?.kind === 'transfer' && tx.transfer?.[0]?.to?.owner) {
+            return tx.transfer[0].to.owner;
+        }
+        if (tx?.kind === 'mint' && tx.mint?.[0]?.to?.owner) {
+            return tx.mint[0].to.owner;
+        }
+        if (tx?.kind === 'approve' && tx.approve?.[0]?.spender?.owner) {
+            return tx.approve[0].spender.owner;
+        }
+
+        // Handle indexed transaction format
+        if (tx?.transaction?.transfer?.[0]?.to?.owner) {
+            return tx.transaction.transfer[0].to.owner;
+        }
+        if (tx?.transaction?.mint?.[0]?.to?.owner) {
+            return tx.transaction.mint[0].to.owner;
+        }
+        if (tx?.transaction?.approve?.[0]?.spender?.owner) {
+            return tx.transaction.approve[0].spender.owner;
+        }
+
         return null;
     };
 
     const getTransactionAmount = (tx) => {
-        if (tx.transaction.transfer?.[0]?.amount) return BigInt(tx.transaction.transfer[0].amount);
-        if (tx.transaction.mint?.[0]?.amount) return BigInt(tx.transaction.mint[0].amount);
-        if (tx.transaction.burn?.[0]?.amount) return BigInt(tx.transaction.burn[0].amount);
-        if (tx.transaction.approve?.[0]?.amount) return BigInt(tx.transaction.approve[0].amount);
+        // Handle direct ledger transaction format
+        if (tx?.kind === 'transfer' && tx.transfer?.[0]?.amount) {
+            return BigInt(tx.transfer[0].amount);
+        }
+        if (tx?.kind === 'mint' && tx.mint?.[0]?.amount) {
+            return BigInt(tx.mint[0].amount);
+        }
+        if (tx?.kind === 'burn' && tx.burn?.[0]?.amount) {
+            return BigInt(tx.burn[0].amount);
+        }
+        if (tx?.kind === 'approve' && tx.approve?.[0]?.amount) {
+            return BigInt(tx.approve[0].amount);
+        }
+
+        // Handle indexed transaction format
+        if (tx?.transaction?.transfer?.[0]?.amount) {
+            return BigInt(tx.transaction.transfer[0].amount);
+        }
+        if (tx?.transaction?.mint?.[0]?.amount) {
+            return BigInt(tx.transaction.mint[0].amount);
+        }
+        if (tx?.transaction?.burn?.[0]?.amount) {
+            return BigInt(tx.transaction.burn[0].amount);
+        }
+        if (tx?.transaction?.approve?.[0]?.amount) {
+            return BigInt(tx.transaction.approve[0].amount);
+        }
+
         return 0n;
     };
 
@@ -479,13 +576,20 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         }));
     };
 
-    // Add helper function to check if a principal matches the filter
+    // Add debug logging to the filter function
     const matchesPrincipalFilter = (principal, filter, displayInfo) => {
         if (!filter) return true;
         if (!principal) return false;
 
         const filterLower = filter.toLowerCase();
         const principalStr = principal.toString().toLowerCase();
+
+        // Debug log
+        console.log('Matching principal:', {
+            principal: principalStr,
+            filter: filterLower,
+            displayInfo
+        });
 
         // Check principal ID
         if (principalStr.includes(filterLower)) return true;
