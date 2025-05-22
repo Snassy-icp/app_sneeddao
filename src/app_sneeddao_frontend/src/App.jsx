@@ -38,6 +38,7 @@ import Principal from './pages/Principal';
 import Neurons from './pages/Neurons';
 import Transaction from './pages/Transaction';
 import Transactions from './pages/Transactions';
+import Hub from './pages/Hub';
 
 // Component to set up global naming function
 function GlobalNamingSetup() {
@@ -93,6 +94,7 @@ function App() {
               <Route path="/neurons" element={<Neurons />} />
               <Route path="/transaction" element={<Transaction />} />
               <Route path="/transactions" element={<Transactions />} />
+              <Route path="/hub" element={<Hub />} />
 
               {/* Admin routes */}
               <Route path="/admin" element={<Admin />} />

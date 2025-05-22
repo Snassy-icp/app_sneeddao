@@ -107,7 +107,7 @@ function Dao() {
             <Header />
             <main style={styles.container}>
                 <div style={styles.section}>
-                    <h1 style={styles.heading}>About Sneed DAO</h1>
+                    <h1 style={styles.heading}>Welcome to Sneed DAO</h1>
                     <p style={styles.paragraph}>
                         Sneed DAO is a fully <strong>community-owned and community-driven</strong> SNS DAO operating on the Internet Computer Protocol (ICP). Emerging from the legacy of SNS-1, Sneed DAO was designed as a customizable and open "Blank Canvas" dApp, with the goal of providing a self-sustaining platform for the ICP community to innovate and build.
                     </p>
