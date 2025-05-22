@@ -161,12 +161,19 @@ function Transaction() {
     });
 
     const fetchTransaction = async () => {
-        if (!currentId || !snsRootCanisterId) return;
+        if (!currentId) return;
 
         setLoading(true);
         setError(null);
         try {
-            const selectedSns = getSnsById(snsRootCanisterId);
+            // Clean and validate the transaction ID
+            const cleanId = currentId.replace(/[^0-9]/g, '');
+            if (!cleanId) {
+                throw new Error('Invalid transaction ID');
+            }
+
+            const snsRoot = searchParams.get('sns') || SNEED_SNS_ROOT;
+            const selectedSns = getSnsById(snsRoot);
             if (!selectedSns) {
                 throw new Error('Selected SNS not found');
             }
@@ -177,7 +184,7 @@ function Transaction() {
             });
 
             const response = await ledgerActor.get_transactions({
-                start: BigInt(currentId),
+                start: BigInt(cleanId),
                 length: 1n
             });
 
@@ -190,9 +197,17 @@ function Transaction() {
             // If not found in direct response, check if it's archived
             else if (response.archived_transactions.length > 0) {
                 const archiveInfo = response.archived_transactions[0];
-                const archiveActor = createSnsArchiveActor(archiveInfo.callback.toString());
+                console.log('Archive info:', archiveInfo);
+                
+                // The callback is an array where the first element is the Principal
+                const archiveCanisterId = archiveInfo.callback[0].toText();
+                console.log('Archive canister ID:', archiveCanisterId);
+                
+                const archiveActor = createSnsArchiveActor(archiveCanisterId, {
+                    agentOptions: { identity }
+                });
                 const archiveResponse = await archiveActor.get_transactions({
-                    start: BigInt(currentId),
+                    start: BigInt(cleanId),
                     length: 1n
                 });
                 if (archiveResponse.transactions.length > 0) {
@@ -213,7 +228,7 @@ function Transaction() {
 
         } catch (err) {
             console.error('Error fetching transaction:', err);
-            setError('Failed to load transaction');
+            setError(err.message || 'Failed to load transaction');
         } finally {
             setLoading(false);
         }
