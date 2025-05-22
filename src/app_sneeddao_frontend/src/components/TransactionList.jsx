@@ -334,9 +334,36 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
     // Effect to update displayed transactions when page, filter, or page size changes
     useEffect(() => {
         if (principalId) {
-            updateDisplayedTransactions(allTransactions, page, selectedType, pageSize);
+            const filtered = selectedType === TransactionType.ALL 
+                ? allTransactions 
+                : allTransactions.filter(tx => tx.transaction.kind === selectedType);
+
+            // Apply from/to filters
+            const filteredByAddress = filtered.filter(tx => {
+                const fromPrincipal = getFromPrincipal(tx);
+                const toPrincipal = getToPrincipal(tx);
+
+                const fromMatches = matchesPrincipalFilter(
+                    fromPrincipal,
+                    fromFilter,
+                    fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null
+                );
+
+                const toMatches = matchesPrincipalFilter(
+                    toPrincipal,
+                    toFilter,
+                    toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null
+                );
+
+                return filterOperator === 'and' ? (fromMatches && toMatches) : (fromMatches || toMatches);
+            });
+            
+            const sorted = sortTransactions(filteredByAddress);
+            const start = page * pageSize;
+            const end = start + pageSize;
+            setDisplayedTransactions(sorted.slice(start, end));
         }
-    }, [page, selectedType, allTransactions, pageSize]);
+    }, [page, selectedType, allTransactions, pageSize, sortConfig, fromFilter, toFilter, filterOperator, principalId]);
 
     // Add effect to fetch principal display info
     useEffect(() => {
@@ -514,40 +541,6 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
 
         return false;
     };
-
-    // Update the filtering logic in useEffect
-    useEffect(() => {
-        if (principalId) {
-            const filtered = selectedType === TransactionType.ALL 
-                ? allTransactions 
-                : allTransactions.filter(tx => tx.transaction.kind === selectedType);
-
-            // Apply from/to filters
-            const filteredByAddress = filtered.filter(tx => {
-                const fromPrincipal = getFromPrincipal(tx);
-                const toPrincipal = getToPrincipal(tx);
-
-                const fromMatches = matchesPrincipalFilter(
-                    fromPrincipal,
-                    fromFilter,
-                    fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null
-                );
-
-                const toMatches = matchesPrincipalFilter(
-                    toPrincipal,
-                    toFilter,
-                    toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null
-                );
-
-                return filterOperator === 'and' ? (fromMatches && toMatches) : (fromMatches || toMatches);
-            });
-            
-            const sorted = sortTransactions(filteredByAddress);
-            const start = page * pageSize;
-            const end = start + pageSize;
-            setDisplayedTransactions(sorted.slice(start, end));
-        }
-    }, [page, selectedType, allTransactions, pageSize, sortConfig, fromFilter, toFilter, principalDisplayInfo, filterOperator]);
 
     // Render sort indicator
     const renderSortIndicator = (key) => {
