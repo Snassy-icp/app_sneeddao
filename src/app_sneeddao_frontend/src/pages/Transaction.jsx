@@ -117,6 +117,29 @@ const styles = {
     tokenSymbol: {
         color: '#888',
         fontSize: '14px'
+    },
+    navigationButtons: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: '10px',
+        marginTop: '20px'
+    },
+    navButton: {
+        backgroundColor: '#3498db',
+        color: '#ffffff',
+        border: 'none',
+        borderRadius: '4px',
+        padding: '8px 16px',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        transition: 'background-color 0.2s'
+    },
+    navButtonDisabled: {
+        backgroundColor: '#2c3e50',
+        cursor: 'not-allowed',
+        opacity: 0.7
     }
 };
 
@@ -124,7 +147,7 @@ function Transaction() {
     const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
     const { identity } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
-    const [transactionId, setTransactionId] = useState(searchParams.get('id') || '');
+    const [currentId, setCurrentId] = useState(searchParams.get('id') || '');
     const [archiveCanisterId, setArchiveCanisterId] = useState(null);
     const [transaction, setTransaction] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -136,6 +159,48 @@ function Transaction() {
         logo: '',
         decimals: 8
     });
+
+    // Move fetchTransaction outside useEffect
+    const fetchTransaction = async () => {
+        if (!archiveCanisterId || !currentId) return;
+
+        setLoading(true);
+        setError(null);
+        try {
+            // Validate transaction ID
+            const parsedId = currentId.trim();
+            if (!parsedId) {
+                setError('Please enter a transaction ID');
+                setTransaction(null);
+                return;
+            }
+
+            // Try to convert to BigInt
+            let bigIntId;
+            try {
+                bigIntId = BigInt(parsedId);
+            } catch (e) {
+                setError('Invalid transaction ID format. Please enter a valid number.');
+                setTransaction(null);
+                return;
+            }
+
+            const archiveActor = createSnsArchiveActor(archiveCanisterId);
+            const response = await archiveActor.get_transaction(bigIntId);
+            if (response.length === 0) {
+                setError('Transaction not found');
+                setTransaction(null);
+            } else {
+                console.log("Transaction:", response[0]);
+                setTransaction(response[0]);
+            }
+        } catch (err) {
+            setError('Failed to fetch transaction details');
+            console.error('Error fetching transaction:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Fetch token metadata when SNS root changes
     useEffect(() => {
@@ -188,49 +253,8 @@ function Transaction() {
         fetchArchiveCanisterId();
     }, [searchParams]);
 
-    // Fetch transaction details when ID changes
+    // Fetch transaction when ID changes
     useEffect(() => {
-        const fetchTransaction = async () => {
-            if (!archiveCanisterId || !transactionId) return;
-
-            setLoading(true);
-            setError(null);
-            try {
-                // Validate transaction ID
-                const parsedId = transactionId.trim();
-                if (!parsedId) {
-                    setError('Please enter a transaction ID');
-                    setTransaction(null);
-                    return;
-                }
-
-                // Try to convert to BigInt
-                let bigIntId;
-                try {
-                    bigIntId = BigInt(parsedId);
-                } catch (e) {
-                    setError('Invalid transaction ID format. Please enter a valid number.');
-                    setTransaction(null);
-                    return;
-                }
-
-                const archiveActor = createSnsArchiveActor(archiveCanisterId);
-                const response = await archiveActor.get_transaction(bigIntId);
-                if (response.length === 0) {
-                    setError('Transaction not found');
-                    setTransaction(null);
-                } else {
-                    console.log("Transaction:", response[0]);
-                    setTransaction(response[0]);
-                }
-            } catch (err) {
-                setError('Failed to fetch transaction details');
-                console.error('Error fetching transaction:', err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         if (searchParams.get('id')) {
             fetchTransaction();
         }
@@ -295,7 +319,7 @@ function Transaction() {
 
     const handleSearch = () => {
         // Validate input before updating URL
-        const parsedId = transactionId.trim();
+        const parsedId = currentId.trim();
         if (!parsedId) {
             setError('Please enter a transaction ID');
             return;
@@ -372,6 +396,26 @@ function Transaction() {
         }
     };
 
+    // Add navigation handler
+    const handleNavigation = (direction) => {
+        const newId = direction === 'prev' ? 
+            BigInt(currentId) - 1n : 
+            BigInt(currentId) + 1n;
+        
+        setCurrentId(newId.toString());
+        setSearchParams(prev => {
+            prev.set('id', newId.toString());
+            return prev;
+        });
+    };
+
+    // Update useEffect to use currentId
+    useEffect(() => {
+        if (archiveCanisterId && currentId) {
+            fetchTransaction();
+        }
+    }, [currentId, archiveCanisterId]);
+
     return (
         <div className="page-container">
             <Header showSnsDropdown={true} />
@@ -380,30 +424,25 @@ function Transaction() {
                     <div style={styles.searchBox}>
                         <input
                             type="text"
-                            value={transactionId}
-                            onChange={(e) => setTransactionId(e.target.value)}
+                            value={currentId}
+                            onChange={(e) => setCurrentId(e.target.value)}
                             onKeyPress={handleKeyPress}
                             placeholder="Enter transaction ID"
                             style={styles.input}
                         />
-                        <button 
-                            onClick={handleSearch}
-                            style={styles.button}
-                        >
+                        <button onClick={handleSearch} style={styles.button}>
                             Search
                         </button>
                     </div>
-
-                    {loading && (
-                        <div style={styles.loading}>Loading transaction details...</div>
-                    )}
 
                     {error && (
                         <div style={styles.error}>{error}</div>
                     )}
 
-                    {transaction && (
-                        <div>
+                    {loading ? (
+                        <div style={styles.loading}>Loading transaction details...</div>
+                    ) : transaction && (
+                        <>
                             {/* Token Info */}
                             <div style={styles.tokenInfo}>
                                 <img 
@@ -508,7 +547,27 @@ function Transaction() {
                                     )}
                                 </>
                             )}
-                        </div>
+
+                            {/* Navigation Buttons */}
+                            <div style={styles.navigationButtons}>
+                                <button
+                                    onClick={() => handleNavigation('prev')}
+                                    disabled={BigInt(currentId) <= 0n}
+                                    style={{
+                                        ...styles.navButton,
+                                        ...(BigInt(currentId) <= 0n ? styles.navButtonDisabled : {})
+                                    }}
+                                >
+                                    ← Previous
+                                </button>
+                                <button
+                                    onClick={() => handleNavigation('next')}
+                                    style={styles.navButton}
+                                >
+                                    Next →
+                                </button>
+                            </div>
+                        </>
                     )}
                 </div>
             </main>
