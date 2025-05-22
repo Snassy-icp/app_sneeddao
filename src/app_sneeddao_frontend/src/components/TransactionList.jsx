@@ -750,7 +750,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                     }
                                                 }}
                                             >
-                                                #{tx.id}
+                                                #{tx.id.toString()}
                                             </Link>
                                         </td>
                                         <td style={{...styles.td, ...styles.principalCell}}>
