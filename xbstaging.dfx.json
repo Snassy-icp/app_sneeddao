@@ -1,0 +1,104 @@
+{
+  "canisters": {
+    "app_sneeddao_backend": {
+      "main": "src/app_sneeddao_backend/main.mo",
+      "type": "motoko"
+    },
+    "app_sneeddao_frontend": {
+      "dependencies": [
+        "app_sneeddao_backend"
+      ],
+      "source": [
+        "src/app_sneeddao_frontend/dist"
+      ],
+      "type": "assets",
+      "workspace": "app_sneeddao_frontend"
+    },
+    "rll": {
+      "type": "custom",
+      "candid": "src/external/rll/rll.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "pblon-kqaaa-aaaag-aub3q-cai"
+        }
+      }
+    },
+    "sneed_lock": {
+      "type": "custom",
+      "candid": "src/external/sneed_lock/sneed_lock.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "kazy6-5yaaa-aaaap-qp2vq-cai"
+        }
+      }
+    },
+    "swaprunner_backend": {
+      "type": "custom",
+      "candid": "src/external/swaprunner_backend/swaprunner_backend.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "rxaqa-eyaaa-aaaao-a356q-cai"
+        }
+      }
+    },
+    "sns_governance": {
+      "type": "custom",
+      "candid": "src/external/sns_governance/sns_governance.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "fi3zi-fyaaa-aaaaq-aachq-cai"
+        }
+      }
+    },
+    "sns_root": {
+      "type": "custom",
+      "candid": "src/external/sns_root/sns_root.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "fp274-iaaaa-aaaaq-aacha-cai"
+        }
+      }
+    },
+    "nns_gov": {
+      "type": "custom",
+      "candid": "src/external/nns_gov/nns_gov.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "rrkah-fqaaa-aaaaa-aaaaq-cai"
+        }
+      }
+    },
+    "nns_snsw": {
+      "type": "custom",
+      "candid": "src/external/nns_snsw/nns_snsw.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "qaa6y-5yaaa-aaaaa-aaafa-cai"
+        }
+      }
+    }
+
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
