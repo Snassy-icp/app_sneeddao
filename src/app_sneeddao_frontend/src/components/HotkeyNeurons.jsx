@@ -66,8 +66,11 @@ const HotkeyNeurons = ({
         
         const allNeurons = getAllNeurons();
         return allNeurons.some(neuron => {
-            // Check if neuron has hotkey access
-            const hasHotkeyAccess = neuron.permissions.some(p => p.permission_type.includes(4));
+            // Check if neuron has hotkey access for the current user
+            const hasHotkeyAccess = neuron.permissions.some(p => 
+                p.principal?.toString() === identity.getPrincipal().toString() &&
+                p.permission_type.includes(4)
+            );
             if (!hasHotkeyAccess) return false;
 
             // Check if neuron has already voted
@@ -190,8 +193,11 @@ const HotkeyNeurons = ({
         try {
             // Filter eligible neurons
             const eligibleNeurons = allNeurons.filter(neuron => {
-                // Check if neuron has hotkey access
-                const hasHotkeyAccess = neuron.permissions.some(p => p.permission_type.includes(4));
+                // Check if neuron has hotkey access for the current user
+                const hasHotkeyAccess = neuron.permissions.some(p => 
+                    p.principal?.toString() === identity.getPrincipal().toString() &&
+                    p.permission_type.includes(4)
+                );
                 if (!hasHotkeyAccess) return false;
 
                 // Check if neuron has already voted using the same logic as getNeuronVote
@@ -219,7 +225,10 @@ const HotkeyNeurons = ({
 
             if (eligibleNeurons.length === 0) {
                 const neuronsWithHotkey = allNeurons.filter(neuron => 
-                    neuron.permissions.some(p => p.permission_type.includes(4))
+                    neuron.permissions.some(p => 
+                        p.principal?.toString() === identity.getPrincipal().toString() &&
+                        p.permission_type.includes(4)
+                    )
                 ).length;
                 
                 const neuronsAlreadyVoted = allNeurons.filter(neuron => {
@@ -237,13 +246,31 @@ const HotkeyNeurons = ({
             }
 
             // Vote with all eligible neurons
+            let successfulVotes = 0;
+            let failedVotes = 0;
+            
             for (const neuron of eligibleNeurons) {
+                const neuronIdHex = uint8ArrayToHex(neuron.id[0].id);
+                const initialState = votingStates[neuronIdHex];
+                
                 await voteWithNeuron(neuron.id[0].id, vote);
+                
+                // Check the final state after voting
+                const finalState = votingStates[neuronIdHex];
+                if (finalState === 'success') {
+                    successfulVotes++;
+                } else if (finalState === 'error') {
+                    failedVotes++;
+                }
             }
 
-            alert(`Successfully voted with ${eligibleNeurons.length} neurons!`);
-            if (onVoteSuccess) {
-                onVoteSuccess();
+            if (successfulVotes > 0) {
+                alert(`Successfully voted with ${successfulVotes} neuron(s)!${failedVotes > 0 ? ` ${failedVotes} vote(s) failed.` : ''}`);
+                if (onVoteSuccess) {
+                    onVoteSuccess();
+                }
+            } else if (failedVotes > 0) {
+                alert(`All ${failedVotes} vote(s) failed.`);
             }
         } catch (error) {
             console.error('Error voting with all neurons:', error);
