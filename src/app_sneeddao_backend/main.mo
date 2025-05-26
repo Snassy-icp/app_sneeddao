@@ -37,6 +37,11 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   type Partner = T.Partner;
   type PartnerLink = T.PartnerLink;
 
+  // Project types
+  type Project = T.Project;
+  type ProjectLink = T.ProjectLink;
+  type ProjectType = T.ProjectType;
+
   // Token whitelist types
   type WhitelistedToken = {
     ledger_id: Principal;
@@ -78,6 +83,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // Stable storage for partners
   stable var stable_partners : [Partner] = [];
 
+  // Stable storage for projects
+  stable var stable_projects : [Project] = [];
+
   // Runtime hashmaps for neuron names and nicknames
   var neuron_names = HashMap.HashMap<NeuronNameKey, (Text, Bool)>(100, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
     Principal.equal(k1.sns_root_canister_id, k2.sns_root_canister_id) and Blob.equal(k1.neuron_id.id, k2.neuron_id.id)
@@ -112,6 +120,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // Runtime storage for partners
   private var partners = Buffer.Buffer<Partner>(0);
   private var next_partner_id : Nat = 1;
+
+  // Runtime storage for projects
+  private var projects = Buffer.Buffer<Project>(0);
+  private var next_project_id : Nat = 1;
 
   // ephemeral state
   let state : State = object { 
@@ -1439,6 +1451,120 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     }
   };
 
+  // Project management functions
+  public shared ({ caller }) func add_project(name: Text, logo_url: ?Text, description: Text, project_type: ProjectType, links: [ProjectLink]) : async Result.Result<Nat, Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+
+    if (Text.size(name) == 0) {
+      return #err("Project name cannot be empty");
+    };
+
+    if (Text.size(description) == 0) {
+      return #err("Description cannot be empty");
+    };
+
+    let now = Time.now();
+    let project : Project = {
+      id = next_project_id;
+      name = name;
+      logo_url = logo_url;
+      description = description;
+      project_type = project_type;
+      links = links;
+      created_at = now;
+      updated_at = now;
+    };
+
+    projects.add(project);
+    next_project_id += 1;
+    #ok(project.id)
+  };
+
+  public shared ({ caller }) func update_project(id: Nat, name: Text, logo_url: ?Text, description: Text, project_type: ProjectType, links: [ProjectLink]) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+
+    if (Text.size(name) == 0) {
+      return #err("Project name cannot be empty");
+    };
+
+    if (Text.size(description) == 0) {
+      return #err("Description cannot be empty");
+    };
+
+    let projectsArray = Buffer.toArray(projects);
+    var found = false;
+    let updatedProjects = Buffer.Buffer<Project>(projects.size());
+
+    for (project in projectsArray.vals()) {
+      if (project.id == id) {
+        let updatedProject : Project = {
+          id = project.id;
+          name = name;
+          logo_url = logo_url;
+          description = description;
+          project_type = project_type;
+          links = links;
+          created_at = project.created_at;
+          updated_at = Time.now();
+        };
+        updatedProjects.add(updatedProject);
+        found := true;
+      } else {
+        updatedProjects.add(project);
+      };
+    };
+
+    if (not found) {
+      return #err("Project not found");
+    };
+
+    projects := updatedProjects;
+    #ok()
+  };
+
+  public shared ({ caller }) func remove_project(id: Nat) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+
+    let projectsArray = Buffer.toArray(projects);
+    var found = false;
+    let filteredProjects = Buffer.Buffer<Project>(projects.size());
+
+    for (project in projectsArray.vals()) {
+      if (project.id != id) {
+        filteredProjects.add(project);
+      } else {
+        found := true;
+      };
+    };
+
+    if (not found) {
+      return #err("Project not found");
+    };
+
+    projects := filteredProjects;
+    #ok()
+  };
+
+  public query func get_projects() : async [Project] {
+    Buffer.toArray(projects)
+  };
+
+  public query func get_project(id: Nat) : async ?Project {
+    let projectsArray = Buffer.toArray(projects);
+    for (project in projectsArray.vals()) {
+      if (project.id == id) {
+        return ?project;
+      };
+    };
+    null
+  };
+
   // save state to stable arrays
   system func preupgrade() {
     /// stable_principal_swap_canisters
@@ -1501,6 +1627,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
 
     // Save partners to stable storage
     stable_partners := Buffer.toArray(partners);
+
+    // Save projects to stable storage
+    stable_projects := Buffer.toArray(projects);
   };
 
   // initialize ephemeral state and empty stable arrays to save memory
@@ -1602,6 +1731,21 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         };
       };
       next_partner_id := max_id;
+
+      // Restore projects from stable storage
+      for (project in stable_projects.vals()) {
+        projects.add(project);
+      };
+      stable_projects := [];
+
+      // Update next_project_id to be one more than the highest existing ID
+      var max_project_id : Nat = 0;
+      for (project in projects.vals()) {
+        if (project.id >= max_project_id) {
+          max_project_id := project.id + 1;
+        };
+      };
+      next_project_id := max_project_id;
   };
 
 };

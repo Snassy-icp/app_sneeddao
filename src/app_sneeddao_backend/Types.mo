@@ -119,4 +119,27 @@ module {
         created_at : Int;
         updated_at : Int;
     };
+
+    // Project types
+    public type ProjectLink = {
+        title : Text;
+        url : Text;
+    };
+
+    public type ProjectType = {
+        #product;
+        #project;
+        #fork;
+    };
+
+    public type Project = {
+        id : Nat;
+        name : Text;
+        logo_url : ?Text;
+        description : Text;
+        project_type : ProjectType;
+        links : [ProjectLink];
+        created_at : Int;
+        updated_at : Int;
+    };
 };

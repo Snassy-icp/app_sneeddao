@@ -34,6 +34,8 @@ import Admin from './pages/Admin';
 import UserBans from './pages/admin/UserBans';
 import WordBlacklist from './pages/admin/WordBlacklist';
 import AdminPartners from './pages/admin/Partners';
+import AdminProjects from './pages/admin/Projects';
+import Projects from './pages/Projects';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
 import Principal from './pages/Principal';
@@ -90,6 +92,7 @@ function App() {
                 <Route path="/sneedlock_info" element={<SneedlockInfo />} />
                 <Route path="/products" element={<Products />} />
                 <Route path="/partners" element={<Partners />} />
+                <Route path="/projects" element={<Projects />} />
                 <Route path="/proposals" element={<Proposals />} />
                 <Route path="/rewards" element={<Rewards />} />
                 <Route path="/disclaimer" element={<Disclaimer />} />
@@ -104,6 +107,7 @@ function App() {
                 <Route path="/admin/users/bans" element={<UserBans />} />
                 <Route path="/admin/words" element={<WordBlacklist />} />
                 <Route path="/admin/partners" element={<AdminPartners />} />
+                <Route path="/admin/projects" element={<AdminProjects />} />
               </Routes>
             </Layout>
           </NamingProvider>
