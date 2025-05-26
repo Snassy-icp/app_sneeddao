@@ -33,6 +33,7 @@ import Proposals from './pages/Proposals';
 import Admin from './pages/Admin';
 import UserBans from './pages/admin/UserBans';
 import WordBlacklist from './pages/admin/WordBlacklist';
+import AdminPartners from './pages/admin/Partners';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
 import Principal from './pages/Principal';
@@ -102,6 +103,7 @@ function App() {
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/admin/users/bans" element={<UserBans />} />
                 <Route path="/admin/words" element={<WordBlacklist />} />
+                <Route path="/admin/partners" element={<AdminPartners />} />
               </Routes>
             </Layout>
           </NamingProvider>

@@ -33,6 +33,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   type NeuronNickname = T.NeuronNickname;
   type NeuronNameKey = T.NeuronNameKey;
 
+  // Partner types
+  type Partner = T.Partner;
+  type PartnerLink = T.PartnerLink;
+
   // Token whitelist types
   type WhitelistedToken = {
     ledger_id: Principal;
@@ -71,6 +75,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   stable var stable_principal_names : [(Principal, (Text, Bool))] = [];
   stable var stable_principal_nicknames : [(Principal, [(Principal, Text)])] = [];
 
+  // Stable storage for partners
+  stable var stable_partners : [Partner] = [];
+
   // Runtime hashmaps for neuron names and nicknames
   var neuron_names = HashMap.HashMap<NeuronNameKey, (Text, Bool)>(100, func(k1: NeuronNameKey, k2: NeuronNameKey) : Bool {
     Principal.equal(k1.sns_root_canister_id, k2.sns_root_canister_id) and Blob.equal(k1.neuron_id.id, k2.neuron_id.id)
@@ -101,6 +108,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // Runtime hashmaps for principal names and nicknames
   var principal_names = HashMap.HashMap<Principal, (Text, Bool)>(100, Principal.equal, Principal.hash);
   var principal_nicknames = HashMap.HashMap<Principal, HashMap.HashMap<Principal, Text>>(100, Principal.equal, Principal.hash);
+
+  // Runtime storage for partners
+  private var partners = Buffer.Buffer<Partner>(0);
+  private var next_partner_id : Nat = 1;
 
   // ephemeral state
   let state : State = object { 
@@ -1258,6 +1269,126 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     Iter.toArray(blacklisted_words.keys())
   };
 
+  // Partner management functions
+  public shared ({ caller }) func add_partner(name: Text, logo_url: Text, description: Text, links: [PartnerLink]) : async Result.Result<Nat, Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+
+    if (Text.size(name) == 0) {
+      return #err("Partner name cannot be empty");
+    };
+
+    if (Text.size(logo_url) == 0) {
+      return #err("Logo URL cannot be empty");
+    };
+
+    if (Text.size(description) == 0) {
+      return #err("Description cannot be empty");
+    };
+
+    let now = Time.now();
+    let partner : Partner = {
+      id = next_partner_id;
+      name = name;
+      logo_url = logo_url;
+      description = description;
+      links = links;
+      created_at = now;
+      updated_at = now;
+    };
+
+    partners.add(partner);
+    next_partner_id += 1;
+    #ok(partner.id)
+  };
+
+  public shared ({ caller }) func update_partner(id: Nat, name: Text, logo_url: Text, description: Text, links: [PartnerLink]) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+
+    if (Text.size(name) == 0) {
+      return #err("Partner name cannot be empty");
+    };
+
+    if (Text.size(logo_url) == 0) {
+      return #err("Logo URL cannot be empty");
+    };
+
+    if (Text.size(description) == 0) {
+      return #err("Description cannot be empty");
+    };
+
+    let partnersArray = Buffer.toArray(partners);
+    var found = false;
+    let updatedPartners = Buffer.Buffer<Partner>(partners.size());
+
+    for (partner in partnersArray.vals()) {
+      if (partner.id == id) {
+        let updatedPartner : Partner = {
+          id = partner.id;
+          name = name;
+          logo_url = logo_url;
+          description = description;
+          links = links;
+          created_at = partner.created_at;
+          updated_at = Time.now();
+        };
+        updatedPartners.add(updatedPartner);
+        found := true;
+      } else {
+        updatedPartners.add(partner);
+      };
+    };
+
+    if (not found) {
+      return #err("Partner not found");
+    };
+
+    partners := updatedPartners;
+    #ok()
+  };
+
+  public shared ({ caller }) func remove_partner(id: Nat) : async Result.Result<(), Text> {
+    if (not is_admin(caller)) {
+      return #err("Not authorized");
+    };
+
+    let partnersArray = Buffer.toArray(partners);
+    var found = false;
+    let filteredPartners = Buffer.Buffer<Partner>(partners.size());
+
+    for (partner in partnersArray.vals()) {
+      if (partner.id != id) {
+        filteredPartners.add(partner);
+      } else {
+        found := true;
+      };
+    };
+
+    if (not found) {
+      return #err("Partner not found");
+    };
+
+    partners := filteredPartners;
+    #ok()
+  };
+
+  public query func get_partners() : async [Partner] {
+    Buffer.toArray(partners)
+  };
+
+  public query func get_partner(id: Nat) : async ?Partner {
+    let partnersArray = Buffer.toArray(partners);
+    for (partner in partnersArray.vals()) {
+      if (partner.id == id) {
+        return ?partner;
+      };
+    };
+    null
+  };
+
   // Function to get ban history for a specific user
   public query ({ caller }) func get_user_ban_history(user: Principal) : async Result.Result<[BanLogEntry], Text> {
     if (not is_admin(caller)) {
@@ -1367,6 +1498,9 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         principal_nickname_entries.add((user, Iter.toArray(nicknames.entries())));
     };
     stable_principal_nicknames := Buffer.toArray(principal_nickname_entries);
+
+    // Save partners to stable storage
+    stable_partners := Buffer.toArray(partners);
   };
 
   // initialize ephemeral state and empty stable arrays to save memory
@@ -1453,6 +1587,21 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
           principal_nicknames.put(user, user_map);
       };
       stable_principal_nicknames := [];
+
+      // Restore partners from stable storage
+      for (partner in stable_partners.vals()) {
+        partners.add(partner);
+      };
+      stable_partners := [];
+
+      // Update next_partner_id to be one more than the highest existing ID
+      var max_id : Nat = 0;
+      for (partner in partners.vals()) {
+        if (partner.id >= max_id) {
+          max_id := partner.id + 1;
+        };
+      };
+      next_partner_id := max_id;
   };
 
 };

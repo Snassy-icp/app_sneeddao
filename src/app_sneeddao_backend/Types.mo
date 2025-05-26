@@ -103,4 +103,20 @@ module {
         id : ?NeuronId;
         permissions : [(Principal, [Int32])];
     };
+
+    // Partner types
+    public type PartnerLink = {
+        title : Text;
+        url : Text;
+    };
+
+    public type Partner = {
+        id : Nat;
+        name : Text;
+        logo_url : Text;
+        description : Text;
+        links : [PartnerLink];
+        created_at : Int;
+        updated_at : Int;
+    };
 };
