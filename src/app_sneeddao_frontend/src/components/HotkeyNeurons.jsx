@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from '../AuthContext';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { getSnsById } from '../utils/SnsUtils';
 import { useSns } from '../contexts/SnsContext';
 
@@ -26,6 +27,7 @@ const HotkeyNeurons = ({
     const [loadingHotkeyNeurons, setLoadingHotkeyNeurons] = useState(false);
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [votingStates, setVotingStates] = useState({});
+    const [tokenSymbol, setTokenSymbol] = useState('SNS');
 
     // Helper functions
     const uint8ArrayToHex = (uint8Array) => {
@@ -310,6 +312,32 @@ const HotkeyNeurons = ({
             setLoadingHotkeyNeurons(false);
         }
     }, [isAuthenticated, identity, fetchNeuronsFromSns]);
+
+    // Fetch token symbol when selectedSnsRoot changes
+    useEffect(() => {
+        const fetchTokenSymbol = async () => {
+            if (!selectedSnsRoot) return;
+            
+            try {
+                const selectedSns = getSnsById(selectedSnsRoot);
+                if (!selectedSns) return;
+
+                const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
+                    agentOptions: { identity }
+                });
+                const metadata = await icrc1Actor.icrc1_metadata();
+                const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
+                if (symbolEntry && symbolEntry[1]) {
+                    setTokenSymbol(symbolEntry[1].Text);
+                }
+            } catch (error) {
+                console.error('Error fetching token symbol:', error);
+                setTokenSymbol('SNS'); // Fallback
+            }
+        };
+
+        fetchTokenSymbol();
+    }, [selectedSnsRoot, identity]);
 
     const styles = {
         section: {
@@ -614,7 +642,11 @@ const HotkeyNeurons = ({
                                                     </div>
                                                     <div>
                                                         <div style={{ color: '#888' }}>Maturity</div>
-                                                        <div style={{ color: '#ffffff' }}>{formatE8s(neuron.maturity_e8s_equivalent)} SNEED</div>
+                                                        <div style={{ color: '#ffffff' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ color: '#888' }}>Staked Amount</div>
+                                                        <div style={{ color: '#ffffff' }}>{formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}</div>
                                                     </div>
                                                     <div>
                                                         <div style={{ color: '#888' }}>Voting Power</div>
