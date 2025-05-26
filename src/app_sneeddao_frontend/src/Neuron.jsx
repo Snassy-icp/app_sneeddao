@@ -12,6 +12,7 @@ import { useNaming } from './NamingContext';
 import { setNeuronNickname } from './utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
+import { calculateVotingPower, formatVotingPower } from './utils/VotingPowerUtils';
 
 // Add keyframes for spin animation after imports
 const spinKeyframes = `
@@ -47,6 +48,8 @@ function Neuron() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     // Add principal display info state
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    // Add nervous system parameters state
+    const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames, fetchAllNames, principalNames, principalNicknames } = useNaming();
@@ -368,6 +371,29 @@ function Neuron() {
         fetchPrincipalInfo();
     }, [neuronData, principalNames, principalNicknames]);
 
+    // Fetch nervous system parameters for voting power calculation
+    useEffect(() => {
+        const fetchNervousSystemParameters = async () => {
+            if (!selectedSnsRoot || !identity) return;
+            
+            try {
+                const selectedSns = getSnsById(selectedSnsRoot);
+                if (!selectedSns) return;
+
+                const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                    agentOptions: { identity }
+                });
+                
+                const params = await snsGovActor.get_nervous_system_parameters(null);
+                setNervousSystemParameters(params);
+            } catch (error) {
+                console.error('Error fetching nervous system parameters:', error);
+            }
+        };
+
+        fetchNervousSystemParameters();
+    }, [selectedSnsRoot, identity]);
+
     return (
         <div className='page-container'>
             <Header showSnsDropdown={true} />
@@ -636,7 +662,13 @@ function Neuron() {
                                 <p><strong>Created:</strong> {new Date(Number(neuronData.created_timestamp_seconds || 0) * 1000).toLocaleString()}</p>
                                 <p><strong>Dissolve State:</strong> {getDissolveState(neuronData)}</p>
                                 <p><strong>Maturity:</strong> {formatE8s(neuronData.maturity_e8s_equivalent)} {selectedSns?.name || 'SNS'}</p>
-                                <p><strong>Voting Power Multiplier:</strong> {(Number(neuronData.voting_power_percentage_multiplier || 0) / 100).toFixed(2)}x</p>
+                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                    Voting Power: {
+                                        nervousSystemParameters 
+                                            ? formatVotingPower(calculateVotingPower(neuronData, nervousSystemParameters))
+                                            : `${(Number(neuronData.cached_neuron_stake_e8s) / 100000000 * (neuronData.voting_power_percentage_multiplier / 100)).toFixed(2)}`
+                                    }
+                                </div>
 
                                 {/* Add permissions section */}
                                 <div style={{ marginTop: '20px' }}>
