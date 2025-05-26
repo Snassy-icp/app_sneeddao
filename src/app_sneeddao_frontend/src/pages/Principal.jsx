@@ -58,9 +58,16 @@ export default function PrincipalPage() {
     const [isNeuronsCollapsed, setIsNeuronsCollapsed] = useState(true);
     const [isTransactionsCollapsed, setIsTransactionsCollapsed] = useState(true);
     
+    // Add search state
+    const [searchInput, setSearchInput] = useState('');
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [searchResults, setSearchResults] = useState([]);
+    const [showSearchResults, setShowSearchResults] = useState(false);
+    
     // Keep stable references to dependencies
     const stableIdentity = useRef(identity);
     const stablePrincipalId = useRef(null);
+    const searchContainerRef = useRef(null);
 
     const principalParam = searchParams.get('id');
     try {
@@ -68,6 +75,128 @@ export default function PrincipalPage() {
     } catch (e) {
         console.error('Invalid principal ID:', e);
     }
+
+    // Initialize search input from URL parameter
+    useEffect(() => {
+        if (principalParam) {
+            setSearchInput(principalParam);
+        }
+    }, [principalParam]);
+
+    // Add click outside handler for search results
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+                setShowSearchResults(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    // Search function that can search by principal ID, name, or nickname
+    const searchPrincipals = async (query) => {
+        if (!query.trim()) {
+            setSearchResults([]);
+            setShowSearchResults(false);
+            return;
+        }
+
+        setSearchLoading(true);
+        try {
+            // First, try to parse as a principal ID
+            let directPrincipalMatch = null;
+            try {
+                const principal = Principal.fromText(query.trim());
+                directPrincipalMatch = {
+                    principal: principal.toString(),
+                    type: 'direct',
+                    displayText: principal.toString()
+                };
+            } catch (e) {
+                // Not a valid principal ID, continue with name/nickname search
+            }
+
+            // Search for principals by name/nickname (this would require a backend search function)
+            // For now, we'll just show the direct principal match if valid
+            const results = [];
+            
+            if (directPrincipalMatch) {
+                // Try to get name/nickname for the direct match
+                try {
+                    const nameResponse = await getPrincipalName(null, Principal.fromText(directPrincipalMatch.principal));
+                    let nicknameResponse = null;
+                    if (identity) {
+                        nicknameResponse = await getPrincipalNickname(identity, Principal.fromText(directPrincipalMatch.principal));
+                    }
+                    
+                    directPrincipalMatch.name = nameResponse ? nameResponse[0] : null;
+                    directPrincipalMatch.isVerified = nameResponse ? nameResponse[1] : false;
+                    directPrincipalMatch.nickname = nicknameResponse ? nicknameResponse[0] : null;
+                    
+                    // Update display text to include name/nickname if available
+                    if (directPrincipalMatch.name) {
+                        directPrincipalMatch.displayText = `${directPrincipalMatch.name} (${directPrincipalMatch.principal.substring(0, 8)}...)`;
+                    } else if (directPrincipalMatch.nickname) {
+                        directPrincipalMatch.displayText = `${directPrincipalMatch.nickname} (${directPrincipalMatch.principal.substring(0, 8)}...)`;
+                    }
+                } catch (err) {
+                    console.error('Error fetching principal info for search result:', err);
+                }
+                
+                results.push(directPrincipalMatch);
+            }
+
+            // TODO: Add backend search for principals by name/nickname
+            // This would require a new backend function to search principals by name/nickname
+            
+            setSearchResults(results);
+            setShowSearchResults(results.length > 0);
+        } catch (err) {
+            console.error('Error searching principals:', err);
+            setSearchResults([]);
+            setShowSearchResults(false);
+        } finally {
+            setSearchLoading(false);
+        }
+    };
+
+    // Handle search input changes with debouncing
+    useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            if (searchInput.trim() && searchInput !== principalParam) {
+                searchPrincipals(searchInput);
+            } else if (!searchInput.trim()) {
+                setSearchResults([]);
+                setShowSearchResults(false);
+            }
+        }, 300);
+
+        return () => clearTimeout(timeoutId);
+    }, [searchInput, principalParam, identity]);
+
+    // Handle search result selection
+    const handleSearchResultSelect = (result) => {
+        setSearchParams({ id: result.principal });
+        setSearchInput(result.principal);
+        setShowSearchResults(false);
+    };
+
+    // Handle search form submission
+    const handleSearchSubmit = (e) => {
+        e.preventDefault();
+        if (searchInput.trim()) {
+            try {
+                // Validate principal ID
+                Principal.fromText(searchInput.trim());
+                setSearchParams({ id: searchInput.trim() });
+                setShowSearchResults(false);
+            } catch (err) {
+                setError('Invalid principal ID format');
+            }
+        }
+    };
 
     // Update stable refs when values change
     useEffect(() => {
@@ -307,341 +436,148 @@ export default function PrincipalPage() {
         <div className='page-container'>
             <Header showSnsDropdown={true} />
             <main className="wallet-container">
-                <div style={{ 
-                    backgroundColor: '#2a2a2a',
-                    borderRadius: '8px',
-                    padding: '20px',
-                    marginBottom: '30px',
-                    border: '1px solid #3a3a3a'
-                }}>
-                    {loading ? (
-                        <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
-                            Loading...
+                {/* Search Section */}
+                <div 
+                    ref={searchContainerRef}
+                    style={{ 
+                        backgroundColor: '#2a2a2a',
+                        borderRadius: '8px',
+                        padding: '20px',
+                        marginBottom: '20px',
+                        border: '1px solid #3a3a3a',
+                        position: 'relative'
+                    }}
+                >
+                    <h2 style={{ 
+                        color: '#ffffff',
+                        margin: '0 0 15px 0',
+                        fontSize: '18px',
+                        fontWeight: '500'
+                    }}>
+                        Search Principal
+                    </h2>
+                    <form onSubmit={handleSearchSubmit} style={{ position: 'relative' }}>
+                        <div style={{ position: 'relative' }}>
+                            <input
+                                type="text"
+                                value={searchInput}
+                                onChange={(e) => setSearchInput(e.target.value)}
+                                placeholder="Enter principal ID, name, or nickname..."
+                                style={{
+                                    backgroundColor: '#3a3a3a',
+                                    border: '1px solid #4a4a4a',
+                                    borderRadius: '4px',
+                                    color: '#ffffff',
+                                    padding: '12px 50px 12px 16px',
+                                    width: '100%',
+                                    fontSize: '14px'
+                                }}
+                            />
+                            <button
+                                type="submit"
+                                style={{
+                                    position: 'absolute',
+                                    right: '8px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    backgroundColor: '#3498db',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '6px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px'
+                                }}
+                            >
+                                {searchLoading ? '...' : 'Go'}
+                            </button>
                         </div>
-                    ) : error ? (
-                        <div style={{ 
-                            backgroundColor: 'rgba(231, 76, 60, 0.2)', 
-                            border: '1px solid #e74c3c',
-                            color: '#e74c3c',
-                            padding: '15px',
-                            borderRadius: '6px',
-                            marginBottom: '20px'
-                        }}>
-                            {error}
-                        </div>
-                    ) : (
-                        <>
-                            <div style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
-                                alignItems: 'flex-start',
-                                marginBottom: '15px'
+                        
+                        {/* Search Results Dropdown */}
+                        {showSearchResults && searchResults.length > 0 && (
+                            <div style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: '0',
+                                right: '0',
+                                backgroundColor: '#2a2a2a',
+                                border: '1px solid #4a4a4a',
+                                borderRadius: '4px',
+                                marginTop: '4px',
+                                maxHeight: '200px',
+                                overflowY: 'auto',
+                                zIndex: 1000,
+                                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
                             }}>
-                                <div>
-                                    <h2 style={{ 
-                                        color: '#ffffff',
-                                        margin: '0 0 5px 0',
-                                        fontSize: '18px',
-                                        fontWeight: '500'
-                                    }}>
-                                        Principal Details
-                                    </h2>
-                                    <PrincipalDisplay 
-                                        principal={stablePrincipalId.current}
-                                        displayInfo={{
-                                            name: principalInfo?.name,
-                                            nickname: principalInfo?.nickname,
-                                            isVerified: principalInfo?.isVerified
-                                        }}
+                                {searchResults.map((result, index) => (
+                                    <div
+                                        key={index}
+                                        onClick={() => handleSearchResultSelect(result)}
                                         style={{
-                                            fontSize: '16px'
+                                            padding: '12px 16px',
+                                            cursor: 'pointer',
+                                            borderBottom: index < searchResults.length - 1 ? '1px solid #3a3a3a' : 'none',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px'
                                         }}
-                                    />
-                                </div>
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                    {!editingName && !editingNickname && (
-                                        <>
-                                            <button
-                                                onClick={() => setEditingNickname(true)}
-                                                style={{
-                                                    backgroundColor: '#95a5a6',
-                                                    color: '#ffffff',
-                                                    border: 'none',
-                                                    borderRadius: '4px',
-                                                    padding: '8px 12px',
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                {principalInfo?.nickname ? 'Change Nickname' : 'Set Nickname'}
-                                            </button>
-                                            {identity?.getPrincipal().toString() === stablePrincipalId.current.toString() && (
-                                                <button
-                                                    onClick={() => setEditingName(true)}
-                                                    style={{
-                                                        backgroundColor: '#3498db',
-                                                        color: '#ffffff',
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '8px 12px',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    {principalInfo?.name ? 'Change Name' : 'Set Name'}
-                                                </button>
+                                        onMouseEnter={(e) => {
+                                            e.target.style.backgroundColor = '#3a3a3a';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.target.style.backgroundColor = 'transparent';
+                                        }}
+                                    >
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ color: '#ffffff', fontSize: '14px' }}>
+                                                {result.displayText}
+                                            </div>
+                                            {result.name && (
+                                                <div style={{ 
+                                                    color: '#888', 
+                                                    fontSize: '12px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}>
+                                                    Public Name
+                                                    {result.isVerified && (
+                                                        <span style={{ color: '#2ecc71' }}>✓</span>
+                                                    )}
+                                                </div>
                                             )}
-                                        </>
-                                    )}
-                                </div>
+                                            {result.nickname && (
+                                                <div style={{ color: '#888', fontSize: '12px' }}>
+                                                    Your Nickname
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-
-                            {editingName && (
-                                <div style={{ 
-                                    marginTop: '20px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '10px'
-                                }}>
-                                    <div>
-                                        <input
-                                            type="text"
-                                            value={nameInput}
-                                            onChange={(e) => {
-                                                const newValue = e.target.value;
-                                                setNameInput(newValue);
-                                                setInputError(validateNameInput(newValue));
-                                            }}
-                                            maxLength={32}
-                                            placeholder="Enter public name (max 32 chars)"
-                                            style={{
-                                                backgroundColor: '#3a3a3a',
-                                                border: `1px solid ${inputError ? '#e74c3c' : '#4a4a4a'}`,
-                                                borderRadius: '4px',
-                                                color: '#ffffff',
-                                                padding: '8px',
-                                                width: '100%'
-                                            }}
-                                        />
-                                        {inputError && (
-                                            <div style={{
-                                                color: '#e74c3c',
-                                                fontSize: '12px',
-                                                marginTop: '4px'
-                                            }}>
-                                                {inputError}
-                                            </div>
-                                        )}
-                                        <div style={{
-                                            color: '#888',
-                                            fontSize: '12px',
-                                            marginTop: '4px'
-                                        }}>
-                                            Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
-                                        </div>
-                                    </div>
-                                    <div style={{
-                                        display: 'flex',
-                                        gap: '8px',
-                                        justifyContent: 'flex-end'
-                                    }}>
-                                        <button
-                                            onClick={handleNameSubmit}
-                                            disabled={isSubmitting}
-                                            style={{
-                                                backgroundColor: '#3498db',
-                                                color: '#ffffff',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                padding: '8px 12px',
-                                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                                opacity: isSubmitting ? 0.7 : 1,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '6px'
-                                            }}
-                                        >
-                                            {isSubmitting ? (
-                                                <>
-                                                    <span style={{ 
-                                                        display: 'inline-block',
-                                                        animation: 'spin 1s linear infinite',
-                                                        fontSize: '14px'
-                                                    }}>⟳</span>
-                                                    Setting...
-                                                </>
-                                            ) : (
-                                                'Set Name'
-                                            )}
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setEditingName(false);
-                                                setNameInput('');
-                                                setInputError('');
-                                            }}
-                                            disabled={isSubmitting}
-                                            style={{
-                                                backgroundColor: '#e74c3c',
-                                                color: '#ffffff',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                padding: '8px 12px',
-                                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                                opacity: isSubmitting ? 0.7 : 1
-                                            }}
-                                        >
-                                            Cancel
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {editingNickname && (
-                                <div style={{ 
-                                    marginTop: '20px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '10px'
-                                }}>
-                                    <div>
-                                        <input
-                                            type="text"
-                                            value={nicknameInput}
-                                            onChange={(e) => {
-                                                const newValue = e.target.value;
-                                                setNicknameInput(newValue);
-                                                setNicknameError(validateNameInput(newValue));
-                                            }}
-                                            maxLength={32}
-                                            placeholder="Enter private nickname (max 32 chars)"
-                                            style={{
-                                                backgroundColor: '#3a3a3a',
-                                                border: `1px solid ${nicknameError ? '#e74c3c' : '#4a4a4a'}`,
-                                                borderRadius: '4px',
-                                                color: '#ffffff',
-                                                padding: '8px',
-                                                width: '100%'
-                                            }}
-                                        />
-                                        {nicknameError && (
-                                            <div style={{
-                                                color: '#e74c3c',
-                                                fontSize: '12px',
-                                                marginTop: '4px'
-                                            }}>
-                                                {nicknameError}
-                                            </div>
-                                        )}
-                                        <div style={{
-                                            color: '#888',
-                                            fontSize: '12px',
-                                            marginTop: '4px'
-                                        }}>
-                                            Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
-                                        </div>
-                                    </div>
-                                    <div style={{
-                                        display: 'flex',
-                                        gap: '8px',
-                                        justifyContent: 'flex-end'
-                                    }}>
-                                        <button
-                                            onClick={handleNicknameSubmit}
-                                            disabled={isSubmittingNickname}
-                                            style={{
-                                                backgroundColor: '#95a5a6',
-                                                color: '#ffffff',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                padding: '8px 12px',
-                                                cursor: isSubmittingNickname ? 'not-allowed' : 'pointer',
-                                                opacity: isSubmittingNickname ? 0.7 : 1,
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '6px'
-                                            }}
-                                        >
-                                            {isSubmittingNickname ? (
-                                                <>
-                                                    <span style={{ 
-                                                        display: 'inline-block',
-                                                        animation: 'spin 1s linear infinite',
-                                                        fontSize: '14px'
-                                                    }}>⟳</span>
-                                                    Setting...
-                                                </>
-                                            ) : (
-                                                'Set Nickname'
-                                            )}
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setEditingNickname(false);
-                                                setNicknameInput('');
-                                                setNicknameError('');
-                                            }}
-                                            disabled={isSubmittingNickname}
-                                            style={{
-                                                backgroundColor: '#e74c3c',
-                                                color: '#ffffff',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                padding: '8px 12px',
-                                                cursor: isSubmittingNickname ? 'not-allowed' : 'pointer',
-                                                opacity: isSubmittingNickname ? 0.7 : 1
-                                            }}
-                                        >
-                                            Cancel
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </>
-                    )}
+                        )}
+                    </form>
                 </div>
 
-                <div style={{ 
-                    backgroundColor: '#2a2a2a',
-                    borderRadius: '8px',
-                    padding: '20px',
-                    marginBottom: '30px',
-                    border: '1px solid #3a3a3a'
-                }}>
-                    <div 
-                        style={{ 
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
-                            cursor: 'pointer',
-                            userSelect: 'none',
-                            marginBottom: isNeuronsCollapsed ? 0 : '20px'
-                        }}
-                        onClick={() => setIsNeuronsCollapsed(!isNeuronsCollapsed)}
-                    >
-                        <span style={{
-                            fontSize: '18px',
-                            color: '#888',
-                            transition: 'transform 0.2s',
-                            transform: isNeuronsCollapsed ? 'rotate(-90deg)' : 'none'
-                        }}>
-                            ▼
-                        </span>
-                        <h2 style={{ 
-                            color: '#ffffff',
-                            fontSize: '18px',
-                            fontWeight: '500',
-                            margin: 0
-                        }}>
-                            Hotkeyed Neurons
-                        </h2>
+                {!stablePrincipalId.current ? (
+                    <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                        <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>No Principal Selected</h1>
+                        <p style={{ color: '#888' }}>Use the search box above to find a principal.</p>
                     </div>
-
-                    {!isNeuronsCollapsed && (
-                        <>
-                            {loadingNeurons ? (
+                ) : (
+                    <>
+                        <div style={{ 
+                            backgroundColor: '#2a2a2a',
+                            borderRadius: '8px',
+                            padding: '20px',
+                            marginBottom: '30px',
+                            border: '1px solid #3a3a3a'
+                        }}>
+                            {loading ? (
                                 <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
-                                    Loading neurons...
+                                    Loading...
                                 </div>
-                            ) : neuronError ? (
+                            ) : error ? (
                                 <div style={{ 
                                     backgroundColor: 'rgba(231, 76, 60, 0.2)', 
                                     border: '1px solid #e74c3c',
@@ -650,136 +586,461 @@ export default function PrincipalPage() {
                                     borderRadius: '6px',
                                     marginBottom: '20px'
                                 }}>
-                                    {neuronError}
-                                </div>
-                            ) : neurons.length === 0 ? (
-                                <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
-                                    No neurons found where this principal is a hotkey.
+                                    {error}
                                 </div>
                             ) : (
-                                <div style={{ 
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-                                    gap: '20px'
-                                }}>
-                                    {neurons.map((neuron) => {
-                                        const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
-                                        if (!neuronId) return null;
-
-                                        return (
-                                            <div
-                                                key={neuronId}
-                                                style={{
-                                                    backgroundColor: '#2a2a2a',
-                                                    borderRadius: '8px',
-                                                    padding: '20px',
-                                                    border: '1px solid #3a3a3a'
+                                <>
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'flex-start',
+                                        marginBottom: '15px'
+                                    }}>
+                                        <div>
+                                            <h2 style={{ 
+                                                color: '#ffffff',
+                                                margin: '0 0 5px 0',
+                                                fontSize: '18px',
+                                                fontWeight: '500'
+                                            }}>
+                                                Principal Details
+                                            </h2>
+                                            <PrincipalDisplay 
+                                                principal={stablePrincipalId.current}
+                                                displayInfo={{
+                                                    name: principalInfo?.name,
+                                                    nickname: principalInfo?.nickname,
+                                                    isVerified: principalInfo?.isVerified
                                                 }}
-                                            >
-                                                <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ 
-                                                        display: 'flex', 
-                                                        alignItems: 'flex-start',
-                                                        gap: '8px',
-                                                        marginBottom: '10px',
-                                                        flexWrap: 'wrap'
-                                                    }}>
-                                                        {formatNeuronIdLink(neuronId, searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT)}
-                                                    </div>
-                                                </div>
+                                                style={{
+                                                    fontSize: '16px'
+                                                }}
+                                            />
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            {!editingName && !editingNickname && (
+                                                <>
+                                                    <button
+                                                        onClick={() => setEditingNickname(true)}
+                                                        style={{
+                                                            backgroundColor: '#95a5a6',
+                                                            color: '#ffffff',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            padding: '8px 12px',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        {principalInfo?.nickname ? 'Change Nickname' : 'Set Nickname'}
+                                                    </button>
+                                                    {identity?.getPrincipal().toString() === stablePrincipalId.current.toString() && (
+                                                        <button
+                                                            onClick={() => setEditingName(true)}
+                                                            style={{
+                                                                backgroundColor: '#3498db',
+                                                                color: '#ffffff',
+                                                                border: 'none',
+                                                                borderRadius: '4px',
+                                                                padding: '8px 12px',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                        >
+                                                            {principalInfo?.name ? 'Change Name' : 'Set Name'}
+                                                        </button>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
 
-                                                <div style={{ marginBottom: '20px' }}>
-                                                    <div style={{ 
-                                                        fontSize: '24px',
-                                                        fontWeight: 'bold',
-                                                        color: '#3498db'
+                                    {editingName && (
+                                        <div style={{ 
+                                            marginTop: '20px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '10px'
+                                        }}>
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    value={nameInput}
+                                                    onChange={(e) => {
+                                                        const newValue = e.target.value;
+                                                        setNameInput(newValue);
+                                                        setInputError(validateNameInput(newValue));
+                                                    }}
+                                                    maxLength={32}
+                                                    placeholder="Enter public name (max 32 chars)"
+                                                    style={{
+                                                        backgroundColor: '#3a3a3a',
+                                                        border: `1px solid ${inputError ? '#e74c3c' : '#4a4a4a'}`,
+                                                        borderRadius: '4px',
+                                                        color: '#ffffff',
+                                                        padding: '8px',
+                                                        width: '100%'
+                                                    }}
+                                                />
+                                                {inputError && (
+                                                    <div style={{
+                                                        color: '#e74c3c',
+                                                        fontSize: '12px',
+                                                        marginTop: '4px'
                                                     }}>
-                                                        {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
+                                                        {inputError}
                                                     </div>
-                                                </div>
-
-                                                <div style={{ 
-                                                    display: 'grid',
-                                                    gridTemplateColumns: '1fr 1fr',
-                                                    gap: '15px',
-                                                    fontSize: '14px'
+                                                )}
+                                                <div style={{
+                                                    color: '#888',
+                                                    fontSize: '12px',
+                                                    marginTop: '4px'
                                                 }}>
-                                                    <div>
-                                                        <div style={{ color: '#888' }}>Created</div>
-                                                        <div style={{ color: '#ffffff' }}>
-                                                            {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <div style={{ color: '#888' }}>Dissolve State</div>
-                                                        <div style={{ color: '#ffffff' }}>{getDissolveState(neuron)}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div style={{ color: '#888' }}>Maturity</div>
-                                                        <div style={{ color: '#ffffff' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div style={{ color: '#888' }}>Voting Power</div>
-                                                        <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
-                                                    </div>
-                                                    {/* Add permissions section */}
-                                                    <div style={{ gridColumn: '1 / -1' }}>
-                                                        <div style={{ color: '#888', marginBottom: '8px' }}>Permissions</div>
-                                                        {/* Owner */}
-                                                        {getOwnerPrincipals(neuron).length > 0 && (
-                                                            <div style={{ 
-                                                                marginBottom: '8px',
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '8px'
-                                                            }}>
-                                                                <span style={{ color: '#888' }}>Owner:</span>
-                                                                <PrincipalDisplay 
-                                                                    principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
-                                                                    displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
-                                                                    showCopyButton={false}
-                                                                />
-                                                            </div>
-                                                        )}
-                                                        {/* Hotkeys */}
-                                                        {neuron.permissions
-                                                            .filter(p => !getOwnerPrincipals(neuron).includes(p.principal?.toString()))
-                                                            .map((p, index) => (
-                                                                <div key={index} style={{ 
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    gap: '8px',
-                                                                    marginBottom: index < neuron.permissions.length - 1 ? '8px' : 0
-                                                                }}>
-                                                                    <span style={{ color: '#888', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                        🔑 Hotkey:
-                                                                    </span>
-                                                                    <PrincipalDisplay 
-                                                                        principal={p.principal}
-                                                                        displayInfo={principalDisplayInfo.get(p.principal?.toString())}
-                                                                        showCopyButton={false}
-                                                                    />
-                                                                </div>
-                                                            ))
-                                                        }
-                                                    </div>
+                                                    Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
                                                 </div>
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </>
-                    )}
-                </div>
+                                            <div style={{
+                                                display: 'flex',
+                                                gap: '8px',
+                                                justifyContent: 'flex-end'
+                                            }}>
+                                                <button
+                                                    onClick={handleNameSubmit}
+                                                    disabled={isSubmitting}
+                                                    style={{
+                                                        backgroundColor: '#3498db',
+                                                        color: '#ffffff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '8px 12px',
+                                                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                                        opacity: isSubmitting ? 0.7 : 1,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px'
+                                                    }}
+                                                >
+                                                    {isSubmitting ? (
+                                                        <>
+                                                            <span style={{ 
+                                                                display: 'inline-block',
+                                                                animation: 'spin 1s linear infinite',
+                                                                fontSize: '14px'
+                                                            }}>⟳</span>
+                                                            Setting...
+                                                        </>
+                                                    ) : (
+                                                        'Set Name'
+                                                    )}
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingName(false);
+                                                        setNameInput('');
+                                                        setInputError('');
+                                                    }}
+                                                    disabled={isSubmitting}
+                                                    style={{
+                                                        backgroundColor: '#e74c3c',
+                                                        color: '#ffffff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '8px 12px',
+                                                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                                                        opacity: isSubmitting ? 0.7 : 1
+                                                    }}
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
 
-                {/* Wrap TransactionList with collapse state */}
-                <TransactionList 
-                    snsRootCanisterId={searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT}
-                    principalId={stablePrincipalId.current?.toString()}
-                    isCollapsed={isTransactionsCollapsed}
-                    onToggleCollapse={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
-                />
+                                    {editingNickname && (
+                                        <div style={{ 
+                                            marginTop: '20px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '10px'
+                                        }}>
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    value={nicknameInput}
+                                                    onChange={(e) => {
+                                                        const newValue = e.target.value;
+                                                        setNicknameInput(newValue);
+                                                        setNicknameError(validateNameInput(newValue));
+                                                    }}
+                                                    maxLength={32}
+                                                    placeholder="Enter private nickname (max 32 chars)"
+                                                    style={{
+                                                        backgroundColor: '#3a3a3a',
+                                                        border: `1px solid ${nicknameError ? '#e74c3c' : '#4a4a4a'}`,
+                                                        borderRadius: '4px',
+                                                        color: '#ffffff',
+                                                        padding: '8px',
+                                                        width: '100%'
+                                                    }}
+                                                />
+                                                {nicknameError && (
+                                                    <div style={{
+                                                        color: '#e74c3c',
+                                                        fontSize: '12px',
+                                                        marginTop: '4px'
+                                                    }}>
+                                                        {nicknameError}
+                                                    </div>
+                                                )}
+                                                <div style={{
+                                                    color: '#888',
+                                                    fontSize: '12px',
+                                                    marginTop: '4px'
+                                                }}>
+                                                    Allowed: letters, numbers, spaces, hyphens (-), underscores (_), dots (.), apostrophes (')
+                                                </div>
+                                            </div>
+                                            <div style={{
+                                                display: 'flex',
+                                                gap: '8px',
+                                                justifyContent: 'flex-end'
+                                            }}>
+                                                <button
+                                                    onClick={handleNicknameSubmit}
+                                                    disabled={isSubmittingNickname}
+                                                    style={{
+                                                        backgroundColor: '#95a5a6',
+                                                        color: '#ffffff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '8px 12px',
+                                                        cursor: isSubmittingNickname ? 'not-allowed' : 'pointer',
+                                                        opacity: isSubmittingNickname ? 0.7 : 1,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px'
+                                                    }}
+                                                >
+                                                    {isSubmittingNickname ? (
+                                                        <>
+                                                            <span style={{ 
+                                                                display: 'inline-block',
+                                                                animation: 'spin 1s linear infinite',
+                                                                fontSize: '14px'
+                                                            }}>⟳</span>
+                                                            Setting...
+                                                        </>
+                                                    ) : (
+                                                        'Set Nickname'
+                                                    )}
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingNickname(false);
+                                                        setNicknameInput('');
+                                                        setNicknameError('');
+                                                    }}
+                                                    disabled={isSubmittingNickname}
+                                                    style={{
+                                                        backgroundColor: '#e74c3c',
+                                                        color: '#ffffff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '8px 12px',
+                                                        cursor: isSubmittingNickname ? 'not-allowed' : 'pointer',
+                                                        opacity: isSubmittingNickname ? 0.7 : 1
+                                                    }}
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        <div style={{ 
+                            backgroundColor: '#2a2a2a',
+                            borderRadius: '8px',
+                            padding: '20px',
+                            marginBottom: '30px',
+                            border: '1px solid #3a3a3a'
+                        }}>
+                            <div 
+                                style={{ 
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    cursor: 'pointer',
+                                    userSelect: 'none',
+                                    marginBottom: isNeuronsCollapsed ? 0 : '20px'
+                                }}
+                                onClick={() => setIsNeuronsCollapsed(!isNeuronsCollapsed)}
+                            >
+                                <span style={{
+                                    fontSize: '18px',
+                                    color: '#888',
+                                    transition: 'transform 0.2s',
+                                    transform: isNeuronsCollapsed ? 'rotate(-90deg)' : 'none'
+                                }}>
+                                    ▼
+                                </span>
+                                <h2 style={{ 
+                                    color: '#ffffff',
+                                    fontSize: '18px',
+                                    fontWeight: '500',
+                                    margin: 0
+                                }}>
+                                    Hotkeyed Neurons
+                                </h2>
+                            </div>
+
+                            {!isNeuronsCollapsed && (
+                                <>
+                                    {loadingNeurons ? (
+                                        <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                            Loading neurons...
+                                        </div>
+                                    ) : neuronError ? (
+                                        <div style={{ 
+                                            backgroundColor: 'rgba(231, 76, 60, 0.2)', 
+                                            border: '1px solid #e74c3c',
+                                            color: '#e74c3c',
+                                            padding: '15px',
+                                            borderRadius: '6px',
+                                            marginBottom: '20px'
+                                        }}>
+                                            {neuronError}
+                                        </div>
+                                    ) : neurons.length === 0 ? (
+                                        <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                            No neurons found where this principal is a hotkey.
+                                        </div>
+                                    ) : (
+                                        <div style={{ 
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                                            gap: '20px'
+                                        }}>
+                                            {neurons.map((neuron) => {
+                                                const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
+                                                if (!neuronId) return null;
+
+                                                return (
+                                                    <div
+                                                        key={neuronId}
+                                                        style={{
+                                                            backgroundColor: '#2a2a2a',
+                                                            borderRadius: '8px',
+                                                            padding: '20px',
+                                                            border: '1px solid #3a3a3a'
+                                                        }}
+                                                    >
+                                                        <div style={{ marginBottom: '15px' }}>
+                                                            <div style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'flex-start',
+                                                                gap: '8px',
+                                                                marginBottom: '10px',
+                                                                flexWrap: 'wrap'
+                                                            }}>
+                                                                {formatNeuronIdLink(neuronId, searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT)}
+                                                            </div>
+                                                        </div>
+
+                                                        <div style={{ marginBottom: '20px' }}>
+                                                            <div style={{ 
+                                                                fontSize: '24px',
+                                                                fontWeight: 'bold',
+                                                                color: '#3498db'
+                                                            }}>
+                                                                {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
+                                                            </div>
+                                                        </div>
+
+                                                        <div style={{ 
+                                                            display: 'grid',
+                                                            gridTemplateColumns: '1fr 1fr',
+                                                            gap: '15px',
+                                                            fontSize: '14px'
+                                                        }}>
+                                                            <div>
+                                                                <div style={{ color: '#888' }}>Created</div>
+                                                                <div style={{ color: '#ffffff' }}>
+                                                                    {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ color: '#888' }}>Dissolve State</div>
+                                                                <div style={{ color: '#ffffff' }}>{getDissolveState(neuron)}</div>
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ color: '#888' }}>Maturity</div>
+                                                                <div style={{ color: '#ffffff' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ color: '#888' }}>Voting Power</div>
+                                                                <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
+                                                            </div>
+                                                            {/* Add permissions section */}
+                                                            <div style={{ gridColumn: '1 / -1' }}>
+                                                                <div style={{ color: '#888', marginBottom: '8px' }}>Permissions</div>
+                                                                {/* Owner */}
+                                                                {getOwnerPrincipals(neuron).length > 0 && (
+                                                                    <div style={{ 
+                                                                        marginBottom: '8px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '8px'
+                                                                    }}>
+                                                                        <span style={{ color: '#888' }}>Owner:</span>
+                                                                        <PrincipalDisplay 
+                                                                            principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
+                                                                            displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
+                                                                            showCopyButton={false}
+                                                                        />
+                                                                    </div>
+                                                                )}
+                                                                {/* Hotkeys */}
+                                                                {neuron.permissions
+                                                                    .filter(p => !getOwnerPrincipals(neuron).includes(p.principal?.toString()))
+                                                                    .map((p, index) => (
+                                                                        <div key={index} style={{ 
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '8px',
+                                                                            marginBottom: index < neuron.permissions.length - 1 ? '8px' : 0
+                                                                        }}>
+                                                                            <span style={{ color: '#888', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                                🔑 Hotkey:
+                                                                            </span>
+                                                                            <PrincipalDisplay 
+                                                                                principal={p.principal}
+                                                                                displayInfo={principalDisplayInfo.get(p.principal?.toString())}
+                                                                                showCopyButton={false}
+                                                                            />
+                                                                        </div>
+                                                                    ))
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        {/* Wrap TransactionList with collapse state */}
+                        <TransactionList 
+                            snsRootCanisterId={searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT}
+                            principalId={stablePrincipalId.current?.toString()}
+                            isCollapsed={isTransactionsCollapsed}
+                            onToggleCollapse={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}
+                        />
+                    </>
+                )}
             </main>
             <style>{spinKeyframes}</style>
             <ConfirmationModal

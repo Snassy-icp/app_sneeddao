@@ -313,7 +313,7 @@ function Hub() {
                         marginBottom: '1.5rem'
                     }}>
                         SNS Explorer
-                    </h1>
+                </h1>
                     
                     {/* Sort Controls */}
                     <div style={{
