@@ -4,9 +4,14 @@
       "main": "src/app_sneeddao_backend/main.mo",
       "type": "motoko"
     },
+    "sneed_sns_forum": {
+      "main": "src/sneed_sns_forum/main.mo",
+      "type": "motoko"
+    },    
     "app_sneeddao_frontend": {
       "dependencies": [
-        "app_sneeddao_backend"
+        "app_sneeddao_backend",
+        "sneed_sns_forum"
       ],
       "source": [
         "src/app_sneeddao_frontend/dist"
