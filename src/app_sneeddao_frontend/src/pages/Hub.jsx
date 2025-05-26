@@ -142,7 +142,7 @@ function Hub() {
             // Fetch nervous system parameters
             let nervousSystemParameters = null;
             try {
-                nervousSystemParameters = await governanceActor.get_nervous_system_parameters({});
+                nervousSystemParameters = await governanceActor.get_nervous_system_parameters(null);
             } catch (err) {
                 console.warn('Could not fetch nervous system parameters:', err);
             }
