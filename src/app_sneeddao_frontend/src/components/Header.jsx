@@ -66,6 +66,15 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Disclaimer', path: '/disclaimer' }
             ]
         },
+        'Me': {
+            icon: <FaUser size={18} />,
+            displayName: 'Sneed Me',
+            defaultPath: '/me',
+            subMenu: [
+                { name: 'Me', path: '/me' },
+                { name: 'My Rewards', path: '/rewards' }
+            ]
+        },
         'Hub': {
             icon: <FaNetworkWired size={18} />,
             displayName: 'Sneed Hub',
@@ -84,15 +93,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/wallet',
             subMenu: [
                 { name: 'Wallet', path: '/wallet' }
-            ]
-        },
-        'Me': {
-            icon: <FaUser size={18} />,
-            displayName: 'Sneed Me',
-            defaultPath: '/me',
-            subMenu: [
-                { name: 'Me', path: '/me' },
-                { name: 'My Rewards', path: '/rewards' }
             ]
         },
         'Locks': {
