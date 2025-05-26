@@ -31,6 +31,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         redirectPath: null // Don't redirect from header
     });
 
+    // Check if we're on an admin page
+    const isOnAdminPage = location.pathname === '/admin' || location.pathname.startsWith('/admin/');
+
     // Add click outside handler
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -62,11 +65,12 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     }, [location.pathname]);
 
     // Update active section if current section doesn't exist (e.g., admin section when not admin)
+    // But only if we're not on an admin page waiting for admin check
     useEffect(() => {
-        if (!menuSections[activeSection]) {
+        if (!menuSections[activeSection] && !(isOnAdminPage && adminLoading)) {
             setActiveSection('DAO'); // Fall back to DAO section
         }
-    }, [activeSection, isAdmin, isAuthenticated]);
+    }, [activeSection, isAdmin, isAuthenticated, isOnAdminPage, adminLoading]);
 
     const menuSections = {
         'DAO': {
@@ -220,8 +224,18 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         onClick={() => {
                             setIsMenuOpen(true);
                         }}>
-                            {menuSections[activeSection]?.icon}
-                            {menuSections[activeSection]?.displayName}
+                            {/* Show admin icon and name if on admin page, even during loading */}
+                            {isOnAdminPage && adminLoading ? (
+                                <>
+                                    <FaCog size={18} />
+                                    Admin
+                                </>
+                            ) : (
+                                <>
+                                    {menuSections[activeSection]?.icon}
+                                    {menuSections[activeSection]?.displayName}
+                                </>
+                            )}
                         </div>
                     </div>
                     <div style={{ 
@@ -235,36 +249,47 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             flexWrap: 'wrap',
                             rowGap: '10px'
                         }}>
-                            {menuSections[activeSection]?.subMenu?.map((item) => {
-                                const isActive = isSubmenuItemActive(item.path);
-                                return (
-                                    <Link
-                                        key={item.name}
-                                        to={item.path}
-                                        style={{
-                                            color: isActive ? '#3498db' : '#888',
-                                            textDecoration: 'none',
-                                            fontSize: '16px',
-                                            fontWeight: isActive ? 'bold' : 'normal',
-                                            position: 'relative',
-                                            paddingBottom: '4px'
-                                        }}
-                                    >
-                                        {item.name}
-                                        {isActive && (
-                                            <div style={{
-                                                position: 'absolute',
-                                                bottom: 0,
-                                                left: 0,
-                                                width: '100%',
-                                                height: '2px',
-                                                background: '#3498db',
-                                                borderRadius: '2px'
-                                            }} />
-                                        )}
-                                    </Link>
-                                );
-                            })}
+                            {/* Show loading state if on admin page and waiting for admin check */}
+                            {isOnAdminPage && adminLoading ? (
+                                <div style={{
+                                    color: '#888',
+                                    fontSize: '16px',
+                                    fontStyle: 'italic'
+                                }}>
+                                    Loading...
+                                </div>
+                            ) : (
+                                menuSections[activeSection]?.subMenu?.map((item) => {
+                                    const isActive = isSubmenuItemActive(item.path);
+                                    return (
+                                        <Link
+                                            key={item.name}
+                                            to={item.path}
+                                            style={{
+                                                color: isActive ? '#3498db' : '#888',
+                                                textDecoration: 'none',
+                                                fontSize: '16px',
+                                                fontWeight: isActive ? 'bold' : 'normal',
+                                                position: 'relative',
+                                                paddingBottom: '4px'
+                                            }}
+                                        >
+                                            {item.name}
+                                            {isActive && (
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    bottom: 0,
+                                                    left: 0,
+                                                    width: '100%',
+                                                    height: '2px',
+                                                    background: '#3498db',
+                                                    borderRadius: '2px'
+                                                }} />
+                                            )}
+                                        </Link>
+                                    );
+                                })
+                            )}
                             {showTotalValue && (
                                 <div style={{ 
                                     color: '#fff',
