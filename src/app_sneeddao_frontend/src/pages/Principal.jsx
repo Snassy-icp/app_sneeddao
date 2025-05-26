@@ -486,7 +486,7 @@ export default function PrincipalPage() {
                                         border: '1px solid #4a4a4a',
                                         borderRadius: '4px',
                                         color: '#ffffff',
-                                        padding: '12px 50px 12px 16px',
+                                        padding: '12px 60px 12px 16px',
                                         width: '100%',
                                         fontSize: '14px'
                                     }}
@@ -653,7 +653,7 @@ export default function PrincipalPage() {
                                     border: '1px solid #4a4a4a',
                                     borderRadius: '4px',
                                     color: '#ffffff',
-                                    padding: '12px 50px 12px 16px',
+                                    padding: '12px 60px 12px 16px',
                                     width: '100%',
                                     fontSize: '14px'
                                 }}
