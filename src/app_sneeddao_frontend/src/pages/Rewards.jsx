@@ -592,7 +592,7 @@ function Rewards() {
                                                             }}>
                                                                 {status}
                                                             </span>
-                                                            <span>{formatNanoTimestamp(latestEvent.timestamp_nanos)}</span>
+                                                            <span>{formatNanoTimestamp(latestEvent.timestamp)}</span>
                                                         </div>
                                                         <div style={eventStyles.eventDetails}>
                                                             <span>Sequence: {seqNum}</span>
