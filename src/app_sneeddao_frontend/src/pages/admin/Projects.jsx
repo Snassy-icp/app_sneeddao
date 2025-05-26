@@ -152,7 +152,7 @@ function AdminProjects() {
             logoUrl: project.logo_url[0] || '',
             description: project.description,
             projectType: projectType,
-            index: project.index[0] ? project.index[0].toString() : '',
+            index: project.index[0] ? Number(project.index[0]).toString() : '',
             links: project.links.length > 0 ? project.links : [{ title: '', url: '' }]
         });
         setEditingId(project.id);

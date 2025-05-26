@@ -146,7 +146,7 @@ function AdminPartners() {
             name: partner.name,
             logoUrl: partner.logo_url,
             description: partner.description,
-            index: partner.index[0] ? partner.index[0].toString() : '',
+            index: partner.index[0] ? Number(partner.index[0]).toString() : '',
             links: partner.links.length > 0 ? partner.links : [{ title: '', url: '' }]
         });
         setEditingPartner(partner);

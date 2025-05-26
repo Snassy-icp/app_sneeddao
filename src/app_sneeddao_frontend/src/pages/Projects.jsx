@@ -52,8 +52,8 @@ function Projects() {
 
         // Sort each group by index (projects with index come first, sorted by index value)
         const sortByIndex = (a, b) => {
-            const aIndex = a.index && a.index.length > 0 ? a.index[0] : null;
-            const bIndex = b.index && b.index.length > 0 ? b.index[0] : null;
+            const aIndex = a.index && a.index.length > 0 ? Number(a.index[0]) : null;
+            const bIndex = b.index && b.index.length > 0 ? Number(b.index[0]) : null;
             
             // If both have indexes, sort by index value
             if (aIndex !== null && bIndex !== null) {
