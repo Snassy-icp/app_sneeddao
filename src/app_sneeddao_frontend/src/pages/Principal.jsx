@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
+import { useSns } from '../contexts/SnsContext';
 import { useSearchParams, Link } from 'react-router-dom';
 import Header from '../components/Header';
 import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname } from '../utils/BackendUtils';
@@ -33,8 +34,8 @@ const spinKeyframes = `
 
 export default function PrincipalPage() {
     const { identity } = useAuth();
+    const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
     const [searchParams, setSearchParams] = useSearchParams();
-    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
     const [principalInfo, setPrincipalInfo] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -113,7 +114,7 @@ export default function PrincipalPage() {
         let currentFetchKey = null;
 
         const fetchNeurons = async () => {
-            const currentSnsRoot = searchParams.get('sns') || SNEED_SNS_ROOT;
+            const currentSnsRoot = searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT;
             const currentPrincipalId = stablePrincipalId.current;
 
             if (!currentSnsRoot || !currentPrincipalId) {
@@ -175,7 +176,7 @@ export default function PrincipalPage() {
 
         fetchNeurons();
         return () => { mounted = false; };
-    }, [identity, searchParams, principalParam]);
+    }, [identity, searchParams, principalParam, selectedSnsRoot, SNEED_SNS_ROOT]);
 
     // Add effect to fetch principal display info
     useEffect(() => {
@@ -683,7 +684,7 @@ export default function PrincipalPage() {
                                                         marginBottom: '10px',
                                                         flexWrap: 'wrap'
                                                     }}>
-                                                        {formatNeuronIdLink(neuronId, searchParams.get('sns') || SNEED_SNS_ROOT)}
+                                                        {formatNeuronIdLink(neuronId, searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT)}
                                                     </div>
                                                 </div>
 
@@ -774,7 +775,7 @@ export default function PrincipalPage() {
 
                 {/* Wrap TransactionList with collapse state */}
                 <TransactionList 
-                    snsRootCanisterId={searchParams.get('sns') || SNEED_SNS_ROOT}
+                    snsRootCanisterId={searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT}
                     principalId={stablePrincipalId.current?.toString()}
                     isCollapsed={isTransactionsCollapsed}
                     onToggleCollapse={() => setIsTransactionsCollapsed(!isTransactionsCollapsed)}

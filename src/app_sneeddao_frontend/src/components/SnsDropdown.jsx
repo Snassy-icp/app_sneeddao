@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { useSns } from '../contexts/SnsContext';
 import { fetchAndCacheSnsData, fetchSnsLogo } from '../utils/SnsUtils';
 import { HttpAgent } from '@dfinity/agent';
 
 function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
     const { identity } = useAuth();
+    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
     const [searchParams, setSearchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
     const [loadingSnses, setLoadingSnses] = useState(true);
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef(null);
-    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
-    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || SNEED_SNS_ROOT);
     const [snsLogos, setSnsLogos] = useState(new Map());
     const [loadingLogos, setLoadingLogos] = useState(new Set());
 
@@ -28,13 +28,20 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Add effect to listen for URL changes
+    // Sync URL parameters with global state
     useEffect(() => {
         const snsParam = searchParams.get('sns');
         if (snsParam && snsParam !== selectedSnsRoot) {
-            setSelectedSnsRoot(snsParam);
+            // URL parameter takes precedence (for direct links)
+            updateSelectedSns(snsParam);
+        } else if (!snsParam && selectedSnsRoot !== SNEED_SNS_ROOT) {
+            // Update URL to match global state
+            setSearchParams(prev => {
+                prev.set('sns', selectedSnsRoot);
+                return prev;
+            });
         }
-    }, [searchParams]);
+    }, [searchParams, selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT, setSearchParams]);
 
     // Function to load a single SNS logo
     const loadSnsLogo = async (governanceId) => {
@@ -82,11 +89,10 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                 }
             });
             
-            // If no SNS is selected in the URL, set it to Sneed
-            if (!searchParams.get('sns')) {
-                setSelectedSnsRoot(SNEED_SNS_ROOT);
+            // If no SNS is selected in URL and global state is default, ensure URL reflects the selection
+            if (!searchParams.get('sns') && selectedSnsRoot !== SNEED_SNS_ROOT) {
                 setSearchParams(prev => {
-                    prev.set('sns', SNEED_SNS_ROOT);
+                    prev.set('sns', selectedSnsRoot);
                     return prev;
                 });
             }
@@ -103,11 +109,19 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
     }, []); // Only run once on mount
 
     const handleSnsChange = (snsRoot) => {
-        setSelectedSnsRoot(snsRoot);
+        // Update global state
+        updateSelectedSns(snsRoot);
+        
+        // Update URL parameters
         setSearchParams(prev => {
-            prev.set('sns', snsRoot);
+            if (snsRoot === SNEED_SNS_ROOT) {
+                prev.delete('sns'); // Remove parameter for default SNS
+            } else {
+                prev.set('sns', snsRoot);
+            }
             return prev;
         });
+        
         setIsOpen(false);
         if (onSnsChange) {
             onSnsChange(snsRoot);
@@ -253,6 +267,14 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                                         width: '100%',
                                         ':hover': {
                                             backgroundColor: '#3a3a3a'
+                                        }
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.backgroundColor = '#3a3a3a';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (selectedSnsRoot !== sns.rootCanisterId) {
+                                            e.target.style.backgroundColor = 'transparent';
                                         }
                                     }}
                                 >

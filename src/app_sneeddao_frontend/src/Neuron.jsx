@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from './AuthContext';
+import { useSns } from './contexts/SnsContext';
 import Header from './components/Header';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
@@ -22,18 +23,17 @@ const spinKeyframes = `
 
 function Neuron() {
     const { isAuthenticated, identity } = useAuth();
+    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
     const [neuronIdInput, setNeuronIdInput] = useState(searchParams.get('neuronid') || '');
     const [currentNeuronId, setCurrentNeuronId] = useState(searchParams.get('neuronid') || '');
-    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || '');
     const [snsList, setSnsList] = useState([]);
     const [neuronData, setNeuronData] = useState(null);
     const [votingHistory, setVotingHistory] = useState(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [loadingSnses, setLoadingSnses] = useState(true);
-    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
     // Add filter states
     const [hideYes, setHideYes] = useState(false);
     const [hideNo, setHideNo] = useState(false);
@@ -50,6 +50,14 @@ function Neuron() {
     
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames, fetchAllNames } = useNaming();
+
+    // Listen for URL parameter changes and sync with global state
+    useEffect(() => {
+        const snsParam = searchParams.get('sns');
+        if (snsParam && snsParam !== selectedSnsRoot) {
+            updateSelectedSns(snsParam);
+        }
+    }, [searchParams, selectedSnsRoot, updateSelectedSns]);
 
     // Helper function to get display name
     const getDisplayName = (neuronId) => {
@@ -113,16 +121,6 @@ function Neuron() {
                 const data = await fetchAndCacheSnsData(identity);
                 console.log('Received SNS data:', data); // Debug log
                 setSnsList(data);
-                
-                // If no SNS is selected but we have SNSes, select the first one
-                if (!selectedSnsRoot && data.length > 0) {
-                    console.log('Setting default SNS:', data[0]); // Debug log
-                    setSelectedSnsRoot(data[0].rootCanisterId);
-                    setSearchParams(prev => {
-                        prev.set('sns', data[0].rootCanisterId);
-                        return prev;
-                    });
-                }
                 
                 // Fetch all names when component mounts
                 console.log('Fetching all names on mount...');
@@ -245,9 +243,11 @@ function Neuron() {
         setCurrentNeuronId(neuronIdInput);
     };
 
-    const handleSnsChange = (e) => {
-        const newSnsRoot = e.target.value;
-        setSelectedSnsRoot(newSnsRoot);
+    const handleSnsChange = (newSnsRoot) => {
+        // Update global context
+        updateSelectedSns(newSnsRoot);
+        
+        // Update URL parameters
         setSearchParams(prev => {
             prev.set('sns', newSnsRoot);
             if (currentNeuronId) {

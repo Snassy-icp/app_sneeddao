@@ -15,6 +15,7 @@ import Neuron from './Neuron';
 import Proposal from './Proposal';
 import { AuthProvider } from './AuthContext';
 import { NamingProvider, useNaming } from './NamingContext';
+import { SnsProvider } from './contexts/SnsContext';
 import Layout from './components/Layout';
 
 // Import new pages
@@ -57,53 +58,55 @@ function GlobalNamingSetup() {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <NamingProvider>
-          <GlobalNamingSetup />
-          <Layout>
-            <Routes>
-              <Route path="/" element={<Login />} />
-              <Route path="/wallet" element={<Wallet />} />
-              <Route path="/doc" element={<Doc />} />
-              <Route path="/help" element={<Help />} />
-              <Route path="/rll" element={<RLL />} />
-              <Route path="/rll_info" element={<RLLInfo />} />
-              <Route path="/scan_wallet" element={<ScanWallet />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/tokenlock" element={<TokenLock />} />
-              <Route path="/positionlock" element={<PositionLock />} />
-              <Route path="/tokenlocksoverview" element={<TokenLocksOverview />} />
-              <Route path="/neuron" element={<Neuron />} />
-              <Route path="/proposal" element={<Proposal />} />
+      <SnsProvider>
+        <Router>
+          <NamingProvider>
+            <GlobalNamingSetup />
+            <Layout>
+              <Routes>
+                <Route path="/" element={<Login />} />
+                <Route path="/wallet" element={<Wallet />} />
+                <Route path="/doc" element={<Doc />} />
+                <Route path="/help" element={<Help />} />
+                <Route path="/rll" element={<RLL />} />
+                <Route path="/rll_info" element={<RLLInfo />} />
+                <Route path="/scan_wallet" element={<ScanWallet />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/tokenlock" element={<TokenLock />} />
+                <Route path="/positionlock" element={<PositionLock />} />
+                <Route path="/tokenlocksoverview" element={<TokenLocksOverview />} />
+                <Route path="/neuron" element={<Neuron />} />
+                <Route path="/proposal" element={<Proposal />} />
 
-              {/* New routes */}
-              <Route path="/dao" element={<Dao />} />
-              <Route path="/dao_info" element={<DaoInfo />} />
-              <Route path="/me" element={<Me />} />
-              <Route path="/me_info" element={<MeInfo />} />
-              <Route path="/tokenomics" element={<Tokenomics />} />
-              <Route path="/tokenomics_info" element={<TokenomicsInfo />} />
-              <Route path="/sneedlock" element={<Sneedlock />} />
-              <Route path="/sneedlock_info" element={<SneedlockInfo />} />
-              <Route path="/products" element={<Products />} />
-              <Route path="/partners" element={<Partners />} />
-              <Route path="/proposals" element={<Proposals />} />
-              <Route path="/rewards" element={<Rewards />} />
-              <Route path="/disclaimer" element={<Disclaimer />} />
-              <Route path="/principal" element={<Principal />} />
-              <Route path="/neurons" element={<Neurons />} />
-              <Route path="/transaction" element={<Transaction />} />
-              <Route path="/transactions" element={<Transactions />} />
-              <Route path="/hub" element={<Hub />} />
+                {/* New routes */}
+                <Route path="/dao" element={<Dao />} />
+                <Route path="/dao_info" element={<DaoInfo />} />
+                <Route path="/me" element={<Me />} />
+                <Route path="/me_info" element={<MeInfo />} />
+                <Route path="/tokenomics" element={<Tokenomics />} />
+                <Route path="/tokenomics_info" element={<TokenomicsInfo />} />
+                <Route path="/sneedlock" element={<Sneedlock />} />
+                <Route path="/sneedlock_info" element={<SneedlockInfo />} />
+                <Route path="/products" element={<Products />} />
+                <Route path="/partners" element={<Partners />} />
+                <Route path="/proposals" element={<Proposals />} />
+                <Route path="/rewards" element={<Rewards />} />
+                <Route path="/disclaimer" element={<Disclaimer />} />
+                <Route path="/principal" element={<Principal />} />
+                <Route path="/neurons" element={<Neurons />} />
+                <Route path="/transaction" element={<Transaction />} />
+                <Route path="/transactions" element={<Transactions />} />
+                <Route path="/hub" element={<Hub />} />
 
-              {/* Admin routes */}
-              <Route path="/admin" element={<Admin />} />
-              <Route path="/admin/users/bans" element={<UserBans />} />
-              <Route path="/admin/words" element={<WordBlacklist />} />
-            </Routes>
-          </Layout>
-        </NamingProvider>
-      </Router>
+                {/* Admin routes */}
+                <Route path="/admin" element={<Admin />} />
+                <Route path="/admin/users/bans" element={<UserBans />} />
+                <Route path="/admin/words" element={<WordBlacklist />} />
+              </Routes>
+            </Layout>
+          </NamingProvider>
+        </Router>
+      </SnsProvider>
     </AuthProvider>
   );
 }

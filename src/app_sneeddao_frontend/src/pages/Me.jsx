@@ -28,6 +28,7 @@ import { Link } from 'react-router-dom';
 import ConfirmationModal from '../ConfirmationModal';
 import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import TransactionList from '../components/TransactionList';
+import { useSns } from '../contexts/SnsContext';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -38,10 +39,9 @@ const spinKeyframes = `
 
 export default function Me() {
     const { identity } = useAuth();
+    const { selectedSnsRoot, updateSelectedSns } = useSns();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
-    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || SNEED_SNS_ROOT);
     const [snsList, setSnsList] = useState([]);
     const [neurons, setNeurons] = useState([]);
     const [error, setError] = useState(null);
@@ -67,6 +67,14 @@ export default function Me() {
     
     // Get naming context
     const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames } = useNaming();
+
+    // Listen for URL parameter changes and sync with global state
+    useEffect(() => {
+        const snsParam = searchParams.get('sns');
+        if (snsParam && snsParam !== selectedSnsRoot) {
+            updateSelectedSns(snsParam);
+        }
+    }, [searchParams, selectedSnsRoot, updateSelectedSns]);
 
     // Add validation function
     const validateNameInput = (input) => {
@@ -133,16 +141,6 @@ export default function Me() {
             try {
                 const data = await fetchAndCacheSnsData();
                 setSnsList(data);
-                
-                // If no SNS is selected in URL, default to Sneed SNS
-                if (!searchParams.get('sns')) {
-                    const sneedSns = data.find(sns => sns.rootCanisterId === 'fp274-iaaaa-aaaaq-aacha-cai');
-                    if (sneedSns) {
-                        const newSnsRoot = sneedSns.rootCanisterId;
-                        setSelectedSnsRoot(newSnsRoot);
-                        setSearchParams({ sns: newSnsRoot });
-                    }
-                }
             } catch (err) {
                 console.error('Error fetching SNS data:', err);
                 setError('Failed to load SNS data');
@@ -234,8 +232,8 @@ export default function Me() {
     }, [identity, neurons]);
 
     const handleSnsChange = (newSnsRoot) => {
-        setSelectedSnsRoot(newSnsRoot);
-        setSearchParams({ sns: newSnsRoot });
+        // The global context and URL sync is handled by SnsDropdown component
+        // This callback is mainly for any page-specific logic
     };
 
     const toggleGroup = (groupId) => {

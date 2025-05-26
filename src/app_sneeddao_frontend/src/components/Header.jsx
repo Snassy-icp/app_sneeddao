@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding } from 'react-icons/fa';
+import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding, FaNetworkWired } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
@@ -14,7 +14,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const menuRef = useRef(null);
     const [activeSection, setActiveSection] = useState(() => {
         const path = location.pathname;
-        if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/proposals'].includes(path)) return 'DAO';
+        if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/disclaimer'].includes(path)) return 'DAO';
+        if (['/hub', '/proposals', '/neurons', '/transactions'].includes(path)) return 'Hub';
         if (['/wallet'].includes(path)) return 'Wallet';
         if (['/me', '/rewards'].includes(path)) return 'Me';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
@@ -45,10 +46,18 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Rewards', path: '/rll' },
                 { name: 'Products', path: '/products' },
                 { name: 'Partners', path: '/partners' },
+                { name: 'Disclaimer', path: '/disclaimer' }
+            ]
+        },
+        'Hub': {
+            icon: <FaNetworkWired size={18} />,
+            displayName: 'Sneed Hub',
+            defaultPath: '/hub',
+            subMenu: [
+                { name: 'Hub', path: '/hub' },
                 { name: 'Proposals', path: '/proposals' },
                 { name: 'Neurons', path: '/neurons' },
-                { name: 'Transactions', path: '/transactions' },
-                { name: 'Disclaimer', path: '/disclaimer' }
+                { name: 'Transactions', path: '/transactions' }
             ]
         },
         'Wallet': {

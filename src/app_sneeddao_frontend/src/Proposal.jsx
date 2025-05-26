@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from './AuthContext';
+import { useSns } from './contexts/SnsContext';
 import Header from './components/Header';
 import ReactMarkdown from 'react-markdown';
 import './Wallet.css';
@@ -12,12 +13,11 @@ import { useNaming } from './NamingContext';
 
 function Proposal() {
     const { isAuthenticated, identity } = useAuth();
+    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
-    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
     const [proposalIdInput, setProposalIdInput] = useState(searchParams.get('proposalid') || '');
     const [currentProposalId, setCurrentProposalId] = useState(searchParams.get('proposalid') || '');
-    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || SNEED_SNS_ROOT);
     const [snsList, setSnsList] = useState([]);
     const [proposalData, setProposalData] = useState(null);
     const [error, setError] = useState('');
@@ -35,6 +35,14 @@ function Proposal() {
     // Get naming context
     const { getNeuronDisplayName } = useNaming();
 
+    // Listen for URL parameter changes and sync with global state
+    useEffect(() => {
+        const snsParam = searchParams.get('sns');
+        if (snsParam && snsParam !== selectedSnsRoot) {
+            updateSelectedSns(snsParam);
+        }
+    }, [searchParams, selectedSnsRoot, updateSelectedSns]);
+
     // Fetch SNS data on component mount
     useEffect(() => {
         async function loadSnsData() {
@@ -49,6 +57,7 @@ function Proposal() {
                 // If no SNS is selected in the URL, set it to Sneed
                 if (!searchParams.get('sns')) {
                     console.log('Setting default SNS to Sneed:', SNEED_SNS_ROOT); // Debug log
+                    updateSelectedSns(SNEED_SNS_ROOT);
                     setSearchParams(prev => {
                         prev.set('sns', SNEED_SNS_ROOT);
                         return prev;
@@ -68,7 +77,7 @@ function Proposal() {
         } else {
             console.log('User is not authenticated'); // Debug log
         }
-    }, [isAuthenticated, identity]);
+    }, [isAuthenticated, identity, SNEED_SNS_ROOT, updateSelectedSns]);
 
     useEffect(() => {
         if (currentProposalId && selectedSnsRoot) {
@@ -138,8 +147,10 @@ function Proposal() {
     };
 
     const handleSnsChange = async (newSnsRoot) => {
+        // Update global context
+        updateSelectedSns(newSnsRoot);
+        
         setProposalData(null); // Clear immediately
-        setSelectedSnsRoot(newSnsRoot);
         
         // Update URL params
         setSearchParams(prev => {

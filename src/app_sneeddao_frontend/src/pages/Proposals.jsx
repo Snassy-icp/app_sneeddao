@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { useAuth } from '../AuthContext';
+import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import ReactMarkdown from 'react-markdown';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
@@ -9,11 +10,10 @@ import { formatProposalIdLink, formatNeuronIdLink } from '../utils/NeuronUtils';
 
 function Proposals() {
     const { isAuthenticated, identity } = useAuth();
+    const { selectedSnsRoot, updateSelectedSns } = useSns();
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
-    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
-    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || SNEED_SNS_ROOT);
     const [snsList, setSnsList] = useState([]);
     const [proposals, setProposals] = useState([]);
     const [error, setError] = useState('');
@@ -29,17 +29,25 @@ function Proposals() {
     // Add state to track expanded summaries
     const [expandedSummaries, setExpandedSummaries] = useState(new Set());
 
-    // Listen for URL parameter changes
+    // Listen for URL parameter changes and sync with global state
     useEffect(() => {
         const snsParam = searchParams.get('sns');
         if (snsParam && snsParam !== selectedSnsRoot) {
-            setSelectedSnsRoot(snsParam);
+            updateSelectedSns(snsParam);
             setCurrentPage(1);
             setLastProposalId(null);
             setHasMoreProposals(true);
             setProposals([]);
         }
-    }, [searchParams]);
+    }, [searchParams, selectedSnsRoot, updateSelectedSns]);
+
+    // Reset proposals when SNS changes
+    useEffect(() => {
+        setCurrentPage(1);
+        setLastProposalId(null);
+        setHasMoreProposals(true);
+        setProposals([]);
+    }, [selectedSnsRoot]);
 
     // Fetch SNS data on component mount
     useEffect(() => {
@@ -118,13 +126,8 @@ function Proposals() {
     };
 
     const handleSnsChange = (newSnsRoot) => {
-        // Update URL parameter
-        const newSearchParams = new URLSearchParams(searchParams);
-        newSearchParams.set('sns', newSnsRoot);
-        navigate(`${location.pathname}?${newSearchParams.toString()}`);
-        
-        // Update state
-        setSelectedSnsRoot(newSnsRoot);
+        // The global context and URL sync is handled by SnsDropdown component
+        // This callback is mainly for any page-specific logic
         setCurrentPage(1);
         setLastProposalId(null);
         setHasMoreProposals(true);

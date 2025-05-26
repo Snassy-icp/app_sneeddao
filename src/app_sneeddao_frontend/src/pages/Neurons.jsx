@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { useAuth } from '../AuthContext';
+import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
 import { formatNeuronIdLink, formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
@@ -11,11 +12,10 @@ import { useNaming } from '../NamingContext';
 
 function Neurons() {
     const { identity } = useAuth();
+    const { selectedSnsRoot, updateSelectedSns } = useSns();
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
-    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
-    const [selectedSnsRoot, setSelectedSnsRoot] = useState(searchParams.get('sns') || SNEED_SNS_ROOT);
     const [snsList, setSnsList] = useState([]);
     const [neurons, setNeurons] = useState([]);
     const [filteredNeurons, setFilteredNeurons] = useState([]);
@@ -123,15 +123,21 @@ function Neurons() {
         }
     };
 
-    // Listen for URL parameter changes
+    // Listen for URL parameter changes and sync with global state
     useEffect(() => {
         const snsParam = searchParams.get('sns');
         if (snsParam && snsParam !== selectedSnsRoot) {
-            setSelectedSnsRoot(snsParam);
+            updateSelectedSns(snsParam);
             setCurrentPage(1);
             setNeurons([]);
         }
-    }, [searchParams]);
+    }, [searchParams, selectedSnsRoot, updateSelectedSns]);
+
+    // Reset neurons when SNS changes
+    useEffect(() => {
+        setCurrentPage(1);
+        setNeurons([]);
+    }, [selectedSnsRoot]);
 
     // Fetch SNS data on component mount
     useEffect(() => {
@@ -337,7 +343,7 @@ function Neurons() {
         navigate(`${location.pathname}?${newSearchParams.toString()}`);
         
         // Update state
-        setSelectedSnsRoot(newSnsRoot);
+        updateSelectedSns(newSnsRoot);
         setCurrentPage(1);
         setNeurons([]);
     };

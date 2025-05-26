@@ -6,6 +6,7 @@ import { createActor as createSnsArchiveActor } from 'external/sns_archive';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import { useAuth } from '../AuthContext';
+import { useSns } from '../contexts/SnsContext';
 import { formatAmount } from '../utils/StringUtils';
 import { getTokenLogo } from '../utils/TokenUtils';
 import { getSnsById } from '../utils/SnsUtils';
@@ -144,8 +145,8 @@ const styles = {
 };
 
 function Transaction() {
-    const SNEED_SNS_ROOT = 'fp274-iaaaa-aaaaq-aacha-cai';
     const { identity } = useAuth();
+    const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
     const [searchParams, setSearchParams] = useSearchParams();
     const [currentId, setCurrentId] = useState(searchParams.get('id') || '');
     const [archiveCanisterId, setArchiveCanisterId] = useState(null);
@@ -172,7 +173,7 @@ function Transaction() {
                 throw new Error('Invalid transaction ID');
             }
 
-            const snsRoot = searchParams.get('sns') || SNEED_SNS_ROOT;
+            const snsRoot = searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT;
             const selectedSns = getSnsById(snsRoot);
             if (!selectedSns) {
                 throw new Error('Selected SNS not found');
@@ -238,7 +239,7 @@ function Transaction() {
     useEffect(() => {
         const fetchTokenMetadata = async () => {
             try {
-                const snsRoot = searchParams.get('sns') || SNEED_SNS_ROOT;
+                const snsRoot = searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT;
                 const selectedSns = getSnsById(snsRoot);
                 if (!selectedSns) {
                     throw new Error('Selected SNS not found');
@@ -272,7 +273,7 @@ function Transaction() {
     useEffect(() => {
         const fetchArchiveCanisterId = async () => {
             try {
-                const snsRoot = searchParams.get('sns') || SNEED_SNS_ROOT;
+                const snsRoot = searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT;
                 const snsRootActor = createSnsRootActor(snsRoot);
                 const response = await snsRootActor.list_sns_canisters({});
                 setArchiveCanisterId(response.archives[0]);
