@@ -107,9 +107,11 @@ function Partners() {
                                 {/* Partner Logo and Name */}
                                 <div style={{
                                     display: 'flex',
-                                    alignItems: 'center',
+                                    alignItems: 'flex-start',
+                                    justifyContent: 'flex-start',
                                     gap: '15px',
-                                    marginBottom: '20px'
+                                    marginBottom: '20px',
+                                    width: '100%'
                                 }}>
                                     <img
                                         src={partner.logo_url}
@@ -119,24 +121,31 @@ function Partners() {
                                             height: '60px',
                                             borderRadius: '8px',
                                             objectFit: 'cover',
-                                            border: '2px solid #3a3a3a'
+                                            border: '2px solid #3a3a3a',
+                                            flexShrink: 0
                                         }}
                                         onError={(e) => {
                                             e.target.style.display = 'none';
                                         }}
                                     />
-                                    <div>
+                                    <div style={{ 
+                                        textAlign: 'left',
+                                        flex: 1,
+                                        alignSelf: 'flex-start'
+                                    }}>
                                         <h2 style={{
                                             color: '#ffffff',
                                             margin: '0 0 5px 0',
                                             fontSize: '24px',
-                                            fontWeight: 'bold'
+                                            fontWeight: 'bold',
+                                            textAlign: 'left'
                                         }}>
                                             {partner.name}
                                         </h2>
                                         <div style={{
                                             color: '#888',
-                                            fontSize: '14px'
+                                            fontSize: '14px',
+                                            textAlign: 'left'
                                         }}>
                                             Partner since {formatDate(partner.created_at)}
                                         </div>
