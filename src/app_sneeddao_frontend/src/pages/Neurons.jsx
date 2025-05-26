@@ -38,13 +38,18 @@ function Neurons() {
     const [loadingProgress, setLoadingProgress] = useState({ count: 0, message: '', percent: 0 });
 
     const [dissolveFilter, setDissolveFilter] = useState('all');
-    const [sortBy, setSortBy] = useState('stake');
     
     // Add new filter states
     const [hideUnnamed, setHideUnnamed] = useState(false);
     const [hideUnverified, setHideUnverified] = useState(false);
     // Add nervous system parameters state
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
+    
+    // Add sort configuration state similar to TransactionList
+    const [sortConfig, setSortConfig] = useState({
+        key: 'stake',
+        direction: 'desc'
+    });
 
     // Add IndexedDB initialization at the top of the component
     const initializeDB = () => {
@@ -449,14 +454,15 @@ function Neurons() {
     // Add sorting function
     const getSortedNeurons = (neurons) => {
         return [...neurons].sort((a, b) => {
-            if (sortBy === 'stake') {
-                // Sort by stake (descending)
+            if (sortConfig.key === 'stake') {
+                // Sort by stake
                 const stakeA = BigInt(a.cached_neuron_stake_e8s || 0);
                 const stakeB = BigInt(b.cached_neuron_stake_e8s || 0);
-                return stakeB > stakeA ? 1 : stakeB < stakeA ? -1 : 0;
+                const result = stakeB > stakeA ? 1 : stakeB < stakeA ? -1 : 0;
+                return sortConfig.direction === 'desc' ? result : -result;
             }
             
-            if (sortBy === 'name') {
+            if (sortConfig.key === 'name') {
                 // Get display info for both neurons
                 const neuronIdA = uint8ArrayToHex(a.id[0]?.id);
                 const neuronIdB = uint8ArrayToHex(b.id[0]?.id);
@@ -468,16 +474,19 @@ function Neurons() {
                 const nicknameB = neuronNicknames.get(mapKeyB);
 
                 // Sort logic for names
-                if (nameA && nameB) return nameA.localeCompare(nameB);
-                if (nameA) return -1; // Named neurons come first
-                if (nameB) return 1;
-                if (nicknameA && nicknameB) return nicknameA.localeCompare(nicknameB);
-                if (nicknameA) return -1; // Nicknamed neurons come after named ones
-                if (nicknameB) return 1;
-                return neuronIdA.localeCompare(neuronIdB); // Sort by ID if no name/nickname
+                let result = 0;
+                if (nameA && nameB) result = nameA.localeCompare(nameB);
+                else if (nameA) result = -1; // Named neurons come first
+                else if (nameB) result = 1;
+                else if (nicknameA && nicknameB) result = nicknameA.localeCompare(nicknameB);
+                else if (nicknameA) result = -1; // Nicknamed neurons come after named ones
+                else if (nicknameB) result = 1;
+                else result = neuronIdA.localeCompare(neuronIdB); // Sort by ID if no name/nickname
+                
+                return sortConfig.direction === 'asc' ? result : -result;
             }
 
-            if (sortBy === 'lock') {
+            if (sortConfig.key === 'lock') {
                 const stateA = getDissolveStateDetails(a);
                 const stateB = getDissolveStateDetails(b);
 
@@ -485,22 +494,42 @@ function Neurons() {
                 if (stateA.category !== stateB.category) {
                     // Not Dissolving comes first, then Dissolving, then Dissolved
                     const order = { 'not_dissolving': 0, 'dissolving': 1, 'dissolved': 2 };
-                    return order[stateA.category] - order[stateB.category];
+                    const result = order[stateA.category] - order[stateB.category];
+                    return sortConfig.direction === 'asc' ? result : -result;
                 }
 
                 // Within the same category
                 if (stateA.category === 'not_dissolving') {
                     // Sort by lock time (DissolveDelaySeconds)
-                    return Number(stateB.dissolveDelaySeconds || 0) - Number(stateA.dissolveDelaySeconds || 0);
+                    const result = Number(stateB.dissolveDelaySeconds || 0) - Number(stateA.dissolveDelaySeconds || 0);
+                    return sortConfig.direction === 'desc' ? result : -result;
                 }
                 if (stateA.category === 'dissolving') {
                     // Sort by time left until dissolution
-                    return Number(stateB.timeLeft || 0) - Number(stateA.timeLeft || 0);
+                    const result = Number(stateB.timeLeft || 0) - Number(stateA.timeLeft || 0);
+                    return sortConfig.direction === 'desc' ? result : -result;
                 }
                 // For dissolved neurons, sort by stake
                 const stakeA = BigInt(a.cached_neuron_stake_e8s || 0);
                 const stakeB = BigInt(b.cached_neuron_stake_e8s || 0);
-                return stakeB > stakeA ? 1 : stakeB < stakeA ? -1 : 0;
+                const result = stakeB > stakeA ? 1 : stakeB < stakeA ? -1 : 0;
+                return sortConfig.direction === 'desc' ? result : -result;
+            }
+
+            if (sortConfig.key === 'votingPower') {
+                // Sort by voting power
+                if (nervousSystemParameters) {
+                    const votingPowerA = calculateVotingPower(a, nervousSystemParameters);
+                    const votingPowerB = calculateVotingPower(b, nervousSystemParameters);
+                    const result = votingPowerB > votingPowerA ? 1 : votingPowerB < votingPowerA ? -1 : 0;
+                    return sortConfig.direction === 'desc' ? result : -result;
+                } else {
+                    // Fallback to voting power multiplier if nervous system parameters not available
+                    const multiplierA = Number(a.voting_power_percentage_multiplier || 0);
+                    const multiplierB = Number(b.voting_power_percentage_multiplier || 0);
+                    const result = multiplierB - multiplierA;
+                    return sortConfig.direction === 'desc' ? result : -result;
+                }
             }
 
             return 0;
@@ -533,6 +562,20 @@ function Neurons() {
         }
 
         return { category: 'not_dissolving', dissolveDelaySeconds: 0 };
+    };
+
+    // Add sort handler similar to TransactionList
+    const handleSort = (key) => {
+        setSortConfig(prevConfig => ({
+            key,
+            direction: prevConfig.key === key && prevConfig.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
+
+    // Render sort indicator
+    const renderSortIndicator = (key) => {
+        if (sortConfig.key !== key) return '↕';
+        return sortConfig.direction === 'asc' ? '↑' : '↓';
     };
 
     // Update the effect that filters neurons
@@ -610,7 +653,7 @@ function Neurons() {
 
         setFilteredNeurons(filtered);
         setCurrentPage(1); // Reset to first page when filtering
-    }, [searchTerm, dissolveFilter, sortBy, hideUnnamed, hideUnverified, neurons, selectedSnsRoot, neuronNames, neuronNicknames, verifiedNames]);
+    }, [searchTerm, dissolveFilter, sortConfig, hideUnnamed, hideUnverified, neurons, selectedSnsRoot, neuronNames, neuronNicknames, verifiedNames, nervousSystemParameters]);
 
     // Add function to clear cache
     const clearCache = async (snsRoot) => {
@@ -681,22 +724,6 @@ function Neurons() {
                             <option value="not_dissolving">Not Dissolving</option>
                             <option value="dissolving">Dissolving</option>
                             <option value="dissolved">Dissolved</option>
-                        </select>
-                        <select
-                            value={sortBy}
-                            onChange={(e) => setSortBy(e.target.value)}
-                            style={{
-                                backgroundColor: '#3a3a3a',
-                                color: '#ffffff',
-                                border: '1px solid #4a4a4a',
-                                borderRadius: '4px',
-                                padding: '8px 12px',
-                                minWidth: '150px'
-                            }}
-                        >
-                            <option value="stake">Sort by Stake</option>
-                            <option value="name">Sort by Name</option>
-                            <option value="lock">Sort by Lock</option>
                         </select>
                         <div style={{ 
                             display: 'flex', 
@@ -869,6 +896,95 @@ function Neurons() {
                                 ({stakes.dissolvedWithStakeCount} with stake)
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                {/* Sortable Headers */}
+                <div style={{ 
+                    backgroundColor: '#2a2a2a',
+                    borderRadius: '8px',
+                    padding: '15px 20px',
+                    marginBottom: '20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '20px'
+                }}>
+                    <div style={{ color: '#888', fontSize: '14px', fontWeight: 'bold' }}>Sort by:</div>
+                    <div 
+                        onClick={() => handleSort('stake')}
+                        style={{
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            color: sortConfig.key === 'stake' ? '#3498db' : '#ffffff',
+                            fontWeight: sortConfig.key === 'stake' ? 'bold' : 'normal',
+                            padding: '8px 12px',
+                            borderRadius: '4px',
+                            backgroundColor: sortConfig.key === 'stake' ? 'rgba(52, 152, 219, 0.1)' : 'transparent',
+                            border: sortConfig.key === 'stake' ? '1px solid #3498db' : '1px solid transparent'
+                        }}
+                    >
+                        Stake
+                        <span style={{ fontSize: '12px', opacity: 0.7 }}>{renderSortIndicator('stake')}</span>
+                    </div>
+                    <div 
+                        onClick={() => handleSort('name')}
+                        style={{
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            color: sortConfig.key === 'name' ? '#3498db' : '#ffffff',
+                            fontWeight: sortConfig.key === 'name' ? 'bold' : 'normal',
+                            padding: '8px 12px',
+                            borderRadius: '4px',
+                            backgroundColor: sortConfig.key === 'name' ? 'rgba(52, 152, 219, 0.1)' : 'transparent',
+                            border: sortConfig.key === 'name' ? '1px solid #3498db' : '1px solid transparent'
+                        }}
+                    >
+                        Name
+                        <span style={{ fontSize: '12px', opacity: 0.7 }}>{renderSortIndicator('name')}</span>
+                    </div>
+                    <div 
+                        onClick={() => handleSort('lock')}
+                        style={{
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            color: sortConfig.key === 'lock' ? '#3498db' : '#ffffff',
+                            fontWeight: sortConfig.key === 'lock' ? 'bold' : 'normal',
+                            padding: '8px 12px',
+                            borderRadius: '4px',
+                            backgroundColor: sortConfig.key === 'lock' ? 'rgba(52, 152, 219, 0.1)' : 'transparent',
+                            border: sortConfig.key === 'lock' ? '1px solid #3498db' : '1px solid transparent'
+                        }}
+                    >
+                        Lock
+                        <span style={{ fontSize: '12px', opacity: 0.7 }}>{renderSortIndicator('lock')}</span>
+                    </div>
+                    <div 
+                        onClick={() => handleSort('votingPower')}
+                        style={{
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            color: sortConfig.key === 'votingPower' ? '#3498db' : '#ffffff',
+                            fontWeight: sortConfig.key === 'votingPower' ? 'bold' : 'normal',
+                            padding: '8px 12px',
+                            borderRadius: '4px',
+                            backgroundColor: sortConfig.key === 'votingPower' ? 'rgba(52, 152, 219, 0.1)' : 'transparent',
+                            border: sortConfig.key === 'votingPower' ? '1px solid #3498db' : '1px solid transparent'
+                        }}
+                    >
+                        Voting Power
+                        <span style={{ fontSize: '12px', opacity: 0.7 }}>{renderSortIndicator('votingPower')}</span>
                     </div>
                 </div>
 
