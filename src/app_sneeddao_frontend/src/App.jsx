@@ -35,6 +35,7 @@ import UserBans from './pages/admin/UserBans';
 import WordBlacklist from './pages/admin/WordBlacklist';
 import AdminPartners from './pages/admin/Partners';
 import AdminProjects from './pages/admin/Projects';
+import AdminNames from './pages/AdminNames';
 import Projects from './pages/Projects';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
@@ -108,6 +109,7 @@ function App() {
                 <Route path="/admin/words" element={<WordBlacklist />} />
                 <Route path="/admin/partners" element={<AdminPartners />} />
                 <Route path="/admin/projects" element={<AdminProjects />} />
+                <Route path="/admin/names" element={<AdminNames />} />
               </Routes>
             </Layout>
           </NamingProvider>

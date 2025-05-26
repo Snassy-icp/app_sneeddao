@@ -290,4 +290,101 @@ export const getAllPrincipalNicknames = async (identity) => {
         console.error('Error getting all principal nicknames:', error);
         return null;
     }
+};
+
+// Verify a neuron name (admin only)
+export const verifyNeuronName = async (identity, snsRootCanisterId, neuronId) => {
+    if (!identity || !snsRootCanisterId || !neuronId) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const neuronIdBytes = typeof neuronId === 'string' ? 
+            hexToUint8Array(neuronId) : 
+            neuronId;
+
+        const response = await actor.verify_neuron_name(
+            Principal.fromText(snsRootCanisterId),
+            { id: neuronIdBytes }
+        );
+
+        return response;
+    } catch (error) {
+        console.error('Error verifying neuron name:', error);
+        throw error;
+    }
+};
+
+// Unverify a neuron name (admin only)
+export const unverifyNeuronName = async (identity, snsRootCanisterId, neuronId) => {
+    if (!identity || !snsRootCanisterId || !neuronId) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const neuronIdBytes = typeof neuronId === 'string' ? 
+            hexToUint8Array(neuronId) : 
+            neuronId;
+
+        const response = await actor.unverify_neuron_name(
+            Principal.fromText(snsRootCanisterId),
+            { id: neuronIdBytes }
+        );
+
+        return response;
+    } catch (error) {
+        console.error('Error unverifying neuron name:', error);
+        throw error;
+    }
+};
+
+// Verify a principal name (admin only)
+export const verifyPrincipalName = async (identity, principal) => {
+    if (!identity || !principal) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const response = await actor.verify_principal_name(
+            typeof principal === 'string' ? Principal.fromText(principal) : principal
+        );
+
+        return response;
+    } catch (error) {
+        console.error('Error verifying principal name:', error);
+        throw error;
+    }
+};
+
+// Unverify a principal name (admin only)
+export const unverifyPrincipalName = async (identity, principal) => {
+    if (!identity || !principal) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const response = await actor.unverify_principal_name(
+            typeof principal === 'string' ? Principal.fromText(principal) : principal
+        );
+
+        return response;
+    } catch (error) {
+        console.error('Error unverifying principal name:', error);
+        throw error;
+    }
+};
+
+// Admin function to set principal name for any principal
+export const setPrincipalNameFor = async (identity, principal, name, snsRootCanisterId = null) => {
+    if (!identity || !principal || name === undefined) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const response = await actor.set_principal_name_for(
+            typeof principal === 'string' ? Principal.fromText(principal) : principal,
+            name,
+            snsRootCanisterId ? [Principal.fromText(snsRootCanisterId)] : []
+        );
+
+        return response;
+    } catch (error) {
+        console.error('Error setting principal name for user:', error);
+        throw error;
+    }
 }; 
