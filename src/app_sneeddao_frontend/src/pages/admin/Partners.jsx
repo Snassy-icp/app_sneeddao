@@ -59,9 +59,20 @@ function AdminPartners() {
 
             let result;
             if (editingPartner) {
-                result = await backendActor.update_partner(editingPartner.id, formData);
+                result = await backendActor.update_partner(
+                    editingPartner.id,
+                    formData.name,
+                    formData.logo_url,
+                    formData.description,
+                    formData.links
+                );
             } else {
-                result = await backendActor.add_partner(formData);
+                result = await backendActor.add_partner(
+                    formData.name,
+                    formData.logo_url,
+                    formData.description,
+                    formData.links
+                );
             }
 
             if ('ok' in result) {
@@ -97,7 +108,7 @@ function AdminPartners() {
                 }
             });
 
-            const result = await backendActor.delete_partner(partnerId);
+            const result = await backendActor.remove_partner(partnerId);
             if ('ok' in result) {
                 setSuccess('Partner deleted successfully!');
                 fetchPartners();
