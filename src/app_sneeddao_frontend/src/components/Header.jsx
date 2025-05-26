@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding, FaNetworkWired } from 'react-icons/fa';
+import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
 import SnsDropdown from './SnsDropdown';
+import { useAdminCheck } from '../hooks/useAdminCheck';
 
 function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const location = useLocation();
@@ -19,7 +20,15 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/wallet'].includes(path)) return 'Wallet';
         if (['/me', '/rewards'].includes(path)) return 'Me';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
+        if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         return 'DAO';
+    });
+
+    // Silent admin check - don't redirect, just check status
+    const { isAdmin } = useAdminCheck({ 
+        identity, 
+        isAuthenticated, 
+        redirectPath: null // Don't redirect from header
     });
 
     // Add click outside handler
@@ -47,6 +56,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Me');
         } else if (['/sneedlock', '/sneedlock_info'].includes(path)) {
             setActiveSection('Locks');
+        } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
+            setActiveSection('Admin');
         }
     }, [location.pathname]);
 
@@ -103,7 +114,22 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Locks', path: '/sneedlock' },
                 { name: 'Dashboard', path: '/sneedlock_info' }
             ]
-        }
+        },
+        ...(isAuthenticated && isAdmin ? {
+            'Admin': {
+                icon: <FaCog size={18} />,
+                displayName: 'Admin',
+                defaultPath: '/admin',
+                subMenu: [
+                    { name: 'Dashboard', path: '/admin' },
+                    { name: 'User Bans', path: '/admin/users/bans' },
+                    { name: 'Word Blacklist', path: '/admin/words' },
+                    { name: 'Partners', path: '/admin/partners' },
+                    { name: 'Names', path: '/admin/names' },
+                    { name: 'Projects', path: '/admin/projects' }
+                ]
+            }
+        } : {})
     };
 
     const toggleMenu = () => {
