@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
+import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { 
     fetchUserNeuronsForSns, 
     formatE8s, 
@@ -28,6 +29,7 @@ import ConfirmationModal from '../ConfirmationModal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import TransactionList from '../components/TransactionList';
 import { useSns } from '../contexts/SnsContext';
+import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 
 const spinKeyframes = `
 @keyframes spin {
@@ -63,6 +65,7 @@ export default function Me() {
     const [isSubmittingPrincipalName, setIsSubmittingPrincipalName] = useState(false);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [isTransactionsCollapsed, setIsTransactionsCollapsed] = useState(true);
+    const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     
     // Get naming context
     const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames, principalNames, principalNicknames } = useNaming();
@@ -229,6 +232,29 @@ export default function Me() {
 
         fetchPrincipalInfo();
     }, [neurons, principalNames, principalNicknames]);
+
+    // Fetch nervous system parameters for voting power calculation
+    useEffect(() => {
+        const fetchNervousSystemParameters = async () => {
+            if (!selectedSnsRoot || !identity) return;
+            
+            try {
+                const selectedSns = getSnsById(selectedSnsRoot);
+                if (!selectedSns) return;
+
+                const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                    agentOptions: { identity }
+                });
+                
+                const params = await snsGovActor.get_nervous_system_parameters(null);
+                setNervousSystemParameters(params);
+            } catch (error) {
+                console.error('Error fetching nervous system parameters:', error);
+            }
+        };
+
+        fetchNervousSystemParameters();
+    }, [selectedSnsRoot, identity]);
 
     const handleSnsChange = (newSnsRoot) => {
         // The global context and URL sync is handled by SnsDropdown component
@@ -988,7 +1014,12 @@ export default function Me() {
                                                         </div>
                                                         <div>
                                                             <div style={{ color: '#888' }}>Voting Power</div>
-                                                            <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
+                                                            <div style={{ color: '#ffffff' }}>
+                                                                {nervousSystemParameters ? 
+                                                                    formatVotingPower(calculateVotingPower(neuron, nervousSystemParameters)) :
+                                                                    (Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2) + 'x'
+                                                                }
+                                                            </div>
                                                         </div>
                                                         {/* Replace debug info with permissions */}
                                                         <div style={{ gridColumn: '1 / -1' }}>

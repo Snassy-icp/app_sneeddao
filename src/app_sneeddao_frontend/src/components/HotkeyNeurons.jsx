@@ -5,6 +5,7 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { getSnsById } from '../utils/SnsUtils';
 import { useSns } from '../contexts/SnsContext';
+import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 
 const HotkeyNeurons = ({ 
     fetchNeuronsFromSns, 
@@ -29,6 +30,7 @@ const HotkeyNeurons = ({
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [votingStates, setVotingStates] = useState({});
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
+    const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
 
     // Get the effective SNS root - use SNEED if forced, otherwise use selected
     const effectiveSnsRoot = forceSneedSns ? SNEED_SNS_ROOT : selectedSnsRoot;
@@ -349,6 +351,31 @@ const HotkeyNeurons = ({
         fetchTokenSymbol();
     }, [effectiveSnsRoot, identity, forceSneedSns]);
 
+    // Fetch nervous system parameters for voting power calculation
+    useEffect(() => {
+        const fetchNervousSystemParameters = async () => {
+            if (!effectiveSnsRoot) return;
+            
+            try {
+                const selectedSns = getSnsById(effectiveSnsRoot);
+                if (!selectedSns) return;
+
+                const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                    agentOptions: { identity }
+                });
+                
+                const params = await snsGovActor.get_nervous_system_parameters(null);
+                setNervousSystemParameters(params);
+            } catch (error) {
+                console.error('Error fetching nervous system parameters:', error);
+            }
+        };
+
+        if (isAuthenticated && identity && effectiveSnsRoot) {
+            fetchNervousSystemParameters();
+        }
+    }, [isAuthenticated, identity, effectiveSnsRoot]);
+
     const styles = {
         section: {
             backgroundColor: '#2a2a2a',
@@ -660,7 +687,12 @@ const HotkeyNeurons = ({
                                                     </div>
                                                     <div>
                                                         <div style={{ color: '#888' }}>Voting Power</div>
-                                                        <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
+                                                        <div style={{ color: '#ffffff' }}>
+                                                            {nervousSystemParameters ? 
+                                                                formatVotingPower(calculateVotingPower(neuron, nervousSystemParameters)) :
+                                                                (Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2) + 'x'
+                                                            }
+                                                        </div>
                                                     </div>
                                                     {neuron.permissions.some(p => 
                                                         p.principal?.toString() === identity.getPrincipal().toString() &&
