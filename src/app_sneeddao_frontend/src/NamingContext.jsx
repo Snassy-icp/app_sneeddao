@@ -17,12 +17,16 @@ export function NamingProvider({ children }) {
     const fetchAllNames = async () => {
         try {
             setLoading(true);
+            console.log('NamingContext: Starting to fetch all names...');
             const [neuronNamesData, neuronNicknamesData, principalNamesData, principalNicknamesData] = await Promise.all([
                 getAllNeuronNames(identity),
                 identity ? getAllNeuronNicknames(identity) : null,
                 getAllPrincipalNames(identity),
                 identity ? getAllPrincipalNicknames(identity) : null
             ]);
+
+            console.log('NamingContext: Raw principal names data:', principalNamesData);
+            console.log('NamingContext: Raw principal nicknames data:', principalNicknamesData);
 
             // Process neuron names
             const neuronNamesMap = new Map();
@@ -55,22 +59,30 @@ export function NamingProvider({ children }) {
             // Process principal names
             const principalNamesMap = new Map();
             if (principalNamesData) {
+                console.log('NamingContext: Processing principal names, count:', principalNamesData.length);
                 principalNamesData.forEach(([principalId, nameData]) => {
                     const [name, verified] = nameData;
-                    principalNamesMap.set(principalId.toString(), name);
+                    const principalIdStr = principalId.toString();
+                    console.log('NamingContext: Adding principal name:', principalIdStr, '->', name);
+                    principalNamesMap.set(principalIdStr, name);
                     // Note: We could extend verifiedMap to include principal verification if needed
                 });
             }
             setPrincipalNames(principalNamesMap);
+            console.log('NamingContext: Final principal names map size:', principalNamesMap.size);
 
             // Process principal nicknames
             const principalNicknamesMap = new Map();
             if (principalNicknamesData) {
+                console.log('NamingContext: Processing principal nicknames, count:', principalNicknamesData.length);
                 principalNicknamesData.forEach(([principalId, nickname]) => {
-                    principalNicknamesMap.set(principalId.toString(), nickname);
+                    const principalIdStr = principalId.toString();
+                    console.log('NamingContext: Adding principal nickname:', principalIdStr, '->', nickname);
+                    principalNicknamesMap.set(principalIdStr, nickname);
                 });
             }
             setPrincipalNicknames(principalNicknamesMap);
+            console.log('NamingContext: Final principal nicknames map size:', principalNicknamesMap.size);
 
         } catch (err) {
             console.error('Error fetching names:', err);
