@@ -119,7 +119,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         cursor: 'pointer'
                     }}
                 />
-                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, marginLeft: '37px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, marginLeft: '12px' }}>
                     <div style={{ 
                         display: 'flex', 
                         alignItems: 'center', 
