@@ -1,39 +1,38 @@
 import React from 'react';
 import { getPrincipalName, getPrincipalNickname } from './BackendUtils';
 
-// Truncate a principal ID to a shorter format
+// Truncate a principal ID for display
 export const truncatePrincipal = (principal) => {
     if (!principal) return 'Unknown';
-    const principalText = principal.toString();
-    const start = principalText.slice(0, 5);
-    const end = principalText.slice(-5);
-    return `${start}...${end}`;
+    const str = principal.toString();
+    if (str.length <= 16) return str;
+    return `${str.slice(0, 6)}...${str.slice(-6)}`;
 };
 
-// Generate a consistent color from a principal ID
+// Generate a consistent color for a principal
 export const getPrincipalColor = (principal) => {
     if (!principal) return '#888';
-    const principalText = principal.toString();
-    
-    // Simple hash function that sums char codes multiplied by position
-    let hash = 0;
-    for (let i = 0; i < principalText.length; i++) {
-        hash = ((hash << 5) - hash) + principalText.charCodeAt(i);
-        hash = hash & hash; // Convert to 32-bit integer
-    }
-
-    // Generate HSL color with:
-    // - Hue: full range (0-360) for maximum distinction
-    // - Saturation: 60-80% for good color without being too bright
-    // - Lightness: 45-65% for good contrast on both dark and light backgrounds
-    const hue = Math.abs(hash % 360);
-    const saturation = 70 + (Math.abs((hash >> 8) % 11)); // 70-80%
-    const lightness = 55 + (Math.abs((hash >> 16) % 11)); // 55-65%
-
-    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+    const str = principal.toString();
+    const hash = str.split('').reduce((a, b) => {
+        a = ((a << 5) - a) + b.charCodeAt(0);
+        return a & a;
+    }, 0);
+    const hue = Math.abs(hash) % 360;
+    return `hsl(${hue}, 60%, 70%)`;
 };
 
-// Get the display name for a principal, including name and verification status
+// Get display info from naming context (optimized version)
+export const getPrincipalDisplayInfoFromContext = (principal, principalNames, principalNicknames) => {
+    if (!principal) return { name: null, nickname: null, isVerified: false };
+    
+    const principalStr = principal.toString();
+    const name = principalNames?.get(principalStr) || null;
+    const nickname = principalNicknames?.get(principalStr) || null;
+    
+    return { name, nickname, isVerified: false }; // Note: verification status not available in context yet
+};
+
+// Get the display name for a principal, including name and verification status (fallback version)
 export const getPrincipalDisplayInfo = async (identity, principal) => {
     if (!principal) return { name: null, nickname: null, isVerified: false };
 

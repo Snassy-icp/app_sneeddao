@@ -25,7 +25,7 @@ import {
 import { useNaming } from '../NamingContext';
 import { Link } from 'react-router-dom';
 import ConfirmationModal from '../ConfirmationModal';
-import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import TransactionList from '../components/TransactionList';
 import { useSns } from '../contexts/SnsContext';
 
@@ -65,7 +65,7 @@ export default function Me() {
     const [isTransactionsCollapsed, setIsTransactionsCollapsed] = useState(true);
     
     // Get naming context
-    const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames } = useNaming();
+    const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames, principalNames, principalNicknames } = useNaming();
 
     // Listen for URL parameter changes and sync with global state
     useEffect(() => {
@@ -203,10 +203,10 @@ export default function Me() {
         }
     }, [identity]);
 
-    // Add effect to fetch principal display info
+    // Fetch principal display info for all unique principals
     useEffect(() => {
         const fetchPrincipalInfo = async () => {
-            if (!identity || neurons.length === 0) return;
+            if (!neurons.length || !principalNames || !principalNicknames) return;
 
             const uniquePrincipals = new Set();
             neurons.forEach(neuron => {
@@ -219,16 +219,16 @@ export default function Me() {
             });
 
             const displayInfoMap = new Map();
-            await Promise.all(Array.from(uniquePrincipals).map(async principal => {
-                const displayInfo = await getPrincipalDisplayInfo(identity, principal);
+            Array.from(uniquePrincipals).forEach(principal => {
+                const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames);
                 displayInfoMap.set(principal.toString(), displayInfo);
-            }));
+            });
 
             setPrincipalDisplayInfo(displayInfoMap);
         };
 
         fetchPrincipalInfo();
-    }, [identity, neurons]);
+    }, [neurons, principalNames, principalNicknames]);
 
     const handleSnsChange = (newSnsRoot) => {
         // The global context and URL sync is handled by SnsDropdown component

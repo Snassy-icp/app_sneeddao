@@ -5,7 +5,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import Header from '../components/Header';
 import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname } from '../utils/BackendUtils';
 import { Principal } from '@dfinity/principal';
-import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import ConfirmationModal from '../ConfirmationModal';
 import { fetchPrincipalNeuronsForSns, getOwnerPrincipals, formatNeuronIdLink } from '../utils/NeuronUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
@@ -331,10 +331,10 @@ export default function PrincipalPage() {
         return () => { mounted = false; };
     }, [identity, searchParams, principalParam, selectedSnsRoot, SNEED_SNS_ROOT]);
 
-    // Add effect to fetch principal display info
+    // Fetch principal display info for all unique principals
     useEffect(() => {
         const fetchPrincipalInfo = async () => {
-            if (neurons.length === 0) return;
+            if (!neurons.length || !principalNames || !principalNicknames) return;
 
             const uniquePrincipals = new Set();
             neurons.forEach(neuron => {
@@ -347,16 +347,16 @@ export default function PrincipalPage() {
             });
 
             const displayInfoMap = new Map();
-            await Promise.all(Array.from(uniquePrincipals).map(async principal => {
-                const displayInfo = await getPrincipalDisplayInfo(identity, Principal.fromText(principal));
+            Array.from(uniquePrincipals).forEach(principal => {
+                const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames);
                 displayInfoMap.set(principal, displayInfo);
-            }));
+            });
 
             setPrincipalDisplayInfo(displayInfoMap);
         };
 
         fetchPrincipalInfo();
-    }, [identity, neurons]);
+    }, [neurons, principalNames, principalNicknames]);
 
     // Add effect to auto-expand neurons section if there are neurons
     useEffect(() => {
