@@ -325,6 +325,49 @@ function SneedlockInfo() {
         }
     };
 
+    const formatExpirationWithColor = (timestamp) => {
+        if (!timestamp) {
+            return <span style={{ color: '#2ecc71' }}>Never</span>;
+        }
+        
+        try {
+            // For token locks, the field is named 'expiry'
+            // For position locks, we need to handle both 'expiry' and 'expiration'
+            const actualTimestamp = typeof timestamp === 'object' && timestamp.expiry ? 
+                timestamp.expiry : timestamp;
+
+            // Convert BigInt to string to avoid precision loss
+            const timestampStr = actualTimestamp.toString();
+            // Convert nanoseconds to milliseconds
+            const milliseconds = Number(timestampStr) / 1_000_000;
+            
+            const date = new Date(milliseconds);
+            
+            // Check if date is valid
+            if (isNaN(date.getTime())) {
+                return <span style={{ color: '#2ecc71' }}>Never</span>;
+            }
+            
+            // Check if it's effectively "never" (far future date)
+            if (date.getFullYear() > 2100) {
+                return <span style={{ color: '#2ecc71' }}>Never</span>;
+            }
+            
+            // Check if expired
+            const now = new Date();
+            const isExpired = date <= now;
+            
+            if (isExpired) {
+                return <span style={{ color: '#e74c3c' }}>Expired</span>;
+            } else {
+                return <span style={{ color: '#2ecc71' }}>{date.toLocaleString()}</span>;
+            }
+        } catch (error) {
+            console.error("Error formatting timestamp:", error);
+            return <span style={{ color: '#888' }}>Invalid Date</span>;
+        }
+    };
+
     const truncatePrincipal = (principal) => {
         if (!principal) return 'Unknown';
         const start = principal.slice(0, 5);
@@ -914,7 +957,7 @@ function SneedlockInfo() {
                                                                     </span>
                                                                 </div>
                                                                 <div>
-                                                                    Expires: {formatTimestamp(lock.expiry)}
+                                                                    Expires: {formatExpirationWithColor(lock.expiry)}
                                                                 </div>
                                                                 <div style={{ opacity: 0.7 }}>
                                                                     <span>Owner: </span>
@@ -970,7 +1013,7 @@ function SneedlockInfo() {
                                                                     </div>
                                                                 </div>
                                                                 <div>
-                                                                    Expires: {formatTimestamp(lock.expiry)}
+                                                                    Expires: {formatExpirationWithColor(lock.expiry)}
                                                                 </div>
                                                                 <div style={{ opacity: 0.7 }}>
                                                                     <span>Owner: </span>

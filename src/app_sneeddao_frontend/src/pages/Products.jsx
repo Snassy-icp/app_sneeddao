@@ -664,7 +664,7 @@ function Products() {
                     <div style={styles.product}>
                         <h2 style={styles.productTitle}>SwapRunner</h2>
                         <p style={styles.description}>
-                            A high-performance decentralized exchange (DEX) built for speed and efficiency.
+                            A high-performance decentralized exchange (DEX) aggregator built for speed and efficiency.
                             Experience lightning-fast token swaps with minimal slippage, powered by
                             advanced routing algorithms and deep liquidity pools.
                         </p>
