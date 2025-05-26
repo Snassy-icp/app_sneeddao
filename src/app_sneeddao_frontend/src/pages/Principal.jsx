@@ -13,6 +13,7 @@ import { getSnsById, fetchAndCacheSnsData } from '../utils/SnsUtils';
 import { formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { HttpAgent } from '@dfinity/agent';
 import TransactionList from '../components/TransactionList';
+import { useNaming } from '../NamingContext';
 
 const validateNameInput = (input) => {
     if (!input.trim()) return 'Name cannot be empty';
@@ -35,6 +36,7 @@ const spinKeyframes = `
 export default function PrincipalPage() {
     const { identity } = useAuth();
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
+    const { principalNames, principalNicknames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
     const [principalInfo, setPrincipalInfo] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -105,54 +107,95 @@ export default function PrincipalPage() {
 
         setSearchLoading(true);
         try {
-            // First, try to parse as a principal ID
+            const queryLower = query.toLowerCase().trim();
+            const results = [];
+
+            // First, try to parse as a principal ID for direct match
             let directPrincipalMatch = null;
             try {
                 const principal = Principal.fromText(query.trim());
                 directPrincipalMatch = {
                     principal: principal.toString(),
                     type: 'direct',
-                    displayText: principal.toString()
+                    displayText: principal.toString(),
+                    score: queryLower === principal.toString().toLowerCase() ? 100 : 50
                 };
             } catch (e) {
                 // Not a valid principal ID, continue with name/nickname search
             }
 
-            // Search for principals by name/nickname (this would require a backend search function)
-            // For now, we'll just show the direct principal match if valid
-            const results = [];
-            
-            if (directPrincipalMatch) {
-                // Try to get name/nickname for the direct match
-                try {
-                    const nameResponse = await getPrincipalName(null, Principal.fromText(directPrincipalMatch.principal));
-                    let nicknameResponse = null;
-                    if (identity) {
-                        nicknameResponse = await getPrincipalNickname(identity, Principal.fromText(directPrincipalMatch.principal));
-                    }
+            // Search through cached principal names
+            for (const [principalId, name] of principalNames.entries()) {
+                if (name.toLowerCase().includes(queryLower)) {
+                    const score = name.toLowerCase() === queryLower ? 95 : 
+                                 name.toLowerCase().startsWith(queryLower) ? 90 : 70;
                     
-                    directPrincipalMatch.name = nameResponse ? nameResponse[0] : null;
-                    directPrincipalMatch.isVerified = nameResponse ? nameResponse[1] : false;
-                    directPrincipalMatch.nickname = nicknameResponse ? nicknameResponse[0] : null;
-                    
-                    // Update display text to include name/nickname if available
-                    if (directPrincipalMatch.name) {
-                        directPrincipalMatch.displayText = `${directPrincipalMatch.name} (${directPrincipalMatch.principal.substring(0, 8)}...)`;
-                    } else if (directPrincipalMatch.nickname) {
-                        directPrincipalMatch.displayText = `${directPrincipalMatch.nickname} (${directPrincipalMatch.principal.substring(0, 8)}...)`;
-                    }
-                } catch (err) {
-                    console.error('Error fetching principal info for search result:', err);
+                    results.push({
+                        principal: principalId,
+                        type: 'name',
+                        name: name,
+                        displayText: `${name} (${principalId.substring(0, 8)}...)`,
+                        score: score
+                    });
                 }
-                
-                results.push(directPrincipalMatch);
             }
 
-            // TODO: Add backend search for principals by name/nickname
-            // This would require a new backend function to search principals by name/nickname
+            // Search through cached principal nicknames (only for logged-in user)
+            if (identity) {
+                for (const [principalId, nickname] of principalNicknames.entries()) {
+                    if (nickname.toLowerCase().includes(queryLower)) {
+                        // Check if we already have this principal from name search
+                        const existingIndex = results.findIndex(r => r.principal === principalId);
+                        
+                        if (existingIndex >= 0) {
+                            // Add nickname info to existing result
+                            results[existingIndex].nickname = nickname;
+                            results[existingIndex].displayText = `${results[existingIndex].name || nickname} (${principalId.substring(0, 8)}...)`;
+                            // Boost score if nickname matches better
+                            const nicknameScore = nickname.toLowerCase() === queryLower ? 95 : 
+                                                nickname.toLowerCase().startsWith(queryLower) ? 90 : 70;
+                            results[existingIndex].score = Math.max(results[existingIndex].score, nicknameScore);
+                        } else {
+                            const score = nickname.toLowerCase() === queryLower ? 95 : 
+                                         nickname.toLowerCase().startsWith(queryLower) ? 90 : 70;
+                            
+                            results.push({
+                                principal: principalId,
+                                type: 'nickname',
+                                nickname: nickname,
+                                displayText: `${nickname} (${principalId.substring(0, 8)}...)`,
+                                score: score
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Add direct principal match if it's not already in results and is valid
+            if (directPrincipalMatch) {
+                const existingIndex = results.findIndex(r => r.principal === directPrincipalMatch.principal);
+                if (existingIndex === -1) {
+                    // Try to get name/nickname for the direct match
+                    const name = principalNames.get(directPrincipalMatch.principal);
+                    const nickname = identity ? principalNicknames.get(directPrincipalMatch.principal) : null;
+                    
+                    if (name || nickname) {
+                        directPrincipalMatch.name = name;
+                        directPrincipalMatch.nickname = nickname;
+                        directPrincipalMatch.displayText = `${name || nickname} (${directPrincipalMatch.principal.substring(0, 8)}...)`;
+                    }
+                    
+                    results.push(directPrincipalMatch);
+                }
+            }
+
+            // Sort results by score (highest first) and limit to top 10
+            const sortedResults = results
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 10);
             
-            setSearchResults(results);
-            setShowSearchResults(results.length > 0);
+            setSearchResults(sortedResults);
+            setShowSearchResults(sortedResults.length > 0);
         } catch (err) {
             console.error('Error searching principals:', err);
             setSearchResults([]);
@@ -550,25 +593,38 @@ export default function PrincipalPage() {
                                                 <div style={{ color: '#ffffff', fontSize: '14px' }}>
                                                     {result.displayText}
                                                 </div>
-                                                {result.name && (
-                                                    <div style={{ 
-                                                        color: '#888', 
-                                                        fontSize: '12px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px'
-                                                    }}>
-                                                        Public Name
-                                                        {result.isVerified && (
-                                                            <span style={{ color: '#2ecc71' }}>✓</span>
-                                                        )}
-                                                    </div>
-                                                )}
-                                                {result.nickname && (
-                                                    <div style={{ color: '#888', fontSize: '12px' }}>
-                                                        Your Nickname
-                                                    </div>
-                                                )}
+                                                <div style={{ 
+                                                    color: '#888', 
+                                                    fontSize: '12px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    marginTop: '2px'
+                                                }}>
+                                                    {result.type === 'name' && (
+                                                        <>
+                                                            <span style={{ color: '#3498db' }}>📛</span>
+                                                            Public Name
+                                                        </>
+                                                    )}
+                                                    {result.type === 'nickname' && (
+                                                        <>
+                                                            <span style={{ color: '#f39c12' }}>🏷️</span>
+                                                            Your Nickname
+                                                        </>
+                                                    )}
+                                                    {result.type === 'direct' && (
+                                                        <>
+                                                            <span style={{ color: '#95a5a6' }}>🔗</span>
+                                                            Principal ID
+                                                        </>
+                                                    )}
+                                                    {result.name && result.nickname && result.type !== 'direct' && (
+                                                        <span style={{ color: '#2ecc71', marginLeft: '8px' }}>
+                                                            • Has both name & nickname
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     ))}
@@ -717,25 +773,38 @@ export default function PrincipalPage() {
                                             <div style={{ color: '#ffffff', fontSize: '14px' }}>
                                                 {result.displayText}
                                             </div>
-                                            {result.name && (
-                                                <div style={{ 
-                                                    color: '#888', 
-                                                    fontSize: '12px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '4px'
-                                                }}>
-                                                    Public Name
-                                                    {result.isVerified && (
-                                                        <span style={{ color: '#2ecc71' }}>✓</span>
-                                                    )}
-                                                </div>
-                                            )}
-                                            {result.nickname && (
-                                                <div style={{ color: '#888', fontSize: '12px' }}>
-                                                    Your Nickname
-                                                </div>
-                                            )}
+                                            <div style={{ 
+                                                color: '#888', 
+                                                fontSize: '12px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                marginTop: '2px'
+                                            }}>
+                                                {result.type === 'name' && (
+                                                    <>
+                                                        <span style={{ color: '#3498db' }}>📛</span>
+                                                        Public Name
+                                                    </>
+                                                )}
+                                                {result.type === 'nickname' && (
+                                                    <>
+                                                        <span style={{ color: '#f39c12' }}>🏷️</span>
+                                                        Your Nickname
+                                                    </>
+                                                )}
+                                                {result.type === 'direct' && (
+                                                    <>
+                                                        <span style={{ color: '#95a5a6' }}>🔗</span>
+                                                        Principal ID
+                                                    </>
+                                                )}
+                                                {result.name && result.nickname && result.type !== 'direct' && (
+                                                    <span style={{ color: '#2ecc71', marginLeft: '8px' }}>
+                                                        • Has both name & nickname
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
