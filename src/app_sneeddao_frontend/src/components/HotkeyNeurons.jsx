@@ -55,6 +55,35 @@ const HotkeyNeurons = ({
         return (Number(e8s) / 100_000_000).toFixed(2);
     };
 
+    // Helper function to get all neurons from the nested structure
+    const getAllNeurons = () => {
+        return hotkeyNeurons.neurons_by_owner.flatMap(([owner, neurons]) => neurons);
+    };
+
+    // Helper function to check if there are eligible neurons for voting
+    const hasEligibleNeurons = () => {
+        if (!proposalData || !currentProposalId) return false;
+        
+        const allNeurons = getAllNeurons();
+        return allNeurons.some(neuron => {
+            // Check if neuron has hotkey access
+            const hasHotkeyAccess = neuron.permissions.some(p => p.permission_type.includes(4));
+            if (!hasHotkeyAccess) return false;
+
+            // Check if neuron has already voted
+            const neuronIdHex = uint8ArrayToHex(neuron.id[0]?.id);
+            const ballot = proposalData.ballots?.find(([id, _]) => id === neuronIdHex);
+            
+            if (ballot && ballot[1]) {
+                const ballotData = ballot[1];
+                const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
+                if (hasVoted) return false;
+            }
+
+            return true;
+        });
+    };
+
     // Check if proposal is open for voting
     const isProposalOpenForVoting = () => {
         if (!proposalData) return false;
@@ -152,14 +181,15 @@ const HotkeyNeurons = ({
 
     // Vote with all neurons
     const voteWithAllNeurons = async (vote) => {
-        if (!neurons || !proposalData || !currentProposalId) {
+        const allNeurons = getAllNeurons();
+        if (!allNeurons || !proposalData || !currentProposalId) {
             alert('Missing required data for voting');
             return;
         }
 
         try {
             // Filter eligible neurons
-            const eligibleNeurons = neurons.filter(neuron => {
+            const eligibleNeurons = allNeurons.filter(neuron => {
                 // Check if neuron has hotkey access
                 const hasHotkeyAccess = neuron.permissions.some(p => p.permission_type.includes(4));
                 if (!hasHotkeyAccess) return false;
@@ -179,7 +209,7 @@ const HotkeyNeurons = ({
 
             // Debug logging
             console.log('Vote All Debug:', {
-                totalNeurons: neurons.length,
+                totalNeurons: allNeurons.length,
                 eligibleNeurons: eligibleNeurons.length,
                 userPrincipal: identity?.getPrincipal()?.toString(),
                 proposalData: !!proposalData,
@@ -188,11 +218,11 @@ const HotkeyNeurons = ({
             });
 
             if (eligibleNeurons.length === 0) {
-                const neuronsWithHotkey = neurons.filter(neuron => 
+                const neuronsWithHotkey = allNeurons.filter(neuron => 
                     neuron.permissions.some(p => p.permission_type.includes(4))
                 ).length;
                 
-                const neuronsAlreadyVoted = neurons.filter(neuron => {
+                const neuronsAlreadyVoted = allNeurons.filter(neuron => {
                     const neuronIdHex = uint8ArrayToHex(neuron.id[0]?.id);
                     const ballot = proposalData.ballots?.find(([id, _]) => id === neuronIdHex);
                     if (ballot && ballot[1]) {
@@ -202,7 +232,7 @@ const HotkeyNeurons = ({
                     return false;
                 }).length;
 
-                alert(`No eligible neurons found for voting.\n\nTotal neurons: ${neurons.length}\nNeurons with hotkey access: ${neuronsWithHotkey}\nNeurons that already voted: ${neuronsAlreadyVoted}\nEligible neurons: ${eligibleNeurons.length}`);
+                alert(`No eligible neurons found for voting.\n\nTotal neurons: ${allNeurons.length}\nNeurons with hotkey access: ${neuronsWithHotkey}\nNeurons that already voted: ${neuronsAlreadyVoted}\nEligible neurons: ${eligibleNeurons.length}`);
                 return;
             }
 
@@ -470,14 +500,32 @@ const HotkeyNeurons = ({
                             <div style={styles.voteAllContainer}>
                                 <span style={{ color: '#ffffff', fontWeight: 'bold' }}>Vote with all eligible neurons:</span>
                                 <button 
-                                    style={{...styles.voteAllButton, ...styles.adoptButton}}
+                                    style={{
+                                        ...styles.voteAllButton, 
+                                        ...styles.adoptButton,
+                                        ...(hasEligibleNeurons() ? {} : {
+                                            backgroundColor: '#666',
+                                            cursor: 'not-allowed',
+                                            opacity: 0.5
+                                        })
+                                    }}
                                     onClick={() => voteWithAllNeurons(1)}
+                                    disabled={!hasEligibleNeurons()}
                                 >
                                     Adopt All
                                 </button>
                                 <button 
-                                    style={{...styles.voteAllButton, ...styles.rejectButton}}
+                                    style={{
+                                        ...styles.voteAllButton, 
+                                        ...styles.rejectButton,
+                                        ...(hasEligibleNeurons() ? {} : {
+                                            backgroundColor: '#666',
+                                            cursor: 'not-allowed',
+                                            opacity: 0.5
+                                        })
+                                    }}
                                     onClick={() => voteWithAllNeurons(2)}
+                                    disabled={!hasEligibleNeurons()}
                                 >
                                     Reject All
                                 </button>
