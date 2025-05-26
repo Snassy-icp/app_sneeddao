@@ -7,7 +7,7 @@ import { useSns } from './contexts/SnsContext';
 import Header from './components/Header';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
-import { formatProposalIdLink, uint8ArrayToHex, getNeuronColor, getOwnerPrincipals } from './utils/NeuronUtils';
+import { formatProposalIdLink, uint8ArrayToHex, getNeuronColor, getOwnerPrincipals, formatNeuronIdLink } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 import { setNeuronNickname } from './utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
@@ -761,49 +761,15 @@ function Neuron() {
                                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                                     {followees.followees.map((followeeId, followeeIndex) => {
                                                                         const followeeIdHex = uint8ArrayToHex(followeeId.id);
-                                                                        const { name, nickname } = getDisplayName(followeeIdHex);
-                                                                        const neuronColor = getNeuronColor(followeeIdHex);
                                                                         
                                                                         return (
                                                                             <div key={followeeIndex} style={{
                                                                                 display: 'flex',
-                                                                                alignItems: 'center',
+                                                                                alignItems: 'flex-start',
                                                                                 gap: '8px',
                                                                                 padding: '4px 0'
                                                                             }}>
-                                                                                <Link
-                                                                                    to={`/neuron?neuronid=${followeeIdHex}&sns=${selectedSnsRoot}`}
-                                                                                    style={{
-                                                                                        color: neuronColor,
-                                                                                        textDecoration: 'none',
-                                                                                        fontFamily: 'monospace',
-                                                                                        fontSize: '12px'
-                                                                                    }}
-                                                                                >
-                                                                                    {followeeIdHex}
-                                                                                </Link>
-                                                                                {(name || nickname) && (
-                                                                                    <span style={{ 
-                                                                                        color: neuronColor,
-                                                                                        fontSize: '14px'
-                                                                                    }}>
-                                                                                        ({name || nickname})
-                                                                                    </span>
-                                                                                )}
-                                                                                <button
-                                                                                    onClick={() => navigator.clipboard.writeText(followeeIdHex)}
-                                                                                    style={{
-                                                                                        background: 'none',
-                                                                                        border: 'none',
-                                                                                        padding: '2px',
-                                                                                        cursor: 'pointer',
-                                                                                        color: '#888',
-                                                                                        fontSize: '12px'
-                                                                                    }}
-                                                                                    title="Copy neuron ID"
-                                                                                >
-                                                                                    📋
-                                                                                </button>
+                                                                                {formatNeuronIdLink(followeeIdHex, selectedSnsRoot, getDisplayName)}
                                                                             </div>
                                                                         );
                                                                     })}
@@ -843,35 +809,15 @@ function Neuron() {
                                                                         if (!followee.neuron_id || !followee.neuron_id[0]) return null;
                                                                         
                                                                         const followeeIdHex = uint8ArrayToHex(followee.neuron_id[0].id);
-                                                                        const { name, nickname } = getDisplayName(followeeIdHex);
-                                                                        const neuronColor = getNeuronColor(followeeIdHex);
                                                                         
                                                                         return (
                                                                             <div key={followeeIndex} style={{
                                                                                 display: 'flex',
-                                                                                alignItems: 'center',
+                                                                                alignItems: 'flex-start',
                                                                                 gap: '8px',
                                                                                 padding: '4px 0'
                                                                             }}>
-                                                                                <Link
-                                                                                    to={`/neuron?neuronid=${followeeIdHex}&sns=${selectedSnsRoot}`}
-                                                                                    style={{
-                                                                                        color: neuronColor,
-                                                                                        textDecoration: 'none',
-                                                                                        fontFamily: 'monospace',
-                                                                                        fontSize: '12px'
-                                                                                    }}
-                                                                                >
-                                                                                    {followeeIdHex}
-                                                                                </Link>
-                                                                                {(name || nickname) && (
-                                                                                    <span style={{ 
-                                                                                        color: neuronColor,
-                                                                                        fontSize: '14px'
-                                                                                    }}>
-                                                                                        ({name || nickname})
-                                                                                    </span>
-                                                                                )}
+                                                                                {formatNeuronIdLink(followeeIdHex, selectedSnsRoot, getDisplayName)}
                                                                                 {followee.alias && followee.alias[0] && (
                                                                                     <span style={{ 
                                                                                         color: '#888',
@@ -881,20 +827,6 @@ function Neuron() {
                                                                                         alias: {followee.alias[0]}
                                                                                     </span>
                                                                                 )}
-                                                                                <button
-                                                                                    onClick={() => navigator.clipboard.writeText(followeeIdHex)}
-                                                                                    style={{
-                                                                                        background: 'none',
-                                                                                        border: 'none',
-                                                                                        padding: '2px',
-                                                                                        cursor: 'pointer',
-                                                                                        color: '#888',
-                                                                                        fontSize: '12px'
-                                                                                    }}
-                                                                                    title="Copy neuron ID"
-                                                                                >
-                                                                                    📋
-                                                                                </button>
                                                                             </div>
                                                                         );
                                                                     })}
