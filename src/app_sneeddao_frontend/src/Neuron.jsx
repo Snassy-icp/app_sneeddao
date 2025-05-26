@@ -711,6 +711,202 @@ function Neuron() {
                                         ))
                                     }
                                 </div>
+
+                                {/* Add followees section */}
+                                <div style={{ marginTop: '20px' }}>
+                                    <h3 style={{ color: '#888', marginBottom: '12px' }}>Following</h3>
+                                    {(() => {
+                                        const hasFollowees = neuronData.followees && neuronData.followees.length > 0;
+                                        const hasTopicFollowees = neuronData.topic_followees && 
+                                            neuronData.topic_followees[0] && 
+                                            neuronData.topic_followees[0].topic_id_to_followees && 
+                                            neuronData.topic_followees[0].topic_id_to_followees.length > 0;
+
+                                        if (!hasFollowees && !hasTopicFollowees) {
+                                            return (
+                                                <div style={{ 
+                                                    color: '#888',
+                                                    fontStyle: 'italic',
+                                                    padding: '10px',
+                                                    backgroundColor: '#3a3a3a',
+                                                    borderRadius: '4px'
+                                                }}>
+                                                    This neuron is not following any other neurons for voting
+                                                </div>
+                                            );
+                                        }
+
+                                        return (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                {/* General followees */}
+                                                {hasFollowees && (
+                                                    <div>
+                                                        <h4 style={{ color: '#aaa', fontSize: '14px', marginBottom: '8px' }}>
+                                                            General Following (by Function ID)
+                                                        </h4>
+                                                        {neuronData.followees.map(([functionId, followees], index) => (
+                                                            <div key={index} style={{
+                                                                backgroundColor: '#3a3a3a',
+                                                                padding: '10px',
+                                                                borderRadius: '4px',
+                                                                marginBottom: '8px'
+                                                            }}>
+                                                                <div style={{ 
+                                                                    color: '#888',
+                                                                    fontSize: '12px',
+                                                                    marginBottom: '6px'
+                                                                }}>
+                                                                    Function ID: {functionId.toString()}
+                                                                </div>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                    {followees.followees.map((followeeId, followeeIndex) => {
+                                                                        const followeeIdHex = uint8ArrayToHex(followeeId.id);
+                                                                        const { name, nickname } = getDisplayName(followeeIdHex);
+                                                                        const neuronColor = getNeuronColor(followeeIdHex);
+                                                                        
+                                                                        return (
+                                                                            <div key={followeeIndex} style={{
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '8px',
+                                                                                padding: '4px 0'
+                                                                            }}>
+                                                                                <Link
+                                                                                    to={`/neuron?neuronid=${followeeIdHex}&sns=${selectedSnsRoot}`}
+                                                                                    style={{
+                                                                                        color: neuronColor,
+                                                                                        textDecoration: 'none',
+                                                                                        fontFamily: 'monospace',
+                                                                                        fontSize: '12px'
+                                                                                    }}
+                                                                                >
+                                                                                    {followeeIdHex}
+                                                                                </Link>
+                                                                                {(name || nickname) && (
+                                                                                    <span style={{ 
+                                                                                        color: neuronColor,
+                                                                                        fontSize: '14px'
+                                                                                    }}>
+                                                                                        ({name || nickname})
+                                                                                    </span>
+                                                                                )}
+                                                                                <button
+                                                                                    onClick={() => navigator.clipboard.writeText(followeeIdHex)}
+                                                                                    style={{
+                                                                                        background: 'none',
+                                                                                        border: 'none',
+                                                                                        padding: '2px',
+                                                                                        cursor: 'pointer',
+                                                                                        color: '#888',
+                                                                                        fontSize: '12px'
+                                                                                    }}
+                                                                                    title="Copy neuron ID"
+                                                                                >
+                                                                                    📋
+                                                                                </button>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Topic-specific followees */}
+                                                {hasTopicFollowees && (
+                                                    <div>
+                                                        <h4 style={{ color: '#aaa', fontSize: '14px', marginBottom: '8px' }}>
+                                                            Topic-Specific Following
+                                                        </h4>
+                                                        {neuronData.topic_followees[0].topic_id_to_followees.map(([topicId, topicFollowees], index) => (
+                                                            <div key={index} style={{
+                                                                backgroundColor: '#3a3a3a',
+                                                                padding: '10px',
+                                                                borderRadius: '4px',
+                                                                marginBottom: '8px'
+                                                            }}>
+                                                                <div style={{ 
+                                                                    color: '#888',
+                                                                    fontSize: '12px',
+                                                                    marginBottom: '6px'
+                                                                }}>
+                                                                    Topic ID: {topicId.toString()}
+                                                                    {topicFollowees.topic && topicFollowees.topic[0] && (
+                                                                        <span style={{ marginLeft: '8px', color: '#aaa' }}>
+                                                                            ({Object.keys(topicFollowees.topic[0])[0]})
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                    {topicFollowees.followees.map((followee, followeeIndex) => {
+                                                                        if (!followee.neuron_id || !followee.neuron_id[0]) return null;
+                                                                        
+                                                                        const followeeIdHex = uint8ArrayToHex(followee.neuron_id[0].id);
+                                                                        const { name, nickname } = getDisplayName(followeeIdHex);
+                                                                        const neuronColor = getNeuronColor(followeeIdHex);
+                                                                        
+                                                                        return (
+                                                                            <div key={followeeIndex} style={{
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '8px',
+                                                                                padding: '4px 0'
+                                                                            }}>
+                                                                                <Link
+                                                                                    to={`/neuron?neuronid=${followeeIdHex}&sns=${selectedSnsRoot}`}
+                                                                                    style={{
+                                                                                        color: neuronColor,
+                                                                                        textDecoration: 'none',
+                                                                                        fontFamily: 'monospace',
+                                                                                        fontSize: '12px'
+                                                                                    }}
+                                                                                >
+                                                                                    {followeeIdHex}
+                                                                                </Link>
+                                                                                {(name || nickname) && (
+                                                                                    <span style={{ 
+                                                                                        color: neuronColor,
+                                                                                        fontSize: '14px'
+                                                                                    }}>
+                                                                                        ({name || nickname})
+                                                                                    </span>
+                                                                                )}
+                                                                                {followee.alias && followee.alias[0] && (
+                                                                                    <span style={{ 
+                                                                                        color: '#888',
+                                                                                        fontSize: '12px',
+                                                                                        fontStyle: 'italic'
+                                                                                    }}>
+                                                                                        alias: {followee.alias[0]}
+                                                                                    </span>
+                                                                                )}
+                                                                                <button
+                                                                                    onClick={() => navigator.clipboard.writeText(followeeIdHex)}
+                                                                                    style={{
+                                                                                        background: 'none',
+                                                                                        border: 'none',
+                                                                                        padding: '2px',
+                                                                                        cursor: 'pointer',
+                                                                                        color: '#888',
+                                                                                        fontSize: '12px'
+                                                                                    }}
+                                                                                    title="Copy neuron ID"
+                                                                                >
+                                                                                    📋
+                                                                                </button>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
                             </div>
 
                             {selectedSnsRoot === SNEED_SNS_ROOT && votingHistory && votingHistory.length > 0 && (
