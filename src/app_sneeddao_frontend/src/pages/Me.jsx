@@ -20,8 +20,7 @@ import {
     getAllNeuronNames,
     getAllNeuronNicknames,
     setPrincipalName,
-    getPrincipalName,
-    getAllPrincipalNames
+    getPrincipalName
 } from '../utils/BackendUtils';
 import { useNaming } from '../NamingContext';
 import { Link } from 'react-router-dom';
