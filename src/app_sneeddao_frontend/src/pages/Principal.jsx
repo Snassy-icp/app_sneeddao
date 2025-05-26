@@ -423,9 +423,163 @@ export default function PrincipalPage() {
             <div className='page-container'>
                 <Header showSnsDropdown={true} />
                 <main className="wallet-container">
+                    {/* Search Section */}
+                    <div 
+                        ref={searchContainerRef}
+                        style={{ 
+                            backgroundColor: '#2a2a2a',
+                            borderRadius: '8px',
+                            padding: '20px',
+                            marginBottom: '20px',
+                            border: '1px solid #3a3a3a',
+                            position: 'relative'
+                        }}
+                    >
+                        <div style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center',
+                            marginBottom: '15px'
+                        }}>
+                            <h2 style={{ 
+                                color: '#ffffff',
+                                margin: '0',
+                                fontSize: '18px',
+                                fontWeight: '500'
+                            }}>
+                                Search Principal
+                            </h2>
+                            {identity && (
+                                <button
+                                    onClick={() => {
+                                        const myPrincipal = identity.getPrincipal().toString();
+                                        setSearchParams({ id: myPrincipal });
+                                        setSearchInput(myPrincipal);
+                                        setShowSearchResults(false);
+                                    }}
+                                    style={{
+                                        backgroundColor: '#27ae60',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '8px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '14px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px'
+                                    }}
+                                >
+                                    👤 My Principal
+                                </button>
+                            )}
+                        </div>
+                        <form onSubmit={handleSearchSubmit} style={{ position: 'relative' }}>
+                            <div style={{ position: 'relative' }}>
+                                <input
+                                    type="text"
+                                    value={searchInput}
+                                    onChange={(e) => setSearchInput(e.target.value)}
+                                    placeholder="Enter principal ID, name, or nickname..."
+                                    style={{
+                                        backgroundColor: '#3a3a3a',
+                                        border: '1px solid #4a4a4a',
+                                        borderRadius: '4px',
+                                        color: '#ffffff',
+                                        padding: '12px 50px 12px 16px',
+                                        width: '100%',
+                                        fontSize: '14px'
+                                    }}
+                                />
+                                <button
+                                    type="submit"
+                                    style={{
+                                        position: 'absolute',
+                                        right: '8px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        backgroundColor: '#3498db',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px'
+                                    }}
+                                >
+                                    {searchLoading ? '...' : 'Go'}
+                                </button>
+                            </div>
+                            
+                            {/* Search Results Dropdown */}
+                            {showSearchResults && searchResults.length > 0 && (
+                                <div style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    left: '0',
+                                    right: '0',
+                                    backgroundColor: '#2a2a2a',
+                                    border: '1px solid #4a4a4a',
+                                    borderRadius: '4px',
+                                    marginTop: '4px',
+                                    maxHeight: '200px',
+                                    overflowY: 'auto',
+                                    zIndex: 1000,
+                                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                                }}>
+                                    {searchResults.map((result, index) => (
+                                        <div
+                                            key={index}
+                                            onClick={() => handleSearchResultSelect(result)}
+                                            style={{
+                                                padding: '12px 16px',
+                                                cursor: 'pointer',
+                                                borderBottom: index < searchResults.length - 1 ? '1px solid #3a3a3a' : 'none',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.target.style.backgroundColor = '#3a3a3a';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.target.style.backgroundColor = 'transparent';
+                                            }}
+                                        >
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ color: '#ffffff', fontSize: '14px' }}>
+                                                    {result.displayText}
+                                                </div>
+                                                {result.name && (
+                                                    <div style={{ 
+                                                        color: '#888', 
+                                                        fontSize: '12px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}>
+                                                        Public Name
+                                                        {result.isVerified && (
+                                                            <span style={{ color: '#2ecc71' }}>✓</span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {result.nickname && (
+                                                    <div style={{ color: '#888', fontSize: '12px' }}>
+                                                        Your Nickname
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </form>
+                    </div>
+
                     <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Invalid Principal ID</h1>
-                        <p style={{ color: '#888' }}>Please provide a valid principal ID in the URL.</p>
+                        <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>No Principal Selected</h1>
+                        <p style={{ color: '#888' }}>Use the search box above to find a principal.</p>
                     </div>
                 </main>
             </div>
@@ -448,14 +602,45 @@ export default function PrincipalPage() {
                         position: 'relative'
                     }}
                 >
-                    <h2 style={{ 
-                        color: '#ffffff',
-                        margin: '0 0 15px 0',
-                        fontSize: '18px',
-                        fontWeight: '500'
+                    <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        marginBottom: '15px'
                     }}>
-                        Search Principal
-                    </h2>
+                        <h2 style={{ 
+                            color: '#ffffff',
+                            margin: '0',
+                            fontSize: '18px',
+                            fontWeight: '500'
+                        }}>
+                            Search Principal
+                        </h2>
+                        {identity && (
+                            <button
+                                onClick={() => {
+                                    const myPrincipal = identity.getPrincipal().toString();
+                                    setSearchParams({ id: myPrincipal });
+                                    setSearchInput(myPrincipal);
+                                    setShowSearchResults(false);
+                                }}
+                                style={{
+                                    backgroundColor: '#27ae60',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '14px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}
+                            >
+                                👤 My Principal
+                            </button>
+                        )}
+                    </div>
                     <form onSubmit={handleSearchSubmit} style={{ position: 'relative' }}>
                         <div style={{ position: 'relative' }}>
                             <input
