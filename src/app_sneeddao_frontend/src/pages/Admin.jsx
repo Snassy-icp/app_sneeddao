@@ -17,8 +17,8 @@ function Admin() {
             <div className='page-container'>
                 <Header />
                 <main className="wallet-container">
-                    <div style={loadingComponent.style}>
-                        {loadingComponent.text}
+                    <div style={loadingComponent?.style || { textAlign: 'center', padding: '40px 20px', color: '#ffffff' }}>
+                        {loadingComponent?.text || 'Loading...'}
                     </div>
                 </main>
             </div>
@@ -30,8 +30,15 @@ function Admin() {
             <div className='page-container'>
                 <Header />
                 <main className="wallet-container">
-                    <div style={errorComponent.style}>
-                        {errorComponent.text}
+                    <div style={errorComponent?.style || {
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        border: '1px solid #e74c3c',
+                        color: '#e74c3c',
+                        padding: '15px',
+                        borderRadius: '4px',
+                        marginBottom: '20px'
+                    }}>
+                        {errorComponent?.text || error || 'An error occurred'}
                     </div>
                 </main>
             </div>

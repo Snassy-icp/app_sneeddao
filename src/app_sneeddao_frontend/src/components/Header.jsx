@@ -25,7 +25,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     });
 
     // Silent admin check - don't redirect, just check status
-    const { isAdmin } = useAdminCheck({ 
+    const { isAdmin, loading: adminLoading } = useAdminCheck({ 
         identity, 
         isAuthenticated, 
         redirectPath: null // Don't redirect from header
@@ -60,6 +60,13 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Admin');
         }
     }, [location.pathname]);
+
+    // Update active section if current section doesn't exist (e.g., admin section when not admin)
+    useEffect(() => {
+        if (!menuSections[activeSection]) {
+            setActiveSection('DAO'); // Fall back to DAO section
+        }
+    }, [activeSection, isAdmin, isAuthenticated]);
 
     const menuSections = {
         'DAO': {
@@ -114,23 +121,25 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Locks', path: '/sneedlock' },
                 { name: 'Dashboard', path: '/sneedlock_info' }
             ]
-        },
-        ...(isAuthenticated && isAdmin ? {
-            'Admin': {
-                icon: <FaCog size={18} />,
-                displayName: 'Admin',
-                defaultPath: '/admin',
-                subMenu: [
-                    { name: 'Dashboard', path: '/admin' },
-                    { name: 'User Bans', path: '/admin/users/bans' },
-                    { name: 'Word Blacklist', path: '/admin/words' },
-                    { name: 'Partners', path: '/admin/partners' },
-                    { name: 'Names', path: '/admin/names' },
-                    { name: 'Projects', path: '/admin/projects' }
-                ]
-            }
-        } : {})
+        }
     };
+
+    // Add admin section only if user is authenticated and confirmed admin
+    if (isAuthenticated && isAdmin === true) {
+        menuSections['Admin'] = {
+            icon: <FaCog size={18} />,
+            displayName: 'Admin',
+            defaultPath: '/admin',
+            subMenu: [
+                { name: 'Dashboard', path: '/admin' },
+                { name: 'User Bans', path: '/admin/users/bans' },
+                { name: 'Word Blacklist', path: '/admin/words' },
+                { name: 'Partners', path: '/admin/partners' },
+                { name: 'Names', path: '/admin/names' },
+                { name: 'Projects', path: '/admin/projects' }
+            ]
+        };
+    }
 
     const toggleMenu = () => {
         setIsMenuOpen(!isMenuOpen);
@@ -211,8 +220,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         onClick={() => {
                             setIsMenuOpen(true);
                         }}>
-                            {menuSections[activeSection].icon}
-                            {menuSections[activeSection].displayName}
+                            {menuSections[activeSection]?.icon}
+                            {menuSections[activeSection]?.displayName}
                         </div>
                     </div>
                     <div style={{ 
@@ -226,7 +235,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             flexWrap: 'wrap',
                             rowGap: '10px'
                         }}>
-                            {menuSections[activeSection].subMenu.map((item) => {
+                            {menuSections[activeSection]?.subMenu?.map((item) => {
                                 const isActive = isSubmenuItemActive(item.path);
                                 return (
                                     <Link
