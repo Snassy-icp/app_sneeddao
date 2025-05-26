@@ -8,6 +8,7 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { HttpAgent } from '@dfinity/agent';
 import { formatE8s } from '../utils/NeuronUtils';
+import { Link } from 'react-router-dom';
 
 function Hub() {
     const { identity } = useAuth();
@@ -22,6 +23,7 @@ function Hub() {
     const [selectedSnsDetails, setSelectedSnsDetails] = useState(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    const [sortBy, setSortBy] = useState('age'); // 'age' or 'name'
 
     // Handle window resize for responsive design
     useEffect(() => {
@@ -194,10 +196,27 @@ function Hub() {
     };
 
     const formatDuration = (nanoseconds) => {
-        if (!nanoseconds) return 'N/A';
         const seconds = Number(nanoseconds) / 1000000000;
         const days = Math.floor(seconds / (24 * 60 * 60));
-        return `${days} days`;
+        const years = Math.floor(days / 365);
+        
+        if (years > 0) {
+            return `${years} year${years > 1 ? 's' : ''}`;
+        } else {
+            return `${days} day${days > 1 ? 's' : ''}`;
+        }
+    };
+
+    // Sort SNSes based on selected criteria
+    const getSortedSnsList = () => {
+        const sortedList = [...snsList];
+        
+        if (sortBy === 'name') {
+            return sortedList.sort((a, b) => a.name.localeCompare(b.name));
+        } else {
+            // Sort by age (creation time) - newest first (default order from API)
+            return sortedList;
+        }
     };
 
     if (loading) {
@@ -246,8 +265,39 @@ function Hub() {
                         SNS Explorer
                     </h1>
                     
+                    {/* Sort Controls */}
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '1rem',
+                        padding: '0.5rem 0'
+                    }}>
+                        <div style={{ color: '#888', fontSize: '14px' }}>
+                            {snsList.length} SNS{snsList.length !== 1 ? 'es' : ''} found
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <label style={{ color: '#888', fontSize: '14px' }}>Sort by:</label>
+                            <select
+                                value={sortBy}
+                                onChange={(e) => setSortBy(e.target.value)}
+                                style={{
+                                    backgroundColor: '#3a3a3a',
+                                    color: '#ffffff',
+                                    border: '1px solid #4a4a4a',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px',
+                                    fontSize: '14px'
+                                }}
+                            >
+                                <option value="age">Age (Newest First)</option>
+                                <option value="name">Name (A-Z)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        {snsList.map(sns => {
+                        {getSortedSnsList().map(sns => {
                             const isSelected = sns.rootCanisterId === selectedSnsRoot;
                             const isExpanded = expandedSns.has(sns.rootCanisterId);
                             const logo = snsLogos.get(sns.canisters.governance);
@@ -537,6 +587,61 @@ function Hub() {
                                             >
                                                 View on IC Dashboard →
                                             </a>
+                                        </div>
+                                    </div>
+
+                                    {/* Internal Pages */}
+                                    <div>
+                                        <h3 style={{ color: '#3498db', marginBottom: '1rem' }}>Explore This SNS</h3>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                            <Link
+                                                to={`/proposals?sns=${selectedSnsRoot}`}
+                                                style={{
+                                                    color: '#2ecc71',
+                                                    textDecoration: 'none',
+                                                    padding: '0.5rem',
+                                                    backgroundColor: '#1a1a1a',
+                                                    borderRadius: '4px',
+                                                    display: 'block',
+                                                    transition: 'background-color 0.2s'
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.backgroundColor = '#2a2a2a'}
+                                                onMouseLeave={(e) => e.target.style.backgroundColor = '#1a1a1a'}
+                                            >
+                                                📋 View Proposals →
+                                            </Link>
+                                            <Link
+                                                to={`/neurons?sns=${selectedSnsRoot}`}
+                                                style={{
+                                                    color: '#2ecc71',
+                                                    textDecoration: 'none',
+                                                    padding: '0.5rem',
+                                                    backgroundColor: '#1a1a1a',
+                                                    borderRadius: '4px',
+                                                    display: 'block',
+                                                    transition: 'background-color 0.2s'
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.backgroundColor = '#2a2a2a'}
+                                                onMouseLeave={(e) => e.target.style.backgroundColor = '#1a1a1a'}
+                                            >
+                                                🧠 Browse Neurons →
+                                            </Link>
+                                            <Link
+                                                to={`/transactions?sns=${selectedSnsRoot}`}
+                                                style={{
+                                                    color: '#2ecc71',
+                                                    textDecoration: 'none',
+                                                    padding: '0.5rem',
+                                                    backgroundColor: '#1a1a1a',
+                                                    borderRadius: '4px',
+                                                    display: 'block',
+                                                    transition: 'background-color 0.2s'
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.backgroundColor = '#2a2a2a'}
+                                                onMouseLeave={(e) => e.target.style.backgroundColor = '#1a1a1a'}
+                                            >
+                                                💰 View Transactions →
+                                            </Link>
                                         </div>
                                     </div>
                                 </div>
