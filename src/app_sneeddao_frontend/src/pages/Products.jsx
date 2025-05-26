@@ -183,9 +183,18 @@ function StatCard({ value, label, isLoading, isParentComplete, isFinalValue }) {
                 clearInterval(timer);
             } else {
                 if (isUSD) {
-                    setDisplayValue(`$${start.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                    // Format USD values with appropriate decimals during animation
+                    const currentValue = start;
+                    if (currentValue < 0.01 && currentValue > 0) {
+                        setDisplayValue(`$${currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`);
+                    } else if (currentValue < 1) {
+                        setDisplayValue(`$${currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`);
+                    } else {
+                        setDisplayValue(`$${currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                    }
                 } else {
-                    setDisplayValue(Math.floor(start).toLocaleString());
+                    // Format non-USD values with commas
+                    setDisplayValue(Math.floor(start).toLocaleString('en-US'));
                 }
                 setIsComplete(false);
             }
@@ -238,7 +247,22 @@ function Products() {
 
     const formatUSD = (value) => {
         if (value === undefined || value === null || isNaN(value)) return '$0.00';
-        return `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const num = Number(value);
+        if (num === 0) return '$0.00';
+        
+        // For very small amounts, show more decimals
+        if (num < 0.01 && num > 0) {
+            return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`;
+        }
+        
+        // For amounts less than 1, show up to 4 decimals
+        if (num < 1) {
+            return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+        }
+        
+        // For larger amounts, show 2 decimals but remove trailing zeros
+        const formatted = num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return `$${formatted}`;
     };
 
     const getUSDValue = (amount, decimals, symbol) => {
