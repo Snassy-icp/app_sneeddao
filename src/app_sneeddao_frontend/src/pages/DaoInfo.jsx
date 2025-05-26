@@ -242,6 +242,7 @@ function DaoInfo() {
     const [conversionRates, setConversionRates] = useState({});
     const [eventStats, setEventStats] = useState(null);
     const [reconciliation, setReconciliation] = useState([]);
+    const [partners, setPartners] = useState([]);
 
     console.log("tokenomics", tokenomics);
     console.log("daoMetrics", daoMetrics);
@@ -277,6 +278,29 @@ function DaoInfo() {
         // Refresh rates every 5 minutes
         const interval = setInterval(fetchConversionRates, 5 * 60 * 1000);
         return () => clearInterval(interval);
+    }, []);
+
+    // Fetch partners
+    useEffect(() => {
+        const fetchPartners = async () => {
+            try {
+                const agent = new HttpAgent({
+                    host: 'https://ic0.app'
+                });
+                await agent.fetchRootKey();
+
+                const backendActor = createBackendActor(backendCanisterId, {
+                    agentOptions: { agent }
+                });
+
+                const partnersData = await backendActor.get_partners();
+                setPartners(partnersData);
+            } catch (err) {
+                console.error('Error fetching partners:', err);
+            }
+        };
+
+        fetchPartners();
     }, []);
 
     const getUSDValue = (amount, decimals, symbol) => {
@@ -833,9 +857,103 @@ function DaoInfo() {
                             <h2 style={styles.subheading}>Partners</h2>
                             <Link to="/partners" style={styles.drillDownLink}>Drill down →</Link>
                         </div>
-                        <div style={styles.emptySection}>
-                            Coming Soon
-                        </div>
+                        {partners.length === 0 ? (
+                            <div style={styles.emptySection}>
+                                No partners yet
+                            </div>
+                        ) : (
+                            <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+                                gap: '15px',
+                                padding: '10px'
+                            }}>
+                                {partners.map((partner) => {
+                                    const handleClick = () => {
+                                        if (partner.links && partner.links.length > 0) {
+                                            window.open(partner.links[0].url, '_blank', 'noopener,noreferrer');
+                                        } else {
+                                            window.location.href = '/partners';
+                                        }
+                                    };
+
+                                    return (
+                                        <div
+                                            key={partner.id}
+                                            onClick={handleClick}
+                                            title={`${partner.name}\n\n${partner.description}`}
+                                            style={{
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                alignItems: 'center',
+                                                padding: '10px',
+                                                borderRadius: '8px',
+                                                backgroundColor: '#3a3a3a',
+                                                transition: 'all 0.2s ease',
+                                                ':hover': {
+                                                    backgroundColor: '#4a4a4a',
+                                                    transform: 'translateY(-2px)'
+                                                }
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.target.style.backgroundColor = '#4a4a4a';
+                                                e.target.style.transform = 'translateY(-2px)';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.target.style.backgroundColor = '#3a3a3a';
+                                                e.target.style.transform = 'translateY(0px)';
+                                            }}
+                                        >
+                                            <img
+                                                src={partner.logo_url}
+                                                alt={partner.name}
+                                                style={{
+                                                    width: '60px',
+                                                    height: '60px',
+                                                    borderRadius: '50%',
+                                                    objectFit: 'cover',
+                                                    marginBottom: '8px'
+                                                }}
+                                                onError={(e) => {
+                                                    e.target.style.display = 'none';
+                                                    e.target.nextSibling.style.display = 'flex';
+                                                }}
+                                            />
+                                            <div
+                                                style={{
+                                                    width: '60px',
+                                                    height: '60px',
+                                                    borderRadius: '50%',
+                                                    backgroundColor: '#2a2a2a',
+                                                    display: 'none',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    marginBottom: '8px',
+                                                    fontSize: '24px',
+                                                    color: '#888'
+                                                }}
+                                            >
+                                                {partner.name.charAt(0).toUpperCase()}
+                                            </div>
+                                            <div style={{
+                                                fontSize: '12px',
+                                                color: '#ffffff',
+                                                textAlign: 'center',
+                                                fontWeight: '500',
+                                                lineHeight: '1.2',
+                                                maxWidth: '80px',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap'
+                                            }}>
+                                                {partner.name}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </section>
 
                     {/* Products Section */}
