@@ -15,7 +15,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const [activeSection, setActiveSection] = useState(() => {
         const path = location.pathname;
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
-        if (['/hub', '/proposals', '/neurons', '/transactions'].includes(path)) return 'Hub';
+        if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction'].includes(path)) return 'Hub';
         if (['/wallet'].includes(path)) return 'Wallet';
         if (['/me', '/rewards'].includes(path)) return 'Me';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
@@ -33,6 +33,22 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    // Update active section when location changes
+    useEffect(() => {
+        const path = location.pathname;
+        if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
+            setActiveSection('DAO');
+        } else if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction'].includes(path)) {
+            setActiveSection('Hub');
+        } else if (['/wallet'].includes(path)) {
+            setActiveSection('Wallet');
+        } else if (['/me', '/rewards'].includes(path)) {
+            setActiveSection('Me');
+        } else if (['/sneedlock', '/sneedlock_info'].includes(path)) {
+            setActiveSection('Locks');
+        }
+    }, [location.pathname]);
 
     const menuSections = {
         'DAO': {
@@ -104,6 +120,23 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         setIsMenuOpen(true);
     };
 
+    // Helper function to determine if a submenu item should be highlighted
+    const isSubmenuItemActive = (itemPath) => {
+        const currentPath = location.pathname;
+        
+        // Direct path match
+        if (currentPath === itemPath) return true;
+        
+        // Legacy page mappings
+        const legacyMappings = {
+            '/proposals': ['/proposal'],
+            '/neurons': ['/neuron'],
+            '/transactions': ['/transaction']
+        };
+        
+        return legacyMappings[itemPath]?.includes(currentPath) || false;
+    };
+
     return (
         <header className="site-header">
             <div style={{ display: 'flex', alignItems: 'flex-start', flex: 1, gap: '15px' }}>
@@ -166,33 +199,36 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             flexWrap: 'wrap',
                             rowGap: '10px'
                         }}>
-                            {menuSections[activeSection].subMenu.map((item) => (
-                                <Link
-                                    key={item.name}
-                                    to={item.path}
-                                    style={{
-                                        color: location.pathname === item.path ? '#3498db' : '#888',
-                                        textDecoration: 'none',
-                                        fontSize: '16px',
-                                        fontWeight: location.pathname === item.path ? 'bold' : 'normal',
-                                        position: 'relative',
-                                        paddingBottom: '4px'
-                                    }}
-                                >
-                                    {item.name}
-                                    {location.pathname === item.path && (
-                                        <div style={{
-                                            position: 'absolute',
-                                            bottom: 0,
-                                            left: 0,
-                                            width: '100%',
-                                            height: '2px',
-                                            background: '#3498db',
-                                            borderRadius: '2px'
-                                        }} />
-                                    )}
-                                </Link>
-                            ))}
+                            {menuSections[activeSection].subMenu.map((item) => {
+                                const isActive = isSubmenuItemActive(item.path);
+                                return (
+                                    <Link
+                                        key={item.name}
+                                        to={item.path}
+                                        style={{
+                                            color: isActive ? '#3498db' : '#888',
+                                            textDecoration: 'none',
+                                            fontSize: '16px',
+                                            fontWeight: isActive ? 'bold' : 'normal',
+                                            position: 'relative',
+                                            paddingBottom: '4px'
+                                        }}
+                                    >
+                                        {item.name}
+                                        {isActive && (
+                                            <div style={{
+                                                position: 'absolute',
+                                                bottom: 0,
+                                                left: 0,
+                                                width: '100%',
+                                                height: '2px',
+                                                background: '#3498db',
+                                                borderRadius: '2px'
+                                            }} />
+                                        )}
+                                    </Link>
+                                );
+                            })}
                             {showTotalValue && (
                                 <div style={{ 
                                     color: '#fff',
