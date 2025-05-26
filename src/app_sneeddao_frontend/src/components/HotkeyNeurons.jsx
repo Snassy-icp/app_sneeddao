@@ -75,10 +75,28 @@ const HotkeyNeurons = ({
 
     // Check if a neuron has already voted on the proposal
     const getNeuronVote = (neuronId) => {
-        if (!proposalData?.ballots || !neuronId) return null;
+        if (!proposalData?.ballots || !neuronId) {
+            return null;
+        }
+        
         const neuronIdHex = uint8ArrayToHex(neuronId);
         const ballot = proposalData.ballots.find(([id, _]) => id === neuronIdHex);
-        return ballot ? ballot[1] : null;
+        
+        console.log('Checking vote for neuron:', neuronIdHex);
+        console.log('Available ballots:', proposalData.ballots);
+        console.log('Found ballot:', ballot);
+        
+        if (ballot && ballot[1]) {
+            const ballotData = ballot[1];
+            // A neuron has voted if cast_timestamp_seconds > 0
+            const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
+            
+            if (hasVoted) {
+                return ballotData;
+            }
+        }
+        
+        return null;
     };
 
     // Format vote for display
@@ -134,38 +152,72 @@ const HotkeyNeurons = ({
 
     // Vote with all neurons
     const voteWithAllNeurons = async (vote) => {
-        if (!hotkeyNeurons.neurons_by_owner.length) return;
-        
-        const allNeurons = hotkeyNeurons.neurons_by_owner.flatMap(([_, neurons]) => neurons);
-        const eligibleNeurons = allNeurons.filter(neuron => {
-            const neuronId = neuron.id?.[0]?.id;
-            if (!neuronId) return false;
-            
-            // Check if neuron has hotkey access
-            const hasHotkeyAccess = neuron.permissions.some(p => 
-                p.principal?.toString() === identity.getPrincipal().toString() &&
-                p.permission_type.includes(4)
-            );
-            
-            // Check if neuron hasn't voted yet
-            const existingVote = getNeuronVote(neuronId);
-            
-            return hasHotkeyAccess && !existingVote;
-        });
-        
-        if (eligibleNeurons.length === 0) {
-            alert('No eligible neurons to vote with');
+        if (!neurons || !proposalData || !currentProposalId) {
+            alert('Missing required data for voting');
             return;
         }
-        
-        const voteText = vote === 1 ? 'Adopt' : 'Reject';
-        if (!confirm(`Vote ${voteText} with ${eligibleNeurons.length} neuron(s)?`)) return;
-        
-        for (const neuron of eligibleNeurons) {
-            const neuronId = neuron.id[0].id;
-            await voteWithNeuron(neuronId, vote);
-            // Small delay between votes to avoid overwhelming the network
-            await new Promise(resolve => setTimeout(resolve, 100));
+
+        try {
+            // Filter eligible neurons
+            const eligibleNeurons = neurons.filter(neuron => {
+                // Check if neuron has hotkey access
+                const hasHotkeyAccess = neuron.permissions.some(p => p.permission_type.includes(4));
+                if (!hasHotkeyAccess) return false;
+
+                // Check if neuron has already voted using the same logic as getNeuronVote
+                const neuronIdHex = uint8ArrayToHex(neuron.id[0]?.id);
+                const ballot = proposalData.ballots?.find(([id, _]) => id === neuronIdHex);
+                
+                if (ballot && ballot[1]) {
+                    const ballotData = ballot[1];
+                    const hasVoted = ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
+                    if (hasVoted) return false; // Skip neurons that have already voted
+                }
+
+                return true;
+            });
+
+            // Debug logging
+            console.log('Vote All Debug:', {
+                totalNeurons: neurons.length,
+                eligibleNeurons: eligibleNeurons.length,
+                userPrincipal: identity?.getPrincipal()?.toString(),
+                proposalData: !!proposalData,
+                currentProposalId,
+                ballotsCount: proposalData?.ballots?.length || 0
+            });
+
+            if (eligibleNeurons.length === 0) {
+                const neuronsWithHotkey = neurons.filter(neuron => 
+                    neuron.permissions.some(p => p.permission_type.includes(4))
+                ).length;
+                
+                const neuronsAlreadyVoted = neurons.filter(neuron => {
+                    const neuronIdHex = uint8ArrayToHex(neuron.id[0]?.id);
+                    const ballot = proposalData.ballots?.find(([id, _]) => id === neuronIdHex);
+                    if (ballot && ballot[1]) {
+                        const ballotData = ballot[1];
+                        return ballotData.cast_timestamp_seconds && Number(ballotData.cast_timestamp_seconds) > 0;
+                    }
+                    return false;
+                }).length;
+
+                alert(`No eligible neurons found for voting.\n\nTotal neurons: ${neurons.length}\nNeurons with hotkey access: ${neuronsWithHotkey}\nNeurons that already voted: ${neuronsAlreadyVoted}\nEligible neurons: ${eligibleNeurons.length}`);
+                return;
+            }
+
+            // Vote with all eligible neurons
+            for (const neuron of eligibleNeurons) {
+                await voteWithNeuron(neuron.id[0].id, vote);
+            }
+
+            alert(`Successfully voted with ${eligibleNeurons.length} neurons!`);
+            if (onVoteSuccess) {
+                onVoteSuccess();
+            }
+        } catch (error) {
+            console.error('Error voting with all neurons:', error);
+            alert('Error voting with all neurons: ' + error.message);
         }
     };
 
@@ -509,7 +561,14 @@ const HotkeyNeurons = ({
                                                             </div>
                                                             
                                                             {/* Voting section for proposals */}
-                                                            {proposalData && currentProposalId && (
+                                                            {(() => {
+                                                                console.log('Voting section check:', {
+                                                                    hasProposalData: !!proposalData,
+                                                                    hasCurrentProposalId: !!currentProposalId,
+                                                                    shouldShow: !!(proposalData && currentProposalId)
+                                                                });
+                                                                return proposalData && currentProposalId;
+                                                            })() && (
                                                                 <div style={{ marginTop: '10px' }}>
                                                                     {(() => {
                                                                         const neuronId = neuron.id?.[0]?.id;
@@ -520,8 +579,17 @@ const HotkeyNeurons = ({
                                                                         const votingState = votingStates[neuronIdHex];
                                                                         const isOpen = isProposalOpenForVoting();
                                                                         
+                                                                        // Debug logging for individual neurons
+                                                                        console.log(`Neuron ${neuronIdHex} voting debug:`, {
+                                                                            hasProposalData: !!proposalData,
+                                                                            hasCurrentProposalId: !!currentProposalId,
+                                                                            existingVote,
+                                                                            isOpen,
+                                                                            votingState
+                                                                        });
+                                                                        
                                                                         if (existingVote) {
-                                                                            const voteInfo = formatVote(existingVote);
+                                                                            const voteInfo = formatVote(existingVote.vote);
                                                                             return (
                                                                                 <div style={{
                                                                                     display: 'flex',
