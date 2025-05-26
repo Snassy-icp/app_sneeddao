@@ -6,7 +6,8 @@ import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import ReactMarkdown from 'react-markdown';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
-import { formatProposalIdLink, formatNeuronIdLink } from '../utils/NeuronUtils';
+import { formatProposalIdLink, formatNeuronIdLink, uint8ArrayToHex } from '../utils/NeuronUtils';
+import { useNaming } from '../NamingContext';
 
 function Proposals() {
     const { isAuthenticated, identity } = useAuth();
@@ -16,9 +17,14 @@ function Proposals() {
     const [searchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
     const [proposals, setProposals] = useState([]);
+    const [filteredProposals, setFilteredProposals] = useState([]);
+    const [proposerFilter, setProposerFilter] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [loadingSnses, setLoadingSnses] = useState(true);
+    
+    // Get naming context
+    const { neuronNames, neuronNicknames, verifiedNames } = useNaming();
     
     // Pagination state
     const [itemsPerPage, setItemsPerPage] = useState(20);
@@ -47,7 +53,41 @@ function Proposals() {
         setLastProposalId(null);
         setHasMoreProposals(true);
         setProposals([]);
+        setFilteredProposals([]);
     }, [selectedSnsRoot]);
+
+    // Filter proposals based on proposer filter
+    useEffect(() => {
+        let filtered = proposals;
+
+        // Apply proposer filter
+        if (proposerFilter.trim()) {
+            const filterLower = proposerFilter.toLowerCase();
+            filtered = filtered.filter(proposal => {
+                // Get proposer neuron ID
+                const proposerNeuronId = proposal.proposer?.[0]?.id;
+                if (!proposerNeuronId) return false;
+
+                const neuronIdHex = uint8ArrayToHex(proposerNeuronId);
+                if (!neuronIdHex) return false;
+
+                // Check neuron ID with wildcard matching
+                if (neuronIdHex.toLowerCase().includes(filterLower)) {
+                    return true;
+                }
+
+                // Check names and nicknames with wildcard matching
+                const mapKey = `${selectedSnsRoot}:${neuronIdHex}`;
+                const name = neuronNames.get(mapKey)?.toLowerCase();
+                const nickname = neuronNicknames.get(mapKey)?.toLowerCase();
+
+                return (name && name.includes(filterLower)) || 
+                       (nickname && nickname.includes(filterLower));
+            });
+        }
+
+        setFilteredProposals(filtered);
+    }, [proposals, proposerFilter, selectedSnsRoot, neuronNames, neuronNicknames]);
 
     // Fetch SNS data on component mount
     useEffect(() => {
@@ -132,6 +172,8 @@ function Proposals() {
         setLastProposalId(null);
         setHasMoreProposals(true);
         setProposals([]);
+        setFilteredProposals([]);
+        setProposerFilter('');
     };
 
     const handleItemsPerPageChange = (e) => {
@@ -140,6 +182,7 @@ function Proposals() {
         setLastProposalId(null);
         setHasMoreProposals(true);
         setProposals([]);
+        setFilteredProposals([]);
     };
 
     const loadMore = () => {
@@ -193,6 +236,30 @@ function Proposals() {
             <main className="wallet-container">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                     <h1 style={{ color: '#ffffff' }}>Proposals</h1>
+                    <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '10px',
+                        flex: 1,
+                        maxWidth: '400px',
+                        marginLeft: '20px'
+                    }}>
+                        <input
+                            type="text"
+                            value={proposerFilter}
+                            onChange={(e) => setProposerFilter(e.target.value)}
+                            placeholder="Filter by proposer (name, nickname, or neuron ID)..."
+                            style={{
+                                backgroundColor: '#3a3a3a',
+                                color: '#ffffff',
+                                border: '1px solid #4a4a4a',
+                                borderRadius: '4px',
+                                padding: '8px 12px',
+                                flex: 1,
+                                minWidth: '250px'
+                            }}
+                        />
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <label style={{ color: '#ffffff' }}>Items per page:</label>
                         <select
@@ -216,13 +283,41 @@ function Proposals() {
 
                 {error && <div style={{ color: '#e74c3c', marginBottom: '20px' }}>{error}</div>}
 
+                {proposerFilter.trim() && (
+                    <div style={{ 
+                        color: '#3498db', 
+                        marginBottom: '15px', 
+                        fontSize: '14px',
+                        backgroundColor: '#2a2a2a',
+                        padding: '10px',
+                        borderRadius: '4px'
+                    }}>
+                        Showing {filteredProposals.length} of {proposals.length} proposals matching proposer filter: "{proposerFilter}"
+                        <button 
+                            onClick={() => setProposerFilter('')}
+                            style={{
+                                marginLeft: '10px',
+                                backgroundColor: 'transparent',
+                                border: '1px solid #3498db',
+                                color: '#3498db',
+                                borderRadius: '3px',
+                                padding: '2px 6px',
+                                cursor: 'pointer',
+                                fontSize: '12px'
+                            }}
+                        >
+                            Clear
+                        </button>
+                    </div>
+                )}
+
                 {loading && proposals.length === 0 ? (
                     <div style={{ color: '#ffffff', textAlign: 'center', padding: '20px' }}>
                         Loading...
                     </div>
                 ) : (
                     <div>
-                        {proposals.map((proposal, index) => (
+                        {filteredProposals.map((proposal, index) => (
                             <div
                                 key={index}
                                 style={{
