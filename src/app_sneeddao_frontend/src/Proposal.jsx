@@ -5,10 +5,12 @@ import { createActor as createRllActor, canisterId as rllCanisterId } from 'exte
 import { useAuth } from './AuthContext';
 import { useSns } from './contexts/SnsContext';
 import Header from './components/Header';
+import HotkeyNeurons from './components/HotkeyNeurons';
 import ReactMarkdown from 'react-markdown';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
 import { formatNeuronIdLink } from './utils/NeuronUtils';
+import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 
 function Proposal() {
@@ -201,6 +203,14 @@ function Proposal() {
 
     const formatE8s = (e8s) => {
         return (Number(e8s) / 100000000).toFixed(8);
+    };
+
+    // Function to fetch neurons directly from SNS
+    const fetchNeuronsFromSns = async () => {
+        if (!selectedSnsRoot) return [];
+        const selectedSns = getSnsById(selectedSnsRoot);
+        if (!selectedSns) return [];
+        return await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
     };
 
     const getProposalStatus = (data) => {
@@ -864,6 +874,18 @@ function Proposal() {
                                 </div>
                             )}
                         </div>
+                    )}
+
+                    {/* Hotkey Neurons Section */}
+                    {selectedSnsRoot && (
+                        <HotkeyNeurons 
+                            fetchNeuronsFromSns={fetchNeuronsFromSns}
+                            showVotingStats={false}
+                            showExpandButton={true}
+                            defaultExpanded={false}
+                            title="Your Neurons for Voting"
+                            infoTooltip="These are your neurons that can be used to vote on this proposal. You need to have hotkey access to vote through this interface."
+                        />
                     )}
                 </section>
             </main>
