@@ -17,6 +17,7 @@ function AdminProjects() {
         logoUrl: '',
         description: '',
         projectType: 'product',
+        index: '',
         links: [{ title: '', url: '' }]
     });
     const [editingId, setEditingId] = useState(null);
@@ -69,6 +70,7 @@ function AdminProjects() {
                               { fork: null };
 
             const logoUrl = formData.logoUrl.trim() ? [formData.logoUrl.trim()] : [];
+            const index = formData.index.trim() ? parseInt(formData.index.trim()) : null;
 
             let result;
             if (editingId) {
@@ -78,7 +80,8 @@ function AdminProjects() {
                     logoUrl,
                     formData.description.trim(),
                     projectType,
-                    validLinks
+                    validLinks,
+                    index ? [index] : []
                 );
             } else {
                 result = await backend.add_project(
@@ -86,7 +89,8 @@ function AdminProjects() {
                     logoUrl,
                     formData.description.trim(),
                     projectType,
-                    validLinks
+                    validLinks,
+                    index ? [index] : []
                 );
             }
 
@@ -133,6 +137,7 @@ function AdminProjects() {
             logoUrl: '',
             description: '',
             projectType: 'product',
+            index: '',
             links: [{ title: '', url: '' }]
         });
         setEditingId(null);
@@ -147,6 +152,7 @@ function AdminProjects() {
             logoUrl: project.logo_url[0] || '',
             description: project.description,
             projectType: projectType,
+            index: project.index[0] ? project.index[0].toString() : '',
             links: project.links.length > 0 ? project.links : [{ title: '', url: '' }]
         });
         setEditingId(project.id);
@@ -330,6 +336,29 @@ function AdminProjects() {
                                 }}
                                 required
                             />
+                        </div>
+
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{ color: '#ffffff', display: 'block', marginBottom: '5px' }}>
+                                Index (optional)
+                            </label>
+                            <input
+                                type="number"
+                                value={formData.index}
+                                onChange={(e) => setFormData(prev => ({ ...prev, index: e.target.value }))}
+                                style={{
+                                    width: '100%',
+                                    padding: '10px',
+                                    backgroundColor: '#3a3a3a',
+                                    border: '1px solid #4a4a4a',
+                                    borderRadius: '4px',
+                                    color: '#ffffff'
+                                }}
+                                placeholder="Enter display order index"
+                            />
+                            <small style={{ color: '#cccccc', fontSize: '12px', marginTop: '5px', display: 'block' }}>
+                                Optional: Lower numbers appear first. Leave empty for default ordering.
+                            </small>
                         </div>
 
                         <div style={{ marginBottom: '20px' }}>

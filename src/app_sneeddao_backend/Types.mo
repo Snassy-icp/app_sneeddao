@@ -116,6 +116,7 @@ module {
         logo_url : Text;
         description : Text;
         links : [PartnerLink];
+        index : ?Nat;
         created_at : Int;
         updated_at : Int;
     };
@@ -139,6 +140,7 @@ module {
         description : Text;
         project_type : ProjectType;
         links : [ProjectLink];
+        index : ?Nat;
         created_at : Int;
         updated_at : Int;
     };

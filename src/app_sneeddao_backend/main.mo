@@ -1282,7 +1282,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   };
 
   // Partner management functions
-  public shared ({ caller }) func add_partner(name: Text, logo_url: Text, description: Text, links: [PartnerLink]) : async Result.Result<Nat, Text> {
+  public shared ({ caller }) func add_partner(name: Text, logo_url: Text, description: Text, links: [PartnerLink], index: ?Nat) : async Result.Result<Nat, Text> {
     if (not is_admin(caller)) {
       return #err("Not authorized");
     };
@@ -1306,6 +1306,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       logo_url = logo_url;
       description = description;
       links = links;
+      index = index;
       created_at = now;
       updated_at = now;
     };
@@ -1315,7 +1316,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     #ok(partner.id)
   };
 
-  public shared ({ caller }) func update_partner(id: Nat, name: Text, logo_url: Text, description: Text, links: [PartnerLink]) : async Result.Result<(), Text> {
+  public shared ({ caller }) func update_partner(id: Nat, name: Text, logo_url: Text, description: Text, links: [PartnerLink], index: ?Nat) : async Result.Result<(), Text> {
     if (not is_admin(caller)) {
       return #err("Not authorized");
     };
@@ -1344,6 +1345,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
           logo_url = logo_url;
           description = description;
           links = links;
+          index = index;
           created_at = partner.created_at;
           updated_at = Time.now();
         };
@@ -1452,7 +1454,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   };
 
   // Project management functions
-  public shared ({ caller }) func add_project(name: Text, logo_url: ?Text, description: Text, project_type: ProjectType, links: [ProjectLink]) : async Result.Result<Nat, Text> {
+  public shared ({ caller }) func add_project(name: Text, logo_url: ?Text, description: Text, project_type: ProjectType, links: [ProjectLink], index: ?Nat) : async Result.Result<Nat, Text> {
     if (not is_admin(caller)) {
       return #err("Not authorized");
     };
@@ -1473,6 +1475,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       description = description;
       project_type = project_type;
       links = links;
+      index = index;
       created_at = now;
       updated_at = now;
     };
@@ -1482,7 +1485,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     #ok(project.id)
   };
 
-  public shared ({ caller }) func update_project(id: Nat, name: Text, logo_url: ?Text, description: Text, project_type: ProjectType, links: [ProjectLink]) : async Result.Result<(), Text> {
+  public shared ({ caller }) func update_project(id: Nat, name: Text, logo_url: ?Text, description: Text, project_type: ProjectType, links: [ProjectLink], index: ?Nat) : async Result.Result<(), Text> {
     if (not is_admin(caller)) {
       return #err("Not authorized");
     };
@@ -1508,6 +1511,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
           description = description;
           project_type = project_type;
           links = links;
+          index = index;
           created_at = project.created_at;
           updated_at = Time.now();
         };

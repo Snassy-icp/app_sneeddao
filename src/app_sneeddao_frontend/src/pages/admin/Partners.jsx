@@ -13,9 +13,10 @@ function AdminPartners() {
     const [editingPartner, setEditingPartner] = useState(null);
     const [formData, setFormData] = useState({
         name: '',
-        logo_url: '',
+        logoUrl: '',
         description: '',
-        links: []
+        index: '',
+        links: [{ title: '', url: '' }]
     });
     const [newLink, setNewLink] = useState({ title: '', url: '' });
 
@@ -57,21 +58,29 @@ function AdminPartners() {
                 }
             });
 
+            const validLinks = formData.links.filter(link => 
+                link.title.trim() && link.url.trim()
+            );
+
+            const index = formData.index.trim() ? parseInt(formData.index.trim()) : null;
+
             let result;
             if (editingPartner) {
                 result = await backendActor.update_partner(
                     editingPartner.id,
-                    formData.name,
-                    formData.logo_url,
-                    formData.description,
-                    formData.links
+                    formData.name.trim(),
+                    formData.logoUrl.trim(),
+                    formData.description.trim(),
+                    validLinks,
+                    index ? [index] : []
                 );
             } else {
                 result = await backendActor.add_partner(
-                    formData.name,
-                    formData.logo_url,
-                    formData.description,
-                    formData.links
+                    formData.name.trim(),
+                    formData.logoUrl.trim(),
+                    formData.description.trim(),
+                    validLinks,
+                    index ? [index] : []
                 );
             }
 
@@ -124,22 +133,23 @@ function AdminPartners() {
     const resetForm = () => {
         setFormData({
             name: '',
-            logo_url: '',
+            logoUrl: '',
             description: '',
-            links: []
+            index: '',
+            links: [{ title: '', url: '' }]
         });
-        setNewLink({ title: '', url: '' });
+        setEditingPartner(null);
     };
 
     const startEdit = (partner) => {
-        setEditingPartner(partner);
         setFormData({
             name: partner.name,
-            logo_url: partner.logo_url,
+            logoUrl: partner.logo_url,
             description: partner.description,
-            links: [...partner.links]
+            index: partner.index[0] ? partner.index[0].toString() : '',
+            links: partner.links.length > 0 ? partner.links : [{ title: '', url: '' }]
         });
-        setShowForm(true);
+        setEditingPartner(partner);
     };
 
     const addLink = () => {
@@ -292,8 +302,8 @@ function AdminPartners() {
                                 </label>
                                 <input
                                     type="url"
-                                    value={formData.logo_url}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, logo_url: e.target.value }))}
+                                    value={formData.logoUrl}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, logoUrl: e.target.value }))}
                                     required
                                     style={{
                                         width: '100%',
@@ -327,6 +337,30 @@ function AdminPartners() {
                                         resize: 'vertical'
                                     }}
                                 />
+                            </div>
+
+                            <div style={{ marginBottom: '20px' }}>
+                                <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px' }}>
+                                    Index (optional)
+                                </label>
+                                <input
+                                    type="number"
+                                    value={formData.index}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, index: e.target.value }))}
+                                    placeholder="Enter display order index"
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        backgroundColor: '#1a1a1a',
+                                        border: '1px solid #3a3a3a',
+                                        borderRadius: '6px',
+                                        color: '#ffffff',
+                                        fontSize: '16px'
+                                    }}
+                                />
+                                <small style={{ color: '#cccccc', fontSize: '14px' }}>
+                                    Optional: Lower numbers appear first. Leave empty for default ordering.
+                                </small>
                             </div>
 
                             <div style={{ marginBottom: '20px' }}>

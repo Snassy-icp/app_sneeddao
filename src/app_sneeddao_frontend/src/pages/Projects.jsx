@@ -50,6 +50,31 @@ function Projects() {
             }
         });
 
+        // Sort each group by index (projects with index come first, sorted by index value)
+        const sortByIndex = (a, b) => {
+            const aIndex = a.index && a.index.length > 0 ? a.index[0] : null;
+            const bIndex = b.index && b.index.length > 0 ? b.index[0] : null;
+            
+            // If both have indexes, sort by index value
+            if (aIndex !== null && bIndex !== null) {
+                return aIndex - bIndex;
+            }
+            // If only a has index, a comes first
+            if (aIndex !== null && bIndex === null) {
+                return -1;
+            }
+            // If only b has index, b comes first
+            if (aIndex === null && bIndex !== null) {
+                return 1;
+            }
+            // If neither has index, maintain original order (sort by name as fallback)
+            return a.name.localeCompare(b.name);
+        };
+
+        grouped.products.sort(sortByIndex);
+        grouped.projects.sort(sortByIndex);
+        grouped.forks.sort(sortByIndex);
+
         return grouped;
     };
 
