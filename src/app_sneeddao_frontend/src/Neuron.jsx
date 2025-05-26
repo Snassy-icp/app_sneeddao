@@ -41,6 +41,8 @@ function Neuron() {
     const [hideNotVoted, setHideNotVoted] = useState(false);
     // Add sort state
     const [sortBy, setSortBy] = useState('proposalId');
+    // Add voting history collapse state
+    const [isVotingHistoryExpanded, setIsVotingHistoryExpanded] = useState(false);
     // Add nickname editing states
     const [isEditingNickname, setIsEditingNickname] = useState(false);
     const [nicknameInput, setNicknameInput] = useState('');
@@ -843,133 +845,157 @@ function Neuron() {
 
                             {selectedSnsRoot === SNEED_SNS_ROOT && votingHistory && votingHistory.length > 0 && (
                                 <div style={{ marginTop: '20px' }}>
-                                    <h2>Voting History</h2>
-                                    <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px' }}>
-                                        <div style={{
-                                            display: 'flex',
-                                            gap: '20px',
-                                            marginBottom: '15px',
-                                            padding: '10px',
-                                            backgroundColor: '#2a2a2a',
-                                            borderRadius: '4px',
-                                            flexWrap: 'wrap',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between'
-                                        }}>
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center',
+                                        marginBottom: '15px'
+                                    }}>
+                                        <h2 style={{ margin: 0 }}>Voting History ({votingHistory.length} votes)</h2>
+                                        <button
+                                            onClick={() => setIsVotingHistoryExpanded(!isVotingHistoryExpanded)}
+                                            style={{
+                                                backgroundColor: 'transparent',
+                                                border: 'none',
+                                                color: '#3498db',
+                                                cursor: 'pointer',
+                                                fontSize: '1.2em',
+                                                padding: '5px 10px',
+                                                borderRadius: '4px'
+                                            }}
+                                            title={isVotingHistoryExpanded ? 'Collapse voting history' : 'Expand voting history'}
+                                        >
+                                            {isVotingHistoryExpanded ? '▼' : '▶'}
+                                        </button>
+                                    </div>
+                                    {isVotingHistoryExpanded && (
+                                        <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px' }}>
                                             <div style={{
                                                 display: 'flex',
                                                 gap: '20px',
-                                                alignItems: 'center'
-                                            }}>
-                                                <label style={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center', 
-                                                    gap: '8px',
-                                                    color: '#2ecc71',
-                                                    cursor: 'pointer'
-                                                }}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={hideYes}
-                                                        onChange={(e) => setHideYes(e.target.checked)}
-                                                    />
-                                                    Hide Yes
-                                                </label>
-                                                <label style={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center', 
-                                                    gap: '8px',
-                                                    color: '#e74c3c',
-                                                    cursor: 'pointer'
-                                                }}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={hideNo}
-                                                        onChange={(e) => setHideNo(e.target.checked)}
-                                                    />
-                                                    Hide No
-                                                </label>
-                                                <label style={{ 
-                                                    display: 'flex', 
-                                                    alignItems: 'center', 
-                                                    gap: '8px',
-                                                    color: '#888',
-                                                    cursor: 'pointer'
-                                                }}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={hideNotVoted}
-                                                        onChange={(e) => setHideNotVoted(e.target.checked)}
-                                                    />
-                                                    Hide Not Voted
-                                                </label>
-                                            </div>
-                                            <div style={{
-                                                display: 'flex',
+                                                marginBottom: '15px',
+                                                padding: '10px',
+                                                backgroundColor: '#2a2a2a',
+                                                borderRadius: '4px',
+                                                flexWrap: 'wrap',
                                                 alignItems: 'center',
-                                                gap: '8px'
+                                                justifyContent: 'space-between'
                                             }}>
-                                                <label style={{
-                                                    color: '#888',
-                                                    fontSize: '14px'
+                                                <div style={{
+                                                    display: 'flex',
+                                                    gap: '20px',
+                                                    alignItems: 'center'
                                                 }}>
-                                                    Sort by:
-                                                </label>
-                                                <select
-                                                    value={sortBy}
-                                                    onChange={(e) => setSortBy(e.target.value)}
-                                                    style={{
-                                                        backgroundColor: '#3a3a3a',
-                                                        color: '#fff',
-                                                        border: '1px solid #4a4a4a',
-                                                        borderRadius: '4px',
-                                                        padding: '4px 8px',
+                                                    <label style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '8px',
+                                                        color: '#2ecc71',
                                                         cursor: 'pointer'
+                                                    }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={hideYes}
+                                                            onChange={(e) => setHideYes(e.target.checked)}
+                                                        />
+                                                        Hide Yes
+                                                    </label>
+                                                    <label style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '8px',
+                                                        color: '#e74c3c',
+                                                        cursor: 'pointer'
+                                                    }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={hideNo}
+                                                            onChange={(e) => setHideNo(e.target.checked)}
+                                                        />
+                                                        Hide No
+                                                    </label>
+                                                    <label style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '8px',
+                                                        color: '#888',
+                                                        cursor: 'pointer'
+                                                    }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={hideNotVoted}
+                                                            onChange={(e) => setHideNotVoted(e.target.checked)}
+                                                        />
+                                                        Hide Not Voted
+                                                    </label>
+                                                </div>
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '8px'
+                                                }}>
+                                                    <label style={{
+                                                        color: '#888',
+                                                        fontSize: '14px'
+                                                    }}>
+                                                        Sort by:
+                                                    </label>
+                                                    <select
+                                                        value={sortBy}
+                                                        onChange={(e) => setSortBy(e.target.value)}
+                                                        style={{
+                                                            backgroundColor: '#3a3a3a',
+                                                            color: '#fff',
+                                                            border: '1px solid #4a4a4a',
+                                                            borderRadius: '4px',
+                                                            padding: '4px 8px',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        <option value="proposalId">Proposal ID</option>
+                                                        <option value="date">Date</option>
+                                                        <option value="votingPower">Voting Power</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            {filterAndSortVotes(votingHistory).map((vote, index) => (
+                                                <div 
+                                                    key={index}
+                                                    style={{
+                                                        padding: '10px',
+                                                        backgroundColor: '#2a2a2a',
+                                                        marginBottom: '10px',
+                                                        borderRadius: '4px'
                                                     }}
                                                 >
-                                                    <option value="proposalId">Proposal ID</option>
-                                                    <option value="date">Date</option>
-                                                    <option value="votingPower">Voting Power</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        {filterAndSortVotes(votingHistory).map((vote, index) => (
-                                            <div 
-                                                key={index}
-                                                style={{
-                                                    padding: '10px',
-                                                    backgroundColor: '#2a2a2a',
-                                                    marginBottom: '10px',
-                                                    borderRadius: '4px'
-                                                }}
-                                            >
-                                                <div style={{ 
-                                                    display: 'flex',
-                                                    justifyContent: 'space-between',
-                                                    alignItems: 'center',
-                                                    marginBottom: '5px'
-                                                }}>
-                                                    <div>
-                                                        <strong>Proposal:</strong>{' '}
-                                                        {formatProposalIdLink(vote.proposal_id, selectedSnsRoot)}
-                                                    </div>
                                                     <div style={{ 
-                                                        color: vote.vote === 1 ? '#2ecc71' : vote.vote === 2 ? '#e74c3c' : '#ffffff',
-                                                        fontWeight: 'bold'
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center',
+                                                        marginBottom: '5px'
                                                     }}>
-                                                        {formatVote(vote.vote)}
+                                                        <div>
+                                                            <strong>Proposal:</strong>{' '}
+                                                            {formatProposalIdLink(vote.proposal_id, selectedSnsRoot)}
+                                                        </div>
+                                                        <div style={{ 
+                                                            color: vote.vote === 1 ? '#2ecc71' : vote.vote === 2 ? '#e74c3c' : '#ffffff',
+                                                            fontWeight: 'bold'
+                                                        }}>
+                                                            {formatVote(vote.vote)}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ fontSize: '14px', color: '#888' }}>
+                                                        <div>{vote.proposal_title || 'No title'}</div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px' }}>
+                                                            <span>{vote.vote !== 0 ? new Date(Number(vote.timestamp) * 1000).toLocaleString() : ''}</span>
+                                                            <span>{formatE8s(vote.voting_power)} VP</span>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div style={{ fontSize: '14px', color: '#888' }}>
-                                                    <div>{vote.proposal_title || 'No title'}</div>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px' }}>
-                                                        <span>{vote.vote !== 0 ? new Date(Number(vote.timestamp) * 1000).toLocaleString() : ''}</span>
-                                                        <span>{formatE8s(vote.voting_power)} VP</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

@@ -7,6 +7,7 @@ import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
 import { formatNeuronIdLink, formatE8s, getDissolveState, uint8ArrayToHex } from '../utils/NeuronUtils';
+import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { useNaming } from '../NamingContext';
 
@@ -42,6 +43,8 @@ function Neurons() {
     // Add new filter states
     const [hideUnnamed, setHideUnnamed] = useState(false);
     const [hideUnverified, setHideUnverified] = useState(false);
+    // Add nervous system parameters state
+    const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
 
     // Add IndexedDB initialization at the top of the component
     const initializeDB = () => {
@@ -181,6 +184,31 @@ function Neurons() {
         }
         loadData();
     }, [selectedSnsRoot]);
+
+    // Fetch nervous system parameters for voting power calculation
+    useEffect(() => {
+        const fetchNervousSystemParameters = async () => {
+            if (!selectedSnsRoot || !identity) return;
+            
+            try {
+                const selectedSns = getSnsById(selectedSnsRoot);
+                if (!selectedSns) return;
+
+                const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                    agentOptions: { identity }
+                });
+                
+                const params = await snsGovActor.get_nervous_system_parameters(null);
+                setNervousSystemParameters(params);
+            } catch (error) {
+                console.error('Error fetching nervous system parameters:', error);
+            }
+        };
+
+        if (selectedSnsRoot && identity) {
+            fetchNervousSystemParameters();
+        }
+    }, [selectedSnsRoot, identity]);
 
     const fetchNeurons = async () => {
         setLoading(true);
@@ -925,7 +953,10 @@ function Neurons() {
                                     <div>
                                         <div style={{ color: '#888', marginBottom: '4px' }}>Voting Power</div>
                                         <div style={{ color: '#ffffff' }}>
-                                            {(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x
+                                            {nervousSystemParameters ? 
+                                                formatVotingPower(calculateVotingPower(neuron, nervousSystemParameters)) :
+                                                `${(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x`
+                                            }
                                         </div>
                                     </div>
                                 </div>
