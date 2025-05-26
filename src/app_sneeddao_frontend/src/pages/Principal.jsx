@@ -3,7 +3,7 @@ import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
 import { useSearchParams, Link } from 'react-router-dom';
 import Header from '../components/Header';
-import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname } from '../utils/BackendUtils';
+import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname, getAllPrincipalNames, getAllPrincipalNicknames } from '../utils/BackendUtils';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
 import ConfirmationModal from '../ConfirmationModal';
@@ -105,6 +105,10 @@ export default function PrincipalPage() {
             return;
         }
 
+        console.log('Searching for:', query);
+        console.log('principalNames available:', principalNames ? principalNames.size : 'undefined');
+        console.log('principalNicknames available:', principalNicknames ? principalNicknames.size : 'undefined');
+
         setSearchLoading(true);
         try {
             const results = [];
@@ -122,41 +126,38 @@ export default function PrincipalPage() {
 
             // Search through cached names and nicknames only if they exist
             if (principalNames && principalNicknames) {
+                console.log('Searching through cached data...');
                 // Search through principal names
-                for (const [key, name] of principalNames.entries()) {
+                for (const [principalId, name] of principalNames.entries()) {
                     if (name.toLowerCase().includes(searchLower)) {
-                        const principalId = key.split(':')[1]; // Extract principal ID from "snsRoot:principalId"
-                        if (principalId) {
-                            const score = name.toLowerCase() === searchLower ? 100 : 
-                                         name.toLowerCase().startsWith(searchLower) ? 90 : 50;
-                            results.push({
-                                type: 'name',
-                                principalId,
-                                name,
-                                displayText: name,
-                                score
-                            });
-                        }
+                        const score = name.toLowerCase() === searchLower ? 100 : 
+                                     name.toLowerCase().startsWith(searchLower) ? 90 : 50;
+                        results.push({
+                            type: 'name',
+                            principalId,
+                            name,
+                            displayText: name,
+                            score
+                        });
                     }
                 }
 
                 // Search through principal nicknames
-                for (const [key, nickname] of principalNicknames.entries()) {
+                for (const [principalId, nickname] of principalNicknames.entries()) {
                     if (nickname.toLowerCase().includes(searchLower)) {
-                        const principalId = key.split(':')[1]; // Extract principal ID from "snsRoot:principalId"
-                        if (principalId) {
-                            const score = nickname.toLowerCase() === searchLower ? 95 : 
-                                         nickname.toLowerCase().startsWith(searchLower) ? 85 : 45;
-                            results.push({
-                                type: 'nickname',
-                                principalId,
-                                nickname,
-                                displayText: nickname,
-                                score
-                            });
-                        }
+                        const score = nickname.toLowerCase() === searchLower ? 95 : 
+                                     nickname.toLowerCase().startsWith(searchLower) ? 85 : 45;
+                        results.push({
+                            type: 'nickname',
+                            principalId,
+                            nickname,
+                            displayText: nickname,
+                            score
+                        });
                     }
                 }
+            } else {
+                console.log('principalNames or principalNicknames not available yet');
             }
 
             // Remove duplicates and sort by score
@@ -173,6 +174,7 @@ export default function PrincipalPage() {
                 .sort((a, b) => b.score - a.score)
                 .slice(0, 10);
 
+            console.log('Search results:', sortedResults);
             setSearchResults(sortedResults);
             setShowSearchResults(sortedResults.length > 0);
         } catch (error) {
@@ -187,16 +189,16 @@ export default function PrincipalPage() {
     // Handle search input changes with debouncing
     useEffect(() => {
         const timeoutId = setTimeout(() => {
-            if (searchInput.trim() && searchInput !== principalParam) {
+            if (searchInput.trim()) {
                 searchPrincipals(searchInput);
-            } else if (!searchInput.trim()) {
+            } else {
                 setSearchResults([]);
                 setShowSearchResults(false);
             }
         }, 300);
 
         return () => clearTimeout(timeoutId);
-    }, [searchInput, principalParam, identity]);
+    }, [searchInput, principalNames, principalNicknames]);
 
     // Handle search result selection
     const handleSearchResultSelect = (result) => {

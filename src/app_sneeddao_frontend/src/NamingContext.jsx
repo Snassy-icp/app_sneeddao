@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
-import { getAllNeuronNames, getAllNeuronNicknames } from './utils/BackendUtils';
+import { getAllNeuronNames, getAllNeuronNicknames, getAllPrincipalNames, getAllPrincipalNicknames } from './utils/BackendUtils';
 import { uint8ArrayToHex } from './utils/NeuronUtils';
 
 const NamingContext = createContext();
@@ -9,46 +9,71 @@ export function NamingProvider({ children }) {
     const { identity } = useAuth();
     const [neuronNames, setNeuronNames] = useState(new Map());
     const [neuronNicknames, setNeuronNicknames] = useState(new Map());
+    const [principalNames, setPrincipalNames] = useState(new Map());
+    const [principalNicknames, setPrincipalNicknames] = useState(new Map());
     const [verifiedNames, setVerifiedNames] = useState(new Map());
     const [loading, setLoading] = useState(true);
 
     const fetchAllNames = async () => {
         try {
             setLoading(true);
-            const [names, nicknames] = await Promise.all([
+            const [neuronNamesData, neuronNicknamesData, principalNamesData, principalNicknamesData] = await Promise.all([
                 getAllNeuronNames(identity),
-                identity ? getAllNeuronNicknames(identity) : null
+                identity ? getAllNeuronNicknames(identity) : null,
+                getAllPrincipalNames(identity),
+                identity ? getAllPrincipalNicknames(identity) : null
             ]);
 
-            // Process names
-            const namesMap = new Map();
+            // Process neuron names
+            const neuronNamesMap = new Map();
             const verifiedMap = new Map();
-            if (names) {
-                names.forEach(([key, nameData]) => {
+            if (neuronNamesData) {
+                neuronNamesData.forEach(([key, nameData]) => {
                     const neuronId = uint8ArrayToHex(key.neuron_id.id);
                     const snsRoot = key.sns_root_canister_id.toString();
                     const mapKey = `${snsRoot}:${neuronId}`;
                     const [name, verified] = nameData;
-                    namesMap.set(mapKey, name);
+                    neuronNamesMap.set(mapKey, name);
                     verifiedMap.set(mapKey, verified);
                 });
             }
-            setNeuronNames(namesMap);
+            setNeuronNames(neuronNamesMap);
             setVerifiedNames(verifiedMap);
 
-            // Process nicknames
-            const nicknamesMap = new Map();
-            if (nicknames) {
-                nicknames.forEach(([key, nickname]) => {
+            // Process neuron nicknames
+            const neuronNicknamesMap = new Map();
+            if (neuronNicknamesData) {
+                neuronNicknamesData.forEach(([key, nickname]) => {
                     const neuronId = uint8ArrayToHex(key.neuron_id.id);
                     const snsRoot = key.sns_root_canister_id.toString();
                     const mapKey = `${snsRoot}:${neuronId}`;
-                    nicknamesMap.set(mapKey, nickname);
+                    neuronNicknamesMap.set(mapKey, nickname);
                 });
             }
-            setNeuronNicknames(nicknamesMap);
+            setNeuronNicknames(neuronNicknamesMap);
+
+            // Process principal names
+            const principalNamesMap = new Map();
+            if (principalNamesData) {
+                principalNamesData.forEach(([principalId, nameData]) => {
+                    const [name, verified] = nameData;
+                    principalNamesMap.set(principalId.toString(), name);
+                    // Note: We could extend verifiedMap to include principal verification if needed
+                });
+            }
+            setPrincipalNames(principalNamesMap);
+
+            // Process principal nicknames
+            const principalNicknamesMap = new Map();
+            if (principalNicknamesData) {
+                principalNicknamesData.forEach(([principalId, nickname]) => {
+                    principalNicknamesMap.set(principalId.toString(), nickname);
+                });
+            }
+            setPrincipalNicknames(principalNicknamesMap);
+
         } catch (err) {
-            console.error('Error fetching neuron names:', err);
+            console.error('Error fetching names:', err);
         } finally {
             setLoading(false);
         }
@@ -69,14 +94,25 @@ export function NamingProvider({ children }) {
         return { name, nickname, isVerified };
     };
 
+    const getPrincipalDisplayName = (principalId) => {
+        if (!principalId) return null;
+        const name = principalNames.get(principalId.toString());
+        const nickname = principalNicknames.get(principalId.toString());
+        
+        return { name, nickname };
+    };
+
     return (
         <NamingContext.Provider value={{
             neuronNames,
             neuronNicknames,
+            principalNames,
+            principalNicknames,
             verifiedNames,
             loading,
             fetchAllNames,
-            getNeuronDisplayName
+            getNeuronDisplayName,
+            getPrincipalDisplayName
         }}>
             {children}
         </NamingContext.Provider>
