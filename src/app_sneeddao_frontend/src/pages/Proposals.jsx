@@ -19,6 +19,7 @@ function Proposals() {
     const [proposals, setProposals] = useState([]);
     const [filteredProposals, setFilteredProposals] = useState([]);
     const [proposerFilter, setProposerFilter] = useState('');
+    const [topicFilter, setTopicFilter] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [loadingSnses, setLoadingSnses] = useState(true);
@@ -34,6 +35,37 @@ function Proposals() {
 
     // Add state to track expanded summaries
     const [expandedSummaries, setExpandedSummaries] = useState(new Set());
+
+    // Define available topic options based on SNS governance interface
+    const topicOptions = [
+        { value: '', label: 'All Topics' },
+        { value: 'Motion', label: 'Motion' },
+        { value: 'ManageNervousSystemParameters', label: 'Manage Nervous System Parameters' },
+        { value: 'UpgradeSnsToNextVersion', label: 'Upgrade SNS to Next Version' },
+        { value: 'ExecuteGenericNervousSystemFunction', label: 'Execute Generic Nervous System Function' },
+        { value: 'ManageSnsMetadata', label: 'Manage SNS Metadata' },
+        { value: 'TransferSnsTreasuryFunds', label: 'Transfer SNS Treasury Funds' },
+        { value: 'RegisterDappCanisters', label: 'Register Dapp Canisters' },
+        { value: 'DeregisterDappCanisters', label: 'Deregister Dapp Canisters' },
+        { value: 'UpgradeSnsControlledCanister', label: 'Upgrade SNS Controlled Canister' },
+        { value: 'ManageDappCanisterSettings', label: 'Manage Dapp Canister Settings' },
+        { value: 'MintSnsTokens', label: 'Mint SNS Tokens' },
+        { value: 'ManageLedgerParameters', label: 'Manage Ledger Parameters' },
+        { value: 'AddGenericNervousSystemFunction', label: 'Add Generic Nervous System Function' },
+        { value: 'RemoveGenericNervousSystemFunction', label: 'Remove Generic Nervous System Function' }
+    ];
+
+    // Helper function to get topic from proposal
+    const getProposalTopic = (proposal) => {
+        if (!proposal.topic?.[0]) return 'Unknown';
+        return Object.keys(proposal.topic[0])[0] || 'Unknown';
+    };
+
+    // Helper function to get action type from proposal
+    const getProposalActionType = (proposal) => {
+        if (!proposal.proposal?.[0]?.action?.[0]) return 'Unknown';
+        return Object.keys(proposal.proposal[0].action[0])[0] || 'Unknown';
+    };
 
     // Listen for URL parameter changes and sync with global state
     useEffect(() => {
@@ -56,22 +88,23 @@ function Proposals() {
         setFilteredProposals([]);
     }, [selectedSnsRoot]);
 
-    // Filter proposals based on proposer filter
+    // Filter proposals based on proposer and topic filters
     useEffect(() => {
+        if (!proposals.length) {
+            setFilteredProposals([]);
+            return;
+        }
+
         let filtered = proposals;
 
         // Apply proposer filter
         if (proposerFilter.trim()) {
             const filterLower = proposerFilter.toLowerCase();
             filtered = filtered.filter(proposal => {
-                // Get proposer neuron ID
-                const proposerNeuronId = proposal.proposer?.[0]?.id;
-                if (!proposerNeuronId) return false;
-
-                const neuronIdHex = uint8ArrayToHex(proposerNeuronId);
+                const neuronIdHex = uint8ArrayToHex(proposal.proposer?.[0]?.id);
                 if (!neuronIdHex) return false;
 
-                // Check neuron ID with wildcard matching
+                // Check if neuron ID contains the filter (with wildcard matching)
                 if (neuronIdHex.toLowerCase().includes(filterLower)) {
                     return true;
                 }
@@ -86,8 +119,16 @@ function Proposals() {
             });
         }
 
+        // Apply topic filter
+        if (topicFilter.trim()) {
+            filtered = filtered.filter(proposal => {
+                const actionType = getProposalActionType(proposal);
+                return actionType === topicFilter;
+            });
+        }
+
         setFilteredProposals(filtered);
-    }, [proposals, proposerFilter, selectedSnsRoot, neuronNames, neuronNicknames]);
+    }, [proposals, proposerFilter, topicFilter, selectedSnsRoot, neuronNames, neuronNicknames]);
 
     // Fetch SNS data on component mount
     useEffect(() => {
@@ -174,15 +215,17 @@ function Proposals() {
         setProposals([]);
         setFilteredProposals([]);
         setProposerFilter('');
+        setTopicFilter('');
     };
 
     const handleItemsPerPageChange = (e) => {
-        setItemsPerPage(Number(e.target.value));
+        setItemsPerPage(parseInt(e.target.value));
         setCurrentPage(1);
         setLastProposalId(null);
         setHasMoreProposals(true);
         setProposals([]);
         setFilteredProposals([]);
+        setTopicFilter('');
     };
 
     const loadMore = () => {
@@ -239,9 +282,9 @@ function Proposals() {
                     <div style={{ 
                         display: 'flex', 
                         alignItems: 'center', 
-                        gap: '10px',
+                        gap: '15px',
                         flex: 1,
-                        maxWidth: '400px',
+                        maxWidth: '600px',
                         marginLeft: '20px'
                     }}>
                         <input
@@ -256,9 +299,27 @@ function Proposals() {
                                 borderRadius: '4px',
                                 padding: '8px 12px',
                                 flex: 1,
-                                minWidth: '250px'
+                                minWidth: '200px'
                             }}
                         />
+                        <select
+                            value={topicFilter}
+                            onChange={(e) => setTopicFilter(e.target.value)}
+                            style={{
+                                backgroundColor: '#3a3a3a',
+                                color: '#ffffff',
+                                border: '1px solid #4a4a4a',
+                                borderRadius: '4px',
+                                padding: '8px 12px',
+                                minWidth: '180px'
+                            }}
+                        >
+                            {topicOptions.map(option => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </select>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <label style={{ color: '#ffffff' }}>Items per page:</label>
@@ -283,7 +344,7 @@ function Proposals() {
 
                 {error && <div style={{ color: '#e74c3c', marginBottom: '20px' }}>{error}</div>}
 
-                {proposerFilter.trim() && (
+                {(proposerFilter.trim() || topicFilter.trim()) && (
                     <div style={{ 
                         color: '#3498db', 
                         marginBottom: '15px', 
@@ -292,9 +353,18 @@ function Proposals() {
                         padding: '10px',
                         borderRadius: '4px'
                     }}>
-                        Showing {filteredProposals.length} of {proposals.length} proposals matching proposer filter: "{proposerFilter}"
+                        Showing {filteredProposals.length} of {proposals.length} proposals
+                        {proposerFilter.trim() && (
+                            <span> matching proposer: "{proposerFilter}"</span>
+                        )}
+                        {topicFilter.trim() && (
+                            <span> with topic: "{topicOptions.find(opt => opt.value === topicFilter)?.label || topicFilter}"</span>
+                        )}
                         <button 
-                            onClick={() => setProposerFilter('')}
+                            onClick={() => {
+                                setProposerFilter('');
+                                setTopicFilter('');
+                            }}
                             style={{
                                 marginLeft: '10px',
                                 backgroundColor: 'transparent',
@@ -306,7 +376,7 @@ function Proposals() {
                                 fontSize: '12px'
                             }}
                         >
-                            Clear
+                            Clear All
                         </button>
                     </div>
                 )}
@@ -346,6 +416,13 @@ function Proposals() {
                                         <h4 style={{ color: '#ffffff', margin: '0 0 5px 0' }}>
                                             {proposal.proposal[0]?.title || 'No title'}
                                         </h4>
+                                        <div style={{ color: '#888', fontSize: '14px', marginBottom: '5px' }}>
+                                            Topic: {(() => {
+                                                const actionType = getProposalActionType(proposal);
+                                                const topicOption = topicOptions.find(opt => opt.value === actionType);
+                                                return topicOption ? topicOption.label : actionType;
+                                            })()}
+                                        </div>
                                         <div style={{ color: '#888', fontSize: '14px' }}>
                                             Proposed by: {proposal.proposer?.[0]?.id ? formatNeuronIdLink(proposal.proposer[0].id, selectedSnsRoot) : 'Unknown'}
                                         </div>
