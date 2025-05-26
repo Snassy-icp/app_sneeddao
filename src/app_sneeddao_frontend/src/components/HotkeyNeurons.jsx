@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from '../AuthContext';
+import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { getSnsById } from '../utils/SnsUtils';
+import { useSns } from '../contexts/SnsContext';
 
 const HotkeyNeurons = ({ 
     fetchNeuronsFromSns, 
@@ -8,9 +11,13 @@ const HotkeyNeurons = ({
     showExpandButton = true,
     defaultExpanded = false,
     title = "Your Hotkey Neurons",
-    infoTooltip = "For each NNS account (Internet Identity) containing SNS neurons, you only need to configure one neuron as a hotkey per SNS. All other neurons of the same SNS in the same account will be automatically accessible. If you have multiple NNS accounts with Sneed neurons, you'll need to set up one hotkey neuron per account."
+    infoTooltip = "For each NNS account (Internet Identity) containing SNS neurons, you only need to configure one neuron as a hotkey per SNS. All other neurons of the same SNS in the same account will be automatically accessible. If you have multiple NNS accounts with Sneed neurons, you'll need to set up one hotkey neuron per account.",
+    proposalData = null,
+    currentProposalId = null,
+    onVoteSuccess = null
 }) => {
     const { isAuthenticated, identity } = useAuth();
+    const { selectedSnsRoot } = useSns();
     const [hotkeyNeurons, setHotkeyNeurons] = useState({
         neurons_by_owner: [],
         total_voting_power: 0,
@@ -18,38 +25,148 @@ const HotkeyNeurons = ({
     });
     const [loadingHotkeyNeurons, setLoadingHotkeyNeurons] = useState(false);
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+    const [votingStates, setVotingStates] = useState({});
 
     // Helper functions
     const uint8ArrayToHex = (uint8Array) => {
-        return Array.from(uint8Array)
-            .map(byte => byte.toString(16).padStart(2, '0'))
-            .join('');
+        if (!uint8Array) return '';
+        return Array.from(uint8Array, byte => byte.toString(16).padStart(2, '0')).join('');
     };
 
     const getDissolveState = (neuron) => {
-        if (neuron.dissolve_state && neuron.dissolve_state[0]) {
-            const state = neuron.dissolve_state[0];
-            if ('DissolveDelaySeconds' in state) {
-                const delaySeconds = Number(state.DissolveDelaySeconds);
-                const delayDays = Math.floor(delaySeconds / (24 * 60 * 60));
-                return `${delayDays} days`;
-            } else if ('WhenDissolvedTimestampSeconds' in state) {
-                const dissolveTime = Number(state.WhenDissolvedTimestampSeconds) * 1000;
-                const now = Date.now();
-                if (dissolveTime <= now) {
-                    return 'Dissolved';
-                } else {
-                    const remainingMs = dissolveTime - now;
-                    const remainingDays = Math.floor(remainingMs / (24 * 60 * 60 * 1000));
-                    return `Dissolving (${remainingDays} days)`;
-                }
-            }
+        if (!neuron.dissolve_state || !neuron.dissolve_state[0]) {
+            return 'Unknown';
+        }
+        
+        const dissolveState = neuron.dissolve_state[0];
+        if (dissolveState.DissolveDelaySeconds !== undefined) {
+            const delaySeconds = Number(dissolveState.DissolveDelaySeconds);
+            const days = Math.floor(delaySeconds / (24 * 60 * 60));
+            return `${days} days`;
+        } else if (dissolveState.WhenDissolvedTimestampSeconds !== undefined) {
+            const timestamp = Number(dissolveState.WhenDissolvedTimestampSeconds);
+            const date = new Date(timestamp * 1000);
+            return `Dissolved ${date.toLocaleDateString()}`;
         }
         return 'Unknown';
     };
 
     const formatE8s = (e8s) => {
         return (Number(e8s) / 100_000_000).toFixed(2);
+    };
+
+    // Check if proposal is open for voting
+    const isProposalOpenForVoting = () => {
+        if (!proposalData) return false;
+        try {
+            const now = BigInt(Math.floor(Date.now() / 1000));
+            const executed = BigInt(proposalData.executed_timestamp_seconds || 0);
+            const failed = BigInt(proposalData.failed_timestamp_seconds || 0);
+            const decided = BigInt(proposalData.decided_timestamp_seconds || 0);
+            const created = BigInt(proposalData.proposal_creation_timestamp_seconds || 0);
+            const votingPeriod = BigInt(proposalData.initial_voting_period_seconds || 0);
+            
+            return executed === 0n && failed === 0n && decided === 0n && (created + votingPeriod > now);
+        } catch (err) {
+            console.error('Error checking proposal status:', err);
+            return false;
+        }
+    };
+
+    // Check if a neuron has already voted on the proposal
+    const getNeuronVote = (neuronId) => {
+        if (!proposalData?.ballots || !neuronId) return null;
+        const neuronIdHex = uint8ArrayToHex(neuronId);
+        const ballot = proposalData.ballots.find(([id, _]) => id === neuronIdHex);
+        return ballot ? ballot[1] : null;
+    };
+
+    // Format vote for display
+    const formatVote = (voteNumber) => {
+        switch (voteNumber) {
+            case 1: return { text: 'Adopt', color: '#2ecc71' };
+            case 2: return { text: 'Reject', color: '#e74c3c' };
+            default: return { text: 'Not Voted', color: '#888' };
+        }
+    };
+
+    // Vote with a specific neuron
+    const voteWithNeuron = async (neuronId, vote) => {
+        if (!identity || !selectedSnsRoot || !currentProposalId) return;
+        
+        const neuronIdHex = uint8ArrayToHex(neuronId);
+        setVotingStates(prev => ({ ...prev, [neuronIdHex]: 'voting' }));
+        
+        try {
+            const selectedSns = getSnsById(selectedSnsRoot);
+            if (!selectedSns) throw new Error('SNS not found');
+            
+            const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                agentOptions: { identity }
+            });
+            
+            const manageNeuronRequest = {
+                subaccount: neuronId,
+                command: [{
+                    RegisterVote: {
+                        vote: vote, // 1 for Adopt, 2 for Reject
+                        proposal: [{ id: BigInt(currentProposalId) }]
+                    }
+                }]
+            };
+            
+            const response = await snsGovActor.manage_neuron(manageNeuronRequest);
+            
+            if (response?.command?.[0]?.RegisterVote) {
+                setVotingStates(prev => ({ ...prev, [neuronIdHex]: 'success' }));
+                if (onVoteSuccess) onVoteSuccess();
+            } else if (response?.command?.[0]?.Error) {
+                throw new Error(response.command[0].Error.error_message);
+            } else {
+                throw new Error('Unknown voting error');
+            }
+        } catch (error) {
+            console.error('Error voting:', error);
+            setVotingStates(prev => ({ ...prev, [neuronIdHex]: 'error' }));
+            alert(`Voting failed: ${error.message}`);
+        }
+    };
+
+    // Vote with all neurons
+    const voteWithAllNeurons = async (vote) => {
+        if (!hotkeyNeurons.neurons_by_owner.length) return;
+        
+        const allNeurons = hotkeyNeurons.neurons_by_owner.flatMap(([_, neurons]) => neurons);
+        const eligibleNeurons = allNeurons.filter(neuron => {
+            const neuronId = neuron.id?.[0]?.id;
+            if (!neuronId) return false;
+            
+            // Check if neuron has hotkey access
+            const hasHotkeyAccess = neuron.permissions.some(p => 
+                p.principal?.toString() === identity.getPrincipal().toString() &&
+                p.permission_type.includes(4)
+            );
+            
+            // Check if neuron hasn't voted yet
+            const existingVote = getNeuronVote(neuronId);
+            
+            return hasHotkeyAccess && !existingVote;
+        });
+        
+        if (eligibleNeurons.length === 0) {
+            alert('No eligible neurons to vote with');
+            return;
+        }
+        
+        const voteText = vote === 1 ? 'Adopt' : 'Reject';
+        if (!confirm(`Vote ${voteText} with ${eligibleNeurons.length} neuron(s)?`)) return;
+        
+        for (const neuron of eligibleNeurons) {
+            const neuronId = neuron.id[0].id;
+            await voteWithNeuron(neuronId, vote);
+            // Small delay between votes to avoid overwhelming the network
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
     };
 
     // Fetch hotkey neurons data
@@ -165,6 +282,40 @@ const HotkeyNeurons = ({
             borderRadius: '3px',
             fontFamily: 'monospace',
             color: '#3498db'
+        },
+        voteButton: {
+            padding: '6px 12px',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            minWidth: '60px'
+        },
+        adoptButton: {
+            backgroundColor: '#2ecc71',
+            color: 'white'
+        },
+        rejectButton: {
+            backgroundColor: '#e74c3c',
+            color: 'white'
+        },
+        voteAllContainer: {
+            display: 'flex',
+            gap: '10px',
+            marginBottom: '15px',
+            padding: '15px',
+            backgroundColor: '#3a3a3a',
+            borderRadius: '6px',
+            alignItems: 'center'
+        },
+        voteAllButton: {
+            padding: '8px 16px',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 'bold'
         }
     };
 
@@ -262,6 +413,25 @@ const HotkeyNeurons = ({
                             </div>
                         )}
                         
+                        {/* Vote All buttons for open proposals */}
+                        {proposalData && isProposalOpenForVoting() && (
+                            <div style={styles.voteAllContainer}>
+                                <span style={{ color: '#ffffff', fontWeight: 'bold' }}>Vote with all eligible neurons:</span>
+                                <button 
+                                    style={{...styles.voteAllButton, ...styles.adoptButton}}
+                                    onClick={() => voteWithAllNeurons(1)}
+                                >
+                                    Adopt All
+                                </button>
+                                <button 
+                                    style={{...styles.voteAllButton, ...styles.rejectButton}}
+                                    onClick={() => voteWithAllNeurons(2)}
+                                >
+                                    Reject All
+                                </button>
+                            </div>
+                        )}
+                        
                         <div style={{marginTop: showVotingStats ? '20px' : '0'}}>
                             {hotkeyNeurons.neurons_by_owner.map(([owner, neurons], index) => (
                                 <div key={owner.toText()} style={{
@@ -337,6 +507,143 @@ const HotkeyNeurons = ({
                                                             }}>
                                                                 <span style={{ color: '#2ecc71' }}>🔑 Hotkey Access</span>
                                                             </div>
+                                                            
+                                                            {/* Voting section for proposals */}
+                                                            {proposalData && currentProposalId && (
+                                                                <div style={{ marginTop: '10px' }}>
+                                                                    {(() => {
+                                                                        const neuronId = neuron.id?.[0]?.id;
+                                                                        if (!neuronId) return null;
+                                                                        
+                                                                        const neuronIdHex = uint8ArrayToHex(neuronId);
+                                                                        const existingVote = getNeuronVote(neuronId);
+                                                                        const votingState = votingStates[neuronIdHex];
+                                                                        const isOpen = isProposalOpenForVoting();
+                                                                        
+                                                                        if (existingVote) {
+                                                                            const voteInfo = formatVote(existingVote);
+                                                                            return (
+                                                                                <div style={{
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '8px',
+                                                                                    padding: '8px',
+                                                                                    backgroundColor: '#1a1a1a',
+                                                                                    borderRadius: '4px'
+                                                                                }}>
+                                                                                    <span style={{ color: '#888' }}>Vote:</span>
+                                                                                    <span style={{ 
+                                                                                        color: voteInfo.color,
+                                                                                        fontWeight: 'bold'
+                                                                                    }}>
+                                                                                        {voteInfo.text}
+                                                                                    </span>
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        
+                                                                        if (!isOpen) {
+                                                                            return (
+                                                                                <div style={{
+                                                                                    padding: '8px',
+                                                                                    backgroundColor: '#1a1a1a',
+                                                                                    borderRadius: '4px',
+                                                                                    color: '#888'
+                                                                                }}>
+                                                                                    Proposal not open for voting
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        
+                                                                        if (votingState === 'voting') {
+                                                                            return (
+                                                                                <div style={{
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '8px',
+                                                                                    padding: '8px',
+                                                                                    backgroundColor: '#1a1a1a',
+                                                                                    borderRadius: '4px'
+                                                                                }}>
+                                                                                    <div style={{
+                                                                                        width: '16px',
+                                                                                        height: '16px',
+                                                                                        border: '2px solid #3498db',
+                                                                                        borderTop: '2px solid transparent',
+                                                                                        borderRadius: '50%',
+                                                                                        animation: 'spin 1s linear infinite'
+                                                                                    }} />
+                                                                                    <span style={{ color: '#3498db' }}>Voting...</span>
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        
+                                                                        if (votingState === 'success') {
+                                                                            return (
+                                                                                <div style={{
+                                                                                    padding: '8px',
+                                                                                    backgroundColor: '#1a1a1a',
+                                                                                    borderRadius: '4px',
+                                                                                    color: '#2ecc71'
+                                                                                }}>
+                                                                                    ✓ Vote submitted successfully
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        
+                                                                        if (votingState === 'error') {
+                                                                            return (
+                                                                                <div style={{
+                                                                                    display: 'flex',
+                                                                                    gap: '8px',
+                                                                                    padding: '8px',
+                                                                                    backgroundColor: '#1a1a1a',
+                                                                                    borderRadius: '4px'
+                                                                                }}>
+                                                                                    <span style={{ color: '#e74c3c' }}>✗ Voting failed</span>
+                                                                                    <button 
+                                                                                        style={{...styles.voteButton, ...styles.adoptButton}}
+                                                                                        onClick={() => voteWithNeuron(neuronId, 1)}
+                                                                                    >
+                                                                                        Adopt
+                                                                                    </button>
+                                                                                    <button 
+                                                                                        style={{...styles.voteButton, ...styles.rejectButton}}
+                                                                                        onClick={() => voteWithNeuron(neuronId, 2)}
+                                                                                    >
+                                                                                        Reject
+                                                                                    </button>
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        
+                                                                        // Default: show voting buttons
+                                                                        return (
+                                                                            <div style={{
+                                                                                display: 'flex',
+                                                                                gap: '8px',
+                                                                                padding: '8px',
+                                                                                backgroundColor: '#1a1a1a',
+                                                                                borderRadius: '4px'
+                                                                            }}>
+                                                                                <span style={{ color: '#888', alignSelf: 'center' }}>Vote:</span>
+                                                                                <button 
+                                                                                    style={{...styles.voteButton, ...styles.adoptButton}}
+                                                                                    onClick={() => voteWithNeuron(neuronId, 1)}
+                                                                                >
+                                                                                    Adopt
+                                                                                </button>
+                                                                                <button 
+                                                                                    style={{...styles.voteButton, ...styles.rejectButton}}
+                                                                                    onClick={() => voteWithNeuron(neuronId, 2)}
+                                                                                >
+                                                                                    Reject
+                                                                                </button>
+                                                                            </div>
+                                                                        );
+                                                                    })()}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
                                                 </div>

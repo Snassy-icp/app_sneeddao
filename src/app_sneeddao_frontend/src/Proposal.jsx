@@ -883,8 +883,14 @@ function Proposal() {
                             showVotingStats={false}
                             showExpandButton={true}
                             defaultExpanded={false}
-                            title="Your Neurons for Voting"
-                            infoTooltip="These are your neurons that can be used to vote on this proposal. You need to have hotkey access to vote through this interface."
+                            title="Vote with Your Neurons"
+                            infoTooltip="These are your neurons that can be used to vote on this proposal. You need hotkey access to vote."
+                            proposalData={proposalData}
+                            currentProposalId={currentProposalId}
+                            onVoteSuccess={() => {
+                                // Refresh proposal data after successful vote
+                                fetchProposalData();
+                            }}
                         />
                     )}
                 </section>
