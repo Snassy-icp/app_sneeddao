@@ -135,20 +135,49 @@ function Partners() {
                                     }}>
                                         <h2 style={{
                                             color: '#ffffff',
-                                            margin: '0 0 5px 0',
+                                            margin: '0 0 8px 0',
                                             fontSize: '24px',
                                             fontWeight: 'bold',
                                             textAlign: 'left'
                                         }}>
                                             {partner.name}
                                         </h2>
-                                        <div style={{
-                                            color: '#888',
-                                            fontSize: '14px',
-                                            textAlign: 'left'
-                                        }}>
-                                            Partner since {formatDate(partner.created_at)}
-                                        </div>
+                                        {/* Links */}
+                                        {partner.links && partner.links.length > 0 && (
+                                            <div style={{
+                                                display: 'flex',
+                                                flexWrap: 'wrap',
+                                                gap: '8px'
+                                            }}>
+                                                {partner.links.map((link, index) => (
+                                                    <a
+                                                        key={index}
+                                                        href={link.url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{
+                                                            backgroundColor: '#3498db',
+                                                            color: '#ffffff',
+                                                            padding: '4px 12px',
+                                                            borderRadius: '4px',
+                                                            textDecoration: 'none',
+                                                            fontSize: '12px',
+                                                            fontWeight: '500',
+                                                            transition: 'background-color 0.2s ease',
+                                                            display: 'inline-block'
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            e.target.style.backgroundColor = '#2980b9';
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            e.target.style.backgroundColor = '#3498db';
+                                                        }}
+                                                    >
+                                                        {link.title}
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -161,53 +190,6 @@ function Partners() {
                                 }}>
                                     {partner.description}
                                 </div>
-
-                                {/* Links */}
-                                {partner.links && partner.links.length > 0 && (
-                                    <div>
-                                        <h3 style={{
-                                            color: '#ffffff',
-                                            fontSize: '18px',
-                                            marginBottom: '15px',
-                                            fontWeight: '500'
-                                        }}>
-                                            Links
-                                        </h3>
-                                        <div style={{
-                                            display: 'flex',
-                                            flexWrap: 'wrap',
-                                            gap: '10px'
-                                        }}>
-                                            {partner.links.map((link, index) => (
-                                                <a
-                                                    key={index}
-                                                    href={link.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    style={{
-                                                        backgroundColor: '#3498db',
-                                                        color: '#ffffff',
-                                                        padding: '8px 16px',
-                                                        borderRadius: '6px',
-                                                        textDecoration: 'none',
-                                                        fontSize: '14px',
-                                                        fontWeight: '500',
-                                                        transition: 'background-color 0.2s ease',
-                                                        display: 'inline-block'
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                        e.target.style.backgroundColor = '#2980b9';
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        e.target.style.backgroundColor = '#3498db';
-                                                    }}
-                                                >
-                                                    {link.title}
-                                                </a>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         ))}
                     </div>
