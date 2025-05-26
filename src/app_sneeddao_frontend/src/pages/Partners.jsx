@@ -119,7 +119,7 @@ function Partners() {
                                         style={{
                                             width: '60px',
                                             height: '60px',
-                                            borderRadius: '8px',
+                                            borderRadius: '50%',
                                             objectFit: 'cover',
                                             border: '2px solid #3a3a3a',
                                             flexShrink: 0

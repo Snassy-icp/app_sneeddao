@@ -936,19 +936,6 @@ function DaoInfo() {
                                             >
                                                 {partner.name.charAt(0).toUpperCase()}
                                             </div>
-                                            <div style={{
-                                                fontSize: '12px',
-                                                color: '#ffffff',
-                                                textAlign: 'center',
-                                                fontWeight: '500',
-                                                lineHeight: '1.2',
-                                                maxWidth: '80px',
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap'
-                                            }}>
-                                                {partner.name}
-                                            </div>
                                         </div>
                                     );
                                 })}
