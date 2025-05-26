@@ -23,7 +23,7 @@ function Hub() {
     const [selectedSnsDetails, setSelectedSnsDetails] = useState(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-    const [sortBy, setSortBy] = useState('age'); // 'age' or 'name'
+    const [sortBy, setSortBy] = useState('age-oldest');
 
     // Handle window resize for responsive design
     useEffect(() => {
@@ -211,11 +211,61 @@ function Hub() {
     const getSortedSnsList = () => {
         const sortedList = [...snsList];
         
-        if (sortBy === 'name') {
-            return sortedList.sort((a, b) => a.name.localeCompare(b.name));
+        // Helper function to check if a name starts with alphanumeric character
+        const startsWithAlphanumeric = (name) => {
+            return /^[a-zA-Z0-9]/.test(name);
+        };
+        
+        if (sortBy === 'name-asc') {
+            return sortedList.sort((a, b) => {
+                const aStartsAlphanumeric = startsWithAlphanumeric(a.name);
+                const bStartsAlphanumeric = startsWithAlphanumeric(b.name);
+                
+                // If one starts with alphanumeric and other doesn't, prioritize alphanumeric
+                if (aStartsAlphanumeric && !bStartsAlphanumeric) return -1;
+                if (!aStartsAlphanumeric && bStartsAlphanumeric) return 1;
+                
+                // Both are same type, sort alphabetically
+                return a.name.localeCompare(b.name);
+            });
+        } else if (sortBy === 'name-desc') {
+            return sortedList.sort((a, b) => {
+                const aStartsAlphanumeric = startsWithAlphanumeric(a.name);
+                const bStartsAlphanumeric = startsWithAlphanumeric(b.name);
+                
+                // If one starts with alphanumeric and other doesn't, prioritize alphanumeric
+                if (aStartsAlphanumeric && !bStartsAlphanumeric) return -1;
+                if (!aStartsAlphanumeric && bStartsAlphanumeric) return 1;
+                
+                // Both are same type, sort reverse alphabetically
+                return b.name.localeCompare(a.name);
+            });
+        } else if (sortBy === 'age-newest') {
+            // Sort by age (newest first) but put non-alphanumeric names last
+            return sortedList.sort((a, b) => {
+                const aStartsAlphanumeric = startsWithAlphanumeric(a.name);
+                const bStartsAlphanumeric = startsWithAlphanumeric(b.name);
+                
+                // If one starts with alphanumeric and other doesn't, prioritize alphanumeric
+                if (aStartsAlphanumeric && !bStartsAlphanumeric) return -1;
+                if (!aStartsAlphanumeric && bStartsAlphanumeric) return 1;
+                
+                // Both are same type, sort by age (newest first - reverse order)
+                return snsList.indexOf(b) - snsList.indexOf(a);
+            });
         } else {
-            // Sort by age (creation time) - newest first (default order from API)
-            return sortedList;
+            // age-oldest - sort by age (oldest first) but put non-alphanumeric names last
+            return sortedList.sort((a, b) => {
+                const aStartsAlphanumeric = startsWithAlphanumeric(a.name);
+                const bStartsAlphanumeric = startsWithAlphanumeric(b.name);
+                
+                // If one starts with alphanumeric and other doesn't, prioritize alphanumeric
+                if (aStartsAlphanumeric && !bStartsAlphanumeric) return -1;
+                if (!aStartsAlphanumeric && bStartsAlphanumeric) return 1;
+                
+                // Both are same type, sort by age (oldest first - original order)
+                return snsList.indexOf(a) - snsList.indexOf(b);
+            });
         }
     };
 
@@ -290,8 +340,10 @@ function Hub() {
                                     fontSize: '14px'
                                 }}
                             >
-                                <option value="age">Age (Newest First)</option>
-                                <option value="name">Name (A-Z)</option>
+                                <option value="age-newest">Age (Newest First)</option>
+                                <option value="age-oldest">Age (Oldest First)</option>
+                                <option value="name-asc">Name (A-Z)</option>
+                                <option value="name-desc">Name (Z-A)</option>
                             </select>
                         </div>
                     </div>
@@ -302,6 +354,7 @@ function Hub() {
                             const isExpanded = expandedSns.has(sns.rootCanisterId);
                             const logo = snsLogos.get(sns.canisters.governance);
                             const isLoadingLogo = loadingLogos.has(sns.canisters.governance);
+                            const startsWithAlphanumeric = /^[a-zA-Z0-9]/.test(sns.name);
                             
                             return (
                                 <div
@@ -310,7 +363,8 @@ function Hub() {
                                         backgroundColor: isSelected ? '#3a3a3a' : '#2a2a2a',
                                         border: isSelected ? '2px solid #3498db' : '1px solid #4a4a4a',
                                         borderRadius: '8px',
-                                        overflow: 'hidden'
+                                        overflow: 'hidden',
+                                        opacity: startsWithAlphanumeric ? 1 : 0.7
                                     }}
                                 >
                                     {/* SNS Header */}
@@ -361,7 +415,7 @@ function Hub() {
                                             )}
                                             <div>
                                                 <div style={{
-                                                    color: '#ffffff',
+                                                    color: startsWithAlphanumeric ? '#ffffff' : '#888',
                                                     fontSize: '16px',
                                                     fontWeight: 'bold'
                                                 }}>
