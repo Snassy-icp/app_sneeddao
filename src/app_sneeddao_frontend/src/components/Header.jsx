@@ -15,7 +15,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const [activeSection, setActiveSection] = useState(() => {
         const path = location.pathname;
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
-        if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction'].includes(path)) return 'Hub';
+        if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal'].includes(path)) return 'Hub';
         if (['/wallet'].includes(path)) return 'Wallet';
         if (['/me', '/rewards'].includes(path)) return 'Me';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
@@ -39,7 +39,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         const path = location.pathname;
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
-        } else if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction'].includes(path)) {
+        } else if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal'].includes(path)) {
             setActiveSection('Hub');
         } else if (['/wallet'].includes(path)) {
             setActiveSection('Wallet');
@@ -74,7 +74,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Hub', path: '/hub' },
                 { name: 'Proposals', path: '/proposals' },
                 { name: 'Neurons', path: '/neurons' },
-                { name: 'Transactions', path: '/transactions' }
+                { name: 'Transactions', path: '/transactions' },
+                { name: 'Holders', path: '/principal' }
             ]
         },
         'Wallet': {
