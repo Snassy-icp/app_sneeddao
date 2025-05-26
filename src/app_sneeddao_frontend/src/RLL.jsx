@@ -1220,10 +1220,10 @@ function RLL() {
             <Header />
             <main className="rll-container">
                 <h1 style={{ color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    RLL Distribution Server
+                    Rewards Distribution Server
                     <span 
                         style={styles.infoIcon} 
-                        title="The RLL Distribution Server manages token rewards for Sneed DAO participants based on their voting activity and neuron holdings"
+                        title="The Rewards Distribution Server manages token rewards for Sneed DAO participants based on their voting activity and neuron holdings"
                     >
                         i
                     </span>
@@ -1234,7 +1234,7 @@ function RLL() {
                         Event Statistics
                         <span 
                             style={styles.infoIcon} 
-                            title="Overview of all RLL events including distributions and claims per token"
+                            title="Overview of all Reward events including distributions and claims per token"
                         >
                             i
                         </span>
@@ -1334,7 +1334,7 @@ function RLL() {
                                                 borderRadius: '4px',
                                                 fontWeight: 'normal'
                                             }}
-                                            title="Warning: 24h data appears identical to all-time data. This indicates a backend issue with the RLL canister's 24h statistics calculation."
+                                            title="Warning: 24h data appears identical to all-time data. This indicates a backend issue with the Rewards Distribution canister's 24h statistics calculation."
                                         >
                                             ⚠️ Data Issue
                                         </span>
@@ -1438,10 +1438,10 @@ function RLL() {
                 {/* Balance Reconciliation */}
                 <section style={styles.section}>
                     <h2 style={styles.heading}>
-                        RLL Server Balances
+                        Rewards Distribution Server Balances
                         <span 
                             style={styles.infoIcon} 
-                            title="Overview of token balances held by the RLL server for distribution, including total distributed amounts and currently claimable rewards"
+                            title="Overview of token balances held by the Rewards Distribution Server for distribution, including total distributed amounts and currently claimable rewards"
                         >
                             i
                         </span>
@@ -1547,7 +1547,7 @@ function RLL() {
                         Distribution Cycle Status
                         <span 
                             style={styles.infoIcon} 
-                            title="Current status of the RLL distribution cycle, including timing information and cycle frequency"
+                            title="Current status of the Rewards distribution cycle, including timing information and cycle frequency"
                         >
                             i
                         </span>
@@ -1636,7 +1636,7 @@ function RLL() {
                                 Admin Controls
                                 <span 
                                     style={styles.infoIcon} 
-                                    title="Administrative functions for managing the RLL system, including cycle control and data import operations"
+                                    title="Administrative functions for managing the Rewards Distribution system, including cycle control and data import operations"
                                 >
                                     i
                                 </span>
