@@ -4,8 +4,9 @@ import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createSnsArchiveActor } from 'external/sns_archive';
 import { createActor as createSnsLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSnsIndexActor } from 'external/sns_index';
-import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useAuth } from '../AuthContext';
+import { useNaming } from '../NamingContext';
 import { Link } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 
@@ -201,6 +202,7 @@ const TransactionType = {
 
 function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, onToggleCollapse }) {
     const { identity } = useAuth();
+    const { principalNames, principalNicknames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
     const [allTransactions, setAllTransactions] = useState([]); // Store all fetched transactions
     const [displayedTransactions, setDisplayedTransactions] = useState([]); // Current page of transactions
@@ -478,25 +480,23 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
     // Add effect to fetch principal display info
     useEffect(() => {
         const fetchPrincipalInfo = async () => {
-            if (!displayedTransactions.length) return;
+            if (!displayedTransactions.length || !principalNames || !principalNicknames) return;
 
             const uniquePrincipals = new Set();
             displayedTransactions.forEach(tx => {
-                // Use our helper functions to get principals
                 const fromPrincipal = getFromPrincipal(tx);
                 const toPrincipal = getToPrincipal(tx);
 
                 if (fromPrincipal) {
                     try {
-                        console.log('Adding from principal to Set:', fromPrincipal);
                         uniquePrincipals.add(fromPrincipal.toString());
                     } catch (error) {
                         console.error('Error converting fromPrincipal to string:', fromPrincipal, error);
                     }
                 }
+
                 if (toPrincipal) {
                     try {
-                        console.log('Adding to principal to Set:', toPrincipal);
                         uniquePrincipals.add(toPrincipal.toString());
                     } catch (error) {
                         console.error('Error converting toPrincipal to string:', toPrincipal, error);
@@ -507,22 +507,22 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
             console.log('Unique principals to fetch:', Array.from(uniquePrincipals));
 
             const displayInfoMap = new Map();
-            await Promise.all(Array.from(uniquePrincipals).map(async principal => {
+            Array.from(uniquePrincipals).forEach(principal => {
                 try {
                     console.log('Fetching display info for principal:', principal);
-                    const displayInfo = await getPrincipalDisplayInfo(identity, Principal.fromText(principal));
+                    const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames);
                     console.log('Got display info for principal:', { principal, displayInfo });
                     displayInfoMap.set(principal, displayInfo);
                 } catch (error) {
                     console.error('Error processing principal:', principal, error);
                 }
-            }));
+            });
 
             setPrincipalDisplayInfo(displayInfoMap);
         };
 
         fetchPrincipalInfo();
-    }, [displayedTransactions, identity]);
+    }, [displayedTransactions, identity, principalNames, principalNicknames]);
 
     const formatAmount = (amount, decimals = 8) => {
         const value = Number(amount) / Math.pow(10, decimals);

@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import Header from '../components/Header';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createSnsArchiveActor } from 'external/sns_archive';
-import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
-import { PrincipalDisplay, getPrincipalDisplayInfo } from '../utils/PrincipalUtils';
+import { createActor as createSnsLedgerActor } from 'external/icrc1_ledger';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
+import { useNaming } from '../NamingContext';
+import Header from '../components/Header';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
 import { formatAmount } from '../utils/StringUtils';
 import { getTokenLogo } from '../utils/TokenUtils';
-import { getSnsById } from '../utils/SnsUtils';
+import { Principal } from '@dfinity/principal';
 
 const styles = {
     container: {
@@ -147,6 +149,7 @@ const styles = {
 function Transaction() {
     const { identity } = useAuth();
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
+    const { principalNames, principalNicknames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
     const [currentId, setCurrentId] = useState(searchParams.get('id') || '');
     const [archiveCanisterId, setArchiveCanisterId] = useState(null);
@@ -180,7 +183,7 @@ function Transaction() {
             }
 
             // First try to get the transaction directly from the ledger
-            const ledgerActor = createIcrc1Actor(selectedSns.canisters.ledger, {
+            const ledgerActor = createSnsLedgerActor(selectedSns.canisters.ledger, {
                 agentOptions: { identity }
             });
 
@@ -245,7 +248,7 @@ function Transaction() {
                     throw new Error('Selected SNS not found');
                 }
 
-                const ledgerActor = createIcrc1Actor(selectedSns.canisters.ledger);
+                const ledgerActor = createSnsLedgerActor(selectedSns.canisters.ledger);
                 const [metadata, decimals] = await Promise.all([
                     ledgerActor.icrc1_metadata(),
                     ledgerActor.icrc1_decimals()
@@ -295,8 +298,8 @@ function Transaction() {
 
     // Fetch principal display info when transaction changes
     useEffect(() => {
-        const fetchPrincipalInfo = async () => {
-            if (!transaction) return;
+        const fetchPrincipalInfo = () => {
+            if (!transaction || !principalNames || !principalNicknames) return;
 
             const principals = new Set();
             
@@ -339,16 +342,16 @@ function Transaction() {
             }
 
             const displayInfoMap = new Map();
-            await Promise.all(Array.from(principals).map(async principal => {
-                const displayInfo = await getPrincipalDisplayInfo(identity, principal);
+            Array.from(principals).forEach(principal => {
+                const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames);
                 displayInfoMap.set(principal, displayInfo);
-            }));
+            });
 
             setPrincipalDisplayInfo(displayInfoMap);
         };
 
         fetchPrincipalInfo();
-    }, [transaction, identity]);
+    }, [transaction, principalNames, principalNicknames]);
 
     const handleSearch = () => {
         // Validate input before updating URL
@@ -375,10 +378,6 @@ function Transaction() {
         if (e.key === 'Enter') {
             handleSearch();
         }
-    };
-
-    const formatTimestamp = (timestamp) => {
-        return new Date(Number(timestamp) / 1_000_000).toLocaleString();
     };
 
     const formatSafeAmount = (amount) => {
@@ -414,6 +413,10 @@ function Transaction() {
             console.error('Error formatting amount:', e, 'Amount:', amount);
             return '-';
         }
+    };
+
+    const formatTimestamp = (timestamp) => {
+        return new Date(Number(timestamp) / 1_000_000).toLocaleString();
     };
 
     // Add debug logging to see transaction structure

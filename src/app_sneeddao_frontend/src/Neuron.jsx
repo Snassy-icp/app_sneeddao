@@ -10,7 +10,7 @@ import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './
 import { formatProposalIdLink, uint8ArrayToHex, getNeuronColor, getOwnerPrincipals } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 import { setNeuronNickname } from './utils/BackendUtils';
-import { PrincipalDisplay, getPrincipalDisplayInfo } from './utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 
 // Add keyframes for spin animation after imports
@@ -49,7 +49,7 @@ function Neuron() {
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     
     // Get naming context
-    const { neuronNames, neuronNicknames, verifiedNames, fetchAllNames } = useNaming();
+    const { neuronNames, neuronNicknames, verifiedNames, fetchAllNames, principalNames, principalNicknames } = useNaming();
 
     // Listen for URL parameter changes and sync with global state
     useEffect(() => {
@@ -343,8 +343,8 @@ function Neuron() {
 
     // Add effect to fetch principal display info
     useEffect(() => {
-        const fetchPrincipalInfo = async () => {
-            if (!neuronData?.permissions) return;
+        const fetchPrincipalInfo = () => {
+            if (!neuronData?.permissions || !principalNames || !principalNicknames) return;
 
             const uniquePrincipals = new Set();
             
@@ -357,16 +357,16 @@ function Neuron() {
             });
 
             const displayInfoMap = new Map();
-            await Promise.all(Array.from(uniquePrincipals).map(async principal => {
-                const displayInfo = await getPrincipalDisplayInfo(identity, Principal.fromText(principal));
+            Array.from(uniquePrincipals).forEach(principal => {
+                const displayInfo = getPrincipalDisplayInfoFromContext(Principal.fromText(principal), principalNames, principalNicknames);
                 displayInfoMap.set(principal, displayInfo);
-            }));
+            });
 
             setPrincipalDisplayInfo(displayInfoMap);
         };
 
         fetchPrincipalInfo();
-    }, [identity, neuronData]);
+    }, [neuronData, principalNames, principalNicknames]);
 
     return (
         <div className='page-container'>
