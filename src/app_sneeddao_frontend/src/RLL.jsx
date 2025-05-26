@@ -1104,6 +1104,34 @@ function RLL() {
 
                 const stats = await rllActor.get_event_statistics();
                 console.log('Event statistics:', stats);
+                
+                // Enhanced debugging to compare all_time vs last_24h
+                console.log('=== EVENT STATISTICS DEBUGGING ===');
+                console.log('All Time Claims Total:', stats.all_time.claims.total.toString());
+                console.log('Last 24h Claims Total:', stats.last_24h.claims.total.toString());
+                console.log('All Time Claims Successful:', stats.all_time.claims.successful.toString());
+                console.log('Last 24h Claims Successful:', stats.last_24h.claims.successful.toString());
+                console.log('All Time Claims Failed:', stats.all_time.claims.failed.toString());
+                console.log('Last 24h Claims Failed:', stats.last_24h.claims.failed.toString());
+                console.log('All Time Claims Pending:', stats.all_time.claims.pending.toString());
+                console.log('Last 24h Claims Pending:', stats.last_24h.claims.pending.toString());
+                console.log('All Time Claims Unique Users:', stats.all_time.claims.unique_users.toString());
+                console.log('Last 24h Claims Unique Users:', stats.last_24h.claims.unique_users.toString());
+                
+                // Check if values are identical
+                const allTimeTotal = stats.all_time.claims.total.toString();
+                const last24hTotal = stats.last_24h.claims.total.toString();
+                const allTimeSuccessful = stats.all_time.claims.successful.toString();
+                const last24hSuccessful = stats.last_24h.claims.successful.toString();
+                
+                if (allTimeTotal === last24hTotal && allTimeSuccessful === last24hSuccessful) {
+                    console.warn('⚠️ ISSUE DETECTED: All-time and 24h statistics are identical!');
+                    console.warn('This suggests the backend RLL canister is not calculating 24h statistics correctly.');
+                } else {
+                    console.log('✅ All-time and 24h statistics appear to be different as expected.');
+                }
+                console.log('=== END DEBUGGING ===');
+                
                 setEventStats(stats);
             } catch (error) {
                 console.error('Error fetching event statistics:', error);
@@ -1169,6 +1197,22 @@ function RLL() {
     const getTokenSymbol = (tokenId) => {
         const token = tokens.find(t => t.ledger_id.toString() === tokenId.toString());
         return token ? token.symbol : tokenId.toString().slice(0, 10) + '...';
+    };
+
+    // Helper function to check if 24h data is identical to all-time data
+    const isDataIdentical = () => {
+        if (!eventStats) return false;
+        
+        const allTime = eventStats.all_time.claims;
+        const last24h = eventStats.last_24h.claims;
+        
+        return (
+            allTime.total.toString() === last24h.total.toString() &&
+            allTime.successful.toString() === last24h.successful.toString() &&
+            allTime.failed.toString() === last24h.failed.toString() &&
+            allTime.pending.toString() === last24h.pending.toString() &&
+            allTime.unique_users.toString() === last24h.unique_users.toString()
+        );
     };
 
     return (
@@ -1272,7 +1316,30 @@ function RLL() {
 
                             {/* Last 24h Stats */}
                             <div style={{ backgroundColor: '#3a3a3a', padding: '20px', borderRadius: '8px' }}>
-                                <h3 style={{ color: '#3498db', marginBottom: '15px' }}>Last 24 Hours</h3>
+                                <h3 style={{ 
+                                    color: '#3498db', 
+                                    marginBottom: '15px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px'
+                                }}>
+                                    Last 24 Hours
+                                    {isDataIdentical() && (
+                                        <span 
+                                            style={{
+                                                backgroundColor: '#e74c3c',
+                                                color: '#ffffff',
+                                                fontSize: '12px',
+                                                padding: '4px 8px',
+                                                borderRadius: '4px',
+                                                fontWeight: 'normal'
+                                            }}
+                                            title="Warning: 24h data appears identical to all-time data. This indicates a backend issue with the RLL canister's 24h statistics calculation."
+                                        >
+                                            ⚠️ Data Issue
+                                        </span>
+                                    )}
+                                </h3>
                                 
                                 <div style={{ marginBottom: '20px' }}>
                                     <h4 style={{ color: '#2ecc71', marginBottom: '10px' }}>Server Distributions</h4>
@@ -1343,6 +1410,30 @@ function RLL() {
                         </div>
                     )}
                 </section>
+
+                {/* Data Issue Warning */}
+                {eventStats && isDataIdentical() && (
+                    <div style={{
+                        backgroundColor: '#e74c3c',
+                        borderRadius: '8px',
+                        padding: '15px',
+                        marginTop: '20px',
+                        color: '#ffffff'
+                    }}>
+                        <h3 style={{ margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            ⚠️ Data Issue Detected
+                        </h3>
+                        <p style={{ margin: '0 0 10px 0' }}>
+                            The "Last 24 Hours" statistics are showing identical values to the "All Time" statistics. 
+                            This indicates an issue with the RLL canister's 24-hour statistics calculation.
+                        </p>
+                        <p style={{ margin: '0', fontSize: '14px', opacity: '0.9' }}>
+                            <strong>Technical Details:</strong> The backend RLL canister's <code>get_event_statistics()</code> function 
+                            should return different values for <code>last_24h</code> and <code>all_time</code> periods, but they are currently identical. 
+                            Check the browser console for detailed debugging information.
+                        </p>
+                    </div>
+                )}
 
                 {/* Balance Reconciliation */}
                 <section style={styles.section}>
