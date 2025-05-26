@@ -150,6 +150,7 @@ function AdminPartners() {
             links: partner.links.length > 0 ? partner.links : [{ title: '', url: '' }]
         });
         setEditingPartner(partner);
+        setShowForm(true);
     };
 
     const addLink = () => {
