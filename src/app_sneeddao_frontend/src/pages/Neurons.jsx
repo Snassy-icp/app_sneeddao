@@ -28,7 +28,7 @@ function Neurons() {
     const [totalNeuronCount, setTotalNeuronCount] = useState(null);
     
     // Get naming context
-    const { neuronNames, neuronNicknames } = useNaming();
+    const { neuronNames, neuronNicknames, verifiedNames } = useNaming();
     
     // Pagination state
     const [itemsPerPage, setItemsPerPage] = useState(20);
@@ -38,6 +38,10 @@ function Neurons() {
 
     const [dissolveFilter, setDissolveFilter] = useState('all');
     const [sortBy, setSortBy] = useState('stake');
+    
+    // Add new filter states
+    const [hideUnnamed, setHideUnnamed] = useState(false);
+    const [hideUnverified, setHideUnverified] = useState(false);
 
     // Add IndexedDB initialization at the top of the component
     const initializeDB = () => {
@@ -537,12 +541,48 @@ function Neurons() {
             });
         }
 
+        // Apply hideUnnamed filter
+        if (hideUnnamed) {
+            filtered = filtered.filter(neuron => {
+                const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
+                if (!neuronId) return false;
+                
+                const mapKey = `${selectedSnsRoot}:${neuronId}`;
+                const name = neuronNames.get(mapKey);
+                const nickname = neuronNicknames.get(mapKey);
+                
+                // Show only neurons that have either a name or nickname
+                return name || nickname;
+            });
+        }
+
+        // Apply hideUnverified filter
+        if (hideUnverified) {
+            filtered = filtered.filter(neuron => {
+                const neuronId = uint8ArrayToHex(neuron.id[0]?.id);
+                if (!neuronId) return false;
+                
+                const mapKey = `${selectedSnsRoot}:${neuronId}`;
+                const name = neuronNames.get(mapKey);
+                const nickname = neuronNicknames.get(mapKey);
+                const isVerified = verifiedNames.get(mapKey);
+                
+                // If neuron has no name or nickname, always show it
+                if (!name && !nickname) {
+                    return true;
+                }
+                
+                // If neuron has a name or nickname, only show if verified
+                return isVerified === true;
+            });
+        }
+
         // Apply sorting
         filtered = getSortedNeurons(filtered);
 
         setFilteredNeurons(filtered);
         setCurrentPage(1); // Reset to first page when filtering
-    }, [searchTerm, dissolveFilter, sortBy, neurons, selectedSnsRoot, neuronNames, neuronNicknames]);
+    }, [searchTerm, dissolveFilter, sortBy, hideUnnamed, hideUnverified, neurons, selectedSnsRoot, neuronNames, neuronNicknames, verifiedNames]);
 
     // Add function to clear cache
     const clearCache = async (snsRoot) => {
@@ -630,6 +670,49 @@ function Neurons() {
                             <option value="name">Sort by Name</option>
                             <option value="lock">Sort by Lock</option>
                         </select>
+                        <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '15px',
+                            marginLeft: '10px'
+                        }}>
+                            <label style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '6px',
+                                color: '#ffffff',
+                                fontSize: '14px',
+                                cursor: 'pointer'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={hideUnnamed}
+                                    onChange={(e) => setHideUnnamed(e.target.checked)}
+                                    style={{
+                                        accentColor: '#3498db'
+                                    }}
+                                />
+                                Hide Unnamed
+                            </label>
+                            <label style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '6px',
+                                color: '#ffffff',
+                                fontSize: '14px',
+                                cursor: 'pointer'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={hideUnverified}
+                                    onChange={(e) => setHideUnverified(e.target.checked)}
+                                    style={{
+                                        accentColor: '#3498db'
+                                    }}
+                                />
+                                Hide Unverified
+                            </label>
+                        </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                         <button
