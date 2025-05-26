@@ -107,97 +107,76 @@ export default function PrincipalPage() {
 
         setSearchLoading(true);
         try {
-            const queryLower = query.toLowerCase().trim();
             const results = [];
+            const searchLower = query.toLowerCase();
 
-            // First, try to parse as a principal ID for direct match
-            let directPrincipalMatch = null;
-            try {
-                const principal = Principal.fromText(query.trim());
-                directPrincipalMatch = {
-                    principal: principal.toString(),
+            // Check if it's a direct principal ID
+            if (query.length >= 27 && query.includes('-')) {
+                results.push({
                     type: 'direct',
-                    displayText: principal.toString(),
-                    score: queryLower === principal.toString().toLowerCase() ? 100 : 50
-                };
-            } catch (e) {
-                // Not a valid principal ID, continue with name/nickname search
+                    principalId: query,
+                    displayText: query,
+                    score: 100
+                });
             }
 
-            // Search through cached principal names
-            for (const [principalId, name] of principalNames.entries()) {
-                if (name.toLowerCase().includes(queryLower)) {
-                    const score = name.toLowerCase() === queryLower ? 95 : 
-                                 name.toLowerCase().startsWith(queryLower) ? 90 : 70;
-                    
-                    results.push({
-                        principal: principalId,
-                        type: 'name',
-                        name: name,
-                        displayText: `${name} (${principalId.substring(0, 8)}...)`,
-                        score: score
-                    });
-                }
-            }
-
-            // Search through cached principal nicknames (only for logged-in user)
-            if (identity) {
-                for (const [principalId, nickname] of principalNicknames.entries()) {
-                    if (nickname.toLowerCase().includes(queryLower)) {
-                        // Check if we already have this principal from name search
-                        const existingIndex = results.findIndex(r => r.principal === principalId);
-                        
-                        if (existingIndex >= 0) {
-                            // Add nickname info to existing result
-                            results[existingIndex].nickname = nickname;
-                            results[existingIndex].displayText = `${results[existingIndex].name || nickname} (${principalId.substring(0, 8)}...)`;
-                            // Boost score if nickname matches better
-                            const nicknameScore = nickname.toLowerCase() === queryLower ? 95 : 
-                                                nickname.toLowerCase().startsWith(queryLower) ? 90 : 70;
-                            results[existingIndex].score = Math.max(results[existingIndex].score, nicknameScore);
-                        } else {
-                            const score = nickname.toLowerCase() === queryLower ? 95 : 
-                                         nickname.toLowerCase().startsWith(queryLower) ? 90 : 70;
-                            
+            // Search through cached names and nicknames only if they exist
+            if (principalNames && principalNicknames) {
+                // Search through principal names
+                for (const [key, name] of principalNames.entries()) {
+                    if (name.toLowerCase().includes(searchLower)) {
+                        const principalId = key.split(':')[1]; // Extract principal ID from "snsRoot:principalId"
+                        if (principalId) {
+                            const score = name.toLowerCase() === searchLower ? 100 : 
+                                         name.toLowerCase().startsWith(searchLower) ? 90 : 50;
                             results.push({
-                                principal: principalId,
+                                type: 'name',
+                                principalId,
+                                name,
+                                displayText: name,
+                                score
+                            });
+                        }
+                    }
+                }
+
+                // Search through principal nicknames
+                for (const [key, nickname] of principalNicknames.entries()) {
+                    if (nickname.toLowerCase().includes(searchLower)) {
+                        const principalId = key.split(':')[1]; // Extract principal ID from "snsRoot:principalId"
+                        if (principalId) {
+                            const score = nickname.toLowerCase() === searchLower ? 95 : 
+                                         nickname.toLowerCase().startsWith(searchLower) ? 85 : 45;
+                            results.push({
                                 type: 'nickname',
-                                nickname: nickname,
-                                displayText: `${nickname} (${principalId.substring(0, 8)}...)`,
-                                score: score
+                                principalId,
+                                nickname,
+                                displayText: nickname,
+                                score
                             });
                         }
                     }
                 }
             }
 
-            // Add direct principal match if it's not already in results and is valid
-            if (directPrincipalMatch) {
-                const existingIndex = results.findIndex(r => r.principal === directPrincipalMatch.principal);
-                if (existingIndex === -1) {
-                    // Try to get name/nickname for the direct match
-                    const name = principalNames.get(directPrincipalMatch.principal);
-                    const nickname = identity ? principalNicknames.get(directPrincipalMatch.principal) : null;
-                    
-                    if (name || nickname) {
-                        directPrincipalMatch.name = name;
-                        directPrincipalMatch.nickname = nickname;
-                        directPrincipalMatch.displayText = `${name || nickname} (${directPrincipalMatch.principal.substring(0, 8)}...)`;
-                    }
-                    
-                    results.push(directPrincipalMatch);
+            // Remove duplicates and sort by score
+            const uniqueResults = results.reduce((acc, current) => {
+                const existing = acc.find(item => item.principalId === current.principalId);
+                if (!existing || current.score > existing.score) {
+                    return acc.filter(item => item.principalId !== current.principalId).concat(current);
                 }
-            }
+                return acc;
+            }, []);
 
-            // Sort results by score (highest first) and limit to top 10
-            const sortedResults = results
+            // Sort by score (highest first) and limit to 10 results
+            const sortedResults = uniqueResults
                 .sort((a, b) => b.score - a.score)
                 .slice(0, 10);
-            
+
             setSearchResults(sortedResults);
             setShowSearchResults(sortedResults.length > 0);
-        } catch (err) {
-            console.error('Error searching principals:', err);
+        } catch (error) {
+            console.error('Error searching principals:', error);
             setSearchResults([]);
             setShowSearchResults(false);
         } finally {
@@ -221,8 +200,8 @@ export default function PrincipalPage() {
 
     // Handle search result selection
     const handleSearchResultSelect = (result) => {
-        setSearchParams({ id: result.principal });
-        setSearchInput(result.principal);
+        setSearchParams({ id: result.principalId });
+        setSearchInput(result.principalId);
         setShowSearchResults(false);
     };
 
@@ -518,7 +497,11 @@ export default function PrincipalPage() {
                             )}
                         </div>
                         <form onSubmit={handleSearchSubmit} style={{ position: 'relative' }}>
-                            <div style={{ position: 'relative' }}>
+                            <div style={{ 
+                                display: 'flex', 
+                                gap: '8px',
+                                alignItems: 'center'
+                            }}>
                                 <input
                                     type="text"
                                     value={searchInput}
@@ -529,25 +512,22 @@ export default function PrincipalPage() {
                                         border: '1px solid #4a4a4a',
                                         borderRadius: '4px',
                                         color: '#ffffff',
-                                        padding: '12px 60px 12px 16px',
-                                        width: '100%',
+                                        padding: '12px 16px',
+                                        flex: '1',
                                         fontSize: '14px'
                                     }}
                                 />
                                 <button
                                     type="submit"
                                     style={{
-                                        position: 'absolute',
-                                        right: '8px',
-                                        top: '50%',
-                                        transform: 'translateY(-50%)',
                                         backgroundColor: '#3498db',
                                         color: '#ffffff',
                                         border: 'none',
                                         borderRadius: '4px',
-                                        padding: '6px 12px',
+                                        padding: '12px 16px',
                                         cursor: 'pointer',
-                                        fontSize: '12px'
+                                        fontSize: '14px',
+                                        whiteSpace: 'nowrap'
                                     }}
                                 >
                                     {searchLoading ? '...' : 'Go'}
@@ -698,7 +678,11 @@ export default function PrincipalPage() {
                         )}
                     </div>
                     <form onSubmit={handleSearchSubmit} style={{ position: 'relative' }}>
-                        <div style={{ position: 'relative' }}>
+                        <div style={{ 
+                            display: 'flex', 
+                            gap: '8px',
+                            alignItems: 'center'
+                        }}>
                             <input
                                 type="text"
                                 value={searchInput}
@@ -709,25 +693,22 @@ export default function PrincipalPage() {
                                     border: '1px solid #4a4a4a',
                                     borderRadius: '4px',
                                     color: '#ffffff',
-                                    padding: '12px 60px 12px 16px',
-                                    width: '100%',
+                                    padding: '12px 16px',
+                                    flex: '1',
                                     fontSize: '14px'
                                 }}
                             />
                             <button
                                 type="submit"
                                 style={{
-                                    position: 'absolute',
-                                    right: '8px',
-                                    top: '50%',
-                                    transform: 'translateY(-50%)',
                                     backgroundColor: '#3498db',
                                     color: '#ffffff',
                                     border: 'none',
                                     borderRadius: '4px',
-                                    padding: '6px 12px',
+                                    padding: '12px 16px',
                                     cursor: 'pointer',
-                                    fontSize: '12px'
+                                    fontSize: '14px',
+                                    whiteSpace: 'nowrap'
                                 }}
                             >
                                 {searchLoading ? '...' : 'Go'}
