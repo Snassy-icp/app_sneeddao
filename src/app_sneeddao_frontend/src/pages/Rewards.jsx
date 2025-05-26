@@ -586,6 +586,7 @@ function Rewards() {
                             showVotingStats={true}
                             showExpandButton={true}
                             defaultExpanded={isHotkeyNeuronsExpanded}
+                            forceSneedSns={true}
                         />
                     </>
                 ) : (
@@ -594,6 +595,7 @@ function Rewards() {
                         showVotingStats={false}
                         showExpandButton={false}
                         defaultExpanded={true}
+                        forceSneedSns={true}
                     />
                 )}
 

@@ -15,10 +15,11 @@ const HotkeyNeurons = ({
     infoTooltip = "For each NNS account (Internet Identity) containing SNS neurons, you only need to configure one neuron as a hotkey per SNS. All other neurons of the same SNS in the same account will be automatically accessible. If you have multiple NNS accounts with Sneed neurons, you'll need to set up one hotkey neuron per account.",
     proposalData = null,
     currentProposalId = null,
-    onVoteSuccess = null
+    onVoteSuccess = null,
+    forceSneedSns = false
 }) => {
     const { isAuthenticated, identity } = useAuth();
-    const { selectedSnsRoot } = useSns();
+    const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
     const [hotkeyNeurons, setHotkeyNeurons] = useState({
         neurons_by_owner: [],
         total_voting_power: 0,
@@ -28,6 +29,9 @@ const HotkeyNeurons = ({
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [votingStates, setVotingStates] = useState({});
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
+
+    // Get the effective SNS root - use SNEED if forced, otherwise use selected
+    const effectiveSnsRoot = forceSneedSns ? SNEED_SNS_ROOT : selectedSnsRoot;
 
     // Helper functions
     const uint8ArrayToHex = (uint8Array) => {
@@ -144,13 +148,13 @@ const HotkeyNeurons = ({
 
     // Vote with a specific neuron
     const voteWithNeuron = async (neuronId, vote) => {
-        if (!identity || !selectedSnsRoot || !currentProposalId) return;
+        if (!identity || !effectiveSnsRoot || !currentProposalId) return;
         
         const neuronIdHex = uint8ArrayToHex(neuronId);
         setVotingStates(prev => ({ ...prev, [neuronIdHex]: 'voting' }));
         
         try {
-            const selectedSns = getSnsById(selectedSnsRoot);
+            const selectedSns = getSnsById(effectiveSnsRoot);
             if (!selectedSns) throw new Error('SNS not found');
             
             const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
@@ -316,10 +320,16 @@ const HotkeyNeurons = ({
     // Fetch token symbol when selectedSnsRoot changes
     useEffect(() => {
         const fetchTokenSymbol = async () => {
-            if (!selectedSnsRoot) return;
+            // If forcing SNEED SNS, always use "SNEED" as token symbol
+            if (forceSneedSns) {
+                setTokenSymbol('SNEED');
+                return;
+            }
+
+            if (!effectiveSnsRoot) return;
             
             try {
-                const selectedSns = getSnsById(selectedSnsRoot);
+                const selectedSns = getSnsById(effectiveSnsRoot);
                 if (!selectedSns) return;
 
                 const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
@@ -337,7 +347,7 @@ const HotkeyNeurons = ({
         };
 
         fetchTokenSymbol();
-    }, [selectedSnsRoot, identity]);
+    }, [effectiveSnsRoot, identity, forceSneedSns]);
 
     const styles = {
         section: {
