@@ -129,6 +129,7 @@ module {
             created_at = now;
             updated_by = caller_index;
             updated_at = now;
+            deleted = false;
         };
 
         ignore Map.put(state.forums, Map.nhash, id, forum);
@@ -155,6 +156,7 @@ module {
                     created_at = forum.created_at;
                     updated_by;
                     updated_at = forum.updated_at;
+                    deleted = forum.deleted;
                 }
             };
             case null null;
@@ -223,6 +225,7 @@ module {
             created_at = now;
             updated_by = caller_index;
             updated_at = now;
+            deleted = false;
         };
 
         ignore Map.put(state.topics, Map.nhash, id, topic);
@@ -258,6 +261,7 @@ module {
                     created_at = topic.created_at;
                     updated_by;
                     updated_at = topic.updated_at;
+                    deleted = topic.deleted;
                 }
             };
             case null null;
@@ -336,6 +340,7 @@ module {
             created_at = now;
             updated_by = caller_index;
             updated_at = now;
+            deleted = false;
         };
 
         ignore Map.put(state.threads, Map.nhash, id, thread);
@@ -364,6 +369,7 @@ module {
                     created_at = thread.created_at;
                     updated_by;
                     updated_at = thread.updated_at;
+                    deleted = thread.deleted;
                 }
             };
             case null null;
@@ -445,6 +451,7 @@ module {
             created_at = now;
             updated_by = caller_index;
             updated_at = now;
+            deleted = false;
         };
 
         ignore Map.put(state.posts, Map.nhash, id, post);
@@ -481,6 +488,7 @@ module {
                     created_at = post.created_at;
                     updated_by;
                     updated_at = post.updated_at;
+                    deleted = post.deleted;
                 }
             };
             case null null;
@@ -711,5 +719,164 @@ module {
             };
         };
         Buffer.toArray(votes)
+    };
+
+    // Soft delete operations
+    public func soft_delete_forum(
+        state: ForumState,
+        caller: Principal,
+        forum_id: Nat
+    ) : Result<(), ForumError> {
+        switch (Map.get(state.forums, Map.nhash, forum_id)) {
+            case (?forum) {
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let updated_forum = {
+                    forum with
+                    deleted = true;
+                    updated_by = caller_index;
+                    updated_at = Time.now();
+                };
+                ignore Map.put(state.forums, Map.nhash, forum_id, updated_forum);
+                #ok()
+            };
+            case null #err(#NotFound("Forum not found"));
+        }
+    };
+
+    public func soft_delete_topic(
+        state: ForumState,
+        caller: Principal,
+        topic_id: Nat
+    ) : Result<(), ForumError> {
+        switch (Map.get(state.topics, Map.nhash, topic_id)) {
+            case (?topic) {
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let updated_topic = {
+                    topic with
+                    deleted = true;
+                    updated_by = caller_index;
+                    updated_at = Time.now();
+                };
+                ignore Map.put(state.topics, Map.nhash, topic_id, updated_topic);
+                #ok()
+            };
+            case null #err(#NotFound("Topic not found"));
+        }
+    };
+
+    public func soft_delete_thread(
+        state: ForumState,
+        caller: Principal,
+        thread_id: Nat
+    ) : Result<(), ForumError> {
+        switch (Map.get(state.threads, Map.nhash, thread_id)) {
+            case (?thread) {
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let updated_thread = {
+                    thread with
+                    deleted = true;
+                    updated_by = caller_index;
+                    updated_at = Time.now();
+                };
+                ignore Map.put(state.threads, Map.nhash, thread_id, updated_thread);
+                #ok()
+            };
+            case null #err(#NotFound("Thread not found"));
+        }
+    };
+
+    public func soft_delete_post(
+        state: ForumState,
+        caller: Principal,
+        post_id: Nat
+    ) : Result<(), ForumError> {
+        switch (Map.get(state.posts, Map.nhash, post_id)) {
+            case (?post) {
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let updated_post = {
+                    post with
+                    deleted = true;
+                    updated_by = caller_index;
+                    updated_at = Time.now();
+                };
+                ignore Map.put(state.posts, Map.nhash, post_id, updated_post);
+                #ok()
+            };
+            case null #err(#NotFound("Post not found"));
+        }
+    };
+
+    // Helper function to filter out deleted items for non-admin users
+    public func get_forums_filtered(state: ForumState, show_deleted: Bool) : [T.ForumResponse] {
+        let forums = Buffer.Buffer<T.ForumResponse>(0);
+        for ((_, forum) in Map.entries(state.forums)) {
+            if (show_deleted or not forum.deleted) {
+                switch (get_forum(state, forum.id)) {
+                    case (?forum_response) forums.add(forum_response);
+                    case null {};
+                };
+            };
+        };
+        Buffer.toArray(forums)
+    };
+
+    public func get_topics_by_forum_filtered(state: ForumState, forum_id: Nat, show_deleted: Bool) : [T.TopicResponse] {
+        let topics = Buffer.Buffer<T.TopicResponse>(0);
+        switch (Map.get(state.forum_topics, Map.nhash, forum_id)) {
+            case (?topic_ids) {
+                for (topic_id in topic_ids.vals()) {
+                    switch (get_topic(state, topic_id)) {
+                        case (?topic_response) {
+                            if (show_deleted or not topic_response.deleted) {
+                                topics.add(topic_response);
+                            };
+                        };
+                        case null {};
+                    };
+                };
+            };
+            case null {};
+        };
+        Buffer.toArray(topics)
+    };
+
+    public func get_threads_by_topic_filtered(state: ForumState, topic_id: Nat, show_deleted: Bool) : [T.ThreadResponse] {
+        let threads = Buffer.Buffer<T.ThreadResponse>(0);
+        switch (Map.get(state.topic_threads, Map.nhash, topic_id)) {
+            case (?thread_ids) {
+                for (thread_id in thread_ids.vals()) {
+                    switch (get_thread(state, thread_id)) {
+                        case (?thread_response) {
+                            if (show_deleted or not thread_response.deleted) {
+                                threads.add(thread_response);
+                            };
+                        };
+                        case null {};
+                    };
+                };
+            };
+            case null {};
+        };
+        Buffer.toArray(threads)
+    };
+
+    public func get_posts_by_thread_filtered(state: ForumState, thread_id: Nat, show_deleted: Bool) : [T.PostResponse] {
+        let posts = Buffer.Buffer<T.PostResponse>(0);
+        switch (Map.get(state.thread_posts, Map.nhash, thread_id)) {
+            case (?post_ids) {
+                for (post_id in post_ids.vals()) {
+                    switch (get_post(state, post_id)) {
+                        case (?post_response) {
+                            if (show_deleted or not post_response.deleted) {
+                                posts.add(post_response);
+                            };
+                        };
+                        case null {};
+                    };
+                };
+            };
+            case null {};
+        };
+        Buffer.toArray(posts)
     };
 }

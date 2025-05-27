@@ -28,6 +28,7 @@ module {
         created_at: Int;
         updated_by: Nat32;
         updated_at: Int;
+        deleted: Bool;
     };
 
     public type Topic = {
@@ -40,6 +41,7 @@ module {
         created_at: Int;
         updated_by: Nat32;
         updated_at: Int;
+        deleted: Bool;
     };
 
     public type Thread = {
@@ -51,6 +53,7 @@ module {
         created_at: Int;
         updated_by: Nat32;
         updated_at: Int;
+        deleted: Bool;
     };
 
     public type Post = {
@@ -65,6 +68,7 @@ module {
         created_at: Int;
         updated_by: Nat32;
         updated_at: Int;
+        deleted: Bool;
     };
 
     public type Vote = {
@@ -147,6 +151,7 @@ module {
         created_at: Int;
         updated_by: Principal;
         updated_at: Int;
+        deleted: Bool;
     };
 
     public type TopicResponse = {
@@ -159,6 +164,7 @@ module {
         created_at: Int;
         updated_by: Principal;
         updated_at: Int;
+        deleted: Bool;
     };
 
     public type ThreadResponse = {
@@ -170,6 +176,7 @@ module {
         created_at: Int;
         updated_by: Principal;
         updated_at: Int;
+        deleted: Bool;
     };
 
     public type PostResponse = {
@@ -184,6 +191,7 @@ module {
         created_at: Int;
         updated_by: Principal;
         updated_at: Int;
+        deleted: Bool;
     };
 
     public type VoteResponse = {

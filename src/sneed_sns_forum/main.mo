@@ -48,6 +48,13 @@ actor SneedSNSForum {
         }
     };
 
+    // Helper function to check if caller is admin (simplified - in production you'd check against a list)
+    private func is_admin(caller: Principal) : Bool {
+        // For now, any authenticated user can be admin
+        // In production, you'd check against a whitelist or role system
+        true
+    };
+
     // Forum API endpoints
     public shared ({ caller }) func create_forum(input: T.CreateForumInput) : async T.Result<Nat, T.ForumError> {
         Lib.create_forum(state, caller, input)
@@ -58,7 +65,7 @@ actor SneedSNSForum {
     };
 
     public query func get_forums() : async [T.ForumResponse] {
-        Lib.get_forums(state)
+        Lib.get_forums_filtered(state, false) // show_deleted = false for public
     };
 
     // Topic API endpoints
@@ -71,7 +78,7 @@ actor SneedSNSForum {
     };
 
     public query func get_topics_by_forum(forum_id: Nat) : async [T.TopicResponse] {
-        Lib.get_topics_by_forum(state, forum_id)
+        Lib.get_topics_by_forum_filtered(state, forum_id, false)
     };
 
     public query func get_subtopics(topic_id: Nat) : async [T.TopicResponse] {
@@ -88,7 +95,7 @@ actor SneedSNSForum {
     };
 
     public query func get_threads_by_topic(topic_id: Nat) : async [T.ThreadResponse] {
-        Lib.get_threads_by_topic(state, topic_id)
+        Lib.get_threads_by_topic_filtered(state, topic_id, false)
     };
 
     // Post API endpoints
@@ -119,7 +126,7 @@ actor SneedSNSForum {
     };
 
     public query func get_posts_by_thread(thread_id: Nat) : async [T.PostResponse] {
-        Lib.get_posts_by_thread(state, thread_id)
+        Lib.get_posts_by_thread_filtered(state, thread_id, false)
     };
 
     public query func get_post_replies(post_id: Nat) : async [T.PostResponse] {
@@ -183,5 +190,63 @@ actor SneedSNSForum {
     // Health check endpoint
     public query func health_check() : async Bool {
         true
+    };
+
+    // Admin delete endpoints
+    public shared ({ caller }) func delete_forum(id: Nat) : async T.Result<(), T.ForumError> {
+        if (not is_admin(caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+        Lib.soft_delete_forum(state, caller, id)
+    };
+
+    public shared ({ caller }) func delete_topic(id: Nat) : async T.Result<(), T.ForumError> {
+        if (not is_admin(caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+        Lib.soft_delete_topic(state, caller, id)
+    };
+
+    public shared ({ caller }) func delete_thread(id: Nat) : async T.Result<(), T.ForumError> {
+        if (not is_admin(caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+        Lib.soft_delete_thread(state, caller, id)
+    };
+
+    public shared ({ caller }) func delete_post(id: Nat) : async T.Result<(), T.ForumError> {
+        if (not is_admin(caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+        Lib.soft_delete_post(state, caller, id)
+    };
+
+    // Admin query functions that show deleted items
+    public shared query ({ caller }) func get_forums_admin() : async [T.ForumResponse] {
+        if (not is_admin(caller)) {
+            return [];
+        };
+        Lib.get_forums_filtered(state, true) // show_deleted = true for admins
+    };
+
+    public shared query ({ caller }) func get_topics_by_forum_admin(forum_id: Nat) : async [T.TopicResponse] {
+        if (not is_admin(caller)) {
+            return [];
+        };
+        Lib.get_topics_by_forum_filtered(state, forum_id, true)
+    };
+
+    public shared query ({ caller }) func get_threads_by_topic_admin(topic_id: Nat) : async [T.ThreadResponse] {
+        if (not is_admin(caller)) {
+            return [];
+        };
+        Lib.get_threads_by_topic_filtered(state, topic_id, true)
+    };
+
+    public shared query ({ caller }) func get_posts_by_thread_admin(thread_id: Nat) : async [T.PostResponse] {
+        if (not is_admin(caller)) {
+            return [];
+        };
+        Lib.get_posts_by_thread_filtered(state, thread_id, true)
     };
 }
