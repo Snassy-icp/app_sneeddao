@@ -817,10 +817,13 @@ export default function Forum() {
             <option value="">No Reply (Top Level Post)</option>
             {posts.filter(post => !post.deleted).map(post => {
               const postIdStr = Number(post.id).toString();
-              console.log('Post option:', postIdStr, post.title || `Post #${Number(post.id)}`);
+              const displayText = post.title 
+                ? `Post #${Number(post.id)}: ${post.title}` 
+                : `Post #${Number(post.id)}`;
+              console.log('Post option:', postIdStr, displayText);
               return (
                 <option key={post.id} value={postIdStr}>
-                  Reply to: {post.title || `Post #${Number(post.id)}`}
+                  Reply to: {displayText}
                 </option>
               );
             })}
