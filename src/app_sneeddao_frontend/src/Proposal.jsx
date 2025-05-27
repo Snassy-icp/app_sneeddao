@@ -232,6 +232,7 @@ function Proposal() {
         try {
             const threadInput = {
                 proposal_id: Number(currentProposalId),
+                sns_root_canister_id: Principal.fromText(selectedSnsRoot),
                 title: [`${selectedSns.name} Proposal #${currentProposalId}`],
                 body: `Discussion thread for ${selectedSns.name} Proposal #${currentProposalId}`
             };
