@@ -815,6 +815,11 @@ module {
         caller: Principal,
         forum_id: Nat
     ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
         switch (Map.get(state.forums, Map.nhash, forum_id)) {
             case (?forum) {
                 let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
@@ -836,6 +841,11 @@ module {
         caller: Principal,
         topic_id: Nat
     ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
         switch (Map.get(state.topics, Map.nhash, topic_id)) {
             case (?topic) {
                 let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
@@ -857,6 +867,11 @@ module {
         caller: Principal,
         thread_id: Nat
     ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
         switch (Map.get(state.threads, Map.nhash, thread_id)) {
             case (?thread) {
                 let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
@@ -878,6 +893,11 @@ module {
         caller: Principal,
         post_id: Nat
     ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
         switch (Map.get(state.posts, Map.nhash, post_id)) {
             case (?post) {
                 let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
@@ -1039,5 +1059,196 @@ module {
             case null {};
         };
         Buffer.toArray(posts)
+    };
+
+    // Update operations
+    public func update_forum(
+        state: ForumState,
+        caller: Principal,
+        forum_id: Nat,
+        input: T.CreateForumInput
+    ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
+        switch (Map.get(state.forums, Map.nhash, forum_id)) {
+            case (?forum) {
+                // Validate input
+                switch (validate_text(input.title, "Title", 100)) {
+                    case (#err(e)) return #err(e);
+                    case (#ok()) {};
+                };
+                switch (validate_text(input.description, "Description", 1000)) {
+                    case (#err(e)) return #err(e);
+                    case (#ok()) {};
+                };
+
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let sns_root = switch (input.sns_root_canister_id) {
+                    case (?root) ?root;
+                    case null ?T.sneed_dao_root_canister_id();
+                };
+
+                let updated_forum = {
+                    forum with
+                    title = input.title;
+                    description = input.description;
+                    sns_root_canister_id = sns_root;
+                    updated_by = caller_index;
+                    updated_at = Time.now();
+                };
+                ignore Map.put(state.forums, Map.nhash, forum_id, updated_forum);
+                #ok()
+            };
+            case null #err(#NotFound("Forum not found"));
+        }
+    };
+
+    public func update_topic(
+        state: ForumState,
+        caller: Principal,
+        topic_id: Nat,
+        input: T.CreateTopicInput
+    ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
+        switch (Map.get(state.topics, Map.nhash, topic_id)) {
+            case (?topic) {
+                // Validate input
+                switch (validate_text(input.title, "Title", 100)) {
+                    case (#err(e)) return #err(e);
+                    case (#ok()) {};
+                };
+                switch (validate_text(input.description, "Description", 1000)) {
+                    case (#err(e)) return #err(e);
+                    case (#ok()) {};
+                };
+
+                // Check if parent topic exists and belongs to the same forum (if provided)
+                switch (input.parent_topic_id) {
+                    case (?parent_id) {
+                        if (parent_id != topic_id) { // Can't be parent of itself
+                            switch (Map.get(state.topics, Map.nhash, parent_id)) {
+                                case null return #err(#NotFound("Parent topic not found"));
+                                case (?parent_topic) {
+                                    if (parent_topic.forum_id != topic.forum_id) {
+                                        return #err(#InvalidInput("Parent topic must belong to the same forum"));
+                                    };
+                                };
+                            };
+                        } else {
+                            return #err(#InvalidInput("Topic cannot be parent of itself"));
+                        };
+                    };
+                    case null {};
+                };
+
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let updated_topic = {
+                    topic with
+                    parent_topic_id = input.parent_topic_id;
+                    title = input.title;
+                    description = input.description;
+                    updated_by = caller_index;
+                    updated_at = Time.now();
+                };
+                ignore Map.put(state.topics, Map.nhash, topic_id, updated_topic);
+                #ok()
+            };
+            case null #err(#NotFound("Topic not found"));
+        }
+    };
+
+    public func update_thread(
+        state: ForumState,
+        caller: Principal,
+        thread_id: Nat,
+        title: ?Text,
+        body: Text
+    ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
+        switch (Map.get(state.threads, Map.nhash, thread_id)) {
+            case (?thread) {
+                // Validate input
+                switch (title) {
+                    case (?t) {
+                        switch (validate_text(t, "Title", 200)) {
+                            case (#err(e)) return #err(e);
+                            case (#ok()) {};
+                        };
+                    };
+                    case null {};
+                };
+                switch (validate_text(body, "Body", 10000)) {
+                    case (#err(e)) return #err(e);
+                    case (#ok()) {};
+                };
+
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let updated_thread = {
+                    thread with
+                    title = title;
+                    body = body;
+                    updated_by = caller_index;
+                    updated_at = Time.now();
+                };
+                ignore Map.put(state.threads, Map.nhash, thread_id, updated_thread);
+                #ok()
+            };
+            case null #err(#NotFound("Thread not found"));
+        }
+    };
+
+    public func update_post(
+        state: ForumState,
+        caller: Principal,
+        post_id: Nat,
+        title: ?Text,
+        body: Text
+    ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
+        switch (Map.get(state.posts, Map.nhash, post_id)) {
+            case (?post) {
+                // Validate input
+                switch (title) {
+                    case (?t) {
+                        switch (validate_text(t, "Title", 200)) {
+                            case (#err(e)) return #err(e);
+                            case (#ok()) {};
+                        };
+                    };
+                    case null {};
+                };
+                switch (validate_text(body, "Body", 10000)) {
+                    case (#err(e)) return #err(e);
+                    case (#ok()) {};
+                };
+
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let updated_post = {
+                    post with
+                    title = title;
+                    body = body;
+                    updated_by = caller_index;
+                    updated_at = Time.now();
+                };
+                ignore Map.put(state.posts, Map.nhash, post_id, updated_post);
+                #ok()
+            };
+            case null #err(#NotFound("Post not found"));
+        }
     };
 }

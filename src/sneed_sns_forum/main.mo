@@ -130,6 +130,10 @@ actor SneedSNSForum {
         Lib.create_forum(state, caller, input)
     };
 
+    public shared ({ caller }) func update_forum(id: Nat, input: T.CreateForumInput) : async T.Result<(), T.ForumError> {
+        Lib.update_forum(state, caller, id, input)
+    };
+
     public query func get_forum(id: Nat) : async ?T.ForumResponse {
         Lib.get_forum_filtered(state, id, false)
     };
@@ -141,6 +145,10 @@ actor SneedSNSForum {
     // Topic API endpoints
     public shared ({ caller }) func create_topic(input: T.CreateTopicInput) : async T.Result<Nat, T.ForumError> {
         Lib.create_topic(state, caller, input)
+    };
+
+    public shared ({ caller }) func update_topic(id: Nat, input: T.CreateTopicInput) : async T.Result<(), T.ForumError> {
+        Lib.update_topic(state, caller, id, input)
     };
 
     public query func get_topic(id: Nat) : async ?T.TopicResponse {
@@ -158,6 +166,10 @@ actor SneedSNSForum {
     // Thread API endpoints
     public shared ({ caller }) func create_thread(input: T.CreateThreadInput) : async T.Result<Nat, T.ForumError> {
         Lib.create_thread(state, caller, input)
+    };
+
+    public shared ({ caller }) func update_thread(id: Nat, title: ?Text, body: Text) : async T.Result<(), T.ForumError> {
+        Lib.update_thread(state, caller, id, title, body)
     };
 
     public query func get_thread(id: Nat) : async ?T.ThreadResponse {
@@ -189,6 +201,10 @@ actor SneedSNSForum {
             };
             case null #err(#NotFound("Thread not found"));
         }
+    };
+
+    public shared ({ caller }) func update_post(id: Nat, title: ?Text, body: Text) : async T.Result<(), T.ForumError> {
+        Lib.update_post(state, caller, id, title, body)
     };
 
     public query func get_post(id: Nat) : async ?T.PostResponse {
@@ -264,30 +280,18 @@ actor SneedSNSForum {
 
     // Admin delete endpoints
     public shared ({ caller }) func delete_forum(id: Nat) : async T.Result<(), T.ForumError> {
-        if (not Lib.is_admin(state, caller)) {
-            return #err(#Unauthorized("Admin access required"));
-        };
         Lib.soft_delete_forum(state, caller, id)
     };
 
     public shared ({ caller }) func delete_topic(id: Nat) : async T.Result<(), T.ForumError> {
-        if (not Lib.is_admin(state, caller)) {
-            return #err(#Unauthorized("Admin access required"));
-        };
         Lib.soft_delete_topic(state, caller, id)
     };
 
     public shared ({ caller }) func delete_thread(id: Nat) : async T.Result<(), T.ForumError> {
-        if (not Lib.is_admin(state, caller)) {
-            return #err(#Unauthorized("Admin access required"));
-        };
         Lib.soft_delete_thread(state, caller, id)
     };
 
     public shared ({ caller }) func delete_post(id: Nat) : async T.Result<(), T.ForumError> {
-        if (not Lib.is_admin(state, caller)) {
-            return #err(#Unauthorized("Admin access required"));
-        };
         Lib.soft_delete_post(state, caller, id)
     };
 
