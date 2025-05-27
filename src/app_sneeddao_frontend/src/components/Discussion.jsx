@@ -3,6 +3,9 @@ import ReactMarkdown from 'react-markdown';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
+import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
+import { useAuth } from '../AuthContext';
+import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 
 function Discussion({ 
     forumActor, 
@@ -12,6 +15,7 @@ function Discussion({
     onError 
 }) {
     const { principalNames, principalNicknames } = useNaming();
+    const { identity } = useAuth();
     
     // State for discussion
     const [discussionThread, setDiscussionThread] = useState(null);
@@ -31,6 +35,12 @@ function Discussion({
     
     // Ref for reply text to avoid re-renders
     const replyTextRef = useRef('');
+
+    // State for voting
+    const [votingStates, setVotingStates] = useState({}); // postId -> 'voting' | 'success' | 'error'
+    const [userVotes, setUserVotes] = useState({}); // postId -> { vote_type, voting_power }
+    const [hotkeyNeurons, setHotkeyNeurons] = useState([]);
+    const [loadingNeurons, setLoadingNeurons] = useState(false);
 
     // Fetch discussion thread
     const fetchDiscussionThread = async () => {
@@ -315,6 +325,163 @@ function Discussion({
         }
     };
 
+    // Voting functions
+    const fetchHotkeyNeurons = async () => {
+        if (!identity || !selectedSnsRoot) return [];
+        
+        setLoadingNeurons(true);
+        try {
+            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+            
+            // Get neurons from the selected SNS
+            // This is a simplified approach - in a real implementation you'd need to 
+            // fetch neurons from the SNS governance canister
+            const result = await rllActor.get_hotkey_voting_power([]);
+            
+            // Extract all neurons from the nested structure
+            const allNeurons = result.neurons_by_owner.flatMap(([owner, neurons]) => neurons);
+            
+            // Filter neurons that the user has hotkey access to
+            const eligibleNeurons = allNeurons.filter(neuron => {
+                return neuron.permissions.some(p => 
+                    p.principal?.toString() === identity.getPrincipal().toString() &&
+                    p.permission_type.includes(4) // Hotkey permission
+                );
+            });
+            
+            setHotkeyNeurons(eligibleNeurons);
+            return eligibleNeurons;
+        } catch (error) {
+            console.error('Error fetching hotkey neurons:', error);
+            setHotkeyNeurons([]);
+            return [];
+        } finally {
+            setLoadingNeurons(false);
+        }
+    };
+
+    const voteOnPost = async (postId, voteType) => {
+        if (!identity || !forumActor || hotkeyNeurons.length === 0) {
+            if (onError) onError('No eligible neurons found for voting');
+            return;
+        }
+
+        const postIdStr = postId.toString();
+        setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
+
+        try {
+            // Use the first eligible neuron for voting
+            const neuron = hotkeyNeurons[0];
+            const neuronId = { id: neuron.id[0].id };
+
+            const result = await forumActor.vote_on_post(
+                Number(postId),
+                neuronId,
+                voteType === 'upvote' ? { upvote: null } : { downvote: null }
+            );
+
+            if ('ok' in result) {
+                setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
+                
+                // Update user votes state
+                setUserVotes(prev => ({
+                    ...prev,
+                    [postIdStr]: {
+                        vote_type: voteType,
+                        voting_power: calculateVotingPower(neuron) || 1
+                    }
+                }));
+
+                // Refresh posts to get updated scores
+                if (discussionThread) {
+                    await fetchDiscussionPosts(Number(discussionThread.thread_id));
+                }
+
+                // Clear voting state after a delay
+                setTimeout(() => {
+                    setVotingStates(prev => {
+                        const newState = { ...prev };
+                        delete newState[postIdStr];
+                        return newState;
+                    });
+                }, 2000);
+            } else {
+                throw new Error(JSON.stringify(result.err));
+            }
+        } catch (error) {
+            console.error('Error voting on post:', error);
+            setVotingStates(prev => ({ ...prev, [postIdStr]: 'error' }));
+            if (onError) onError('Failed to vote: ' + error.message);
+
+            // Clear error state after a delay
+            setTimeout(() => {
+                setVotingStates(prev => {
+                    const newState = { ...prev };
+                    delete newState[postIdStr];
+                    return newState;
+                });
+            }, 3000);
+        }
+    };
+
+    const retractVote = async (postId) => {
+        if (!identity || !forumActor || hotkeyNeurons.length === 0) {
+            if (onError) onError('No eligible neurons found for retracting vote');
+            return;
+        }
+
+        const postIdStr = postId.toString();
+        setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
+
+        try {
+            // Use the first eligible neuron
+            const neuron = hotkeyNeurons[0];
+            const neuronId = { id: neuron.id[0].id };
+
+            const result = await forumActor.retract_vote(Number(postId), neuronId);
+
+            if ('ok' in result) {
+                setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
+                
+                // Remove from user votes state
+                setUserVotes(prev => {
+                    const newState = { ...prev };
+                    delete newState[postIdStr];
+                    return newState;
+                });
+
+                // Refresh posts to get updated scores
+                if (discussionThread) {
+                    await fetchDiscussionPosts(Number(discussionThread.thread_id));
+                }
+
+                // Clear voting state after a delay
+                setTimeout(() => {
+                    setVotingStates(prev => {
+                        const newState = { ...prev };
+                        delete newState[postIdStr];
+                        return newState;
+                    });
+                }, 2000);
+            } else {
+                throw new Error(JSON.stringify(result.err));
+            }
+        } catch (error) {
+            console.error('Error retracting vote:', error);
+            setVotingStates(prev => ({ ...prev, [postIdStr]: 'error' }));
+            if (onError) onError('Failed to retract vote: ' + error.message);
+
+            // Clear error state after a delay
+            setTimeout(() => {
+                setVotingStates(prev => {
+                    const newState = { ...prev };
+                    delete newState[postIdStr];
+                    return newState;
+                });
+            }, 3000);
+        }
+    };
+
     // Component to render individual posts
     const PostComponent = useCallback(({ post, depth = 0, isFlat = false }) => {
         const score = calculatePostScore(post);
@@ -462,7 +629,83 @@ function Discussion({
                             
                             {/* Action Buttons */}
                             {isAuthenticated && (
-                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    {/* Voting Buttons */}
+                                    {hotkeyNeurons.length > 0 && (
+                                        <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                                            {/* Upvote Button */}
+                                            <button
+                                                onClick={() => voteOnPost(post.id, 'upvote')}
+                                                disabled={votingStates[post.id.toString()] === 'voting'}
+                                                style={{
+                                                    backgroundColor: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#2ecc71' : 'transparent',
+                                                    border: '1px solid #2ecc71',
+                                                    color: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#ffffff' : '#2ecc71',
+                                                    borderRadius: '4px',
+                                                    padding: '4px 8px',
+                                                    cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
+                                                    fontSize: '12px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
+                                                }}
+                                            >
+                                                ↑ {votingStates[post.id.toString()] === 'voting' ? '...' : 'Up'}
+                                            </button>
+
+                                            {/* Downvote Button */}
+                                            <button
+                                                onClick={() => voteOnPost(post.id, 'downvote')}
+                                                disabled={votingStates[post.id.toString()] === 'voting'}
+                                                style={{
+                                                    backgroundColor: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#e74c3c' : 'transparent',
+                                                    border: '1px solid #e74c3c',
+                                                    color: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#ffffff' : '#e74c3c',
+                                                    borderRadius: '4px',
+                                                    padding: '4px 8px',
+                                                    cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
+                                                    fontSize: '12px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
+                                                }}
+                                            >
+                                                ↓ {votingStates[post.id.toString()] === 'voting' ? '...' : 'Down'}
+                                            </button>
+
+                                            {/* Retract Vote Button */}
+                                            {userVotes[post.id.toString()] && (
+                                                <button
+                                                    onClick={() => retractVote(post.id)}
+                                                    disabled={votingStates[post.id.toString()] === 'voting'}
+                                                    style={{
+                                                        backgroundColor: 'transparent',
+                                                        border: '1px solid #f39c12',
+                                                        color: '#f39c12',
+                                                        borderRadius: '4px',
+                                                        padding: '4px 8px',
+                                                        cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
+                                                        fontSize: '12px',
+                                                        opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
+                                                    }}
+                                                >
+                                                    {votingStates[post.id.toString()] === 'voting' ? 'Retracting...' : 'Retract'}
+                                                </button>
+                                            )}
+
+                                            {/* Voting Status */}
+                                            {votingStates[post.id.toString()] === 'success' && (
+                                                <span style={{ color: '#2ecc71', fontSize: '12px' }}>✓ Voted</span>
+                                            )}
+                                            {votingStates[post.id.toString()] === 'error' && (
+                                                <span style={{ color: '#e74c3c', fontSize: '12px' }}>✗ Error</span>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Reply Button */}
                                     <button
                                         onClick={() => {
                                             if (isReplying) {
@@ -565,7 +808,7 @@ function Discussion({
                 )}
             </div>
         );
-    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo]);
+    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo, hotkeyNeurons, votingStates, userVotes]);
 
     // Effect to fetch discussion when props change
     useEffect(() => {
@@ -606,6 +849,15 @@ function Discussion({
         fetchPrincipalInfo();
     }, [discussionPosts, principalNames, principalNicknames]);
 
+    // Effect to fetch hotkey neurons for voting
+    useEffect(() => {
+        if (isAuthenticated && identity && selectedSnsRoot) {
+            fetchHotkeyNeurons();
+        } else {
+            setHotkeyNeurons([]);
+        }
+    }, [isAuthenticated, identity, selectedSnsRoot]);
+
     return (
         <div style={{ marginTop: '20px' }}>
             <h2 style={{ color: '#ffffff', marginBottom: '15px' }}>Discussion</h2>
@@ -625,6 +877,46 @@ function Discussion({
                     {discussionThread && (
                         <div style={{ marginBottom: '20px' }}>
                             <h3 style={{ color: '#ffffff', marginBottom: '15px' }}>Discussion</h3>
+                            
+                            {/* Voting Status Indicator */}
+                            {isAuthenticated && (
+                                <div style={{ 
+                                    backgroundColor: '#1a1a1a', 
+                                    padding: '10px', 
+                                    borderRadius: '4px', 
+                                    marginBottom: '15px',
+                                    border: `1px solid ${hotkeyNeurons.length > 0 ? '#2ecc71' : '#f39c12'}`
+                                }}>
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '8px',
+                                        fontSize: '12px'
+                                    }}>
+                                        {loadingNeurons ? (
+                                            <>
+                                                <span style={{ color: '#888' }}>⏳ Loading voting neurons...</span>
+                                            </>
+                                        ) : hotkeyNeurons.length > 0 ? (
+                                            <>
+                                                <span style={{ color: '#2ecc71' }}>✓ Voting enabled</span>
+                                                <span style={{ color: '#888' }}>•</span>
+                                                <span style={{ color: '#888' }}>
+                                                    {hotkeyNeurons.length} eligible neuron{hotkeyNeurons.length !== 1 ? 's' : ''}
+                                                </span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span style={{ color: '#f39c12' }}>⚠ No voting neurons</span>
+                                                <span style={{ color: '#888' }}>•</span>
+                                                <span style={{ color: '#888' }}>
+                                                    Set up hotkey neurons to vote on posts
+                                                </span>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                             
                             {/* View Mode Toggle */}
                             <div style={{ 
