@@ -40,6 +40,8 @@ function Proposal() {
 
     // Forum actor state
     const [forumActor, setForumActor] = useState(null);
+    const [isProposalExpanded, setIsProposalExpanded] = useState(true);
+    const [isDiscussionExpanded, setIsDiscussionExpanded] = useState(true);
 
     // Get naming context
     const { getNeuronDisplayName } = useNaming();
@@ -653,239 +655,261 @@ function Proposal() {
 
                     {proposalData && !loading && !error && (
                         <div style={{ color: '#ffffff' }}>
-                            <h2>Proposal Information</h2>
-                            <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px', marginTop: '10px' }}>
-                                <p><strong>SNS:</strong> {selectedSns?.name || 'Unknown SNS'}</p>
-                                <p><strong>Topic:</strong> {getTopicName(proposalData)}</p>
-                                <p><strong>Title:</strong> {proposalData.proposal?.[0]?.title || 'No title'}</p>
-                                <p><strong>Proposer Neuron:</strong> {proposalData.proposer?.[0]?.id ? formatNeuronIdLink(proposalData.proposer[0].id, selectedSnsRoot, getNeuronDisplayName) : 'Unknown'}</p>
-                                <p><strong>External Links:</strong>{' '}
-                                    <span style={{ display: 'inline-flex', gap: '10px', marginLeft: '10px' }}>
-                                        <a 
-                                            href={`https://nns.ic0.app/proposal/?u=${selectedSnsRoot}&proposal=${currentProposalId}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={{
-                                                padding: '5px 10px',
-                                                borderRadius: '4px',
-                                                backgroundColor: '#2c3e50',
-                                                color: '#ffffff',
-                                                textDecoration: 'none',
-                                                fontSize: '14px'
-                                            }}
-                                        >
-                                            NNS
-                                        </a>
-                                        <a 
-                                            href={`https://dashboard.internetcomputer.org/sns/${selectedSnsRoot}/proposal/${currentProposalId}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={{
-                                                padding: '5px 10px',
-                                                borderRadius: '4px',
-                                                backgroundColor: '#2c3e50',
-                                                color: '#ffffff',
-                                                textDecoration: 'none',
-                                                fontSize: '14px'
-                                            }}
-                                        >
-                                            Dashboard
-                                        </a>
-                                        <a 
-                                            href={`https://ic-toolkit.app/sns-management/${selectedSnsRoot}/proposals/view/${currentProposalId}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={{
-                                                padding: '5px 10px',
-                                                borderRadius: '4px',
-                                                backgroundColor: '#2c3e50',
-                                                color: '#ffffff',
-                                                textDecoration: 'none',
-                                                fontSize: '14px'
-                                            }}
-                                        >
-                                            Toolkit
-                                        </a>
-                                    </span>
-                                </p>
-                                <p><strong>Summary:</strong> <div style={{ 
-                                    backgroundColor: '#2a2a2a', 
-                                    padding: '10px', 
-                                    borderRadius: '4px',
-                                    marginTop: '5px'
-                                }}>
-                                    <ReactMarkdown>
-                                        {convertHtmlToMarkdown(proposalData.proposal?.[0]?.summary || 'No summary')}
-                                    </ReactMarkdown>
-                                </div></p>
-                                <p><strong>URL:</strong> <a href={proposalData.proposal?.[0]?.url} target="_blank" rel="noopener noreferrer" style={{ color: '#3498db' }}>{proposalData.proposal?.[0]?.url}</a></p>
-                                <p><strong>Status:</strong> {getProposalStatus(proposalData)}</p>
-                                <p><strong>Created:</strong> {new Date(Number(proposalData.proposal_creation_timestamp_seconds || 0) * 1000).toLocaleString()}</p>
-                                <p><strong>Voting Period:</strong> {Math.floor(Number(proposalData.initial_voting_period_seconds || 0) / (24 * 60 * 60))} days</p>
-                                
-                                {proposalData.latest_tally?.[0] && <VotingBar proposalData={proposalData} />}
+                            <div 
+                                onClick={() => setIsProposalExpanded(!isProposalExpanded)}
+                                style={{
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '10px',
+                                    backgroundColor: '#3a3a3a',
+                                    borderRadius: '6px',
+                                    marginBottom: isProposalExpanded ? '10px' : '0'
+                                }}
+                            >
+                                <span style={{ 
+                                    transform: isProposalExpanded ? 'rotate(90deg)' : 'none',
+                                    transition: 'transform 0.3s ease',
+                                    display: 'inline-block'
+                                }}>▶</span>
+                                <h2 style={{ margin: 0 }}>Proposal Information</h2>
                             </div>
-
-                            {/* Modified voting history section to show for any SNS with ballots */}
-                            {votingHistory && votingHistory.length > 0 && (
-                                <div style={{ marginTop: '20px' }}>
-                                    <div 
-                                        onClick={() => setIsVotingHistoryExpanded(!isVotingHistoryExpanded)}
-                                        style={{
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '10px',
-                                            padding: '10px',
-                                            backgroundColor: '#3a3a3a',
-                                            borderRadius: '6px',
-                                            marginBottom: isVotingHistoryExpanded ? '10px' : '0'
-                                        }}
-                                    >
-                                        <span style={{ 
-                                            transform: isVotingHistoryExpanded ? 'rotate(90deg)' : 'none',
-                                            transition: 'transform 0.3s ease',
-                                            display: 'inline-block'
-                                        }}>▶</span>
-                                        <h3 style={{ margin: 0 }}>Voting History</h3>
-                                    </div>
+                            
+                            {isProposalExpanded && (
+                                <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px', marginTop: '10px' }}>
+                                    <p><strong>SNS:</strong> {selectedSns?.name || 'Unknown SNS'}</p>
+                                    <p><strong>Topic:</strong> {getTopicName(proposalData)}</p>
+                                    <p><strong>Title:</strong> {proposalData.proposal?.[0]?.title || 'No title'}</p>
+                                    <p><strong>Proposer Neuron:</strong> {proposalData.proposer?.[0]?.id ? formatNeuronIdLink(proposalData.proposer[0].id, selectedSnsRoot, getNeuronDisplayName) : 'Unknown'}</p>
+                                    <p><strong>External Links:</strong>{' '}
+                                        <span style={{ display: 'inline-flex', gap: '10px', marginLeft: '10px' }}>
+                                            <a 
+                                                href={`https://nns.ic0.app/proposal/?u=${selectedSnsRoot}&proposal=${currentProposalId}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{
+                                                    padding: '5px 10px',
+                                                    borderRadius: '4px',
+                                                    backgroundColor: '#2c3e50',
+                                                    color: '#ffffff',
+                                                    textDecoration: 'none',
+                                                    fontSize: '14px'
+                                                }}
+                                            >
+                                                NNS
+                                            </a>
+                                            <a 
+                                                href={`https://dashboard.internetcomputer.org/sns/${selectedSnsRoot}/proposal/${currentProposalId}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{
+                                                    padding: '5px 10px',
+                                                    borderRadius: '4px',
+                                                    backgroundColor: '#2c3e50',
+                                                    color: '#ffffff',
+                                                    textDecoration: 'none',
+                                                    fontSize: '14px'
+                                                }}
+                                            >
+                                                Dashboard
+                                            </a>
+                                            <a 
+                                                href={`https://ic-toolkit.app/sns-management/${selectedSnsRoot}/proposals/view/${currentProposalId}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{
+                                                    padding: '5px 10px',
+                                                    borderRadius: '4px',
+                                                    backgroundColor: '#2c3e50',
+                                                    color: '#ffffff',
+                                                    textDecoration: 'none',
+                                                    fontSize: '14px'
+                                                }}
+                                            >
+                                                Toolkit
+                                            </a>
+                                        </span>
+                                    </p>
+                                    <p><strong>Summary:</strong> <div style={{ 
+                                        backgroundColor: '#2a2a2a', 
+                                        padding: '10px', 
+                                        borderRadius: '4px',
+                                        marginTop: '5px'
+                                    }}>
+                                        <ReactMarkdown>
+                                            {convertHtmlToMarkdown(proposalData.proposal?.[0]?.summary || 'No summary')}
+                                        </ReactMarkdown>
+                                    </div></p>
+                                    <p><strong>URL:</strong> <a href={proposalData.proposal?.[0]?.url} target="_blank" rel="noopener noreferrer" style={{ color: '#3498db' }}>{proposalData.proposal?.[0]?.url}</a></p>
+                                    <p><strong>Status:</strong> {getProposalStatus(proposalData)}</p>
+                                    <p><strong>Created:</strong> {new Date(Number(proposalData.proposal_creation_timestamp_seconds || 0) * 1000).toLocaleString()}</p>
+                                    <p><strong>Voting Period:</strong> {Math.floor(Number(proposalData.initial_voting_period_seconds || 0) / (24 * 60 * 60))} days</p>
                                     
-                                    {isVotingHistoryExpanded && (
-                                        <div style={{ 
-                                            backgroundColor: '#3a3a3a',
-                                            padding: '15px',
-                                            borderRadius: '6px'
-                                        }}>
-                                            <div style={{
-                                                display: 'flex',
-                                                gap: '20px',
-                                                marginBottom: '15px',
-                                                padding: '10px',
-                                                backgroundColor: '#2a2a2a',
-                                                borderRadius: '4px',
-                                                flexWrap: 'wrap',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between'
-                                            }}>
-                                                <div style={{
-                                                    display: 'flex',
-                                                    gap: '20px',
-                                                    alignItems: 'center'
-                                                }}>
-                                                    <label style={{ 
-                                                        display: 'flex', 
-                                                        alignItems: 'center', 
-                                                        gap: '8px',
-                                                        color: '#2ecc71',
-                                                        cursor: 'pointer'
-                                                    }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={hideYes}
-                                                            onChange={(e) => setHideYes(e.target.checked)}
-                                                        />
-                                                        Hide Yes
-                                                    </label>
-                                                    <label style={{ 
-                                                        display: 'flex', 
-                                                        alignItems: 'center', 
-                                                        gap: '8px',
-                                                        color: '#e74c3c',
-                                                        cursor: 'pointer'
-                                                    }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={hideNo}
-                                                            onChange={(e) => setHideNo(e.target.checked)}
-                                                        />
-                                                        Hide No
-                                                    </label>
-                                                    <label style={{ 
-                                                        display: 'flex', 
-                                                        alignItems: 'center', 
-                                                        gap: '8px',
-                                                        color: '#888',
-                                                        cursor: 'pointer'
-                                                    }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={hideNotVoted}
-                                                            onChange={(e) => setHideNotVoted(e.target.checked)}
-                                                        />
-                                                        Hide Not Voted
-                                                    </label>
-                                                </div>
-                                                <div style={{
+                                    {proposalData.latest_tally?.[0] && <VotingBar proposalData={proposalData} />}
+                                    
+                                    {/* Modified voting history section to show for any SNS with ballots */}
+                                    {votingHistory && votingHistory.length > 0 && (
+                                        <div style={{ marginTop: '20px' }}>
+                                            <div 
+                                                onClick={() => setIsVotingHistoryExpanded(!isVotingHistoryExpanded)}
+                                                style={{
+                                                    cursor: 'pointer',
                                                     display: 'flex',
                                                     alignItems: 'center',
-                                                    gap: '8px'
-                                                }}>
-                                                    <label style={{
-                                                        color: '#888',
-                                                        fontSize: '14px'
-                                                    }}>
-                                                        Sort by:
-                                                    </label>
-                                                    <select
-                                                        value={sortBy}
-                                                        onChange={(e) => setSortBy(e.target.value)}
-                                                        style={{
-                                                            backgroundColor: '#3a3a3a',
-                                                            color: '#fff',
-                                                            border: '1px solid #4a4a4a',
-                                                            borderRadius: '4px',
-                                                            padding: '4px 8px',
-                                                            cursor: 'pointer'
-                                                        }}
-                                                    >
-                                                        <option value="date">Voting Date</option>
-                                                        <option value="power">Voting Power</option>
-                                                    </select>
-                                                </div>
+                                                    gap: '10px',
+                                                    padding: '10px',
+                                                    backgroundColor: '#2a2a2a',
+                                                    borderRadius: '6px',
+                                                    marginBottom: isVotingHistoryExpanded ? '10px' : '0'
+                                                }}
+                                            >
+                                                <span style={{ 
+                                                    transform: isVotingHistoryExpanded ? 'rotate(90deg)' : 'none',
+                                                    transition: 'transform 0.3s ease',
+                                                    display: 'inline-block'
+                                                }}>▶</span>
+                                                <h3 style={{ margin: 0 }}>Voting History</h3>
                                             </div>
-                                            {filterAndSortVotes(votingHistory).map(([neuronId, ballot], index) => (
-                                                <div 
-                                                    key={index}
-                                                    style={{
-                                                        padding: '10px',
-                                                        backgroundColor: '#2a2a2a',
-                                                        marginBottom: '10px',
-                                                        borderRadius: '4px'
-                                                    }}
-                                                >
-                                                    <div style={{ 
-                                                        wordBreak: 'break-all',
-                                                        color: '#888',
-                                                        fontSize: '14px',
-                                                        marginBottom: '4px',
-                                                        fontFamily: 'monospace'
-                                                    }}>
-                                                        {formatNeuronIdLink(neuronId, selectedSnsRoot, getNeuronDisplayName)}
-                                                    </div>
-                                                    <div style={{ 
+                                            
+                                            {isVotingHistoryExpanded && (
+                                                <div style={{ 
+                                                    backgroundColor: '#2a2a2a',
+                                                    padding: '15px',
+                                                    borderRadius: '6px'
+                                                }}>
+                                                    <div style={{
                                                         display: 'flex',
-                                                        justifyContent: 'space-between',
+                                                        gap: '20px',
+                                                        marginBottom: '15px',
+                                                        padding: '10px',
+                                                        backgroundColor: '#1a1a1a',
+                                                        borderRadius: '4px',
+                                                        flexWrap: 'wrap',
                                                         alignItems: 'center',
-                                                        color: '#888',
-                                                        fontSize: '14px'
+                                                        justifyContent: 'space-between'
                                                     }}>
-                                                        <div style={{ 
-                                                            color: ballot.vote === 1 ? '#2ecc71' : ballot.vote === 2 ? '#e74c3c' : '#ffffff',
-                                                            fontWeight: 'bold'
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            gap: '20px',
+                                                            alignItems: 'center'
                                                         }}>
-                                                            {formatVote(ballot.vote)}
+                                                            <label style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                                color: '#2ecc71',
+                                                                cursor: 'pointer'
+                                                            }}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={hideYes}
+                                                                    onChange={(e) => setHideYes(e.target.checked)}
+                                                                />
+                                                                Hide Yes
+                                                            </label>
+                                                            <label style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                                color: '#e74c3c',
+                                                                cursor: 'pointer'
+                                                            }}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={hideNo}
+                                                                    onChange={(e) => setHideNo(e.target.checked)}
+                                                                />
+                                                                Hide No
+                                                            </label>
+                                                            <label style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '8px',
+                                                                color: '#888',
+                                                                cursor: 'pointer'
+                                                            }}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={hideNotVoted}
+                                                                    onChange={(e) => setHideNotVoted(e.target.checked)}
+                                                                />
+                                                                Hide Not Voted
+                                                            </label>
                                                         </div>
-                                                        {ballot.vote !== 0 && (
-                                                            <div>
-                                                                {new Date(Number(ballot.cast_timestamp_seconds) * 1000).toLocaleString()}
-                                                            </div>
-                                                        )}
-                                                        <div>
-                                                            {formatE8s(ballot.voting_power)} VP
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '8px'
+                                                        }}>
+                                                            <label style={{
+                                                                color: '#888',
+                                                                fontSize: '14px'
+                                                            }}>
+                                                                Sort by:
+                                                            </label>
+                                                            <select
+                                                                value={sortBy}
+                                                                onChange={(e) => setSortBy(e.target.value)}
+                                                                style={{
+                                                                    backgroundColor: '#3a3a3a',
+                                                                    color: '#fff',
+                                                                    border: '1px solid #4a4a4a',
+                                                                    borderRadius: '4px',
+                                                                    padding: '4px 8px',
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                <option value="date">Voting Date</option>
+                                                                <option value="power">Voting Power</option>
+                                                            </select>
                                                         </div>
                                                     </div>
+                                                    {filterAndSortVotes(votingHistory).map(([neuronId, ballot], index) => (
+                                                        <div 
+                                                            key={index}
+                                                            style={{
+                                                                padding: '10px',
+                                                                backgroundColor: '#1a1a1a',
+                                                                marginBottom: '10px',
+                                                                borderRadius: '4px'
+                                                            }}
+                                                        >
+                                                            <div style={{ 
+                                                                wordBreak: 'break-all',
+                                                                color: '#888',
+                                                                fontSize: '14px',
+                                                                marginBottom: '4px',
+                                                                fontFamily: 'monospace'
+                                                            }}>
+                                                                {formatNeuronIdLink(neuronId, selectedSnsRoot, getNeuronDisplayName)}
+                                                            </div>
+                                                            <div style={{ 
+                                                                display: 'flex',
+                                                                justifyContent: 'space-between',
+                                                                alignItems: 'center',
+                                                                color: '#888',
+                                                                fontSize: '14px'
+                                                            }}>
+                                                                <div style={{ 
+                                                                    color: ballot.vote === 1 ? '#2ecc71' : ballot.vote === 2 ? '#e74c3c' : '#ffffff',
+                                                                    fontWeight: 'bold'
+                                                                }}>
+                                                                    {formatVote(ballot.vote)}
+                                                                </div>
+                                                                {ballot.vote !== 0 && (
+                                                                    <div>
+                                                                        {new Date(Number(ballot.cast_timestamp_seconds) * 1000).toLocaleString()}
+                                                                    </div>
+                                                                )}
+                                                                <div>
+                                                                    {formatE8s(ballot.voting_power)} VP
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                            ))}
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -895,13 +919,38 @@ function Proposal() {
 
                     {/* Discussion Section */}
                     {proposalData && !loading && !error && (
-                        <Discussion
-                            forumActor={forumActor}
-                            currentProposalId={currentProposalId}
-                            selectedSnsRoot={selectedSnsRoot}
-                            isAuthenticated={isAuthenticated}
-                            onError={setError}
-                        />
+                        <div style={{ marginTop: '20px' }}>
+                            <div 
+                                onClick={() => setIsDiscussionExpanded(!isDiscussionExpanded)}
+                                style={{
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '10px',
+                                    backgroundColor: '#3a3a3a',
+                                    borderRadius: '6px',
+                                    marginBottom: isDiscussionExpanded ? '10px' : '0'
+                                }}
+                            >
+                                <span style={{ 
+                                    transform: isDiscussionExpanded ? 'rotate(90deg)' : 'none',
+                                    transition: 'transform 0.3s ease',
+                                    display: 'inline-block'
+                                }}>▶</span>
+                                <h2 style={{ margin: 0, color: '#ffffff' }}>Discussion</h2>
+                            </div>
+                            
+                            {isDiscussionExpanded && (
+                                <Discussion
+                                    forumActor={forumActor}
+                                    currentProposalId={currentProposalId}
+                                    selectedSnsRoot={selectedSnsRoot}
+                                    isAuthenticated={isAuthenticated}
+                                    onError={setError}
+                                />
+                            )}
+                        </div>
                     )}
 
                     {/* Hotkey Neurons Section */}
