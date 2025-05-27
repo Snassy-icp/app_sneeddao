@@ -133,16 +133,27 @@ export default function Forum() {
   };
 
   const fetchTopics = async () => {
+    console.log('fetchTopics called, selectedForum:', selectedForum);
     if (selectedForum) {
+      const forumId = Number(selectedForum.id);
+      console.log('Fetching topics for forum ID:', forumId, 'original:', selectedForum.id);
       try {
-        const result = await forumActor.get_topics_by_forum_admin(selectedForum.id);
+        const result = await forumActor.get_topics_by_forum_admin(forumId);
+        console.log('Admin topics result:', result);
         setTopics(result);
       } catch (err) {
-        console.error('Error fetching topics:', err);
-        const result = await forumActor.get_topics_by_forum(selectedForum.id);
-        setTopics(result);
+        console.error('Error fetching topics with admin endpoint:', err);
+        try {
+          const result = await forumActor.get_topics_by_forum(forumId);
+          console.log('Regular topics result:', result);
+          setTopics(result);
+        } catch (fallbackErr) {
+          console.error('Error fetching topics with regular endpoint:', fallbackErr);
+          setTopics([]);
+        }
       }
     } else {
+      console.log('No forum selected, clearing topics');
       setTopics([]);
     }
   };
@@ -213,8 +224,8 @@ export default function Forum() {
             return;
           }
           result = await forumActor.create_topic({
-            forum_id: selectedForum.id,
-            parent_topic_id: formData.parentTopicId ? [Principal.fromText(formData.parentTopicId)] : [],
+            forum_id: Number(selectedForum.id),
+            parent_topic_id: formData.parentTopicId ? [parseInt(formData.parentTopicId)] : [],
             title: formData.title,
             description: formData.description,
           });
@@ -258,7 +269,7 @@ export default function Forum() {
           result = await forumActor.update_topic(editingItem.id, {
             title: formData.title,
             description: formData.description,
-            parent_topic_id: formData.parentTopicId ? [Principal.fromText(formData.parentTopicId)] : [],
+            parent_topic_id: formData.parentTopicId ? [parseInt(formData.parentTopicId)] : [],
           });
           break;
         case 'thread':
@@ -442,7 +453,10 @@ export default function Forum() {
               <div className="item-actions">
                 <button 
                   className="select-btn"
-                  onClick={() => setSelectedForum(forum)}
+                  onClick={() => {
+                    console.log('Selecting forum:', forum);
+                    setSelectedForum(forum);
+                  }}
                 >
                   Select
                 </button>
