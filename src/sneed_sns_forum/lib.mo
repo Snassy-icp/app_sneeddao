@@ -61,9 +61,10 @@ module {
             return #err(#AlreadyExists("Principal is already an admin"));
         };
 
+        let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
         let admin_info : AdminInfo = {
             principal = new_admin;
-            added_by = caller;
+            added_by = caller_index;
             added_at = Time.now();
         };
 
@@ -1299,10 +1300,11 @@ module {
             };
         };
 
+        let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
         let mapping : T.ProposalTopicMapping = {
             forum_id = input.forum_id;
             proposals_topic_id = input.topic_id;
-            set_by = caller;
+            set_by = caller_index;
             set_at = Time.now();
         };
 
@@ -1310,8 +1312,22 @@ module {
         #ok()
     };
 
-    public func get_proposals_topic(state: ForumState, forum_id: Nat) : ?T.ProposalTopicMapping {
-        Map.get(state.proposal_topics, Map.nhash, forum_id)
+    public func get_proposals_topic(state: ForumState, forum_id: Nat) : ?T.ProposalTopicMappingResponse {
+        switch (Map.get(state.proposal_topics, Map.nhash, forum_id)) {
+            case (?mapping) {
+                let set_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, mapping.set_by)) {
+                    case (?p) p;
+                    case null Principal.fromText("2vxsx-fae");
+                };
+                ?{
+                    forum_id = mapping.forum_id;
+                    proposals_topic_id = mapping.proposals_topic_id;
+                    set_by;
+                    set_at = mapping.set_at;
+                }
+            };
+            case null null;
+        }
     };
 
     public func create_proposal_thread(
@@ -1381,7 +1397,7 @@ module {
         let proposal_mapping : T.ProposalThreadMapping = {
             thread_id = thread_id;
             proposal_id = input.proposal_id;
-            created_by = caller;
+            created_by = caller_index;
             created_at = now;
         };
 
@@ -1391,8 +1407,22 @@ module {
         #ok(thread_id)
     };
 
-    public func get_proposal_thread(state: ForumState, proposal_id: Nat) : ?T.ProposalThreadMapping {
-        Map.get(state.proposal_threads, Map.nhash, proposal_id)
+    public func get_proposal_thread(state: ForumState, proposal_id: Nat) : ?T.ProposalThreadMappingResponse {
+        switch (Map.get(state.proposal_threads, Map.nhash, proposal_id)) {
+            case (?mapping) {
+                let created_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, mapping.created_by)) {
+                    case (?p) p;
+                    case null Principal.fromText("2vxsx-fae");
+                };
+                ?{
+                    thread_id = mapping.thread_id;
+                    proposal_id = mapping.proposal_id;
+                    created_by;
+                    created_at = mapping.created_at;
+                }
+            };
+            case null null;
+        }
     };
 
     public func get_thread_proposal_id(state: ForumState, thread_id: Nat) : ?Nat {

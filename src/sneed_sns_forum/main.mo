@@ -338,7 +338,7 @@ actor SneedSNSForum {
         Lib.set_proposals_topic(state, caller, input)
     };
 
-    public query func get_proposals_topic(forum_id: Nat) : async ?T.ProposalTopicMapping {
+    public query func get_proposals_topic(forum_id: Nat) : async ?T.ProposalTopicMappingResponse {
         Lib.get_proposals_topic(state, forum_id)
     };
 
@@ -346,7 +346,7 @@ actor SneedSNSForum {
         Lib.create_proposal_thread(state, caller, input)
     };
 
-    public query func get_proposal_thread(proposal_id: Nat) : async ?T.ProposalThreadMapping {
+    public query func get_proposal_thread(proposal_id: Nat) : async ?T.ProposalThreadMappingResponse {
         Lib.get_proposal_thread(state, proposal_id)
     };
 

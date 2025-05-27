@@ -22,7 +22,7 @@ module {
     // Admin management types
     public type AdminInfo = {
         principal: Principal;
-        added_by: Principal;
+        added_by: Nat32;
         added_at: Int;
     };
 
@@ -30,14 +30,14 @@ module {
     public type ProposalTopicMapping = {
         forum_id: Nat;
         proposals_topic_id: Nat;
-        set_by: Principal;
+        set_by: Nat32;
         set_at: Int;
     };
 
     public type ProposalThreadMapping = {
         thread_id: Nat;
         proposal_id: Nat;
-        created_by: Principal;
+        created_by: Nat32;
         created_at: Int;
     };
 
@@ -245,6 +245,21 @@ module {
         voting_power: Nat;
         created_at: Int;
         updated_at: Int;
+    };
+
+    // Proposal response types with resolved Principals
+    public type ProposalTopicMappingResponse = {
+        forum_id: Nat;
+        proposals_topic_id: Nat;
+        set_by: Principal;
+        set_at: Int;
+    };
+
+    public type ProposalThreadMappingResponse = {
+        thread_id: Nat;
+        proposal_id: Nat;
+        created_by: Principal;
+        created_at: Int;
     };
 
     // Statistics type for admin endpoints
