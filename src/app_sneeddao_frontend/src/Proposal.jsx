@@ -7,6 +7,7 @@ import { useSns } from './contexts/SnsContext';
 import { useForum } from './contexts/ForumContext';
 import Header from './components/Header';
 import HotkeyNeurons from './components/HotkeyNeurons';
+import Discussion from './components/Discussion';
 import ReactMarkdown from 'react-markdown';
 import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
@@ -37,13 +38,7 @@ function Proposal() {
     // Add sort state
     const [sortBy, setSortBy] = useState('date');
 
-    // Discussion section state
-    const [discussionThread, setDiscussionThread] = useState(null);
-    const [discussionPosts, setDiscussionPosts] = useState([]);
-    const [loadingDiscussion, setLoadingDiscussion] = useState(false);
-    const [showCommentForm, setShowCommentForm] = useState(false);
-    const [commentText, setCommentText] = useState('');
-    const [submittingComment, setSubmittingComment] = useState(false);
+    // Forum actor state
     const [forumActor, setForumActor] = useState(null);
 
     // Get naming context
@@ -104,7 +99,6 @@ function Proposal() {
     useEffect(() => {
         if (currentProposalId && selectedSnsRoot) {
             fetchProposalData();
-            fetchDiscussionThread();
         }
     }, [currentProposalId, selectedSnsRoot]);
 
@@ -143,205 +137,6 @@ function Proposal() {
             setLoading(false);
         }
     };
-
-    // Discussion-related functions
-    const fetchDiscussionThread = async () => {
-        if (!forumActor || !currentProposalId || !selectedSnsRoot) return;
-        
-        console.log('fetchDiscussionThread called with:');
-        console.log('- currentProposalId:', currentProposalId, 'type:', typeof currentProposalId);
-        console.log('- selectedSnsRoot:', selectedSnsRoot);
-        console.log('- forumActor available:', !!forumActor);
-        
-        setLoadingDiscussion(true);
-        try {
-            // Check if a thread already exists for this proposal
-            const proposalIdNumber = Number(currentProposalId);
-            console.log('Calling get_proposal_thread with SNS root:', selectedSnsRoot, 'and proposal ID:', proposalIdNumber);
-            
-            const threadMapping = await forumActor.get_proposal_thread(Principal.fromText(selectedSnsRoot), proposalIdNumber);
-            console.log('Thread mapping result:', threadMapping);
-            console.log('Thread mapping type:', typeof threadMapping);
-            console.log('Thread mapping keys:', threadMapping ? Object.keys(threadMapping) : 'null');
-            
-            // Handle the case where threadMapping might be an array or a single object
-            let mappingData = null;
-            if (Array.isArray(threadMapping) && threadMapping.length > 0) {
-                mappingData = threadMapping[0];
-                console.log('Thread mapping is array, using first element:', mappingData);
-            } else if (threadMapping && !Array.isArray(threadMapping)) {
-                mappingData = threadMapping;
-                console.log('Thread mapping is object:', mappingData);
-            }
-            
-            if (mappingData && mappingData.thread_id !== undefined) {
-                console.log('Found thread mapping, thread_id:', mappingData.thread_id);
-                setDiscussionThread(mappingData);
-                // Ensure thread_id is a valid number before fetching posts
-                const threadId = Number(mappingData.thread_id);
-                if (!isNaN(threadId)) {
-                    console.log('Fetching posts for valid thread ID:', threadId);
-                    await fetchDiscussionPosts(threadId);
-                } else {
-                    console.error('Invalid thread_id:', mappingData.thread_id);
-                    setDiscussionPosts([]);
-                }
-            } else {
-                console.log('No thread mapping found for proposal ID:', proposalIdNumber);
-                setDiscussionThread(null);
-                setDiscussionPosts([]);
-            }
-        } catch (err) {
-            console.error('Error fetching discussion thread:', err);
-            setDiscussionThread(null);
-            setDiscussionPosts([]);
-        } finally {
-            setLoadingDiscussion(false);
-        }
-    };
-
-    const fetchDiscussionPosts = async (threadId) => {
-        if (!forumActor || threadId === undefined || threadId === null) {
-            console.log('fetchDiscussionPosts early return:', {
-                forumActor: !!forumActor,
-                threadId,
-                threadIdType: typeof threadId
-            });
-            return;
-        }
-        
-        try {
-            console.log('Fetching posts for thread ID:', threadId, 'type:', typeof threadId);
-            const threadIdNumber = Number(threadId);
-            console.log('Calling get_posts_by_thread with:', threadIdNumber);
-            
-            const posts = await forumActor.get_posts_by_thread(threadIdNumber);
-            console.log('get_posts_by_thread returned:', posts);
-            console.log('Posts array length:', posts ? posts.length : 'null/undefined');
-            console.log('Posts type:', typeof posts);
-            
-            // Handle BigInt serialization for logging
-            try {
-                console.log('Posts detailed:', JSON.stringify(posts, (key, value) =>
-                    typeof value === 'bigint' ? value.toString() : value, 2));
-            } catch (e) {
-                console.log('Posts detailed (fallback):', posts);
-            }
-            
-            if (Array.isArray(posts)) {
-                console.log('Setting discussion posts, count:', posts.length);
-                console.log('Posts data:', posts.map(p => ({ 
-                    id: p.id.toString(), 
-                    body: p.body.substring(0, 50) + '...', 
-                    deleted: p.deleted,
-                    created_at: p.created_at.toString()
-                })));
-                setDiscussionPosts(posts);
-            } else {
-                console.error('Posts is not an array:', posts);
-                setDiscussionPosts([]);
-            }
-        } catch (err) {
-            console.error('Error fetching discussion posts:', err);
-            setDiscussionPosts([]);
-        }
-    };
-
-    const createProposalThread = async (firstCommentText) => {
-        if (!forumActor || !currentProposalId || !selectedSnsRoot) return null;
-        
-        const selectedSns = getSnsById(selectedSnsRoot);
-        if (!selectedSns) return null;
-
-        try {
-            const threadInput = {
-                proposal_id: Number(currentProposalId),
-                sns_root_canister_id: Principal.fromText(selectedSnsRoot),
-                title: [`${selectedSns.name} Proposal #${currentProposalId}`],
-                body: `Discussion thread for ${selectedSns.name} Proposal #${currentProposalId}`
-            };
-
-            const result = await forumActor.create_proposal_thread(threadInput);
-            if ('ok' in result) {
-                return result.ok; // Returns the thread ID
-            } else {
-                console.error('Error creating proposal thread:', result.err);
-                return null;
-            }
-        } catch (err) {
-            console.error('Error creating proposal thread:', err);
-            return null;
-        }
-    };
-
-    const submitComment = async () => {
-        if (!commentText.trim() || !forumActor) return;
-        
-        setSubmittingComment(true);
-        try {
-            let threadId = discussionThread?.thread_id;
-            let newThreadCreated = false;
-            
-            // If no thread exists, create one first
-            if (!threadId) {
-                threadId = await createProposalThread(commentText);
-                if (!threadId) {
-                    setError('Failed to create discussion thread');
-                    return;
-                }
-                newThreadCreated = true;
-            }
-
-            // Create the post
-            const postInput = {
-                thread_id: Number(threadId),
-                reply_to_post_id: [],
-                title: [],
-                body: commentText
-            };
-
-            // Use a dummy neuron ID since voting power will be set to 1 by default for forum posts
-            const dummyNeuronId = { id: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]) };
-            
-            const result = await forumActor.create_post(postInput, dummyNeuronId);
-            if ('ok' in result) {
-                console.log('Post created successfully, post ID:', result.ok);
-                console.log('Current discussionThread:', discussionThread);
-                console.log('newThreadCreated:', newThreadCreated);
-                console.log('threadId for refresh:', threadId);
-                
-                setCommentText('');
-                setShowCommentForm(false);
-                
-                // If we created a new thread, refresh the entire discussion thread info
-                if (newThreadCreated) {
-                    console.log('Refreshing discussion thread (new thread created)');
-                    await fetchDiscussionThread();
-                } else {
-                    // If thread already existed, just refresh the posts
-                    console.log('Refreshing discussion posts for thread:', threadId);
-                    await fetchDiscussionPosts(Number(threadId));
-                }
-                
-                console.log('After refresh - discussionPosts state:', discussionPosts.length);
-            } else {
-                console.error('Failed to create post:', result.err);
-                setError('Failed to create comment: ' + JSON.stringify(result.err));
-            }
-        } catch (err) {
-            console.error('Error submitting comment:', err);
-            setError('Failed to submit comment: ' + err.message);
-        } finally {
-            setSubmittingComment(false);
-        }
-    };
-
-    // Update the effect to also fetch discussion when forum actor is ready
-    useEffect(() => {
-        if (forumActor && currentProposalId) {
-            fetchDiscussionThread();
-        }
-    }, [forumActor, currentProposalId, selectedSnsRoot]);
 
     const handleSearch = (e) => {
         e.preventDefault();
@@ -1100,162 +895,13 @@ function Proposal() {
 
                     {/* Discussion Section */}
                     {proposalData && !loading && !error && (
-                        <div style={{ marginTop: '20px' }}>
-                            <h2 style={{ color: '#ffffff', marginBottom: '15px' }}>Discussion</h2>
-                            
-                            {loadingDiscussion ? (
-                                <div style={{ 
-                                    backgroundColor: '#3a3a3a', 
-                                    padding: '20px', 
-                                    borderRadius: '6px',
-                                    textAlign: 'center',
-                                    color: '#888'
-                                }}>
-                                    Loading discussion...
-                                </div>
-                            ) : (
-                                <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px' }}>
-                                    {discussionPosts.length === 0 ? (
-                                        <div style={{ textAlign: 'center', color: '#888', marginBottom: '20px' }}>
-                                            {discussionThread ? 'No comments yet.' : 'Be the first to comment on this proposal!'}
-                                        </div>
-                                    ) : (
-                                        <div style={{ marginBottom: '20px' }}>
-                                            {discussionPosts.map((post, index) => (
-                                                <div 
-                                                    key={post.id}
-                                                    style={{
-                                                        backgroundColor: '#2a2a2a',
-                                                        padding: '15px',
-                                                        borderRadius: '6px',
-                                                        marginBottom: index < discussionPosts.length - 1 ? '15px' : '0'
-                                                    }}
-                                                >
-                                                    <div style={{ 
-                                                        display: 'flex', 
-                                                        justifyContent: 'space-between', 
-                                                        alignItems: 'center',
-                                                        marginBottom: '10px'
-                                                    }}>
-                                                        <div style={{ 
-                                                            color: '#888', 
-                                                            fontSize: '14px',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '10px'
-                                                        }}>
-                                                            <span>By: {post.created_by.toString().slice(0, 8)}...</span>
-                                                            <span>•</span>
-                                                            <span>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
-                                                        </div>
-                                                        <div style={{ 
-                                                            display: 'flex', 
-                                                            alignItems: 'center', 
-                                                            gap: '10px',
-                                                            color: '#888',
-                                                            fontSize: '14px'
-                                                        }}>
-                                                            <span style={{ color: '#2ecc71' }}>↑{post.upvote_score}</span>
-                                                            <span style={{ color: '#e74c3c' }}>↓{post.downvote_score}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div style={{ color: '#ffffff', lineHeight: '1.6' }}>
-                                                        <ReactMarkdown>{post.body}</ReactMarkdown>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {/* Comment Form */}
-                                    {isAuthenticated ? (
-                                        <div>
-                                            {!showCommentForm ? (
-                                                <button
-                                                    onClick={() => setShowCommentForm(true)}
-                                                    style={{
-                                                        backgroundColor: '#3498db',
-                                                        color: '#ffffff',
-                                                        border: 'none',
-                                                        borderRadius: '4px',
-                                                        padding: '10px 20px',
-                                                        cursor: 'pointer',
-                                                        fontSize: '14px',
-                                                        width: '100%'
-                                                    }}
-                                                >
-                                                    {discussionPosts.length === 0 ? 'Be the first to comment' : 'Add a comment'}
-                                                </button>
-                                            ) : (
-                                                <div style={{ marginTop: '15px' }}>
-                                                    <textarea
-                                                        value={commentText}
-                                                        onChange={(e) => setCommentText(e.target.value)}
-                                                        placeholder="Share your thoughts on this proposal..."
-                                                        style={{
-                                                            width: '100%',
-                                                            minHeight: '100px',
-                                                            backgroundColor: '#2a2a2a',
-                                                            border: '1px solid #4a4a4a',
-                                                            borderRadius: '4px',
-                                                            color: '#ffffff',
-                                                            padding: '10px',
-                                                            fontSize: '14px',
-                                                            resize: 'vertical',
-                                                            marginBottom: '10px'
-                                                        }}
-                                                    />
-                                                    <div style={{ display: 'flex', gap: '10px' }}>
-                                                        <button
-                                                            onClick={submitComment}
-                                                            disabled={!commentText.trim() || submittingComment}
-                                                            style={{
-                                                                backgroundColor: commentText.trim() ? '#2ecc71' : '#666',
-                                                                color: '#ffffff',
-                                                                border: 'none',
-                                                                borderRadius: '4px',
-                                                                padding: '8px 16px',
-                                                                cursor: commentText.trim() && !submittingComment ? 'pointer' : 'not-allowed',
-                                                                fontSize: '14px'
-                                                            }}
-                                                        >
-                                                            {submittingComment ? 'Posting...' : 'Post Comment'}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                setShowCommentForm(false);
-                                                                setCommentText('');
-                                                            }}
-                                                            style={{
-                                                                backgroundColor: '#666',
-                                                                color: '#ffffff',
-                                                                border: 'none',
-                                                                borderRadius: '4px',
-                                                                padding: '8px 16px',
-                                                                cursor: 'pointer',
-                                                                fontSize: '14px'
-                                                            }}
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <div style={{ 
-                                            textAlign: 'center', 
-                                            color: '#888', 
-                                            padding: '20px',
-                                            backgroundColor: '#2a2a2a',
-                                            borderRadius: '4px'
-                                        }}>
-                                            Please connect your wallet to participate in the discussion.
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                        <Discussion
+                            forumActor={forumActor}
+                            currentProposalId={currentProposalId}
+                            selectedSnsRoot={selectedSnsRoot}
+                            isAuthenticated={isAuthenticated}
+                            onError={setError}
+                        />
                     )}
 
                     {/* Hotkey Neurons Section */}
