@@ -230,6 +230,17 @@ export default function Forum() {
             description: formData.description,
           });
           break;
+        case 'threads':
+          if (!selectedTopic) {
+            setError('Please select a topic first');
+            return;
+          }
+          result = await forumActor.create_thread({
+            topic_id: Number(selectedTopic.id),
+            title: formData.title ? [formData.title] : [],
+            body: formData.body,
+          });
+          break;
         default:
           setError('Create operation not supported for this tab');
           return;
@@ -634,12 +645,40 @@ export default function Forum() {
             Selected Topic: <strong>{selectedTopic.title}</strong>
           </div>
         )}
+        <button 
+          className="create-btn"
+          onClick={() => setShowCreateForm(true)}
+          disabled={!selectedTopic}
+        >
+          Create Thread
+        </button>
       </div>
 
       {!selectedTopic && (
         <div className="no-selection">
           Please select a topic from the Topics tab first.
         </div>
+      )}
+
+      {showCreateForm && selectedTopic && (
+        <form onSubmit={handleCreate} className="create-form">
+          <input
+            type="text"
+            placeholder="Thread Title (optional)"
+            value={formData.title || ''}
+            onChange={(e) => setFormData({...formData, title: e.target.value})}
+          />
+          <textarea
+            placeholder="Thread Body"
+            value={formData.body || ''}
+            onChange={(e) => setFormData({...formData, body: e.target.value})}
+            required
+          />
+          <div className="form-actions">
+            <button type="submit" disabled={loading}>Create</button>
+            <button type="button" onClick={() => setShowCreateForm(false)}>Cancel</button>
+          </div>
+        </form>
       )}
 
       {editingItem && editingType === 'thread' && (
