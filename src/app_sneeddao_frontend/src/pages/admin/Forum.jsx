@@ -481,6 +481,9 @@ export default function Forum() {
                   onClick={() => {
                     console.log('Selecting forum:', forum);
                     setSelectedForum(forum);
+                    setActiveTab('topics');
+                    setSelectedTopic(null);
+                    setSelectedThread(null);
                   }}
                 >
                   Select
@@ -615,7 +618,11 @@ export default function Forum() {
               <div className="item-actions">
                 <button 
                   className="select-btn"
-                  onClick={() => setSelectedTopic(topic)}
+                  onClick={() => {
+                    setSelectedTopic(topic);
+                    setActiveTab('threads');
+                    setSelectedThread(null);
+                  }}
                 >
                   Select
                 </button>
@@ -725,7 +732,10 @@ export default function Forum() {
               <div className="item-actions">
                 <button 
                   className="select-btn"
-                  onClick={() => setSelectedThread(thread)}
+                  onClick={() => {
+                    setSelectedThread(thread);
+                    setActiveTab('posts');
+                  }}
                 >
                   Select
                 </button>
@@ -801,7 +811,7 @@ export default function Forum() {
           >
             <option value="">No Reply (Top Level Post)</option>
             {posts.filter(post => !post.deleted).map(post => (
-              <option key={post.id} value={post.id}>
+              <option key={post.id} value={Number(post.id)}>
                 Reply to: {post.title || `Post #${Number(post.id)}`}
               </option>
             ))}
