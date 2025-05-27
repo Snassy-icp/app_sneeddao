@@ -152,7 +152,10 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const handleSectionClick = (section) => {
         setActiveSection(section);
         toggleMenu();
-        navigate(menuSections[section].defaultPath);
+        // Preserve URL parameters when navigating to different sections
+        const currentSearch = location.search;
+        const targetPath = menuSections[section].defaultPath;
+        navigate(`${targetPath}${currentSearch}`);
     };
 
     const handleLogoClick = () => {

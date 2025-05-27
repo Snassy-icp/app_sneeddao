@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 
 // Define status states
@@ -15,6 +15,7 @@ export const STATUS = {
 
 export function useAdminCheck({ identity, isAuthenticated, redirectPath = '/' }) {
     const navigate = useNavigate();
+    const location = useLocation();
     const [isAdmin, setIsAdmin] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -50,17 +51,31 @@ export function useAdminCheck({ identity, isAuthenticated, redirectPath = '/' })
                 }
 
                 setIsAdmin(isAdminResult);
-                if (!isAdminResult) {
+                if (!isAdminResult && redirectPath) {
                     console.log('Not an admin, redirecting...');
                     setError('You do not have admin privileges.');
-                    setTimeout(() => mounted && navigate(redirectPath), 2000);
+                    setTimeout(() => {
+                        if (mounted) {
+                            // Preserve URL parameters when redirecting
+                            const currentSearch = location.search;
+                            navigate(`${redirectPath}${currentSearch}`);
+                        }
+                    }, 2000);
                 }
                 setLoading(false);
             } catch (err) {
                 console.error('Error checking admin status:', err);
                 if (!mounted) return;
                 setError('Error checking admin status: ' + err.message);
-                setTimeout(() => mounted && navigate(redirectPath), 2000);
+                if (redirectPath) {
+                    setTimeout(() => {
+                        if (mounted) {
+                            // Preserve URL parameters when redirecting
+                            const currentSearch = location.search;
+                            navigate(`${redirectPath}${currentSearch}`);
+                        }
+                    }, 2000);
+                }
                 setLoading(false);
             }
         };
@@ -73,7 +88,11 @@ export function useAdminCheck({ identity, isAuthenticated, redirectPath = '/' })
                     console.log('Auth timeout expired, redirecting...');
                     setError('Please connect your wallet first.');
                     setLoading(false);
-                    navigate(redirectPath);
+                    if (redirectPath) {
+                        // Preserve URL parameters when redirecting
+                        const currentSearch = location.search;
+                        navigate(`${redirectPath}${currentSearch}`);
+                    }
                 }, 1000);
             } else {
                 console.log('Authenticated, checking admin status...');
@@ -91,7 +110,7 @@ export function useAdminCheck({ identity, isAuthenticated, redirectPath = '/' })
                 clearTimeout(timeoutId);
             }
         };
-    }, [identity, isAuthenticated, navigate, redirectPath]);
+    }, [identity, isAuthenticated, navigate, redirectPath, location.search]);
 
     const loadingComponent = {
         text: 'Loading...',
