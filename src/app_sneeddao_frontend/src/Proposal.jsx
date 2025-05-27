@@ -164,16 +164,26 @@ function Proposal() {
             console.log('Thread mapping type:', typeof threadMapping);
             console.log('Thread mapping keys:', threadMapping ? Object.keys(threadMapping) : 'null');
             
-            if (threadMapping && threadMapping.thread_id !== undefined) {
-                console.log('Found thread mapping, thread_id:', threadMapping.thread_id);
-                setDiscussionThread(threadMapping);
+            // Handle the case where threadMapping might be an array or a single object
+            let mappingData = null;
+            if (Array.isArray(threadMapping) && threadMapping.length > 0) {
+                mappingData = threadMapping[0];
+                console.log('Thread mapping is array, using first element:', mappingData);
+            } else if (threadMapping && !Array.isArray(threadMapping)) {
+                mappingData = threadMapping;
+                console.log('Thread mapping is object:', mappingData);
+            }
+            
+            if (mappingData && mappingData.thread_id !== undefined) {
+                console.log('Found thread mapping, thread_id:', mappingData.thread_id);
+                setDiscussionThread(mappingData);
                 // Ensure thread_id is a valid number before fetching posts
-                const threadId = Number(threadMapping.thread_id);
+                const threadId = Number(mappingData.thread_id);
                 if (!isNaN(threadId)) {
                     console.log('Fetching posts for valid thread ID:', threadId);
                     await fetchDiscussionPosts(threadId);
                 } else {
-                    console.error('Invalid thread_id:', threadMapping.thread_id);
+                    console.error('Invalid thread_id:', mappingData.thread_id);
                     setDiscussionPosts([]);
                 }
             } else {
@@ -210,8 +220,22 @@ function Proposal() {
             console.log('Posts array length:', posts ? posts.length : 'null/undefined');
             console.log('Posts type:', typeof posts);
             
+            // Handle BigInt serialization for logging
+            try {
+                console.log('Posts detailed:', JSON.stringify(posts, (key, value) =>
+                    typeof value === 'bigint' ? value.toString() : value, 2));
+            } catch (e) {
+                console.log('Posts detailed (fallback):', posts);
+            }
+            
             if (Array.isArray(posts)) {
                 console.log('Setting discussion posts, count:', posts.length);
+                console.log('Posts data:', posts.map(p => ({ 
+                    id: p.id.toString(), 
+                    body: p.body.substring(0, 50) + '...', 
+                    deleted: p.deleted,
+                    created_at: p.created_at.toString()
+                })));
                 setDiscussionPosts(posts);
             } else {
                 console.error('Posts is not an array:', posts);
@@ -282,6 +306,10 @@ function Proposal() {
             const result = await forumActor.create_post(postInput, dummyNeuronId);
             if ('ok' in result) {
                 console.log('Post created successfully, post ID:', result.ok);
+                console.log('Current discussionThread:', discussionThread);
+                console.log('newThreadCreated:', newThreadCreated);
+                console.log('threadId for refresh:', threadId);
+                
                 setCommentText('');
                 setShowCommentForm(false);
                 
@@ -294,6 +322,8 @@ function Proposal() {
                     console.log('Refreshing discussion posts for thread:', threadId);
                     await fetchDiscussionPosts(Number(threadId));
                 }
+                
+                console.log('After refresh - discussionPosts state:', discussionPosts.length);
             } else {
                 console.error('Failed to create post:', result.err);
                 setError('Failed to create comment: ' + JSON.stringify(result.err));
@@ -311,7 +341,7 @@ function Proposal() {
         if (forumActor && currentProposalId) {
             fetchDiscussionThread();
         }
-    }, [forumActor, currentProposalId]);
+    }, [forumActor, currentProposalId, selectedSnsRoot]);
 
     const handleSearch = (e) => {
         e.preventDefault();
