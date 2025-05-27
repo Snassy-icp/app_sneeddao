@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Principal } from '@dfinity/principal';
+import { PrincipalDisplay } from '../utils/PrincipalUtils';
 
 function Discussion({ 
     forumActor, 
@@ -349,7 +350,7 @@ function Discussion({
                             alignItems: 'center',
                             gap: '10px'
                         }}>
-                            <span>By: {post.created_by.toString().slice(0, 8)}...</span>
+                            <span>By: <PrincipalDisplay principal={post.created_by} showCopyButton={false} /></span>
                             <span>•</span>
                             <span>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
                             {isFlat && parentPost && (
