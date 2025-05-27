@@ -246,6 +246,8 @@ export default function Forum() {
             setError('Please select a thread first');
             return;
           }
+          console.log('Creating post with formData:', formData);
+          console.log('replyToPostId:', formData.replyToPostId, 'type:', typeof formData.replyToPostId);
           // For admin posts, use a dummy neuron ID since voting power will be set to 1 by default
           const dummyNeuronId = { id: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]) };
           result = await forumActor.create_post({
@@ -807,14 +809,21 @@ export default function Forum() {
           />
           <select
             value={formData.replyToPostId || ''}
-            onChange={(e) => setFormData({...formData, replyToPostId: e.target.value})}
+            onChange={(e) => {
+              console.log('Reply to dropdown changed:', e.target.value);
+              setFormData({...formData, replyToPostId: e.target.value});
+            }}
           >
             <option value="">No Reply (Top Level Post)</option>
-            {posts.filter(post => !post.deleted).map(post => (
-              <option key={post.id} value={Number(post.id)}>
-                Reply to: {post.title || `Post #${Number(post.id)}`}
-              </option>
-            ))}
+            {posts.filter(post => !post.deleted).map(post => {
+              const postIdStr = Number(post.id).toString();
+              console.log('Post option:', postIdStr, post.title || `Post #${Number(post.id)}`);
+              return (
+                <option key={post.id} value={postIdStr}>
+                  Reply to: {post.title || `Post #${Number(post.id)}`}
+                </option>
+              );
+            })}
           </select>
           <div className="form-actions">
             <button type="submit" disabled={loading}>Create</button>
