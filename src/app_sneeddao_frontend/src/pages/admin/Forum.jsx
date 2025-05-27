@@ -38,6 +38,8 @@ export default function Forum() {
   const [selectedThread, setSelectedThread] = useState(null);
   const [showAddAdminForm, setShowAddAdminForm] = useState(false);
   const [newAdminPrincipal, setNewAdminPrincipal] = useState('');
+  const [editingItem, setEditingItem] = useState(null);
+  const [editingType, setEditingType] = useState(null);
 
   // Use backend admin check hook
   const { isAdmin: isBackendAdmin, loading: backendAdminLoading, error: backendAdminError } = useAdminCheck({ 
@@ -237,6 +239,91 @@ export default function Forum() {
     }
   };
 
+  const handleEdit = async (e) => {
+    e.preventDefault();
+    if (!forumActor || !editingItem) return;
+
+    setLoading(true);
+    try {
+      let result;
+      switch (editingType) {
+        case 'forum':
+          result = await forumActor.update_forum(editingItem.id, {
+            title: formData.title,
+            description: formData.description,
+            sns_root_canister_id: formData.snsRootCanisterId ? [Principal.fromText(formData.snsRootCanisterId)] : [],
+          });
+          break;
+        case 'topic':
+          result = await forumActor.update_topic(editingItem.id, {
+            title: formData.title,
+            description: formData.description,
+            parent_topic_id: formData.parentTopicId ? [Principal.fromText(formData.parentTopicId)] : [],
+          });
+          break;
+        case 'thread':
+          result = await forumActor.update_thread(editingItem.id, {
+            title: formData.title || null,
+            body: formData.body,
+          });
+          break;
+        case 'post':
+          result = await forumActor.update_post(editingItem.id, {
+            title: formData.title || null,
+            body: formData.body,
+          });
+          break;
+        default:
+          setError('Edit operation not supported for this type');
+          return;
+      }
+
+      if ('ok' in result) {
+        setFormData({});
+        setEditingItem(null);
+        setEditingType(null);
+        await fetchData();
+        setError('');
+      } else {
+        setError('Error: ' + JSON.stringify(result.err));
+      }
+    } catch (err) {
+      console.error('Error editing:', err);
+      setError('Failed to edit item: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startEdit = (item, type) => {
+    setEditingItem(item);
+    setEditingType(type);
+    
+    // Pre-populate form with existing data
+    const newFormData = {
+      title: item.title || '',
+      description: item.description || '',
+      body: item.body || '',
+    };
+
+    // Add type-specific data
+    if (type === 'forum' && item.sns_root_canister_id && item.sns_root_canister_id.length > 0) {
+      newFormData.snsRootCanisterId = item.sns_root_canister_id[0].toString();
+    }
+    if (type === 'topic' && item.parent_topic_id && item.parent_topic_id.length > 0) {
+      newFormData.parentTopicId = item.parent_topic_id[0].toString();
+    }
+
+    setFormData(newFormData);
+    setShowCreateForm(false); // Hide create form if open
+  };
+
+  const cancelEdit = () => {
+    setEditingItem(null);
+    setEditingType(null);
+    setFormData({});
+  };
+
   const handleDelete = async (id, type) => {
     if (!forumActor || !confirm(`Are you sure you want to delete this ${type}?`)) return;
 
@@ -318,6 +405,35 @@ export default function Forum() {
         </form>
       )}
 
+      {editingItem && editingType === 'forum' && (
+        <form onSubmit={handleEdit} className="create-form">
+          <h3>Edit Forum: {editingItem.title}</h3>
+          <input
+            type="text"
+            placeholder="Forum Title"
+            value={formData.title || ''}
+            onChange={(e) => setFormData({...formData, title: e.target.value})}
+            required
+          />
+          <textarea
+            placeholder="Forum Description"
+            value={formData.description || ''}
+            onChange={(e) => setFormData({...formData, description: e.target.value})}
+            required
+          />
+          <input
+            type="text"
+            placeholder="SNS Root Canister ID (optional, e.g., rdmx6-jaaaa-aaaah-qcaiq-cai)"
+            value={formData.snsRootCanisterId || ''}
+            onChange={(e) => setFormData({...formData, snsRootCanisterId: e.target.value})}
+          />
+          <div className="form-actions">
+            <button type="submit" disabled={loading}>Update</button>
+            <button type="button" onClick={cancelEdit}>Cancel</button>
+          </div>
+        </form>
+      )}
+
       <div className="items-list">
         {forums.map(forum => (
           <div key={forum.id} className={`item-card ${forum.deleted ? 'deleted' : ''}`}>
@@ -329,6 +445,13 @@ export default function Forum() {
                   onClick={() => setSelectedForum(forum)}
                 >
                   Select
+                </button>
+                <button 
+                  className="edit-btn"
+                  onClick={() => startEdit(forum, 'forum')}
+                  disabled={forum.deleted}
+                >
+                  Edit
                 </button>
                 <button 
                   className="delete-btn"
@@ -411,6 +534,40 @@ export default function Forum() {
         </form>
       )}
 
+      {editingItem && editingType === 'topic' && (
+        <form onSubmit={handleEdit} className="create-form">
+          <h3>Edit Topic: {editingItem.title}</h3>
+          <input
+            type="text"
+            placeholder="Topic Title"
+            value={formData.title || ''}
+            onChange={(e) => setFormData({...formData, title: e.target.value})}
+            required
+          />
+          <textarea
+            placeholder="Topic Description"
+            value={formData.description || ''}
+            onChange={(e) => setFormData({...formData, description: e.target.value})}
+            required
+          />
+          <select
+            value={formData.parentTopicId || ''}
+            onChange={(e) => setFormData({...formData, parentTopicId: e.target.value})}
+          >
+            <option value="">No Parent Topic (Top Level)</option>
+            {topics.filter(topic => !topic.deleted && topic.id !== editingItem.id).map(topic => (
+              <option key={topic.id} value={topic.id}>
+                {topic.title} (ID: {Number(topic.id)})
+              </option>
+            ))}
+          </select>
+          <div className="form-actions">
+            <button type="submit" disabled={loading}>Update</button>
+            <button type="button" onClick={cancelEdit}>Cancel</button>
+          </div>
+        </form>
+      )}
+
       <div className="items-list">
         {topics.map(topic => (
           <div key={topic.id} className={`item-card ${topic.deleted ? 'deleted' : ''}`}>
@@ -422,6 +579,13 @@ export default function Forum() {
                   onClick={() => setSelectedTopic(topic)}
                 >
                   Select
+                </button>
+                <button 
+                  className="edit-btn"
+                  onClick={() => startEdit(topic, 'topic')}
+                  disabled={topic.deleted}
+                >
+                  Edit
                 </button>
                 <button 
                   className="delete-btn"
@@ -464,6 +628,28 @@ export default function Forum() {
         </div>
       )}
 
+      {editingItem && editingType === 'thread' && (
+        <form onSubmit={handleEdit} className="create-form">
+          <h3>Edit Thread: {editingItem.title || `Thread #${editingItem.id}`}</h3>
+          <input
+            type="text"
+            placeholder="Thread Title (optional)"
+            value={formData.title || ''}
+            onChange={(e) => setFormData({...formData, title: e.target.value})}
+          />
+          <textarea
+            placeholder="Thread Body"
+            value={formData.body || ''}
+            onChange={(e) => setFormData({...formData, body: e.target.value})}
+            required
+          />
+          <div className="form-actions">
+            <button type="submit" disabled={loading}>Update</button>
+            <button type="button" onClick={cancelEdit}>Cancel</button>
+          </div>
+        </form>
+      )}
+
       <div className="items-list">
         {threads.map(thread => (
           <div key={thread.id} className={`item-card ${thread.deleted ? 'deleted' : ''}`}>
@@ -475,6 +661,13 @@ export default function Forum() {
                   onClick={() => setSelectedThread(thread)}
                 >
                   Select
+                </button>
+                <button 
+                  className="edit-btn"
+                  onClick={() => startEdit(thread, 'thread')}
+                  disabled={thread.deleted}
+                >
+                  Edit
                 </button>
                 <button 
                   className="delete-btn"
@@ -514,12 +707,41 @@ export default function Forum() {
         </div>
       )}
 
+      {editingItem && editingType === 'post' && (
+        <form onSubmit={handleEdit} className="create-form">
+          <h3>Edit Post: {editingItem.title || `Post #${editingItem.id}`}</h3>
+          <input
+            type="text"
+            placeholder="Post Title (optional)"
+            value={formData.title || ''}
+            onChange={(e) => setFormData({...formData, title: e.target.value})}
+          />
+          <textarea
+            placeholder="Post Body"
+            value={formData.body || ''}
+            onChange={(e) => setFormData({...formData, body: e.target.value})}
+            required
+          />
+          <div className="form-actions">
+            <button type="submit" disabled={loading}>Update</button>
+            <button type="button" onClick={cancelEdit}>Cancel</button>
+          </div>
+        </form>
+      )}
+
       <div className="items-list">
         {posts.map(post => (
           <div key={post.id} className={`item-card ${post.deleted ? 'deleted' : ''}`}>
             <div className="item-header">
               <h3>{post.title || `Post #${post.id}`} {post.deleted && <span className="deleted-badge">[DELETED]</span>}</h3>
               <div className="item-actions">
+                <button 
+                  className="edit-btn"
+                  onClick={() => startEdit(post, 'post')}
+                  disabled={post.deleted}
+                >
+                  Edit
+                </button>
                 <button 
                   className="delete-btn"
                   onClick={() => handleDelete(post.id, 'post')}
@@ -781,6 +1003,8 @@ export default function Forum() {
                 setFormData({});
                 setShowAddAdminForm(false);
                 setNewAdminPrincipal('');
+                setEditingItem(null);
+                setEditingType(null);
               }}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
