@@ -26,6 +26,21 @@ module {
         added_at: Int;
     };
 
+    // Proposal tracking types
+    public type ProposalTopicMapping = {
+        forum_id: Nat;
+        proposals_topic_id: Nat;
+        set_by: Principal;
+        set_at: Int;
+    };
+
+    public type ProposalThreadMapping = {
+        thread_id: Nat;
+        proposal_id: Nat;
+        created_by: Principal;
+        created_at: Int;
+    };
+
     // Core data structures
     public type Forum = {
         id: Nat;
@@ -117,6 +132,11 @@ module {
         topic_threads: Map.Map<Nat, Vector.Vector<Nat>>;
         thread_posts: Map.Map<Nat, Vector.Vector<Nat>>;
         post_replies: Map.Map<Nat, Vector.Vector<Nat>>;
+        
+        // Proposal tracking (separate from core structures)
+        proposal_topics: Map.Map<Nat, ProposalTopicMapping>; // forum_id -> mapping
+        proposal_threads: Map.Map<Nat, ProposalThreadMapping>; // proposal_id -> mapping
+        thread_proposals: Map.Map<Nat, Nat>; // thread_id -> proposal_id (for reverse lookup)
     };
 
     // Input types for creation functions
@@ -150,6 +170,18 @@ module {
         post_id: Nat;
         neuron_id: NeuronId;
         vote_type: VoteType;
+    };
+
+    // Proposal management input types
+    public type SetProposalTopicInput = {
+        forum_id: Nat;
+        topic_id: Nat;
+    };
+
+    public type CreateProposalThreadInput = {
+        proposal_id: Nat;
+        title: ?Text;
+        body: Text;
     };
 
     // Response types with resolved data

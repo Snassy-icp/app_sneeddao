@@ -47,6 +47,9 @@ module {
             topic_threads = Map.new<Nat, Vector.Vector<Nat>>();
             thread_posts = Map.new<Nat, Vector.Vector<Nat>>();
             post_replies = Map.new<Nat, Vector.Vector<Nat>>();
+            proposal_topics = Map.new<Nat, T.ProposalTopicMapping>();
+            proposal_threads = Map.new<Nat, T.ProposalThreadMapping>();
+            thread_proposals = Map.new<Nat, Nat>();
         }
     };
 
@@ -1289,6 +1292,149 @@ module {
                 #ok()
             };
             case null #err(#NotFound("Post not found"));
+        }
+    };
+
+    // Proposal management functions
+    public func set_proposals_topic(
+        state: ForumState,
+        caller: Principal,
+        input: T.SetProposalTopicInput
+    ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
+        // Check if forum exists
+        switch (Map.get(state.forums, Map.nhash, input.forum_id)) {
+            case null return #err(#NotFound("Forum not found"));
+            case (?_) {};
+        };
+
+        // Check if topic exists and belongs to the forum
+        switch (Map.get(state.topics, Map.nhash, input.topic_id)) {
+            case null return #err(#NotFound("Topic not found"));
+            case (?topic) {
+                if (topic.forum_id != input.forum_id) {
+                    return #err(#InvalidInput("Topic must belong to the specified forum"));
+                };
+            };
+        };
+
+        let mapping : T.ProposalTopicMapping = {
+            forum_id = input.forum_id;
+            proposals_topic_id = input.topic_id;
+            set_by = caller;
+            set_at = Time.now();
+        };
+
+        ignore Map.put(state.proposal_topics, Map.nhash, input.forum_id, mapping);
+        #ok()
+    };
+
+    public func get_proposals_topic(state: ForumState, forum_id: Nat) : ?T.ProposalTopicMapping {
+        Map.get(state.proposal_topics, Map.nhash, forum_id)
+    };
+
+    public func create_proposal_thread(
+        state: ForumState,
+        caller: Principal,
+        input: T.CreateProposalThreadInput
+    ) : Result<Nat, ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
+        // Check if proposal thread already exists
+        switch (Map.get(state.proposal_threads, Map.nhash, input.proposal_id)) {
+            case (?_) return #err(#AlreadyExists("Thread for this proposal already exists"));
+            case null {};
+        };
+
+        // Find any forum that has a proposals topic set
+        var found_topic_id : ?Nat = null;
+        label search for ((_, mapping) in Map.entries(state.proposal_topics)) {
+            found_topic_id := ?mapping.proposals_topic_id;
+            break search;
+        };
+
+        let topic_id = switch (found_topic_id) {
+            case (?tid) tid;
+            case null return #err(#InvalidInput("No proposals topic has been set for any forum"));
+        };
+
+        // Validate input
+        switch (input.title) {
+            case (?title) {
+                switch (validate_text(title, "Title", 200)) {
+                    case (#err(e)) return #err(e);
+                    case (#ok()) {};
+                };
+            };
+            case null {};
+        };
+        switch (validate_text(input.body, "Body", 10000)) {
+            case (#err(e)) return #err(e);
+            case (#ok()) {};
+        };
+
+        let thread_id = get_next_id(state);
+        let now = Time.now();
+        let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+
+        let thread : Thread = {
+            id = thread_id;
+            topic_id = topic_id;
+            title = input.title;
+            body = input.body;
+            created_by = caller_index;
+            created_at = now;
+            updated_by = caller_index;
+            updated_at = now;
+            deleted = false;
+        };
+
+        // Create the thread
+        ignore Map.put(state.threads, Map.nhash, thread_id, thread);
+        add_to_index(state.topic_threads, topic_id, thread_id);
+
+        // Create the proposal mapping
+        let proposal_mapping : T.ProposalThreadMapping = {
+            thread_id = thread_id;
+            proposal_id = input.proposal_id;
+            created_by = caller;
+            created_at = now;
+        };
+
+        ignore Map.put(state.proposal_threads, Map.nhash, input.proposal_id, proposal_mapping);
+        ignore Map.put(state.thread_proposals, Map.nhash, thread_id, input.proposal_id);
+
+        #ok(thread_id)
+    };
+
+    public func get_proposal_thread(state: ForumState, proposal_id: Nat) : ?T.ProposalThreadMapping {
+        Map.get(state.proposal_threads, Map.nhash, proposal_id)
+    };
+
+    public func get_thread_proposal_id(state: ForumState, thread_id: Nat) : ?Nat {
+        Map.get(state.thread_proposals, Map.nhash, thread_id)
+    };
+
+    public func remove_proposals_topic(
+        state: ForumState,
+        caller: Principal,
+        forum_id: Nat
+    ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
+        switch (Map.remove(state.proposal_topics, Map.nhash, forum_id)) {
+            case (?_) #ok();
+            case null #err(#NotFound("No proposals topic set for this forum"));
         }
     };
 }

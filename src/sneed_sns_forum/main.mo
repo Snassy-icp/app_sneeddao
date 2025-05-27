@@ -28,6 +28,9 @@ actor SneedSNSForum {
     stable let stable_topic_threads = Map.new<Nat, Vector.Vector<Nat>>();
     stable let stable_thread_posts = Map.new<Nat, Vector.Vector<Nat>>();
     stable let stable_post_replies = Map.new<Nat, Vector.Vector<Nat>>();
+    stable let stable_proposal_topics = Map.new<Nat, T.ProposalTopicMapping>();
+    stable let stable_proposal_threads = Map.new<Nat, T.ProposalThreadMapping>();
+    stable let stable_thread_proposals = Map.new<Nat, Nat>();
 
     // Runtime state that directly references stable storage
     private var state : T.ForumState = {
@@ -45,6 +48,9 @@ actor SneedSNSForum {
         topic_threads = stable_topic_threads;
         thread_posts = stable_thread_posts;
         post_replies = stable_post_replies;
+        proposal_topics = stable_proposal_topics;
+        proposal_threads = stable_proposal_threads;
+        thread_proposals = stable_thread_proposals;
     };
 
     // Helper function to get caller's voting power from SNS
@@ -325,6 +331,31 @@ actor SneedSNSForum {
             return [];
         };
         Lib.get_post_replies_filtered(state, post_id, true)
+    };
+
+    // Proposal management endpoints
+    public shared ({ caller }) func set_proposals_topic(input: T.SetProposalTopicInput) : async T.Result<(), T.ForumError> {
+        Lib.set_proposals_topic(state, caller, input)
+    };
+
+    public query func get_proposals_topic(forum_id: Nat) : async ?T.ProposalTopicMapping {
+        Lib.get_proposals_topic(state, forum_id)
+    };
+
+    public shared ({ caller }) func create_proposal_thread(input: T.CreateProposalThreadInput) : async T.Result<Nat, T.ForumError> {
+        Lib.create_proposal_thread(state, caller, input)
+    };
+
+    public query func get_proposal_thread(proposal_id: Nat) : async ?T.ProposalThreadMapping {
+        Lib.get_proposal_thread(state, proposal_id)
+    };
+
+    public query func get_thread_proposal_id(thread_id: Nat) : async ?Nat {
+        Lib.get_thread_proposal_id(state, thread_id)
+    };
+
+    public shared ({ caller }) func remove_proposals_topic(forum_id: Nat) : async T.Result<(), T.ForumError> {
+        Lib.remove_proposals_topic(state, caller, forum_id)
     };
 
     // System upgrade hooks to maintain stable storage consistency
