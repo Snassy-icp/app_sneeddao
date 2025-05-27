@@ -1357,7 +1357,6 @@ module {
         caller: Principal,
         input: T.CreateProposalThreadInput
     ) : Result<Nat, ForumError> {
-        // Check admin access
 
         // Check if proposal thread already exists
         switch (Map.get(state.proposal_threads, Map.nhash, input.proposal_id)) {
