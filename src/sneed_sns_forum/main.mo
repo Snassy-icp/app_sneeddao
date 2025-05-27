@@ -29,8 +29,8 @@ actor SneedSNSForum {
     stable let stable_thread_posts = Map.new<Nat, Vector.Vector<Nat>>();
     stable let stable_post_replies = Map.new<Nat, Vector.Vector<Nat>>();
     stable let stable_proposal_topics = Map.new<Nat, T.ProposalTopicMapping>();
-    stable let stable_proposal_threads = Map.new<Nat, T.ProposalThreadMapping>();
-    stable let stable_thread_proposals = Map.new<Nat, Nat>();
+    stable let stable_proposal_threads = Map.new<T.ProposalThreadKey, T.ProposalThreadMapping>();
+    stable let stable_thread_proposals = Map.new<Nat, (Principal, Nat)>();
 
     // Runtime state that directly references stable storage
     private var state : T.ForumState = {
@@ -178,18 +178,15 @@ actor SneedSNSForum {
     };
 
     public query ({ caller }) func get_post(id: Nat) : async ?T.PostResponse {
-        let is_admin = Lib.is_admin(state, caller);
-        Lib.get_post_filtered(state, id, is_admin)
+        Lib.get_post_filtered(state, id, false) // show_deleted = false for all users
     };
 
     public query ({ caller }) func get_posts_by_thread(thread_id: Nat) : async [T.PostResponse] {
-        let is_admin = Lib.is_admin(state, caller);
-        Lib.get_posts_by_thread_filtered(state, thread_id, is_admin)
+        Lib.get_posts_by_thread_filtered(state, thread_id, false) // show_deleted = false for all users
     };
 
     public query ({ caller }) func get_post_replies(post_id: Nat) : async [T.PostResponse] {
-        let is_admin = Lib.is_admin(state, caller);
-        Lib.get_post_replies_filtered(state, post_id, is_admin)
+        Lib.get_post_replies_filtered(state, post_id, false) // show_deleted = false for all users
     };
 
     // Voting API endpoints
@@ -346,11 +343,11 @@ actor SneedSNSForum {
         Lib.create_proposal_thread(state, caller, input)
     };
 
-    public query func get_proposal_thread(proposal_id: Nat) : async ?T.ProposalThreadMappingResponse {
-        Lib.get_proposal_thread_response(state, proposal_id)
+    public query func get_proposal_thread(sns_root: Principal, proposal_id: Nat) : async ?T.ProposalThreadMappingResponse {
+        Lib.get_proposal_thread_response(state, sns_root, proposal_id)
     };
 
-    public query func get_thread_proposal_id(thread_id: Nat) : async ?Nat {
+    public query func get_thread_proposal_id(thread_id: Nat) : async ?(Principal, Nat) {
         Lib.get_thread_proposal_id(state, thread_id)
     };
 

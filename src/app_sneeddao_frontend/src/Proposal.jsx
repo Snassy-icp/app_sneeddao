@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
@@ -147,15 +147,36 @@ function Proposal() {
     const fetchDiscussionThread = async () => {
         if (!forumActor || !currentProposalId) return;
         
+        console.log('fetchDiscussionThread called with:');
+        console.log('- currentProposalId:', currentProposalId, 'type:', typeof currentProposalId);
+        console.log('- selectedSnsRoot:', selectedSnsRoot);
+        console.log('- forumActor available:', !!forumActor);
+        
         setLoadingDiscussion(true);
         try {
             // Check if a thread already exists for this proposal
-            const threadMapping = await forumActor.get_proposal_thread(Number(currentProposalId));
-            if (threadMapping) {
+            const proposalIdNumber = Number(currentProposalId);
+            console.log('Calling get_proposal_thread with proposal ID:', proposalIdNumber);
+            
+            const threadMapping = await forumActor.get_proposal_thread(proposalIdNumber);
+            console.log('Thread mapping result:', threadMapping);
+            console.log('Thread mapping type:', typeof threadMapping);
+            console.log('Thread mapping keys:', threadMapping ? Object.keys(threadMapping) : 'null');
+            
+            if (threadMapping && threadMapping.thread_id !== undefined) {
+                console.log('Found thread mapping, thread_id:', threadMapping.thread_id);
                 setDiscussionThread(threadMapping);
-                // Fetch posts for this thread
-                await fetchDiscussionPosts(threadMapping.thread_id);
+                // Ensure thread_id is a valid number before fetching posts
+                const threadId = Number(threadMapping.thread_id);
+                if (!isNaN(threadId)) {
+                    console.log('Fetching posts for valid thread ID:', threadId);
+                    await fetchDiscussionPosts(threadId);
+                } else {
+                    console.error('Invalid thread_id:', threadMapping.thread_id);
+                    setDiscussionPosts([]);
+                }
             } else {
+                console.log('No thread mapping found for proposal ID:', proposalIdNumber);
                 setDiscussionThread(null);
                 setDiscussionPosts([]);
             }
@@ -169,11 +190,32 @@ function Proposal() {
     };
 
     const fetchDiscussionPosts = async (threadId) => {
-        if (!forumActor) return;
+        if (!forumActor || threadId === undefined || threadId === null) {
+            console.log('fetchDiscussionPosts early return:', {
+                forumActor: !!forumActor,
+                threadId,
+                threadIdType: typeof threadId
+            });
+            return;
+        }
         
         try {
-            const posts = await forumActor.get_posts_by_thread(threadId);
-            setDiscussionPosts(posts);
+            console.log('Fetching posts for thread ID:', threadId, 'type:', typeof threadId);
+            const threadIdNumber = Number(threadId);
+            console.log('Calling get_posts_by_thread with:', threadIdNumber);
+            
+            const posts = await forumActor.get_posts_by_thread(threadIdNumber);
+            console.log('get_posts_by_thread returned:', posts);
+            console.log('Posts array length:', posts ? posts.length : 'null/undefined');
+            console.log('Posts type:', typeof posts);
+            
+            if (Array.isArray(posts)) {
+                console.log('Setting discussion posts, count:', posts.length);
+                setDiscussionPosts(posts);
+            } else {
+                console.error('Posts is not an array:', posts);
+                setDiscussionPosts([]);
+            }
         } catch (err) {
             console.error('Error fetching discussion posts:', err);
             setDiscussionPosts([]);
@@ -212,6 +254,7 @@ function Proposal() {
         setSubmittingComment(true);
         try {
             let threadId = discussionThread?.thread_id;
+            let newThreadCreated = false;
             
             // If no thread exists, create one first
             if (!threadId) {
@@ -220,11 +263,12 @@ function Proposal() {
                     setError('Failed to create discussion thread');
                     return;
                 }
+                newThreadCreated = true;
             }
 
             // Create the post
             const postInput = {
-                thread_id: threadId,
+                thread_id: Number(threadId),
                 reply_to_post_id: [],
                 title: [],
                 body: commentText
@@ -235,11 +279,21 @@ function Proposal() {
             
             const result = await forumActor.create_post(postInput, dummyNeuronId);
             if ('ok' in result) {
+                console.log('Post created successfully, post ID:', result.ok);
                 setCommentText('');
                 setShowCommentForm(false);
-                // Refresh the discussion
-                await fetchDiscussionThread();
+                
+                // If we created a new thread, refresh the entire discussion thread info
+                if (newThreadCreated) {
+                    console.log('Refreshing discussion thread (new thread created)');
+                    await fetchDiscussionThread();
+                } else {
+                    // If thread already existed, just refresh the posts
+                    console.log('Refreshing discussion posts for thread:', threadId);
+                    await fetchDiscussionPosts(Number(threadId));
+                }
             } else {
+                console.error('Failed to create post:', result.err);
                 setError('Failed to create comment: ' + JSON.stringify(result.err));
             }
         } catch (err) {
@@ -417,10 +471,12 @@ function Proposal() {
         if (!proposalData?.latest_tally?.[0]) return null;
         
         const tally = proposalData.latest_tally[0];
-        const { yesPercent, noPercent } = calculateVotingPercentages(tally);
-        const isCritical = isCriticalProposal(proposalData);
-        const standardMajorityThreshold = calculateStandardMajorityThreshold(tally);
-        const standardMajorityPercent = (standardMajorityThreshold / Number(tally.total)) * 100;
+        
+        // Memoize expensive calculations to prevent them from running on every render
+        const { yesPercent, noPercent } = useMemo(() => calculateVotingPercentages(tally), [tally]);
+        const isCritical = useMemo(() => isCriticalProposal(proposalData), [proposalData]);
+        const standardMajorityThreshold = useMemo(() => calculateStandardMajorityThreshold(tally), [tally]);
+        const standardMajorityPercent = useMemo(() => (standardMajorityThreshold / Number(tally.total)) * 100, [standardMajorityThreshold, tally.total]);
         
         return (
             <div style={{ marginTop: '20px' }}>

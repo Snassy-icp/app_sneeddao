@@ -37,6 +37,7 @@ module {
     public type ProposalThreadMapping = {
         thread_id: Nat;
         proposal_id: Nat;
+        sns_root_canister_id: Principal;
         created_by: Nat32;
         created_at: Int;
     };
@@ -107,6 +108,9 @@ module {
     // Composite key type for votes (post_id, neuron_id)
     public type VoteKey = (Nat, Nat32);
 
+    // Composite key type for proposal threads (sns_root, proposal_id)
+    public type ProposalThreadKey = (Principal, Nat);
+
     // State type for the forum system
     public type ForumState = {
         // Global ID counter
@@ -135,8 +139,8 @@ module {
         
         // Proposal tracking (separate from core structures)
         proposal_topics: Map.Map<Nat, ProposalTopicMapping>; // forum_id -> mapping
-        proposal_threads: Map.Map<Nat, ProposalThreadMapping>; // proposal_id -> mapping
-        thread_proposals: Map.Map<Nat, Nat>; // thread_id -> proposal_id (for reverse lookup)
+        proposal_threads: Map.Map<ProposalThreadKey, ProposalThreadMapping>; // (sns_root, proposal_id) -> mapping
+        thread_proposals: Map.Map<Nat, (Principal, Nat)>; // thread_id -> (sns_root, proposal_id) (for reverse lookup)
     };
 
     // Input types for creation functions
@@ -180,6 +184,7 @@ module {
 
     public type CreateProposalThreadInput = {
         proposal_id: Nat;
+        sns_root_canister_id: Principal;
         title: ?Text;
         body: Text;
     };
@@ -258,6 +263,7 @@ module {
     public type ProposalThreadMappingResponse = {
         thread_id: Nat;
         proposal_id: Nat;
+        sns_root_canister_id: Principal;
         created_by: Principal;
         created_at: Int;
     };
@@ -324,6 +330,19 @@ module {
 
     public func neuron_id_hash(n: NeuronId) : Nat32 {
         Blob.hash(n.id)
+    };
+
+    // Helper function for proposal thread key comparison
+    public func proposal_thread_key_equal(a: ProposalThreadKey, b: ProposalThreadKey) : Bool {
+        Principal.equal(a.0, b.0) and a.1 == b.1
+    };
+
+    public func proposal_thread_key_hash(key: ProposalThreadKey) : Nat32 {
+        let h1 = Principal.hash(key.0);
+        let h2 : Nat32 = switch (key.1 % (2**32 - 1)) {
+            case (n) { Nat32.fromNat(n) };
+        };
+        h1 ^ h2
     };
 
     // Helper function for vote key comparison

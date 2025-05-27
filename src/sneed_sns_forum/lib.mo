@@ -502,11 +502,6 @@ module {
         input: T.CreatePostInput,
         initial_voting_power: Nat
     ) : Result<Nat, ForumError> {
-        // Check admin access
-        if (not is_admin(state, caller)) {
-            return #err(#Unauthorized("Admin access required"));
-        };
-
         // Validate input
         switch (input.title) {
             case (?title) {
@@ -1358,22 +1353,35 @@ module {
         input: T.CreateProposalThreadInput
     ) : Result<Nat, ForumError> {
 
-        // Check if proposal thread already exists
-        switch (Map.get(state.proposal_threads, Map.nhash, input.proposal_id)) {
+        // Check if proposal thread already exists for this SNS and proposal ID
+        let proposal_key : T.ProposalThreadKey = (input.sns_root_canister_id, input.proposal_id);
+        switch (Map.get(state.proposal_threads, (T.proposal_thread_key_hash, T.proposal_thread_key_equal), proposal_key)) {
             case (?_) return #err(#AlreadyExists("Thread for this proposal already exists"));
             case null {};
         };
 
-        // Find any forum that has a proposals topic set
-        var found_topic_id : ?Nat = null;
-        label search for ((_, mapping) in Map.entries(state.proposal_topics)) {
-            found_topic_id := ?mapping.proposals_topic_id;
-            break search;
+        // Find the forum for this specific SNS
+        var found_forum_id : ?Nat = null;
+        for ((forum_id, forum) in Map.entries(state.forums)) {
+            switch (forum.sns_root_canister_id) {
+                case (?root) {
+                    if (Principal.equal(root, input.sns_root_canister_id)) {
+                        found_forum_id := ?forum_id;
+                    };
+                };
+                case null {};
+            };
         };
 
-        let topic_id = switch (found_topic_id) {
-            case (?tid) tid;
-            case null return #err(#InvalidInput("No proposals topic has been set for any forum"));
+        let forum_id = switch (found_forum_id) {
+            case (?fid) fid;
+            case null return #err(#NotFound("No forum found for this SNS"));
+        };
+
+        // Get the proposal topic for this specific forum
+        let topic_id = switch (Map.get(state.proposal_topics, Map.nhash, forum_id)) {
+            case (?mapping) mapping.proposals_topic_id;
+            case null return #err(#InvalidInput("No proposals topic set for this SNS"));
         };
 
         // Validate input
@@ -1415,22 +1423,25 @@ module {
         let proposal_mapping : T.ProposalThreadMapping = {
             thread_id = thread_id;
             proposal_id = input.proposal_id;
+            sns_root_canister_id = input.sns_root_canister_id;
             created_by = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
             created_at = now;
         };
 
-        ignore Map.put(state.proposal_threads, Map.nhash, input.proposal_id, proposal_mapping);
-        ignore Map.put(state.thread_proposals, Map.nhash, thread_id, input.proposal_id);
+        ignore Map.put(state.proposal_threads, (T.proposal_thread_key_hash, T.proposal_thread_key_equal), proposal_key, proposal_mapping);
+        ignore Map.put(state.thread_proposals, Map.nhash, thread_id, (input.sns_root_canister_id, input.proposal_id));
 
         #ok(thread_id)
     };
 
-    public func get_proposal_thread(state: ForumState, proposal_id: Nat) : ?T.ProposalThreadMapping {
-        Map.get(state.proposal_threads, Map.nhash, proposal_id)
+    public func get_proposal_thread(state: ForumState, sns_root: Principal, proposal_id: Nat) : ?T.ProposalThreadMapping {
+        let proposal_key : T.ProposalThreadKey = (sns_root, proposal_id);
+        Map.get(state.proposal_threads, (T.proposal_thread_key_hash, T.proposal_thread_key_equal), proposal_key)
     };
 
-    public func get_proposal_thread_response(state: ForumState, proposal_id: Nat) : ?T.ProposalThreadMappingResponse {
-        switch (Map.get(state.proposal_threads, Map.nhash, proposal_id)) {
+    public func get_proposal_thread_response(state: ForumState, sns_root: Principal, proposal_id: Nat) : ?T.ProposalThreadMappingResponse {
+        let proposal_key : T.ProposalThreadKey = (sns_root, proposal_id);
+        switch (Map.get(state.proposal_threads, (T.proposal_thread_key_hash, T.proposal_thread_key_equal), proposal_key)) {
             case (?mapping) {
                 let created_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, mapping.created_by)) {
                     case (?p) p;
@@ -1439,6 +1450,7 @@ module {
                 ?{
                     thread_id = mapping.thread_id;
                     proposal_id = mapping.proposal_id;
+                    sns_root_canister_id = mapping.sns_root_canister_id;
                     created_by;
                     created_at = mapping.created_at;
                 }
@@ -1447,7 +1459,7 @@ module {
         }
     };
 
-    public func get_thread_proposal_id(state: ForumState, thread_id: Nat) : ?Nat {
+    public func get_thread_proposal_id(state: ForumState, thread_id: Nat) : ?(Principal, Nat) {
         Map.get(state.thread_proposals, Map.nhash, thread_id)
     };
 
