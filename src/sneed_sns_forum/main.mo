@@ -131,11 +131,11 @@ actor SneedSNSForum {
     };
 
     public query func get_forum(id: Nat) : async ?T.ForumResponse {
-        Lib.get_forum(state, id)
+        Lib.get_forum_filtered(state, id, false)
     };
 
     public query func get_forums() : async [T.ForumResponse] {
-        Lib.get_forums_filtered(state, false) // show_deleted = false for public
+        Lib.get_forums_filtered(state, false) // show_deleted = false for non-admins
     };
 
     // Topic API endpoints
@@ -144,7 +144,7 @@ actor SneedSNSForum {
     };
 
     public query func get_topic(id: Nat) : async ?T.TopicResponse {
-        Lib.get_topic(state, id)
+        Lib.get_topic_filtered(state, id, false)
     };
 
     public query func get_topics_by_forum(forum_id: Nat) : async [T.TopicResponse] {
@@ -161,7 +161,7 @@ actor SneedSNSForum {
     };
 
     public query func get_thread(id: Nat) : async ?T.ThreadResponse {
-        Lib.get_thread(state, id)
+        Lib.get_thread_filtered(state, id, false)
     };
 
     public query func get_threads_by_topic(topic_id: Nat) : async [T.ThreadResponse] {
@@ -192,7 +192,7 @@ actor SneedSNSForum {
     };
 
     public query func get_post(id: Nat) : async ?T.PostResponse {
-        Lib.get_post(state, id)
+        Lib.get_post_filtered(state, id, false)
     };
 
     public query func get_posts_by_thread(thread_id: Nat) : async [T.PostResponse] {
@@ -200,7 +200,7 @@ actor SneedSNSForum {
     };
 
     public query func get_post_replies(post_id: Nat) : async [T.PostResponse] {
-        Lib.get_post_replies(state, post_id)
+        Lib.get_post_replies_filtered(state, post_id, false)
     };
 
     // Voting API endpoints
@@ -318,5 +318,41 @@ actor SneedSNSForum {
             return [];
         };
         Lib.get_posts_by_thread_filtered(state, thread_id, true)
+    };
+
+    // Admin endpoints for individual items
+    public shared query ({ caller }) func get_forum_admin(id: Nat) : async ?T.ForumResponse {
+        if (not Lib.is_admin(state, caller)) {
+            return null;
+        };
+        Lib.get_forum_filtered(state, id, true)
+    };
+
+    public shared query ({ caller }) func get_topic_admin(id: Nat) : async ?T.TopicResponse {
+        if (not Lib.is_admin(state, caller)) {
+            return null;
+        };
+        Lib.get_topic_filtered(state, id, true)
+    };
+
+    public shared query ({ caller }) func get_thread_admin(id: Nat) : async ?T.ThreadResponse {
+        if (not Lib.is_admin(state, caller)) {
+            return null;
+        };
+        Lib.get_thread_filtered(state, id, true)
+    };
+
+    public shared query ({ caller }) func get_post_admin(id: Nat) : async ?T.PostResponse {
+        if (not Lib.is_admin(state, caller)) {
+            return null;
+        };
+        Lib.get_post_filtered(state, id, true)
+    };
+
+    public shared query ({ caller }) func get_post_replies_admin(post_id: Nat) : async [T.PostResponse] {
+        if (not Lib.is_admin(state, caller)) {
+            return [];
+        };
+        Lib.get_post_replies_filtered(state, post_id, true)
     };
 }

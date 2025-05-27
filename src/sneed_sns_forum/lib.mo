@@ -967,4 +967,77 @@ module {
         };
         Buffer.toArray(posts)
     };
+
+    // Filtered individual get functions for admin access control
+    public func get_forum_filtered(state: ForumState, id: Nat, show_deleted: Bool) : ?T.ForumResponse {
+        switch (get_forum(state, id)) {
+            case (?forum_response) {
+                if (show_deleted or not forum_response.deleted) {
+                    ?forum_response
+                } else {
+                    null
+                }
+            };
+            case null null;
+        }
+    };
+
+    public func get_topic_filtered(state: ForumState, id: Nat, show_deleted: Bool) : ?T.TopicResponse {
+        switch (get_topic(state, id)) {
+            case (?topic_response) {
+                if (show_deleted or not topic_response.deleted) {
+                    ?topic_response
+                } else {
+                    null
+                }
+            };
+            case null null;
+        }
+    };
+
+    public func get_thread_filtered(state: ForumState, id: Nat, show_deleted: Bool) : ?T.ThreadResponse {
+        switch (get_thread(state, id)) {
+            case (?thread_response) {
+                if (show_deleted or not thread_response.deleted) {
+                    ?thread_response
+                } else {
+                    null
+                }
+            };
+            case null null;
+        }
+    };
+
+    public func get_post_filtered(state: ForumState, id: Nat, show_deleted: Bool) : ?T.PostResponse {
+        switch (get_post(state, id)) {
+            case (?post_response) {
+                if (show_deleted or not post_response.deleted) {
+                    ?post_response
+                } else {
+                    null
+                }
+            };
+            case null null;
+        }
+    };
+
+    public func get_post_replies_filtered(state: ForumState, post_id: Nat, show_deleted: Bool) : [T.PostResponse] {
+        let posts = Buffer.Buffer<T.PostResponse>(0);
+        switch (Map.get(state.post_replies, Map.nhash, post_id)) {
+            case (?reply_ids) {
+                for (reply_id in reply_ids.vals()) {
+                    switch (get_post(state, reply_id)) {
+                        case (?post_response) {
+                            if (show_deleted or not post_response.deleted) {
+                                posts.add(post_response);
+                            };
+                        };
+                        case null {};
+                    };
+                };
+            };
+            case null {};
+        };
+        Buffer.toArray(posts)
+    };
 }
