@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
@@ -28,6 +28,9 @@ function Discussion({
     const [collapsedPosts, setCollapsedPosts] = useState(new Set());
     const [replyingTo, setReplyingTo] = useState(null);
     const [replyText, setReplyText] = useState('');
+    
+    // Ref for reply text to avoid re-renders
+    const replyTextRef = useRef('');
 
     // Fetch discussion thread
     const fetchDiscussionThread = async () => {
@@ -273,7 +276,7 @@ function Discussion({
         setCollapsedPosts(newCollapsed);
     };
 
-    const submitReply = async (parentPostId) => {
+    const submitReply = async (parentPostId, replyText) => {
         if (!replyText.trim() || !forumActor || !discussionThread) return;
         
         setSubmittingComment(true);
@@ -296,6 +299,7 @@ function Discussion({
                 console.log('Reply created successfully, post ID:', result.ok);
                 setReplyText('');
                 setReplyingTo(null);
+                replyTextRef.current = '';
                 
                 // Refresh posts
                 await fetchDiscussionPosts(Number(discussionThread.thread_id));
@@ -312,7 +316,7 @@ function Discussion({
     };
 
     // Component to render individual posts
-    const PostComponent = ({ post, depth = 0, isFlat = false }) => {
+    const PostComponent = useCallback(({ post, depth = 0, isFlat = false }) => {
         const score = calculatePostScore(post);
         const isNegative = score < 0;
         const isCollapsed = collapsedPosts.has(Number(post.id)) || (isNegative && !collapsedPosts.has(Number(post.id)));
@@ -467,8 +471,11 @@ function Discussion({
                             {isReplying && (
                                 <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
                                     <textarea
-                                        value={replyText}
-                                        onChange={(e) => setReplyText(e.target.value)}
+                                        defaultValue=""
+                                        onChange={(e) => {
+                                            replyTextRef.current = e.target.value;
+                                            setReplyText(e.target.value);
+                                        }}
                                         placeholder={`Reply to ${post.created_by.toString().slice(0, 8)}...`}
                                         style={{
                                             width: '100%',
@@ -483,35 +490,34 @@ function Discussion({
                                             marginBottom: '10px'
                                         }}
                                     />
-                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                    <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
                                         <button
-                                            onClick={() => submitReply(Number(post.id))}
-                                            disabled={!replyText.trim() || submittingComment}
+                                            onClick={() => submitReply(post.id, replyTextRef.current)}
+                                            disabled={!replyTextRef.current?.trim()}
                                             style={{
-                                                backgroundColor: replyText.trim() ? '#2ecc71' : '#666',
-                                                color: '#ffffff',
+                                                padding: '8px 16px',
+                                                backgroundColor: replyTextRef.current?.trim() ? '#4CAF50' : '#333',
+                                                color: replyTextRef.current?.trim() ? 'white' : '#666',
                                                 border: 'none',
                                                 borderRadius: '4px',
-                                                padding: '8px 16px',
-                                                cursor: replyText.trim() && !submittingComment ? 'pointer' : 'not-allowed',
-                                                fontSize: '14px'
+                                                cursor: replyTextRef.current?.trim() ? 'pointer' : 'not-allowed'
                                             }}
                                         >
-                                            {submittingComment ? 'Posting...' : 'Post Reply'}
+                                            Submit Reply
                                         </button>
                                         <button
                                             onClick={() => {
                                                 setReplyingTo(null);
                                                 setReplyText('');
+                                                replyTextRef.current = '';
                                             }}
                                             style={{
+                                                padding: '8px 16px',
                                                 backgroundColor: '#666',
-                                                color: '#ffffff',
+                                                color: 'white',
                                                 border: 'none',
                                                 borderRadius: '4px',
-                                                padding: '8px 16px',
-                                                cursor: 'pointer',
-                                                fontSize: '14px'
+                                                cursor: 'pointer'
                                             }}
                                         >
                                             Cancel
@@ -538,7 +544,7 @@ function Discussion({
                 )}
             </div>
         );
-    };
+    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo]);
 
     // Effect to fetch discussion when props change
     useEffect(() => {
