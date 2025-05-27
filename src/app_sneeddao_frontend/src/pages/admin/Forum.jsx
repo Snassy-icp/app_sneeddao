@@ -211,7 +211,9 @@ export default function Forum() {
     if (selectedForum) {
       try {
         const result = await forumActor.get_proposals_topic(Number(selectedForum.id));
-        setProposalsTopic(result);
+        console.log('Proposals topic result:', result);
+        // Handle the case where result is an array with one element or null
+        setProposalsTopic(result && result.length > 0 ? result[0] : null);
       } catch (err) {
         console.error('Error fetching proposals topic:', err);
         setProposalsTopic(null);
@@ -551,7 +553,7 @@ export default function Forum() {
             Selected Forum: <strong>{selectedForum.title}</strong>
             {proposalsTopic && (
               <div style={{ marginTop: '5px', fontSize: '0.9em', color: '#ffc107' }}>
-                Current Proposals Topic: <strong>#{proposalsTopic.proposals_topic_id}</strong>
+                Current Proposals Topic: <strong>#{Number(proposalsTopic.proposals_topic_id)}</strong>
               </div>
             )}
           </div>
@@ -640,7 +642,7 @@ export default function Forum() {
 
       <div className="items-list">
         {topics.map(topic => {
-          const isProposalsTopic = proposalsTopic && Number(topic.id) === proposalsTopic.proposals_topic_id;
+          const isProposalsTopic = proposalsTopic && Number(topic.id) === Number(proposalsTopic.proposals_topic_id);
           return (
             <div key={topic.id} className={`item-card ${topic.deleted ? 'deleted' : ''} ${isProposalsTopic ? 'proposals-topic' : ''}`}>
               <div className="item-header">
