@@ -10,11 +10,35 @@ import Debug "mo:base/Debug";
 import Vector "mo:vector";
 import Blob "mo:base/Blob";
 import Nat64 "mo:base/Nat64";
+import Nat "mo:base/Nat";
 
 import T "Types";
 import Lib "lib";
 
 actor SneedSNSForum {
+    // NNS SNS-W canister interface for getting deployed SNS instances
+    type DeployedSns = {
+        root_canister_id : ?Principal;
+        governance_canister_id : ?Principal;
+        index_canister_id : ?Principal;
+        swap_canister_id : ?Principal;
+        ledger_canister_id : ?Principal;
+    };
+
+    type ListDeployedSnsesResponse = {
+        instances : [DeployedSns];
+    };
+
+    type NNSSnsWCanister = actor {
+        list_deployed_snses : ({}) -> async ListDeployedSnsesResponse;
+    };
+
+    // SNS cache types
+    type SnsCache = {
+        instances: [DeployedSns];
+        last_updated: Int;
+    };
+
     // SNS Governance canister interface for voting power validation
     type NeuronPermission = {
         principal: ?Principal;
@@ -46,6 +70,13 @@ actor SneedSNSForum {
         
         get_neuron: (T.NeuronId) -> async ?Neuron;
     };
+
+    // Constants
+    private let NNS_SNS_W_CANISTER_ID = "qaa6y-5yaaa-aaaah-qcbsq-cai"; // NNS SNS-W canister
+    private let CACHE_EXPIRY_NANOSECONDS = 24 * 60 * 60 * 1_000_000_000; // 24 hours in nanoseconds
+
+    // Non-stable cache for SNS instances (will be refreshed on canister upgrade)
+    private var sns_cache : ?SnsCache = null;
 
     // Stable storage using stable Map and Vector structures
     stable var stable_next_id : Nat = 1;
@@ -87,15 +118,77 @@ actor SneedSNSForum {
         thread_proposals = stable_thread_proposals;
     };
 
+    // SNS cache management functions
+    private func is_cache_expired() : Bool {
+        switch (sns_cache) {
+            case (?cache) {
+                let current_time = Time.now();
+                (current_time - cache.last_updated) > CACHE_EXPIRY_NANOSECONDS
+            };
+            case null true;
+        }
+    };
+
+    private func refresh_sns_cache() : async Bool {
+        try {
+            let nns_sns_w : NNSSnsWCanister = actor(NNS_SNS_W_CANISTER_ID);
+            let response = await nns_sns_w.list_deployed_snses({});
+            
+            sns_cache := ?{
+                instances = response.instances;
+                last_updated = Time.now();
+            };
+            
+            Debug.print("SNS cache refreshed with " # Nat.toText(response.instances.size()) # " instances");
+            true
+        } catch (error) {
+            Debug.print("Failed to refresh SNS cache");
+            false
+        }
+    };
+
+    private func get_governance_canister_from_cache(root_canister_id: Principal) : ?Principal {
+        switch (sns_cache) {
+            case (?cache) {
+                for (instance in cache.instances.vals()) {
+                    switch (instance.root_canister_id) {
+                        case (?root_id) {
+                            if (Principal.equal(root_id, root_canister_id)) {
+                                return instance.governance_canister_id;
+                            };
+                        };
+                        case null {};
+                    };
+                };
+                null
+            };
+            case null null;
+        }
+    };
+
+    private func ensure_sns_cache() : async Bool {
+        if (is_cache_expired()) {
+            await refresh_sns_cache()
+        } else {
+            true
+        }
+    };
+
     // Helper function to get SNS governance canister ID from forum
-    private func get_sns_governance_canister_id(forum_id: Nat) : ?Principal {
+    private func get_sns_governance_canister_id(forum_id: Nat) : async ?Principal {
         switch (Lib.get_forum(state, forum_id)) {
             case (?forum_response) {
                 switch (forum_response.sns_root_canister_id) {
                     case (?sns_root) {
-                        // For SNS, the governance canister is typically the root + "-cai" suffix
-                        // This is a simplified mapping - in production you'd need proper SNS root -> governance mapping
-                        ?sns_root
+                        // Ensure cache is fresh
+                        let cache_ok = await ensure_sns_cache();
+                        if (not cache_ok) {
+                            Debug.print("Failed to refresh SNS cache, cannot get governance canister ID");
+                            return null;
+                        };
+                        
+                        // Look up governance canister from cache
+                        get_governance_canister_from_cache(sns_root)
                     };
                     case null null;
                 };
@@ -138,7 +231,7 @@ actor SneedSNSForum {
 
     // Helper function to validate that caller has hotkey access to the neuron
     private func validate_neuron_access(caller: Principal, neuron_id: T.NeuronId, forum_id: Nat) : async Bool {
-        switch (get_sns_governance_canister_id(forum_id)) {
+        switch (await get_sns_governance_canister_id(forum_id)) {
             case (?governance_canister_id) {
                 try {
                     let governance_canister : SNSGovernanceCanister = actor(Principal.toText(governance_canister_id));
@@ -161,7 +254,7 @@ actor SneedSNSForum {
 
     // Helper function to get caller's voting power from SNS
     private func get_caller_voting_power(caller: Principal, neuron_id: T.NeuronId, forum_id: Nat) : async Nat {
-        switch (get_sns_governance_canister_id(forum_id)) {
+        switch (await get_sns_governance_canister_id(forum_id)) {
             case (?governance_canister_id) {
                 try {
                     let governance_canister : SNSGovernanceCanister = actor(Principal.toText(governance_canister_id));
@@ -400,7 +493,7 @@ actor SneedSNSForum {
         // Get the forum to determine which SNS this belongs to
         switch (Lib.get_forum(state, forum_id)) {
             case (?forum_response) {
-                switch (get_sns_governance_canister_id(forum_id)) {
+                switch (await get_sns_governance_canister_id(forum_id)) {
                     case (?governance_canister_id) {
                         try {
                             let governance_canister : SNSGovernanceCanister = actor(Principal.toText(governance_canister_id));
