@@ -423,8 +423,8 @@ function Discussion({
                     {/* Post Content */}
                     {!isCollapsed && (
                         <>
-                            {/* Show post title if it exists */}
-                            {post.title && post.title.length > 0 && (
+                            {/* Show post title if it exists and it's not a duplicate of reply title */}
+                            {post.title && post.title.length > 0 && !replyTitle && (
                                 <div style={{ 
                                     color: '#ffffff', 
                                     fontSize: '18px', 
