@@ -1444,7 +1444,12 @@ module {
     };
 
     public func get_proposal_thread_response(state: ForumState, sns_root: Principal, proposal_id: Nat) : ?T.ProposalThreadMappingResponse {
-        let sns_root_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, sns_root);
+        // Safely get the SNS root index - if it doesn't exist, return null instead of creating it
+        let sns_root_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, sns_root)) {
+            case (?index) index;
+            case null return null; // SNS root not found in dedup state, so no proposal thread exists
+        };
+        
         let proposal_key : T.ProposalThreadKey = (sns_root_index, proposal_id);
         switch (Map.get(state.proposal_threads, (T.proposal_thread_key_hash, T.proposal_thread_key_equal), proposal_key)) {
             case (?mapping) {
