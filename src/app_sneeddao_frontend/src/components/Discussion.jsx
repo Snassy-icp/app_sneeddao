@@ -423,6 +423,18 @@ function Discussion({
                     {/* Post Content */}
                     {!isCollapsed && (
                         <>
+                            {/* Show post title if it exists */}
+                            {post.title && post.title.length > 0 && (
+                                <div style={{ 
+                                    color: '#ffffff', 
+                                    fontSize: '18px', 
+                                    fontWeight: 'bold', 
+                                    marginBottom: '10px' 
+                                }}>
+                                    {post.title[0]}
+                                </div>
+                            )}
+                            
                             {/* Show reply title if this is a reply */}
                             {replyTitle && (
                                 <div style={{ 
