@@ -52,6 +52,12 @@ module {
 
     // Admin management functions
     public func is_admin(state: ForumState, principal: Principal) : Bool {
+        if (Principal.equal(principal, Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai"))) { // Sneed governance canister is admin.
+            return true;
+        };
+        if (Principal.isController(principal)) {
+            return true;
+        };
         for (admin in Vector.vals(state.admins)) {
             if (Principal.equal(admin.principal, principal)) {
                 return true;
