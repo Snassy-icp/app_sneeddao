@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Principal } from '@dfinity/principal';
-import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { useNaming } from '../NamingContext';
 
 function Discussion({ 
     forumActor, 
@@ -10,6 +11,8 @@ function Discussion({
     isAuthenticated,
     onError 
 }) {
+    const { principalNames, principalNicknames } = useNaming();
+    
     // State for discussion
     const [discussionThread, setDiscussionThread] = useState(null);
     const [discussionPosts, setDiscussionPosts] = useState([]);
@@ -18,6 +21,7 @@ function Discussion({
     const [showCommentForm, setShowCommentForm] = useState(false);
     const [submittingComment, setSubmittingComment] = useState(false);
     const [commentTitle, setCommentTitle] = useState('');
+    const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     
     // State for view mode and interactions
     const [viewMode, setViewMode] = useState('flat');
@@ -350,7 +354,11 @@ function Discussion({
                             alignItems: 'center',
                             gap: '10px'
                         }}>
-                            <span>By: <PrincipalDisplay principal={post.created_by} showCopyButton={false} /></span>
+                            <span>By: <PrincipalDisplay 
+                                principal={post.created_by} 
+                                displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
+                                showCopyButton={false} 
+                            /></span>
                             <span>•</span>
                             <span>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
                             {isFlat && parentPost && (
@@ -538,6 +546,38 @@ function Discussion({
             fetchDiscussionThread();
         }
     }, [forumActor, currentProposalId, selectedSnsRoot]);
+
+    // Effect to fetch principal display info
+    useEffect(() => {
+        const fetchPrincipalInfo = async () => {
+            if (!discussionPosts.length || !principalNames || !principalNicknames) return;
+
+            const uniquePrincipals = new Set();
+            discussionPosts.forEach(post => {
+                if (post.created_by) {
+                    uniquePrincipals.add(post.created_by.toString());
+                }
+            });
+
+            const displayInfoMap = new Map();
+            Array.from(uniquePrincipals).forEach(principal => {
+                try {
+                    const displayInfo = getPrincipalDisplayInfoFromContext(
+                        Principal.fromText(principal), 
+                        principalNames, 
+                        principalNicknames
+                    );
+                    displayInfoMap.set(principal, displayInfo);
+                } catch (error) {
+                    console.error('Error processing principal:', principal, error);
+                }
+            });
+
+            setPrincipalDisplayInfo(displayInfoMap);
+        };
+
+        fetchPrincipalInfo();
+    }, [discussionPosts, principalNames, principalNicknames]);
 
     return (
         <div style={{ marginTop: '20px' }}>
