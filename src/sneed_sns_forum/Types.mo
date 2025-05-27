@@ -5,6 +5,7 @@ import Dedup "mo:dedup";
 import Array "mo:base/Array";
 import Buffer "mo:base/Buffer";
 import Nat32 "mo:base/Nat32";
+import Vector "mo:vector";
 
 module {
     // Basic types from SNS governance
@@ -16,6 +17,13 @@ module {
     public type VoteType = {
         #upvote;
         #downvote;
+    };
+
+    // Admin management types
+    public type AdminInfo = {
+        principal: Principal;
+        added_by: Principal;
+        added_at: Int;
     };
 
     // Core data structures
@@ -96,11 +104,14 @@ module {
         posts: Map.Map<Nat, Post>;
         votes: Map.Map<VoteKey, Vote>;
         
+        // Admin management
+        admins: Vector.Vector<AdminInfo>;
+        
         // Deduplication states
         var principal_dedup_state: Dedup.DedupState;
         var neuron_dedup_state: Dedup.DedupState;
         
-        // Indexes for efficient queries
+        // Indexes for efficient queries (using Buffer for runtime compatibility)
         forum_topics: Map.Map<Nat, Buffer.Buffer<Nat>>;
         topic_subtopics: Map.Map<Nat, Buffer.Buffer<Nat>>;
         topic_threads: Map.Map<Nat, Buffer.Buffer<Nat>>;

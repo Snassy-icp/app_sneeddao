@@ -7,28 +7,88 @@ import Dedup "mo:dedup";
 import Array "mo:base/Array";
 import Iter "mo:base/Iter";
 import Debug "mo:base/Debug";
+import Vector "mo:vector";
 
 import T "Types";
 import Lib "lib";
 
 actor SneedSNSForum {
-    // Stable storage for forum state
+    // Stable storage using stable Map and Vector structures
     stable var stable_next_id : Nat = 1;
-    stable var stable_forums : [(Nat, T.Forum)] = [];
-    stable var stable_topics : [(Nat, T.Topic)] = [];
-    stable var stable_threads : [(Nat, T.Thread)] = [];
-    stable var stable_posts : [(Nat, T.Post)] = [];
-    stable var stable_votes : [(T.VoteKey, T.Vote)] = [];
+    stable let stable_forums = Map.new<Nat, T.Forum>();
+    stable let stable_topics = Map.new<Nat, T.Topic>();
+    stable let stable_threads = Map.new<Nat, T.Thread>();
+    stable let stable_posts = Map.new<Nat, T.Post>();
+    stable let stable_votes = Map.new<T.VoteKey, T.Vote>();
+    stable let stable_admins = Vector.new<T.AdminInfo>();
     stable var stable_principal_dedup : Dedup.DedupState = Dedup.empty();
     stable var stable_neuron_dedup : Dedup.DedupState = Dedup.empty();
-    stable var stable_forum_topics : [(Nat, [Nat])] = [];
-    stable var stable_topic_subtopics : [(Nat, [Nat])] = [];
-    stable var stable_topic_threads : [(Nat, [Nat])] = [];
-    stable var stable_thread_posts : [(Nat, [Nat])] = [];
-    stable var stable_post_replies : [(Nat, [Nat])] = [];
+    stable let stable_forum_topics = Map.new<Nat, Vector.Vector<Nat>>();
+    stable let stable_topic_subtopics = Map.new<Nat, Vector.Vector<Nat>>();
+    stable let stable_topic_threads = Map.new<Nat, Vector.Vector<Nat>>();
+    stable let stable_thread_posts = Map.new<Nat, Vector.Vector<Nat>>();
+    stable let stable_post_replies = Map.new<Nat, Vector.Vector<Nat>>();
 
-    // Runtime state
-    private var state : T.ForumState = Lib.init_state();
+    // Runtime state that directly references stable storage
+    private var state : T.ForumState = {
+        var next_id = stable_next_id;
+        forums = stable_forums;
+        topics = stable_topics;
+        threads = stable_threads;
+        posts = stable_posts;
+        votes = stable_votes;
+        admins = stable_admins;
+        var principal_dedup_state = stable_principal_dedup;
+        var neuron_dedup_state = stable_neuron_dedup;
+        forum_topics = Map.new<Nat, Buffer.Buffer<Nat>>();
+        topic_subtopics = Map.new<Nat, Buffer.Buffer<Nat>>();
+        topic_threads = Map.new<Nat, Buffer.Buffer<Nat>>();
+        thread_posts = Map.new<Nat, Buffer.Buffer<Nat>>();
+        post_replies = Map.new<Nat, Buffer.Buffer<Nat>>();
+    };
+
+    // Initialize runtime buffers from stable vectors
+    private func init_runtime_indexes() {
+        // Convert stable vectors to runtime buffers for compatibility with lib.mo
+        for ((k, v) in Map.entries(stable_forum_topics)) {
+            let buffer = Buffer.Buffer<Nat>(Vector.size(v));
+            for (item in Vector.vals(v)) {
+                buffer.add(item);
+            };
+            ignore Map.put(state.forum_topics, Map.nhash, k, buffer);
+        };
+        for ((k, v) in Map.entries(stable_topic_subtopics)) {
+            let buffer = Buffer.Buffer<Nat>(Vector.size(v));
+            for (item in Vector.vals(v)) {
+                buffer.add(item);
+            };
+            ignore Map.put(state.topic_subtopics, Map.nhash, k, buffer);
+        };
+        for ((k, v) in Map.entries(stable_topic_threads)) {
+            let buffer = Buffer.Buffer<Nat>(Vector.size(v));
+            for (item in Vector.vals(v)) {
+                buffer.add(item);
+            };
+            ignore Map.put(state.topic_threads, Map.nhash, k, buffer);
+        };
+        for ((k, v) in Map.entries(stable_thread_posts)) {
+            let buffer = Buffer.Buffer<Nat>(Vector.size(v));
+            for (item in Vector.vals(v)) {
+                buffer.add(item);
+            };
+            ignore Map.put(state.thread_posts, Map.nhash, k, buffer);
+        };
+        for ((k, v) in Map.entries(stable_post_replies)) {
+            let buffer = Buffer.Buffer<Nat>(Vector.size(v));
+            for (item in Vector.vals(v)) {
+                buffer.add(item);
+            };
+            ignore Map.put(state.post_replies, Map.nhash, k, buffer);
+        };
+    };
+
+    // Call initialization
+    init_runtime_indexes();
 
     // Helper function to get caller's voting power from SNS
     private func get_caller_voting_power(caller: Principal, neuron_id: T.NeuronId, sns_root: ?Principal) : async Nat {
@@ -48,11 +108,21 @@ actor SneedSNSForum {
         }
     };
 
-    // Helper function to check if caller is admin (simplified - in production you'd check against a list)
-    private func is_admin(caller: Principal) : Bool {
-        // For now, any authenticated user can be admin
-        // In production, you'd check against a whitelist or role system
-        true
+    // Admin management endpoints
+    public shared ({ caller }) func add_admin(new_admin: Principal) : async T.Result<(), T.ForumError> {
+        Lib.add_admin(state, caller, new_admin)
+    };
+
+    public shared ({ caller }) func remove_admin(admin_to_remove: Principal) : async T.Result<(), T.ForumError> {
+        Lib.remove_admin(state, caller, admin_to_remove)
+    };
+
+    public query func get_admins() : async [T.AdminInfo] {
+        Lib.get_admins(state)
+    };
+
+    public query func is_admin(principal: Principal) : async Bool {
+        Lib.is_admin(state, principal)
     };
 
     // Forum API endpoints
@@ -194,28 +264,28 @@ actor SneedSNSForum {
 
     // Admin delete endpoints
     public shared ({ caller }) func delete_forum(id: Nat) : async T.Result<(), T.ForumError> {
-        if (not is_admin(caller)) {
+        if (not Lib.is_admin(state, caller)) {
             return #err(#Unauthorized("Admin access required"));
         };
         Lib.soft_delete_forum(state, caller, id)
     };
 
     public shared ({ caller }) func delete_topic(id: Nat) : async T.Result<(), T.ForumError> {
-        if (not is_admin(caller)) {
+        if (not Lib.is_admin(state, caller)) {
             return #err(#Unauthorized("Admin access required"));
         };
         Lib.soft_delete_topic(state, caller, id)
     };
 
     public shared ({ caller }) func delete_thread(id: Nat) : async T.Result<(), T.ForumError> {
-        if (not is_admin(caller)) {
+        if (not Lib.is_admin(state, caller)) {
             return #err(#Unauthorized("Admin access required"));
         };
         Lib.soft_delete_thread(state, caller, id)
     };
 
     public shared ({ caller }) func delete_post(id: Nat) : async T.Result<(), T.ForumError> {
-        if (not is_admin(caller)) {
+        if (not Lib.is_admin(state, caller)) {
             return #err(#Unauthorized("Admin access required"));
         };
         Lib.soft_delete_post(state, caller, id)
@@ -223,28 +293,28 @@ actor SneedSNSForum {
 
     // Admin query functions that show deleted items
     public shared query ({ caller }) func get_forums_admin() : async [T.ForumResponse] {
-        if (not is_admin(caller)) {
+        if (not Lib.is_admin(state, caller)) {
             return [];
         };
         Lib.get_forums_filtered(state, true) // show_deleted = true for admins
     };
 
     public shared query ({ caller }) func get_topics_by_forum_admin(forum_id: Nat) : async [T.TopicResponse] {
-        if (not is_admin(caller)) {
+        if (not Lib.is_admin(state, caller)) {
             return [];
         };
         Lib.get_topics_by_forum_filtered(state, forum_id, true)
     };
 
     public shared query ({ caller }) func get_threads_by_topic_admin(topic_id: Nat) : async [T.ThreadResponse] {
-        if (not is_admin(caller)) {
+        if (not Lib.is_admin(state, caller)) {
             return [];
         };
         Lib.get_threads_by_topic_filtered(state, topic_id, true)
     };
 
     public shared query ({ caller }) func get_posts_by_thread_admin(thread_id: Nat) : async [T.PostResponse] {
-        if (not is_admin(caller)) {
+        if (not Lib.is_admin(state, caller)) {
             return [];
         };
         Lib.get_posts_by_thread_filtered(state, thread_id, true)

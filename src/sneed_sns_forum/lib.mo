@@ -9,6 +9,7 @@ import Iter "mo:base/Iter";
 import Text "mo:base/Text";
 import Blob "mo:base/Blob";
 import Nat "mo:base/Nat";
+import Vector "mo:vector";
 
 import T "Types";
 
@@ -24,6 +25,7 @@ module {
     public type NeuronId = T.NeuronId;
     public type ForumError = T.ForumError;
     public type Result<A, B> = T.Result<A, B>;
+    public type AdminInfo = T.AdminInfo;
 
     // Hash utilities for VoteKey
     private let vote_key_hash_utils = (T.vote_key_hash, T.vote_key_equal);
@@ -37,6 +39,7 @@ module {
             threads = Map.new<Nat, Thread>();
             posts = Map.new<Nat, Post>();
             votes = Map.new<VoteKey, Vote>();
+            admins = Vector.new<AdminInfo>();
             var principal_dedup_state = Dedup.empty();
             var neuron_dedup_state = Dedup.empty();
             forum_topics = Map.new<Nat, Buffer.Buffer<Nat>>();
@@ -45,6 +48,85 @@ module {
             thread_posts = Map.new<Nat, Buffer.Buffer<Nat>>();
             post_replies = Map.new<Nat, Buffer.Buffer<Nat>>();
         }
+    };
+
+    // Admin management functions
+    public func is_admin(state: ForumState, principal: Principal) : Bool {
+        for (admin in Vector.vals(state.admins)) {
+            if (Principal.equal(admin.principal, principal)) {
+                return true;
+            };
+        };
+        false
+    };
+
+    public func add_admin(
+        state: ForumState,
+        caller: Principal,
+        new_admin: Principal
+    ) : Result<(), ForumError> {
+        // Check if caller is already an admin (or if this is the first admin)
+        if (Vector.size(state.admins) > 0 and not is_admin(state, caller)) {
+            return #err(#Unauthorized("Only admins can add new admins"));
+        };
+
+        // Check if the principal is already an admin
+        if (is_admin(state, new_admin)) {
+            return #err(#AlreadyExists("Principal is already an admin"));
+        };
+
+        let admin_info : AdminInfo = {
+            principal = new_admin;
+            added_by = caller;
+            added_at = Time.now();
+        };
+
+        Vector.add(state.admins, admin_info);
+        #ok()
+    };
+
+    public func remove_admin(
+        state: ForumState,
+        caller: Principal,
+        admin_to_remove: Principal
+    ) : Result<(), ForumError> {
+        // Check if caller is an admin
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Only admins can remove admins"));
+        };
+
+        // Don't allow removing yourself if you're the last admin
+        if (Vector.size(state.admins) == 1 and Principal.equal(caller, admin_to_remove)) {
+            return #err(#InvalidInput("Cannot remove the last admin"));
+        };
+
+        // Find and remove the admin
+        let new_admins = Vector.new<AdminInfo>();
+        var found = false;
+
+        for (admin in Vector.vals(state.admins)) {
+            if (not Principal.equal(admin.principal, admin_to_remove)) {
+                Vector.add(new_admins, admin);
+            } else {
+                found := true;
+            };
+        };
+
+        if (not found) {
+            return #err(#NotFound("Admin not found"));
+        };
+
+        // Replace the admins vector
+        Vector.clear(state.admins);
+        for (admin in Vector.vals(new_admins)) {
+            Vector.add(state.admins, admin);
+        };
+
+        #ok()
+    };
+
+    public func get_admins(state: ForumState) : [AdminInfo] {
+        Vector.toArray(state.admins)
     };
 
     // Helper function to get next ID
