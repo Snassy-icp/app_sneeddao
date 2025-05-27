@@ -339,7 +339,7 @@ actor SneedSNSForum {
     };
 
     public query func get_proposals_topic(forum_id: Nat) : async ?T.ProposalTopicMappingResponse {
-        Lib.get_proposals_topic(state, forum_id)
+        Lib.get_proposals_topic_response(state, forum_id)
     };
 
     public shared ({ caller }) func create_proposal_thread(input: T.CreateProposalThreadInput) : async T.Result<Nat, T.ForumError> {
@@ -347,7 +347,7 @@ actor SneedSNSForum {
     };
 
     public query func get_proposal_thread(proposal_id: Nat) : async ?T.ProposalThreadMappingResponse {
-        Lib.get_proposal_thread(state, proposal_id)
+        Lib.get_proposal_thread_response(state, proposal_id)
     };
 
     public query func get_thread_proposal_id(thread_id: Nat) : async ?Nat {

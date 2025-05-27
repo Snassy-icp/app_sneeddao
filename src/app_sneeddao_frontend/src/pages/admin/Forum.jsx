@@ -294,6 +294,7 @@ export default function Forum() {
           break;
         case 'topic':
           result = await forumActor.update_topic(editingItem.id, {
+            forum_id: editingItem.forum_id,
             title: formData.title,
             description: formData.description,
             parent_topic_id: formData.parentTopicId ? [parseInt(formData.parentTopicId)] : [],
