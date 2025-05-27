@@ -38,8 +38,8 @@ actor SneedSNSForum {
         posts = stable_posts;
         votes = stable_votes;
         admins = stable_admins;
-        var principal_dedup_state = stable_principal_dedup;
-        var neuron_dedup_state = stable_neuron_dedup;
+        principal_dedup_state = stable_principal_dedup;
+        neuron_dedup_state = stable_neuron_dedup;
         forum_topics = stable_forum_topics;
         topic_subtopics = stable_topic_subtopics;
         topic_threads = stable_topic_threads;
@@ -325,5 +325,15 @@ actor SneedSNSForum {
             return [];
         };
         Lib.get_post_replies_filtered(state, post_id, true)
+    };
+
+    // System upgrade hooks to maintain stable storage consistency
+    system func preupgrade() {
+        stable_next_id := state.next_id;
+    };
+
+    system func postupgrade() {
+        // State is already initialized with stable values
+        // This ensures any post-upgrade initialization if needed
     };
 }

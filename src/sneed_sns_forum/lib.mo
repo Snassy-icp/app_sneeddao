@@ -40,8 +40,8 @@ module {
             posts = Map.new<Nat, Post>();
             votes = Map.new<VoteKey, Vote>();
             admins = Vector.new<AdminInfo>();
-            var principal_dedup_state = Dedup.empty();
-            var neuron_dedup_state = Dedup.empty();
+            principal_dedup_state = Dedup.empty();
+            neuron_dedup_state = Dedup.empty();
             forum_topics = Map.new<Nat, Vector.Vector<Nat>>();
             topic_subtopics = Map.new<Nat, Vector.Vector<Nat>>();
             topic_threads = Map.new<Nat, Vector.Vector<Nat>>();
@@ -370,7 +370,7 @@ module {
         let topics = Buffer.Buffer<T.TopicResponse>(0);
         switch (Map.get(state.forum_topics, Map.nhash, forum_id)) {
             case (?topic_ids) {
-                for (topic_id in topic_ids.vals()) {
+                for (topic_id in Vector.vals(topic_ids)) {
                     switch (get_topic(state, topic_id)) {
                         case (?topic_response) topics.add(topic_response);
                         case null {};
@@ -386,7 +386,7 @@ module {
         let topics = Buffer.Buffer<T.TopicResponse>(0);
         switch (Map.get(state.topic_subtopics, Map.nhash, topic_id)) {
             case (?subtopic_ids) {
-                for (subtopic_id in subtopic_ids.vals()) {
+                for (subtopic_id in Vector.vals(subtopic_ids)) {
                     switch (get_topic(state, subtopic_id)) {
                         case (?topic_response) topics.add(topic_response);
                         case null {};
@@ -402,7 +402,7 @@ module {
         let topics = Buffer.Buffer<T.TopicResponse>(0);
         switch (Map.get(state.topic_subtopics, Map.nhash, topic_id)) {
             case (?subtopic_ids) {
-                for (subtopic_id in subtopic_ids.vals()) {
+                for (subtopic_id in Vector.vals(subtopic_ids)) {
                     switch (get_topic(state, subtopic_id)) {
                         case (?topic_response) {
                             if (show_deleted or not topic_response.deleted) {
@@ -503,7 +503,7 @@ module {
         let threads = Buffer.Buffer<T.ThreadResponse>(0);
         switch (Map.get(state.topic_threads, Map.nhash, topic_id)) {
             case (?thread_ids) {
-                for (thread_id in thread_ids.vals()) {
+                for (thread_id in Vector.vals(thread_ids)) {
                     switch (get_thread(state, thread_id)) {
                         case (?thread_response) threads.add(thread_response);
                         case null {};
@@ -627,7 +627,7 @@ module {
         let posts = Buffer.Buffer<T.PostResponse>(0);
         switch (Map.get(state.thread_posts, Map.nhash, thread_id)) {
             case (?post_ids) {
-                for (post_id in post_ids.vals()) {
+                for (post_id in Vector.vals(post_ids)) {
                     switch (get_post(state, post_id)) {
                         case (?post_response) posts.add(post_response);
                         case null {};
@@ -643,7 +643,7 @@ module {
         let posts = Buffer.Buffer<T.PostResponse>(0);
         switch (Map.get(state.post_replies, Map.nhash, post_id)) {
             case (?reply_ids) {
-                for (reply_id in reply_ids.vals()) {
+                for (reply_id in Vector.vals(reply_ids)) {
                     switch (get_post(state, reply_id)) {
                         case (?post_response) posts.add(post_response);
                         case null {};
@@ -972,7 +972,7 @@ module {
         let topics = Buffer.Buffer<T.TopicResponse>(0);
         switch (Map.get(state.forum_topics, Map.nhash, forum_id)) {
             case (?topic_ids) {
-                for (topic_id in topic_ids.vals()) {
+                for (topic_id in Vector.vals(topic_ids)) {
                     switch (get_topic(state, topic_id)) {
                         case (?topic_response) {
                             if (show_deleted or not topic_response.deleted) {
@@ -992,7 +992,7 @@ module {
         let threads = Buffer.Buffer<T.ThreadResponse>(0);
         switch (Map.get(state.topic_threads, Map.nhash, topic_id)) {
             case (?thread_ids) {
-                for (thread_id in thread_ids.vals()) {
+                for (thread_id in Vector.vals(thread_ids)) {
                     switch (get_thread(state, thread_id)) {
                         case (?thread_response) {
                             if (show_deleted or not thread_response.deleted) {
@@ -1012,7 +1012,7 @@ module {
         let posts = Buffer.Buffer<T.PostResponse>(0);
         switch (Map.get(state.thread_posts, Map.nhash, thread_id)) {
             case (?post_ids) {
-                for (post_id in post_ids.vals()) {
+                for (post_id in Vector.vals(post_ids)) {
                     switch (get_post(state, post_id)) {
                         case (?post_response) {
                             if (show_deleted or not post_response.deleted) {
@@ -1085,7 +1085,7 @@ module {
         let posts = Buffer.Buffer<T.PostResponse>(0);
         switch (Map.get(state.post_replies, Map.nhash, post_id)) {
             case (?reply_ids) {
-                for (reply_id in reply_ids.vals()) {
+                for (reply_id in Vector.vals(reply_ids)) {
                     switch (get_post(state, reply_id)) {
                         case (?post_response) {
                             if (show_deleted or not post_response.deleted) {

@@ -108,8 +108,8 @@ module {
         admins: Vector.Vector<AdminInfo>;
         
         // Deduplication states
-        var principal_dedup_state: Dedup.DedupState;
-        var neuron_dedup_state: Dedup.DedupState;
+        principal_dedup_state: Dedup.DedupState;
+        neuron_dedup_state: Dedup.DedupState;
         
         // Indexes for efficient queries (using Vector for stable compatibility)
         forum_topics: Map.Map<Nat, Vector.Vector<Nat>>;
