@@ -398,6 +398,26 @@ module {
         Buffer.toArray(topics)
     };
 
+    public func get_subtopics_filtered(state: ForumState, topic_id: Nat, show_deleted: Bool) : [T.TopicResponse] {
+        let topics = Buffer.Buffer<T.TopicResponse>(0);
+        switch (Map.get(state.topic_subtopics, Map.nhash, topic_id)) {
+            case (?subtopic_ids) {
+                for (subtopic_id in subtopic_ids.vals()) {
+                    switch (get_topic(state, subtopic_id)) {
+                        case (?topic_response) {
+                            if (show_deleted or not topic_response.deleted) {
+                                topics.add(topic_response);
+                            };
+                        };
+                        case null {};
+                    };
+                };
+            };
+            case null {};
+        };
+        Buffer.toArray(topics)
+    };
+
     // Thread operations
     public func create_thread(
         state: ForumState,

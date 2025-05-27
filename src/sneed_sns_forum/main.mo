@@ -134,12 +134,14 @@ actor SneedSNSForum {
         Lib.update_forum(state, caller, id, input)
     };
 
-    public query func get_forum(id: Nat) : async ?T.ForumResponse {
-        Lib.get_forum_filtered(state, id, false)
+    public query ({ caller }) func get_forum(id: Nat) : async ?T.ForumResponse {
+        let is_admin = Lib.is_admin(state, caller);
+        Lib.get_forum_filtered(state, id, is_admin)
     };
 
-    public query func get_forums() : async [T.ForumResponse] {
-        Lib.get_forums_filtered(state, false) // show_deleted = false for non-admins
+    public query ({ caller }) func get_forums() : async [T.ForumResponse] {
+        let is_admin = Lib.is_admin(state, caller);
+        Lib.get_forums_filtered(state, is_admin)
     };
 
     // Topic API endpoints
@@ -151,16 +153,19 @@ actor SneedSNSForum {
         Lib.update_topic(state, caller, id, input)
     };
 
-    public query func get_topic(id: Nat) : async ?T.TopicResponse {
-        Lib.get_topic_filtered(state, id, false)
+    public query ({ caller }) func get_topic(id: Nat) : async ?T.TopicResponse {
+        let is_admin = Lib.is_admin(state, caller);
+        Lib.get_topic_filtered(state, id, is_admin)
     };
 
-    public query func get_topics_by_forum(forum_id: Nat) : async [T.TopicResponse] {
-        Lib.get_topics_by_forum_filtered(state, forum_id, false)
+    public query ({ caller }) func get_topics_by_forum(forum_id: Nat) : async [T.TopicResponse] {
+        let is_admin = Lib.is_admin(state, caller);
+        Lib.get_topics_by_forum_filtered(state, forum_id, is_admin)
     };
 
-    public query func get_subtopics(topic_id: Nat) : async [T.TopicResponse] {
-        Lib.get_subtopics(state, topic_id)
+    public query ({ caller }) func get_subtopics(topic_id: Nat) : async [T.TopicResponse] {
+        let is_admin = Lib.is_admin(state, caller);
+        Lib.get_subtopics_filtered(state, topic_id, is_admin)
     };
 
     // Thread API endpoints
@@ -172,12 +177,14 @@ actor SneedSNSForum {
         Lib.update_thread(state, caller, id, title, body)
     };
 
-    public query func get_thread(id: Nat) : async ?T.ThreadResponse {
-        Lib.get_thread_filtered(state, id, false)
+    public query ({ caller }) func get_thread(id: Nat) : async ?T.ThreadResponse {
+        let is_admin = Lib.is_admin(state, caller);
+        Lib.get_thread_filtered(state, id, is_admin)
     };
 
-    public query func get_threads_by_topic(topic_id: Nat) : async [T.ThreadResponse] {
-        Lib.get_threads_by_topic_filtered(state, topic_id, false)
+    public query ({ caller }) func get_threads_by_topic(topic_id: Nat) : async [T.ThreadResponse] {
+        let is_admin = Lib.is_admin(state, caller);
+        Lib.get_threads_by_topic_filtered(state, topic_id, is_admin)
     };
 
     // Post API endpoints
@@ -207,16 +214,19 @@ actor SneedSNSForum {
         Lib.update_post(state, caller, id, title, body)
     };
 
-    public query func get_post(id: Nat) : async ?T.PostResponse {
-        Lib.get_post_filtered(state, id, false)
+    public query ({ caller }) func get_post(id: Nat) : async ?T.PostResponse {
+        let is_admin = Lib.is_admin(state, caller);
+        Lib.get_post_filtered(state, id, is_admin)
     };
 
-    public query func get_posts_by_thread(thread_id: Nat) : async [T.PostResponse] {
-        Lib.get_posts_by_thread_filtered(state, thread_id, false)
+    public query ({ caller }) func get_posts_by_thread(thread_id: Nat) : async [T.PostResponse] {
+        let is_admin = Lib.is_admin(state, caller);
+        Lib.get_posts_by_thread_filtered(state, thread_id, is_admin)
     };
 
-    public query func get_post_replies(post_id: Nat) : async [T.PostResponse] {
-        Lib.get_post_replies_filtered(state, post_id, false)
+    public query ({ caller }) func get_post_replies(post_id: Nat) : async [T.PostResponse] {
+        let is_admin = Lib.is_admin(state, caller);
+        Lib.get_post_replies_filtered(state, post_id, is_admin)
     };
 
     // Voting API endpoints
@@ -296,28 +306,28 @@ actor SneedSNSForum {
     };
 
     // Admin query functions that show deleted items
-    public shared query ({ caller }) func get_forums_admin() : async [T.ForumResponse] {
+    public query ({ caller }) func get_forums_admin() : async [T.ForumResponse] {
         if (not Lib.is_admin(state, caller)) {
             return [];
         };
         Lib.get_forums_filtered(state, true) // show_deleted = true for admins
     };
 
-    public shared query ({ caller }) func get_topics_by_forum_admin(forum_id: Nat) : async [T.TopicResponse] {
+    public query ({ caller }) func get_topics_by_forum_admin(forum_id: Nat) : async [T.TopicResponse] {
         if (not Lib.is_admin(state, caller)) {
             return [];
         };
         Lib.get_topics_by_forum_filtered(state, forum_id, true)
     };
 
-    public shared query ({ caller }) func get_threads_by_topic_admin(topic_id: Nat) : async [T.ThreadResponse] {
+    public query ({ caller }) func get_threads_by_topic_admin(topic_id: Nat) : async [T.ThreadResponse] {
         if (not Lib.is_admin(state, caller)) {
             return [];
         };
         Lib.get_threads_by_topic_filtered(state, topic_id, true)
     };
 
-    public shared query ({ caller }) func get_posts_by_thread_admin(thread_id: Nat) : async [T.PostResponse] {
+    public query ({ caller }) func get_posts_by_thread_admin(thread_id: Nat) : async [T.PostResponse] {
         if (not Lib.is_admin(state, caller)) {
             return [];
         };
@@ -325,35 +335,35 @@ actor SneedSNSForum {
     };
 
     // Admin endpoints for individual items
-    public shared query ({ caller }) func get_forum_admin(id: Nat) : async ?T.ForumResponse {
+    public query ({ caller }) func get_forum_admin(id: Nat) : async ?T.ForumResponse {
         if (not Lib.is_admin(state, caller)) {
             return null;
         };
         Lib.get_forum_filtered(state, id, true)
     };
 
-    public shared query ({ caller }) func get_topic_admin(id: Nat) : async ?T.TopicResponse {
+    public query ({ caller }) func get_topic_admin(id: Nat) : async ?T.TopicResponse {
         if (not Lib.is_admin(state, caller)) {
             return null;
         };
         Lib.get_topic_filtered(state, id, true)
     };
 
-    public shared query ({ caller }) func get_thread_admin(id: Nat) : async ?T.ThreadResponse {
+    public query ({ caller }) func get_thread_admin(id: Nat) : async ?T.ThreadResponse {
         if (not Lib.is_admin(state, caller)) {
             return null;
         };
         Lib.get_thread_filtered(state, id, true)
     };
 
-    public shared query ({ caller }) func get_post_admin(id: Nat) : async ?T.PostResponse {
+    public query ({ caller }) func get_post_admin(id: Nat) : async ?T.PostResponse {
         if (not Lib.is_admin(state, caller)) {
             return null;
         };
         Lib.get_post_filtered(state, id, true)
     };
 
-    public shared query ({ caller }) func get_post_replies_admin(post_id: Nat) : async [T.PostResponse] {
+    public query ({ caller }) func get_post_replies_admin(post_id: Nat) : async [T.PostResponse] {
         if (not Lib.is_admin(state, caller)) {
             return [];
         };
