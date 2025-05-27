@@ -1,15 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../AuthContext';
 import { useAdminCheck } from '../../hooks/useAdminCheck';
 import { useForum } from '../../contexts/ForumContext';
+import { useNavigate } from 'react-router-dom';
 import Header from '../../components/Header';
 import './Forum.css';
+import { Principal } from '@dfinity/principal';
 
 export default function Forum() {
   const { isAuthenticated, identity } = useAuth();
   const { createForumActor, loading: forumLoading, error: forumError } = useForum();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('forums');
   const [forumActor, setForumActor] = useState(null);
+  const hasCheckedForumAdmin = useRef(false);
   
   // State for forums
   const [forums, setForums] = useState([]);
@@ -17,10 +21,14 @@ export default function Forum() {
   const [threads, setThreads] = useState([]);
   const [posts, setPosts] = useState([]);
   const [stats, setStats] = useState(null);
+  const [admins, setAdmins] = useState([]);
   
   // Loading states
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isForumAdmin, setIsForumAdmin] = useState(false);
+  const [forumAdminCheckLoading, setForumAdminCheckLoading] = useState(true);
+  const [forumAdminError, setForumAdminError] = useState('');
   
   // Form states
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -28,22 +36,55 @@ export default function Forum() {
   const [selectedForum, setSelectedForum] = useState(null);
   const [selectedTopic, setSelectedTopic] = useState(null);
   const [selectedThread, setSelectedThread] = useState(null);
+  const [showAddAdminForm, setShowAddAdminForm] = useState(false);
+  const [newAdminPrincipal, setNewAdminPrincipal] = useState('');
 
-  // Use admin check hook
-  useAdminCheck({ identity, isAuthenticated });
+  // Use backend admin check hook
+  const { isAdmin: isBackendAdmin, loading: backendAdminLoading, error: backendAdminError } = useAdminCheck({ 
+    identity, 
+    isAuthenticated,
+    redirectPath: '/wallet'
+  });
 
   useEffect(() => {
     if (isAuthenticated && identity) {
       const actor = createForumActor(identity);
       setForumActor(actor);
+      hasCheckedForumAdmin.current = false; // Reset when identity changes
     }
-  }, [isAuthenticated, identity, createForumActor]);
+  }, [isAuthenticated, identity]);
 
   useEffect(() => {
-    if (forumActor) {
+    if (forumActor && isBackendAdmin && !hasCheckedForumAdmin.current) {
+      hasCheckedForumAdmin.current = true;
+      checkForumAdminStatus();
+    }
+  }, [forumActor, isBackendAdmin]);
+
+  useEffect(() => {
+    if (forumActor && isBackendAdmin && isForumAdmin) {
       fetchData();
     }
-  }, [forumActor, activeTab]);
+  }, [forumActor, activeTab, isBackendAdmin, isForumAdmin]);
+
+  const checkForumAdminStatus = async () => {
+    if (!forumActor) return;
+    
+    setForumAdminCheckLoading(true);
+    setForumAdminError('');
+    try {
+      const adminResult = await forumActor.is_admin(identity.getPrincipal());
+      setIsForumAdmin(adminResult);
+      if (!adminResult) {
+        setForumAdminError('You are not an admin in the forum canister. Please contact an existing forum admin to add you.');
+      }
+    } catch (err) {
+      console.error('Error checking forum admin status:', err);
+      setForumAdminError('Error checking forum admin status: ' + err.message);
+    } finally {
+      setForumAdminCheckLoading(false);
+    }
+  };
 
   const fetchData = async () => {
     if (!forumActor) return;
@@ -137,6 +178,16 @@ export default function Forum() {
   const fetchStats = async () => {
     const result = await forumActor.get_stats();
     setStats(result);
+    await fetchAdmins();
+  };
+
+  const fetchAdmins = async () => {
+    try {
+      const result = await forumActor.get_admins();
+      setAdmins(result);
+    } catch (err) {
+      console.error('Error fetching admins:', err);
+    }
   };
 
   const handleCreate = async (e) => {
@@ -474,7 +525,7 @@ export default function Forum() {
   const renderStats = () => (
     <div className="forum-section">
       <div className="section-header">
-        <h2>Forum Statistics</h2>
+        <h2>Forum Statistics & Admin Management</h2>
       </div>
 
       {stats && (
@@ -501,23 +552,144 @@ export default function Forum() {
           </div>
         </div>
       )}
+
+      <div style={{ marginTop: '40px' }}>
+        <div className="section-header">
+          <h3 style={{ color: '#ffffff', margin: 0 }}>Forum Admins</h3>
+          <button 
+            className="create-btn"
+            onClick={() => setShowAddAdminForm(true)}
+          >
+            Add Admin
+          </button>
+        </div>
+
+        {showAddAdminForm && (
+          <form onSubmit={handleAddAdmin} className="create-form">
+            <input
+              type="text"
+              placeholder="Principal ID (e.g., rdmx6-jaaaa-aaaah-qcaiq-cai)"
+              value={newAdminPrincipal}
+              onChange={(e) => setNewAdminPrincipal(e.target.value)}
+              required
+            />
+            <div className="form-actions">
+              <button type="submit" disabled={loading}>Add Admin</button>
+              <button type="button" onClick={() => {
+                setShowAddAdminForm(false);
+                setNewAdminPrincipal('');
+              }}>Cancel</button>
+            </div>
+          </form>
+        )}
+
+        <div className="items-list">
+          {admins.map((admin, index) => (
+            <div key={index} className="item-card">
+              <div className="item-header">
+                <h4 style={{ color: '#ffffff', margin: 0 }}>
+                  {admin.principal.toString()}
+                </h4>
+                <div className="item-actions">
+                  <button 
+                    className="delete-btn"
+                    onClick={() => handleRemoveAdmin(admin.principal)}
+                    disabled={admins.length === 1}
+                    title={admins.length === 1 ? "Cannot remove the last admin" : "Remove admin"}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+              <div className="item-meta">
+                <span>Added by: {admin.added_by.toString().slice(0, 8)}...</span>
+                <span>Added: {formatDate(admin.added_at)}</span>
+              </div>
+            </div>
+          ))}
+          {admins.length === 0 && (
+            <div className="no-selection">
+              No admins found.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 
-  if (forumLoading || loading) {
+  const handleAddAdmin = async (e) => {
+    e.preventDefault();
+    if (!forumActor || !newAdminPrincipal.trim()) return;
+
+    setLoading(true);
+    try {
+      const result = await forumActor.add_admin(Principal.fromText(newAdminPrincipal.trim()));
+      if ('ok' in result) {
+        setNewAdminPrincipal('');
+        setShowAddAdminForm(false);
+        await fetchAdmins();
+        setError('');
+      } else {
+        setError('Error adding admin: ' + JSON.stringify(result.err));
+      }
+    } catch (err) {
+      console.error('Error adding admin:', err);
+      setError('Failed to add admin: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveAdmin = async (adminPrincipal) => {
+    if (!forumActor || !confirm('Are you sure you want to remove this admin?')) return;
+
+    setLoading(true);
+    try {
+      const result = await forumActor.remove_admin(adminPrincipal);
+      if ('ok' in result) {
+        await fetchAdmins();
+        setError('');
+      } else {
+        setError('Error removing admin: ' + JSON.stringify(result.err));
+      }
+    } catch (err) {
+      console.error('Error removing admin:', err);
+      setError('Failed to remove admin: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Show loading if any admin check is loading or if we're fetching data
+  if (backendAdminLoading || forumLoading || loading) {
     return (
       <div className='page-container'>
         <Header />
         <main className="wallet-container">
           <div style={{ textAlign: 'center', padding: '40px 20px', color: '#ffffff' }}>
-            Loading...
+            {backendAdminLoading ? 'Checking backend admin status...' : 'Loading...'}
           </div>
         </main>
       </div>
     );
   }
 
-  if (forumError || error) {
+  // Show forum admin loading only if we haven't determined backend admin status yet
+  if (forumAdminCheckLoading && isBackendAdmin !== null) {
+    return (
+      <div className='page-container'>
+        <Header />
+        <main className="wallet-container">
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#ffffff' }}>
+            Checking forum admin status...
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Show error if there's a backend admin error, forum error, or general error
+  if (backendAdminError || forumError || error) {
     return (
       <div className='page-container'>
         <Header />
@@ -530,11 +702,43 @@ export default function Forum() {
             borderRadius: '4px',
             marginBottom: '20px'
           }}>
-            {forumError || error}
+            {backendAdminError || forumError || error}
           </div>
         </main>
       </div>
     );
+  }
+
+  // Show forum admin error if user is backend admin but not forum admin
+  if (isBackendAdmin && !isForumAdmin) {
+    return (
+      <div className='page-container'>
+        <Header />
+        <main className="wallet-container">
+          <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Forum Administration</h1>
+          <div style={{
+            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+            border: '1px solid #ffc107',
+            color: '#ffc107',
+            padding: '15px',
+            borderRadius: '4px',
+            marginBottom: '20px'
+          }}>
+            <strong>Forum Admin Access Required:</strong><br />
+            {forumAdminError || 'You are not an admin in the forum canister. Please contact an existing forum admin to add you.'}
+          </div>
+          <div style={{ color: '#cccccc', lineHeight: '1.6' }}>
+            <p>You have backend admin privileges, but you need to be added as an admin in the forum canister to manage forum content.</p>
+            <p>Current forum admins can add you using the admin management functions.</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Don't render the main content if user is not both backend and forum admin
+  if (!isBackendAdmin || !isForumAdmin) {
+    return null;
   }
 
   return (
@@ -552,6 +756,8 @@ export default function Forum() {
                 setActiveTab(tab);
                 setShowCreateForm(false);
                 setFormData({});
+                setShowAddAdminForm(false);
+                setNewAdminPrincipal('');
               }}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}

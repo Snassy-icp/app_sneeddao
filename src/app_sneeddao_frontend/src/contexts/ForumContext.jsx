@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 
 const ForumContext = createContext();
@@ -8,7 +8,7 @@ export function ForumProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const createForumActor = (identity) => {
+  const createForumActor = useCallback((identity) => {
     try {
       const actor = createActor(canisterId, {
         agentOptions: {
@@ -24,7 +24,7 @@ export function ForumProvider({ children }) {
       setError('Failed to connect to forum canister');
       return null;
     }
-  };
+  }, []);
 
   const value = {
     forumActor,
