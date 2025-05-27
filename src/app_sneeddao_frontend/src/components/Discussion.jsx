@@ -319,7 +319,8 @@ function Discussion({
     const PostComponent = useCallback(({ post, depth = 0, isFlat = false }) => {
         const score = calculatePostScore(post);
         const isNegative = score < 0;
-        const isCollapsed = collapsedPosts.has(Number(post.id)) || (isNegative && !collapsedPosts.has(Number(post.id)));
+        const isManuallyCollapsed = collapsedPosts.has(Number(post.id));
+        const isCollapsed = isManuallyCollapsed || (isNegative && !collapsedPosts.has(Number(post.id)));
         const isReplying = replyingTo === Number(post.id);
         
         // Find parent post if this is a reply (for flat mode)
@@ -382,6 +383,16 @@ function Discussion({
                                     <span style={{ color: '#ff6b6b' }}>Low Score</span>
                                 </>
                             )}
+                            {isCollapsed && (
+                                <>
+                                    <span>•</span>
+                                    <span style={{ color: '#888' }}>[Collapsed]</span>
+                                    <span>•</span>
+                                    <span style={{ color: '#666', fontStyle: 'italic' }}>
+                                        {post.body.slice(0, 50)}...
+                                    </span>
+                                </>
+                            )}
                         </div>
                         <div style={{ 
                             display: 'flex', 
@@ -401,22 +412,20 @@ function Discussion({
                                 <span style={{ color: '#2ecc71' }}>↑{post.upvote_score}</span>
                                 <span style={{ color: '#e74c3c' }}>↓{post.downvote_score}</span>
                             </div>
-                            {(isNegative || isCollapsed) && (
-                                <button
-                                    onClick={() => togglePostCollapse(Number(post.id))}
-                                    style={{
-                                        backgroundColor: 'transparent',
-                                        border: '1px solid #666',
-                                        color: '#888',
-                                        borderRadius: '4px',
-                                        padding: '4px 8px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px'
-                                    }}
-                                >
-                                    {isCollapsed ? 'Expand' : 'Collapse'}
-                                </button>
-                            )}
+                            <button
+                                onClick={() => togglePostCollapse(Number(post.id))}
+                                style={{
+                                    backgroundColor: 'transparent',
+                                    border: '1px solid #666',
+                                    color: '#888',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px'
+                                }}
+                            >
+                                {isCollapsed ? 'Expand' : 'Collapse'}
+                            </button>
                         </div>
                     </div>
 
