@@ -22,6 +22,7 @@ export default function Forum() {
   const [posts, setPosts] = useState([]);
   const [stats, setStats] = useState(null);
   const [admins, setAdmins] = useState([]);
+  const [proposalsTopic, setProposalsTopic] = useState(null);
   
   // Loading states
   const [loading, setLoading] = useState(false);
@@ -152,9 +153,12 @@ export default function Forum() {
           setTopics([]);
         }
       }
+      // Also fetch proposals topic
+      await fetchProposalsTopic();
     } else {
       console.log('No forum selected, clearing topics');
       setTopics([]);
+      setProposalsTopic(null);
     }
   };
 
@@ -200,6 +204,20 @@ export default function Forum() {
       setAdmins(result);
     } catch (err) {
       console.error('Error fetching admins:', err);
+    }
+  };
+
+  const fetchProposalsTopic = async () => {
+    if (selectedForum) {
+      try {
+        const result = await forumActor.get_proposals_topic(Number(selectedForum.id));
+        setProposalsTopic(result);
+      } catch (err) {
+        console.error('Error fetching proposals topic:', err);
+        setProposalsTopic(null);
+      }
+    } else {
+      setProposalsTopic(null);
     }
   };
 
@@ -531,6 +549,11 @@ export default function Forum() {
         {selectedForum && (
           <div className="selected-info">
             Selected Forum: <strong>{selectedForum.title}</strong>
+            {proposalsTopic && (
+              <div style={{ marginTop: '5px', fontSize: '0.9em', color: '#ffc107' }}>
+                Current Proposals Topic: <strong>#{proposalsTopic.proposals_topic_id}</strong>
+              </div>
+            )}
           </div>
         )}
         <button 
@@ -616,48 +639,63 @@ export default function Forum() {
       )}
 
       <div className="items-list">
-        {topics.map(topic => (
-          <div key={topic.id} className={`item-card ${topic.deleted ? 'deleted' : ''}`}>
-            <div className="item-header">
-              <h3>{topic.title} {topic.deleted && <span className="deleted-badge">[DELETED]</span>}</h3>
-              <div className="item-actions">
-                <button 
-                  className="select-btn"
-                  onClick={() => {
-                    setSelectedTopic(topic);
-                    setActiveTab('threads');
-                    setSelectedThread(null);
-                  }}
-                >
-                  Select
-                </button>
-                <button 
-                  className="edit-btn"
-                  onClick={() => startEdit(topic, 'topic')}
-                  disabled={topic.deleted}
-                >
-                  Edit
-                </button>
-                <button 
-                  className="delete-btn"
-                  onClick={() => handleDelete(topic.id, 'topic')}
-                  disabled={topic.deleted}
-                >
-                  Delete
-                </button>
+        {topics.map(topic => {
+          const isProposalsTopic = proposalsTopic && Number(topic.id) === proposalsTopic.proposals_topic_id;
+          return (
+            <div key={topic.id} className={`item-card ${topic.deleted ? 'deleted' : ''} ${isProposalsTopic ? 'proposals-topic' : ''}`}>
+              <div className="item-header">
+                <h3>
+                  {topic.title} 
+                  {topic.deleted && <span className="deleted-badge">[DELETED]</span>}
+                  {isProposalsTopic && <span className="proposals-badge">[PROPOSALS TOPIC]</span>}
+                </h3>
+                <div className="item-actions">
+                  <button 
+                    className="select-btn"
+                    onClick={() => {
+                      setSelectedTopic(topic);
+                      setActiveTab('threads');
+                      setSelectedThread(null);
+                    }}
+                  >
+                    Select
+                  </button>
+                  <button 
+                    className="create-btn"
+                    onClick={() => handleSetProposalsTopic(topic.id)}
+                    disabled={topic.deleted || !selectedForum || isProposalsTopic}
+                    title={isProposalsTopic ? "Already set as Proposals Topic" : "Set as Proposals Topic for this Forum"}
+                  >
+                    {isProposalsTopic ? "Current Proposals Topic" : "Set as Proposals Topic"}
+                  </button>
+                  <button 
+                    className="edit-btn"
+                    onClick={() => startEdit(topic, 'topic')}
+                    disabled={topic.deleted}
+                  >
+                    Edit
+                  </button>
+                  <button 
+                    className="delete-btn"
+                    onClick={() => handleDelete(topic.id, 'topic')}
+                    disabled={topic.deleted}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+              <p>{topic.description}</p>
+              <div className="item-meta">
+                <span>ID: {Number(topic.id)}</span>
+                <span>Created: {formatDate(topic.created_at)}</span>
+                <span>By: {topic.created_by.toString().slice(0, 8)}...</span>
+                {topic.parent_topic_id && topic.parent_topic_id.length > 0 && (
+                  <span>Parent Topic: #{Number(topic.parent_topic_id[0])}</span>
+                )}
               </div>
             </div>
-            <p>{topic.description}</p>
-            <div className="item-meta">
-              <span>ID: {Number(topic.id)}</span>
-              <span>Created: {formatDate(topic.created_at)}</span>
-              <span>By: {topic.created_by.toString().slice(0, 8)}...</span>
-              {topic.parent_topic_id && topic.parent_topic_id.length > 0 && (
-                <span>Parent Topic: #{Number(topic.parent_topic_id[0])}</span>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -1031,6 +1069,30 @@ export default function Forum() {
     } catch (err) {
       console.error('Error removing admin:', err);
       setError('Failed to remove admin: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSetProposalsTopic = async (topicId) => {
+    if (!forumActor || !selectedForum || !confirm('Set this topic as the proposals topic for this forum?')) return;
+
+    setLoading(true);
+    try {
+      const result = await forumActor.set_proposals_topic({
+        forum_id: Number(selectedForum.id),
+        topic_id: Number(topicId),
+      });
+      if ('ok' in result) {
+        setError('');
+        alert('Successfully set as proposals topic!');
+        await fetchProposalsTopic(); // Refresh the proposals topic info
+      } else {
+        setError('Error setting proposals topic: ' + JSON.stringify(result.err));
+      }
+    } catch (err) {
+      console.error('Error setting proposals topic:', err);
+      setError('Failed to set proposals topic: ' + err.message);
     } finally {
       setLoading(false);
     }
