@@ -350,8 +350,10 @@ export default function Forum() {
     }
     if (type === 'topic' && item.parent_topic_id && item.parent_topic_id.length > 0) {
       newFormData.parentTopicId = item.parent_topic_id[0].toString();
+      console.log('Setting parentTopicId for edit:', newFormData.parentTopicId, 'from:', item.parent_topic_id);
     }
 
+    console.log('startEdit formData:', newFormData);
     setFormData(newFormData);
     setShowCreateForm(false); // Hide create form if open
   };
@@ -566,7 +568,7 @@ export default function Forum() {
           >
             <option value="">No Parent Topic (Top Level)</option>
             {topics.filter(topic => !topic.deleted).map(topic => (
-              <option key={topic.id} value={topic.id}>
+              <option key={topic.id} value={Number(topic.id).toString()}>
                 {topic.title} (ID: {Number(topic.id)})
               </option>
             ))}
@@ -600,7 +602,7 @@ export default function Forum() {
           >
             <option value="">No Parent Topic (Top Level)</option>
             {topics.filter(topic => !topic.deleted && topic.id !== editingItem.id).map(topic => (
-              <option key={topic.id} value={topic.id}>
+              <option key={topic.id} value={Number(topic.id).toString()}>
                 {topic.title} (ID: {Number(topic.id)})
               </option>
             ))}

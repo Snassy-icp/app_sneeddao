@@ -61,10 +61,9 @@ module {
             return #err(#AlreadyExists("Principal is already an admin"));
         };
 
-        let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
         let admin_info : AdminInfo = {
             principal = new_admin;
-            added_by = caller_index;
+            added_by = caller;
             added_at = Time.now();
         };
 
@@ -675,34 +674,54 @@ module {
                 let updated_post = switch (existing_vote.vote_type, vote_type) {
                     case (#upvote, #upvote) {
                         // Same vote type, just update voting power
+                        let new_upvote_score = if (post.upvote_score >= existing_vote.voting_power) {
+                            post.upvote_score - existing_vote.voting_power + voting_power
+                        } else {
+                            voting_power
+                        };
                         {
                             post with
-                            upvote_score = post.upvote_score - existing_vote.voting_power + voting_power;
+                            upvote_score = new_upvote_score;
                             updated_at = now;
                         }
                     };
                     case (#downvote, #downvote) {
                         // Same vote type, just update voting power
+                        let new_downvote_score = if (post.downvote_score >= existing_vote.voting_power) {
+                            post.downvote_score - existing_vote.voting_power + voting_power
+                        } else {
+                            voting_power
+                        };
                         {
                             post with
-                            downvote_score = post.downvote_score - existing_vote.voting_power + voting_power;
+                            downvote_score = new_downvote_score;
                             updated_at = now;
                         }
                     };
                     case (#upvote, #downvote) {
                         // Changed from upvote to downvote
+                        let new_upvote_score = if (post.upvote_score >= existing_vote.voting_power) {
+                            post.upvote_score - existing_vote.voting_power
+                        } else {
+                            0
+                        };
                         {
                             post with
-                            upvote_score = post.upvote_score - existing_vote.voting_power;
+                            upvote_score = new_upvote_score;
                             downvote_score = post.downvote_score + voting_power;
                             updated_at = now;
                         }
                     };
                     case (#downvote, #upvote) {
                         // Changed from downvote to upvote
+                        let new_downvote_score = if (post.downvote_score >= existing_vote.voting_power) {
+                            post.downvote_score - existing_vote.voting_power
+                        } else {
+                            0
+                        };
                         {
                             post with
-                            downvote_score = post.downvote_score - existing_vote.voting_power;
+                            downvote_score = new_downvote_score;
                             upvote_score = post.upvote_score + voting_power;
                             updated_at = now;
                         }
@@ -1300,11 +1319,10 @@ module {
             };
         };
 
-        let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
         let mapping : T.ProposalTopicMapping = {
             forum_id = input.forum_id;
             proposals_topic_id = input.topic_id;
-            set_by = caller_index;
+            set_by = caller;
             set_at = Time.now();
         };
 
@@ -1312,22 +1330,8 @@ module {
         #ok()
     };
 
-    public func get_proposals_topic(state: ForumState, forum_id: Nat) : ?T.ProposalTopicMappingResponse {
-        switch (Map.get(state.proposal_topics, Map.nhash, forum_id)) {
-            case (?mapping) {
-                let set_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, mapping.set_by)) {
-                    case (?p) p;
-                    case null Principal.fromText("2vxsx-fae");
-                };
-                ?{
-                    forum_id = mapping.forum_id;
-                    proposals_topic_id = mapping.proposals_topic_id;
-                    set_by;
-                    set_at = mapping.set_at;
-                }
-            };
-            case null null;
-        }
+    public func get_proposals_topic(state: ForumState, forum_id: Nat) : ?T.ProposalTopicMapping {
+        Map.get(state.proposal_topics, Map.nhash, forum_id)
     };
 
     public func create_proposal_thread(
@@ -1397,7 +1401,7 @@ module {
         let proposal_mapping : T.ProposalThreadMapping = {
             thread_id = thread_id;
             proposal_id = input.proposal_id;
-            created_by = caller_index;
+            created_by = caller;
             created_at = now;
         };
 
@@ -1407,22 +1411,8 @@ module {
         #ok(thread_id)
     };
 
-    public func get_proposal_thread(state: ForumState, proposal_id: Nat) : ?T.ProposalThreadMappingResponse {
-        switch (Map.get(state.proposal_threads, Map.nhash, proposal_id)) {
-            case (?mapping) {
-                let created_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, mapping.created_by)) {
-                    case (?p) p;
-                    case null Principal.fromText("2vxsx-fae");
-                };
-                ?{
-                    thread_id = mapping.thread_id;
-                    proposal_id = mapping.proposal_id;
-                    created_by;
-                    created_at = mapping.created_at;
-                }
-            };
-            case null null;
-        }
+    public func get_proposal_thread(state: ForumState, proposal_id: Nat) : ?T.ProposalThreadMapping {
+        Map.get(state.proposal_threads, Map.nhash, proposal_id)
     };
 
     public func get_thread_proposal_id(state: ForumState, thread_id: Nat) : ?Nat {
