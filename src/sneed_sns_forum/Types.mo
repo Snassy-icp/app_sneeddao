@@ -111,12 +111,12 @@ module {
         var principal_dedup_state: Dedup.DedupState;
         var neuron_dedup_state: Dedup.DedupState;
         
-        // Indexes for efficient queries (using Buffer for runtime compatibility)
-        forum_topics: Map.Map<Nat, Buffer.Buffer<Nat>>;
-        topic_subtopics: Map.Map<Nat, Buffer.Buffer<Nat>>;
-        topic_threads: Map.Map<Nat, Buffer.Buffer<Nat>>;
-        thread_posts: Map.Map<Nat, Buffer.Buffer<Nat>>;
-        post_replies: Map.Map<Nat, Buffer.Buffer<Nat>>;
+        // Indexes for efficient queries (using Vector for stable compatibility)
+        forum_topics: Map.Map<Nat, Vector.Vector<Nat>>;
+        topic_subtopics: Map.Map<Nat, Vector.Vector<Nat>>;
+        topic_threads: Map.Map<Nat, Vector.Vector<Nat>>;
+        thread_posts: Map.Map<Nat, Vector.Vector<Nat>>;
+        post_replies: Map.Map<Nat, Vector.Vector<Nat>>;
     };
 
     // Input types for creation functions

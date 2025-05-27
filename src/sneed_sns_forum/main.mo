@@ -40,55 +40,12 @@ actor SneedSNSForum {
         admins = stable_admins;
         var principal_dedup_state = stable_principal_dedup;
         var neuron_dedup_state = stable_neuron_dedup;
-        forum_topics = Map.new<Nat, Buffer.Buffer<Nat>>();
-        topic_subtopics = Map.new<Nat, Buffer.Buffer<Nat>>();
-        topic_threads = Map.new<Nat, Buffer.Buffer<Nat>>();
-        thread_posts = Map.new<Nat, Buffer.Buffer<Nat>>();
-        post_replies = Map.new<Nat, Buffer.Buffer<Nat>>();
+        forum_topics = stable_forum_topics;
+        topic_subtopics = stable_topic_subtopics;
+        topic_threads = stable_topic_threads;
+        thread_posts = stable_thread_posts;
+        post_replies = stable_post_replies;
     };
-
-    // Initialize runtime buffers from stable vectors
-    private func init_runtime_indexes() {
-        // Convert stable vectors to runtime buffers for compatibility with lib.mo
-        for ((k, v) in Map.entries(stable_forum_topics)) {
-            let buffer = Buffer.Buffer<Nat>(Vector.size(v));
-            for (item in Vector.vals(v)) {
-                buffer.add(item);
-            };
-            ignore Map.put(state.forum_topics, Map.nhash, k, buffer);
-        };
-        for ((k, v) in Map.entries(stable_topic_subtopics)) {
-            let buffer = Buffer.Buffer<Nat>(Vector.size(v));
-            for (item in Vector.vals(v)) {
-                buffer.add(item);
-            };
-            ignore Map.put(state.topic_subtopics, Map.nhash, k, buffer);
-        };
-        for ((k, v) in Map.entries(stable_topic_threads)) {
-            let buffer = Buffer.Buffer<Nat>(Vector.size(v));
-            for (item in Vector.vals(v)) {
-                buffer.add(item);
-            };
-            ignore Map.put(state.topic_threads, Map.nhash, k, buffer);
-        };
-        for ((k, v) in Map.entries(stable_thread_posts)) {
-            let buffer = Buffer.Buffer<Nat>(Vector.size(v));
-            for (item in Vector.vals(v)) {
-                buffer.add(item);
-            };
-            ignore Map.put(state.thread_posts, Map.nhash, k, buffer);
-        };
-        for ((k, v) in Map.entries(stable_post_replies)) {
-            let buffer = Buffer.Buffer<Nat>(Vector.size(v));
-            for (item in Vector.vals(v)) {
-                buffer.add(item);
-            };
-            ignore Map.put(state.post_replies, Map.nhash, k, buffer);
-        };
-    };
-
-    // Call initialization
-    init_runtime_indexes();
 
     // Helper function to get caller's voting power from SNS
     private func get_caller_voting_power(caller: Principal, neuron_id: T.NeuronId, sns_root: ?Principal) : async Nat {

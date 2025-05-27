@@ -42,11 +42,11 @@ module {
             admins = Vector.new<AdminInfo>();
             var principal_dedup_state = Dedup.empty();
             var neuron_dedup_state = Dedup.empty();
-            forum_topics = Map.new<Nat, Buffer.Buffer<Nat>>();
-            topic_subtopics = Map.new<Nat, Buffer.Buffer<Nat>>();
-            topic_threads = Map.new<Nat, Buffer.Buffer<Nat>>();
-            thread_posts = Map.new<Nat, Buffer.Buffer<Nat>>();
-            post_replies = Map.new<Nat, Buffer.Buffer<Nat>>();
+            forum_topics = Map.new<Nat, Vector.Vector<Nat>>();
+            topic_subtopics = Map.new<Nat, Vector.Vector<Nat>>();
+            topic_threads = Map.new<Nat, Vector.Vector<Nat>>();
+            thread_posts = Map.new<Nat, Vector.Vector<Nat>>();
+            post_replies = Map.new<Nat, Vector.Vector<Nat>>();
         }
     };
 
@@ -154,27 +154,27 @@ module {
     };
 
     // Helper function to add to index
-    private func add_to_index(map: Map.Map<Nat, Buffer.Buffer<Nat>>, key: Nat, value: Nat) {
+    private func add_to_index(map: Map.Map<Nat, Vector.Vector<Nat>>, key: Nat, value: Nat) {
         switch (Map.get(map, Map.nhash, key)) {
-            case (?buffer) {
-                buffer.add(value);
+            case (?vector) {
+                Vector.add(vector, value);
             };
             case null {
-                let buffer = Buffer.Buffer<Nat>(1);
-                buffer.add(value);
-                ignore Map.put(map, Map.nhash, key, buffer);
+                let vector = Vector.new<Nat>();
+                Vector.add(vector, value);
+                ignore Map.put(map, Map.nhash, key, vector);
             };
         };
     };
 
     // Helper function to remove from index
-    private func remove_from_index(map: Map.Map<Nat, Buffer.Buffer<Nat>>, key: Nat, value: Nat) {
+    private func remove_from_index(map: Map.Map<Nat, Vector.Vector<Nat>>, key: Nat, value: Nat) {
         switch (Map.get(map, Map.nhash, key)) {
-            case (?buffer) {
-                let filtered = Buffer.Buffer<Nat>(buffer.size());
-                for (item in buffer.vals()) {
+            case (?vector) {
+                let filtered = Vector.new<Nat>();
+                for (item in Vector.vals(vector)) {
                     if (item != value) {
-                        filtered.add(item);
+                        Vector.add(filtered, item);
                     };
                 };
                 ignore Map.put(map, Map.nhash, key, filtered);
