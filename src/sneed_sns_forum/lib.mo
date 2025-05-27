@@ -1358,9 +1358,6 @@ module {
         input: T.CreateProposalThreadInput
     ) : Result<Nat, ForumError> {
         // Check admin access
-        if (not is_admin(state, caller)) {
-            return #err(#Unauthorized("Admin access required"));
-        };
 
         // Check if proposal thread already exists
         switch (Map.get(state.proposal_threads, Map.nhash, input.proposal_id)) {
