@@ -1,0 +1,5 @@
+[dependencies]
+base = "0.14.9"
+dedup = "1.1.0"
+map = "9.0.1"
+vector = "0.4.1"
