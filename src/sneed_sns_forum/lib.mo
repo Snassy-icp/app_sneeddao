@@ -30,29 +30,6 @@ module {
     // Hash utilities for VoteKey
     private let vote_key_hash_utils = (T.vote_key_hash, T.vote_key_equal);
 
-    // Initialize forum state
-    public func init_state() : ForumState {
-        {
-            var next_id = 1;
-            forums = Map.new<Nat, Forum>();
-            topics = Map.new<Nat, Topic>();
-            threads = Map.new<Nat, Thread>();
-            posts = Map.new<Nat, Post>();
-            votes = Map.new<VoteKey, Vote>();
-            admins = Vector.new<AdminInfo>();
-            principal_dedup_state = Dedup.empty();
-            neuron_dedup_state = Dedup.empty();
-            forum_topics = Map.new<Nat, Vector.Vector<Nat>>();
-            topic_subtopics = Map.new<Nat, Vector.Vector<Nat>>();
-            topic_threads = Map.new<Nat, Vector.Vector<Nat>>();
-            thread_posts = Map.new<Nat, Vector.Vector<Nat>>();
-            post_replies = Map.new<Nat, Vector.Vector<Nat>>();
-            proposal_topics = Map.new<Nat, T.ProposalTopicMapping>();
-            proposal_threads = Map.new<Nat, T.ProposalThreadMapping>();
-            thread_proposals = Map.new<Nat, Nat>();
-        }
-    };
-
     // Admin management functions
     public func is_admin(state: ForumState, principal: Principal) : Bool {
         if (Principal.equal(principal, Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai"))) { // Sneed governance canister is admin.
