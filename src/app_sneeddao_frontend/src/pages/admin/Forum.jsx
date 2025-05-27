@@ -202,7 +202,7 @@ export default function Forum() {
           result = await forumActor.create_forum({
             title: formData.title,
             description: formData.description,
-            sns_root_canister_id: [],
+            sns_root_canister_id: formData.snsRootCanisterId ? [Principal.fromText(formData.snsRootCanisterId)] : [],
           });
           break;
         case 'topics':
@@ -212,7 +212,7 @@ export default function Forum() {
           }
           result = await forumActor.create_topic({
             forum_id: selectedForum.id,
-            parent_topic_id: [],
+            parent_topic_id: formData.parentTopicId ? [Principal.fromText(formData.parentTopicId)] : [],
             title: formData.title,
             description: formData.description,
           });
@@ -305,6 +305,12 @@ export default function Forum() {
             onChange={(e) => setFormData({...formData, description: e.target.value})}
             required
           />
+          <input
+            type="text"
+            placeholder="SNS Root Canister ID (optional, e.g., rdmx6-jaaaa-aaaah-qcaiq-cai)"
+            value={formData.snsRootCanisterId || ''}
+            onChange={(e) => setFormData({...formData, snsRootCanisterId: e.target.value})}
+          />
           <div className="form-actions">
             <button type="submit" disabled={loading}>Create</button>
             <button type="button" onClick={() => setShowCreateForm(false)}>Cancel</button>
@@ -338,6 +344,9 @@ export default function Forum() {
               <span>ID: {Number(forum.id)}</span>
               <span>Created: {formatDate(forum.created_at)}</span>
               <span>By: {forum.created_by.toString().slice(0, 8)}...</span>
+              {forum.sns_root_canister_id && forum.sns_root_canister_id.length > 0 && (
+                <span>SNS Root: {forum.sns_root_canister_id[0].toString()}</span>
+              )}
             </div>
           </div>
         ))}
@@ -384,6 +393,17 @@ export default function Forum() {
             onChange={(e) => setFormData({...formData, description: e.target.value})}
             required
           />
+          <select
+            value={formData.parentTopicId || ''}
+            onChange={(e) => setFormData({...formData, parentTopicId: e.target.value})}
+          >
+            <option value="">No Parent Topic (Top Level)</option>
+            {topics.filter(topic => !topic.deleted).map(topic => (
+              <option key={topic.id} value={topic.id}>
+                {topic.title} (ID: {Number(topic.id)})
+              </option>
+            ))}
+          </select>
           <div className="form-actions">
             <button type="submit" disabled={loading}>Create</button>
             <button type="button" onClick={() => setShowCreateForm(false)}>Cancel</button>
@@ -417,6 +437,9 @@ export default function Forum() {
               <span>ID: {Number(topic.id)}</span>
               <span>Created: {formatDate(topic.created_at)}</span>
               <span>By: {topic.created_by.toString().slice(0, 8)}...</span>
+              {topic.parent_topic_id && topic.parent_topic_id.length > 0 && (
+                <span>Parent Topic: #{Number(topic.parent_topic_id[0])}</span>
+              )}
             </div>
           </div>
         ))}
