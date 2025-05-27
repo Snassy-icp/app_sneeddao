@@ -241,6 +241,20 @@ export default function Forum() {
             body: formData.body,
           });
           break;
+        case 'posts':
+          if (!selectedThread) {
+            setError('Please select a thread first');
+            return;
+          }
+          // For admin posts, use a dummy neuron ID since voting power will be set to 1 by default
+          const dummyNeuronId = { id: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]) };
+          result = await forumActor.create_post({
+            thread_id: Number(selectedThread.id),
+            reply_to_post_id: formData.replyToPostId ? [parseInt(formData.replyToPostId)] : [],
+            title: formData.title ? [formData.title] : [],
+            body: formData.body,
+          }, dummyNeuronId);
+          break;
         default:
           setError('Create operation not supported for this tab');
           return;
@@ -752,12 +766,51 @@ export default function Forum() {
             Selected Thread: <strong>{selectedThread.title || `Thread #${selectedThread.id}`}</strong>
           </div>
         )}
+        <button 
+          className="create-btn"
+          onClick={() => setShowCreateForm(true)}
+          disabled={!selectedThread}
+        >
+          Create Post
+        </button>
       </div>
 
       {!selectedThread && (
         <div className="no-selection">
           Please select a thread from the Threads tab first.
         </div>
+      )}
+
+      {showCreateForm && selectedThread && (
+        <form onSubmit={handleCreate} className="create-form">
+          <input
+            type="text"
+            placeholder="Post Title (optional)"
+            value={formData.title || ''}
+            onChange={(e) => setFormData({...formData, title: e.target.value})}
+          />
+          <textarea
+            placeholder="Post Body"
+            value={formData.body || ''}
+            onChange={(e) => setFormData({...formData, body: e.target.value})}
+            required
+          />
+          <select
+            value={formData.replyToPostId || ''}
+            onChange={(e) => setFormData({...formData, replyToPostId: e.target.value})}
+          >
+            <option value="">No Reply (Top Level Post)</option>
+            {posts.filter(post => !post.deleted).map(post => (
+              <option key={post.id} value={post.id}>
+                Reply to: {post.title || `Post #${Number(post.id)}`}
+              </option>
+            ))}
+          </select>
+          <div className="form-actions">
+            <button type="submit" disabled={loading}>Create</button>
+            <button type="button" onClick={() => setShowCreateForm(false)}>Cancel</button>
+          </div>
+        </form>
       )}
 
       {editingItem && editingType === 'post' && (
