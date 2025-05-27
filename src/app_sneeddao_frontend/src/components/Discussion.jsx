@@ -16,6 +16,7 @@ function Discussion({
     const [commentText, setCommentText] = useState('');
     const [showCommentForm, setShowCommentForm] = useState(false);
     const [submittingComment, setSubmittingComment] = useState(false);
+    const [commentTitle, setCommentTitle] = useState('');
     
     // State for view mode and interactions
     const [viewMode, setViewMode] = useState('flat');
@@ -146,12 +147,12 @@ function Discussion({
                 newThreadCreated = true;
             }
 
-            // Create post if thread already exists
+            // Create post if thread already exists or after creating new thread
             if (!newThreadCreated) {
                 const postInput = {
                     thread_id: Number(threadId),
                     reply_to_post_id: [],
-                    title: [],
+                    title: commentTitle && commentTitle.trim() ? [commentTitle.trim()] : [],
                     body: commentText
                 };
 
@@ -159,29 +160,25 @@ function Discussion({
                 
                 const result = await forumActor.create_post(postInput, dummyNeuronId);
                 if ('ok' in result) {
-                    console.log('Post created successfully, post ID:', result.ok);
+                    console.log('Comment created successfully, post ID:', result.ok);
                 } else {
-                    console.error('Failed to create post:', result.err);
-                    if (onError) onError('Failed to create post: ' + JSON.stringify(result.err));
+                    console.error('Failed to create comment:', result.err);
+                    if (onError) onError('Failed to create comment: ' + JSON.stringify(result.err));
                     return;
                 }
             }
 
             // Clear form and refresh
             setCommentText('');
+            setCommentTitle('');
             setShowCommentForm(false);
-            
-            console.log('About to refresh. Current discussionThread:', discussionThread, 'newThreadCreated:', newThreadCreated, 'threadId:', threadId);
             
             // Refresh discussion thread or posts
             if (newThreadCreated) {
                 await fetchDiscussionThread();
             } else {
-                await fetchDiscussionPosts(threadId);
+                await fetchDiscussionPosts(Number(threadId));
             }
-            
-            console.log('After refresh, discussionPosts:', discussionPosts);
-            
         } catch (err) {
             console.error('Error submitting comment:', err);
             if (onError) onError('Failed to submit comment: ' + err.message);
@@ -193,6 +190,29 @@ function Discussion({
     // Helper functions for post organization
     const calculatePostScore = (post) => {
         return Number(post.upvote_score) - Number(post.downvote_score);
+    };
+
+    // Helper function to find a post by ID
+    const findPostById = (posts, postId) => {
+        return posts.find(post => Number(post.id) === Number(postId));
+    };
+
+    // Helper function to generate reply title
+    const generateReplyTitle = (parentPost) => {
+        if (!parentPost) return null;
+        
+        // If parent has a title
+        if (parentPost.title && parentPost.title.length > 0) {
+            const parentTitle = parentPost.title[0];
+            // Check if it already starts with "Re: "
+            if (parentTitle.startsWith('Re: ')) {
+                return parentTitle; // Don't add another "Re: "
+            } else {
+                return `Re: ${parentTitle}`;
+            }
+        }
+        
+        return null; // No title to reply to
     };
 
     const organizePostsFlat = (posts) => {
@@ -253,10 +273,14 @@ function Discussion({
         
         setSubmittingComment(true);
         try {
+            // Find the parent post to generate reply title
+            const parentPost = findPostById(discussionPosts, parentPostId);
+            const replyTitle = generateReplyTitle(parentPost);
+            
             const postInput = {
                 thread_id: Number(discussionThread.thread_id),
                 reply_to_post_id: [Number(parentPostId)],
-                title: [],
+                title: replyTitle ? [replyTitle] : [],
                 body: replyText
             };
 
@@ -289,6 +313,14 @@ function Discussion({
         const isCollapsed = collapsedPosts.has(Number(post.id)) || (isNegative && !collapsedPosts.has(Number(post.id)));
         const isReplying = replyingTo === Number(post.id);
         
+        // Find parent post if this is a reply (for flat mode)
+        const parentPost = isFlat && post.reply_to_post_id && post.reply_to_post_id.length > 0 
+            ? findPostById(discussionPosts, post.reply_to_post_id[0])
+            : null;
+        
+        // Generate reply title if this is a reply
+        const replyTitle = parentPost ? generateReplyTitle(parentPost) : null;
+        
         return (
             <div 
                 key={post.id}
@@ -320,6 +352,17 @@ function Discussion({
                             <span>By: {post.created_by.toString().slice(0, 8)}...</span>
                             <span>•</span>
                             <span>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
+                            {isFlat && parentPost && (
+                                <>
+                                    <span>•</span>
+                                    <span style={{ color: '#3498db' }}>
+                                        Reply to #{Number(post.reply_to_post_id[0])}
+                                        {parentPost.title && parentPost.title.length > 0 && (
+                                            <span>: {parentPost.title[0]}</span>
+                                        )}
+                                    </span>
+                                </>
+                            )}
                             {isNegative && (
                                 <>
                                     <span>•</span>
@@ -367,6 +410,18 @@ function Discussion({
                     {/* Post Content */}
                     {!isCollapsed && (
                         <>
+                            {/* Show reply title if this is a reply */}
+                            {replyTitle && (
+                                <div style={{ 
+                                    color: '#ffc107', 
+                                    fontSize: '16px', 
+                                    fontWeight: 'bold', 
+                                    marginBottom: '8px' 
+                                }}>
+                                    {replyTitle}
+                                </div>
+                            )}
+                            
                             <div style={{ color: '#ffffff', lineHeight: '1.6', marginBottom: '10px' }}>
                                 <ReactMarkdown>{post.body}</ReactMarkdown>
                             </div>
@@ -604,6 +659,22 @@ function Discussion({
                                 </button>
                             ) : (
                                 <div style={{ marginTop: '15px' }}>
+                                    <input
+                                        type="text"
+                                        value={commentTitle}
+                                        onChange={(e) => setCommentTitle(e.target.value)}
+                                        placeholder="Title (optional)"
+                                        style={{
+                                            width: '100%',
+                                            backgroundColor: '#2a2a2a',
+                                            border: '1px solid #4a4a4a',
+                                            borderRadius: '4px',
+                                            color: '#ffffff',
+                                            padding: '10px',
+                                            fontSize: '14px',
+                                            marginBottom: '10px'
+                                        }}
+                                    />
                                     <textarea
                                         value={commentText}
                                         onChange={(e) => setCommentText(e.target.value)}
@@ -641,6 +712,7 @@ function Discussion({
                                             onClick={() => {
                                                 setShowCommentForm(false);
                                                 setCommentText('');
+                                                setCommentTitle('');
                                             }}
                                             style={{
                                                 backgroundColor: '#666',
