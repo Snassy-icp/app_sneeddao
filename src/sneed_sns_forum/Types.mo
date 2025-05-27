@@ -37,7 +37,7 @@ module {
     public type ProposalThreadMapping = {
         thread_id: Nat;
         proposal_id: Nat;
-        sns_root_canister_id: Principal;
+        sns_root_canister_id: Nat32;
         created_by: Nat32;
         created_at: Int;
     };
@@ -108,8 +108,8 @@ module {
     // Composite key type for votes (post_id, neuron_id)
     public type VoteKey = (Nat, Nat32);
 
-    // Composite key type for proposal threads (sns_root, proposal_id)
-    public type ProposalThreadKey = (Principal, Nat);
+    // Composite key for proposal threads: (sns_root_index, proposal_id)
+    public type ProposalThreadKey = (Nat32, Nat);
 
     // State type for the forum system
     public type ForumState = {
@@ -140,7 +140,7 @@ module {
         // Proposal tracking (separate from core structures)
         proposal_topics: Map.Map<Nat, ProposalTopicMapping>; // forum_id -> mapping
         proposal_threads: Map.Map<ProposalThreadKey, ProposalThreadMapping>; // (sns_root, proposal_id) -> mapping
-        thread_proposals: Map.Map<Nat, (Principal, Nat)>; // thread_id -> (sns_root, proposal_id) (for reverse lookup)
+        thread_proposals: Map.Map<Nat, (Nat32, Nat)>; // thread_id -> (sns_root_index, proposal_id) (for reverse lookup)
     };
 
     // Input types for creation functions
@@ -334,15 +334,14 @@ module {
 
     // Helper function for proposal thread key comparison
     public func proposal_thread_key_equal(a: ProposalThreadKey, b: ProposalThreadKey) : Bool {
-        Principal.equal(a.0, b.0) and a.1 == b.1
+        a.0 == b.0 and a.1 == b.1
     };
 
+    // Helper function for proposal thread key hash
     public func proposal_thread_key_hash(key: ProposalThreadKey) : Nat32 {
-        let h1 = Principal.hash(key.0);
-        let h2 : Nat32 = switch (key.1 % (2**32 - 1)) {
-            case (n) { Nat32.fromNat(n) };
-        };
-        h1 ^ h2
+        let sns_root_hash = key.0;
+        let proposal_hash = Nat32.fromNat(key.1 % (2**32 - 1));
+        sns_root_hash ^ proposal_hash
     };
 
     // Helper function for vote key comparison

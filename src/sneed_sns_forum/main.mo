@@ -30,7 +30,7 @@ actor SneedSNSForum {
     stable let stable_post_replies = Map.new<Nat, Vector.Vector<Nat>>();
     stable let stable_proposal_topics = Map.new<Nat, T.ProposalTopicMapping>();
     stable let stable_proposal_threads = Map.new<T.ProposalThreadKey, T.ProposalThreadMapping>();
-    stable let stable_thread_proposals = Map.new<Nat, (Principal, Nat)>();
+    stable let stable_thread_proposals = Map.new<Nat, (Nat32, Nat)>();
 
     // Runtime state that directly references stable storage
     private var state : T.ForumState = {
@@ -347,7 +347,7 @@ actor SneedSNSForum {
         Lib.get_proposal_thread_response(state, sns_root, proposal_id)
     };
 
-    public query func get_thread_proposal_id(thread_id: Nat) : async ?(Principal, Nat) {
+    public query func get_thread_proposal_id(thread_id: Nat) : async ?(Nat32, Nat) {
         Lib.get_thread_proposal_id(state, thread_id)
     };
 

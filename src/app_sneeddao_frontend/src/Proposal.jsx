@@ -13,6 +13,7 @@ import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './
 import { formatNeuronIdLink } from './utils/NeuronUtils';
 import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
+import { Principal } from '@dfinity/principal';
 
 function Proposal() {
     const { isAuthenticated, identity } = useAuth();
@@ -145,7 +146,7 @@ function Proposal() {
 
     // Discussion-related functions
     const fetchDiscussionThread = async () => {
-        if (!forumActor || !currentProposalId) return;
+        if (!forumActor || !currentProposalId || !selectedSnsRoot) return;
         
         console.log('fetchDiscussionThread called with:');
         console.log('- currentProposalId:', currentProposalId, 'type:', typeof currentProposalId);
@@ -156,9 +157,9 @@ function Proposal() {
         try {
             // Check if a thread already exists for this proposal
             const proposalIdNumber = Number(currentProposalId);
-            console.log('Calling get_proposal_thread with proposal ID:', proposalIdNumber);
+            console.log('Calling get_proposal_thread with SNS root:', selectedSnsRoot, 'and proposal ID:', proposalIdNumber);
             
-            const threadMapping = await forumActor.get_proposal_thread(proposalIdNumber);
+            const threadMapping = await forumActor.get_proposal_thread(Principal.fromText(selectedSnsRoot), proposalIdNumber);
             console.log('Thread mapping result:', threadMapping);
             console.log('Thread mapping type:', typeof threadMapping);
             console.log('Thread mapping keys:', threadMapping ? Object.keys(threadMapping) : 'null');
