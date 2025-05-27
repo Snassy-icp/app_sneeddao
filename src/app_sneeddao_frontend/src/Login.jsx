@@ -1,6 +1,6 @@
 // Login.jsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import './Login.css'; // Make sure to create this CSS file
 import Header from './components/Header';
@@ -9,12 +9,15 @@ function Login() {
   const [authOutput, setAuthOutput] = useState('');
   const { isAuthenticated, login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/wallet');
+      // Preserve URL parameters when redirecting after login
+      const currentSearch = location.search;
+      navigate(`/wallet${currentSearch}`);
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, location.search]);
 
   async function handleLogin(event) {
     event.preventDefault();

@@ -1,13 +1,13 @@
 // Wallet.jsx
 import { principalToSubAccount } from "@dfinity/utils";
 import { Principal } from "@dfinity/principal";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { app_sneeddao_backend, createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import PrincipalBox from './PrincipalBox';
 import './Wallet.css';
@@ -37,6 +37,7 @@ var summed_locks = {};
 function Wallet() {
     const { identity, isAuthenticated, logout } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const [tokens, setTokens] = useState([]);
     const [showSendModal, setShowSendModal] = useState(false);
     const [selectedToken, setSelectedToken] = useState(null);
@@ -62,7 +63,9 @@ function Wallet() {
  
     useEffect(() => {
         if (!isAuthenticated) {
-            navigate('/');
+            // Preserve URL parameters when redirecting unauthenticated users
+            const currentSearch = location.search;
+            navigate(`/${currentSearch}`);
             return;
         }
 
@@ -73,7 +76,7 @@ function Wallet() {
         
         fetchBalancesAndLocks();
         fetchLiquidityPositions();
-    }, [isAuthenticated, navigate, refreshTrigger]);
+    }, [isAuthenticated, navigate, location.search, refreshTrigger]);
 
     async function fetchTokenDetails(icrc1_ledger, summed_locks) {
         try {
