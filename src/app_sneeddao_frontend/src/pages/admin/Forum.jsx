@@ -70,21 +70,35 @@ export default function Forum() {
       setError('');
     } catch (err) {
       console.error('Error fetching data:', err);
-      setError('Failed to fetch data');
+      setError('Failed to fetch data: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
 
   const fetchForums = async () => {
-    const result = await forumActor.get_forums();
-    setForums(result);
+    try {
+      // Use admin endpoint to see deleted items
+      const result = await forumActor.get_forums_admin();
+      setForums(result);
+    } catch (err) {
+      console.error('Error fetching forums:', err);
+      // Fallback to public endpoint
+      const result = await forumActor.get_forums();
+      setForums(result);
+    }
   };
 
   const fetchTopics = async () => {
     if (selectedForum) {
-      const result = await forumActor.get_topics_by_forum(selectedForum.id);
-      setTopics(result);
+      try {
+        const result = await forumActor.get_topics_by_forum_admin(selectedForum.id);
+        setTopics(result);
+      } catch (err) {
+        console.error('Error fetching topics:', err);
+        const result = await forumActor.get_topics_by_forum(selectedForum.id);
+        setTopics(result);
+      }
     } else {
       setTopics([]);
     }
@@ -92,8 +106,14 @@ export default function Forum() {
 
   const fetchThreads = async () => {
     if (selectedTopic) {
-      const result = await forumActor.get_threads_by_topic(selectedTopic.id);
-      setThreads(result);
+      try {
+        const result = await forumActor.get_threads_by_topic_admin(selectedTopic.id);
+        setThreads(result);
+      } catch (err) {
+        console.error('Error fetching threads:', err);
+        const result = await forumActor.get_threads_by_topic(selectedTopic.id);
+        setThreads(result);
+      }
     } else {
       setThreads([]);
     }
@@ -101,15 +121,21 @@ export default function Forum() {
 
   const fetchPosts = async () => {
     if (selectedThread) {
-      const result = await forumActor.get_posts_by_thread(selectedThread.id);
-      setPosts(result);
+      try {
+        const result = await forumActor.get_posts_by_thread_admin(selectedThread.id);
+        setPosts(result);
+      } catch (err) {
+        console.error('Error fetching posts:', err);
+        const result = await forumActor.get_posts_by_thread(selectedThread.id);
+        setPosts(result);
+      }
     } else {
       setPosts([]);
     }
   };
 
   const fetchStats = async () => {
-    const result = await forumActor.get_forum_stats();
+    const result = await forumActor.get_stats();
     setStats(result);
   };
 
@@ -125,6 +151,7 @@ export default function Forum() {
           result = await forumActor.create_forum({
             title: formData.title,
             description: formData.description,
+            sns_root_canister_id: [],
           });
           break;
         case 'topics':
@@ -134,6 +161,7 @@ export default function Forum() {
           }
           result = await forumActor.create_topic({
             forum_id: selectedForum.id,
+            parent_topic_id: [],
             title: formData.title,
             description: formData.description,
           });
@@ -148,11 +176,11 @@ export default function Forum() {
         setShowCreateForm(false);
         await fetchData();
       } else {
-        setError(result.err);
+        setError('Error: ' + JSON.stringify(result.err));
       }
     } catch (err) {
       console.error('Error creating:', err);
-      setError('Failed to create item');
+      setError('Failed to create item: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -185,11 +213,11 @@ export default function Forum() {
       if ('ok' in result) {
         await fetchData();
       } else {
-        setError(result.err);
+        setError('Error: ' + JSON.stringify(result.err));
       }
     } catch (err) {
       console.error('Error deleting:', err);
-      setError('Failed to delete item');
+      setError('Failed to delete item: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -235,9 +263,9 @@ export default function Forum() {
 
       <div className="items-list">
         {forums.map(forum => (
-          <div key={forum.id} className="item-card">
+          <div key={forum.id} className={`item-card ${forum.deleted ? 'deleted' : ''}`}>
             <div className="item-header">
-              <h3>{forum.title}</h3>
+              <h3>{forum.title} {forum.deleted && <span className="deleted-badge">[DELETED]</span>}</h3>
               <div className="item-actions">
                 <button 
                   className="select-btn"
@@ -248,6 +276,7 @@ export default function Forum() {
                 <button 
                   className="delete-btn"
                   onClick={() => handleDelete(forum.id, 'forum')}
+                  disabled={forum.deleted}
                 >
                   Delete
                 </button>
@@ -255,9 +284,9 @@ export default function Forum() {
             </div>
             <p>{forum.description}</p>
             <div className="item-meta">
-              <span>Topics: {Number(forum.topic_count)}</span>
+              <span>ID: {Number(forum.id)}</span>
               <span>Created: {formatDate(forum.created_at)}</span>
-              <span>By: {forum.created_by.toString()}</span>
+              <span>By: {forum.created_by.toString().slice(0, 8)}...</span>
             </div>
           </div>
         ))}
@@ -313,9 +342,9 @@ export default function Forum() {
 
       <div className="items-list">
         {topics.map(topic => (
-          <div key={topic.id} className="item-card">
+          <div key={topic.id} className={`item-card ${topic.deleted ? 'deleted' : ''}`}>
             <div className="item-header">
-              <h3>{topic.title}</h3>
+              <h3>{topic.title} {topic.deleted && <span className="deleted-badge">[DELETED]</span>}</h3>
               <div className="item-actions">
                 <button 
                   className="select-btn"
@@ -326,6 +355,7 @@ export default function Forum() {
                 <button 
                   className="delete-btn"
                   onClick={() => handleDelete(topic.id, 'topic')}
+                  disabled={topic.deleted}
                 >
                   Delete
                 </button>
@@ -333,9 +363,9 @@ export default function Forum() {
             </div>
             <p>{topic.description}</p>
             <div className="item-meta">
-              <span>Threads: {Number(topic.thread_count)}</span>
+              <span>ID: {Number(topic.id)}</span>
               <span>Created: {formatDate(topic.created_at)}</span>
-              <span>By: {topic.created_by.toString()}</span>
+              <span>By: {topic.created_by.toString().slice(0, 8)}...</span>
             </div>
           </div>
         ))}
@@ -362,9 +392,9 @@ export default function Forum() {
 
       <div className="items-list">
         {threads.map(thread => (
-          <div key={thread.id} className="item-card">
+          <div key={thread.id} className={`item-card ${thread.deleted ? 'deleted' : ''}`}>
             <div className="item-header">
-              <h3>{thread.title}</h3>
+              <h3>{thread.title || `Thread #${thread.id}`} {thread.deleted && <span className="deleted-badge">[DELETED]</span>}</h3>
               <div className="item-actions">
                 <button 
                   className="select-btn"
@@ -375,17 +405,17 @@ export default function Forum() {
                 <button 
                   className="delete-btn"
                   onClick={() => handleDelete(thread.id, 'thread')}
+                  disabled={thread.deleted}
                 >
                   Delete
                 </button>
               </div>
             </div>
-            <p>{thread.content}</p>
+            <p>{thread.body}</p>
             <div className="item-meta">
-              <span>Posts: {Number(thread.post_count)}</span>
-              <span>Votes: ↑{Number(thread.upvotes)} ↓{Number(thread.downvotes)}</span>
+              <span>ID: {Number(thread.id)}</span>
               <span>Created: {formatDate(thread.created_at)}</span>
-              <span>By: {thread.created_by.toString()}</span>
+              <span>By: {thread.created_by.toString().slice(0, 8)}...</span>
             </div>
           </div>
         ))}
@@ -399,7 +429,7 @@ export default function Forum() {
         <h2>Posts</h2>
         {selectedThread && (
           <div className="selected-info">
-            Selected Thread: <strong>{selectedThread.title}</strong>
+            Selected Thread: <strong>{selectedThread.title || `Thread #${selectedThread.id}`}</strong>
           </div>
         )}
       </div>
@@ -412,25 +442,27 @@ export default function Forum() {
 
       <div className="items-list">
         {posts.map(post => (
-          <div key={post.id} className="item-card">
+          <div key={post.id} className={`item-card ${post.deleted ? 'deleted' : ''}`}>
             <div className="item-header">
-              <h3>Post #{Number(post.id)}</h3>
+              <h3>{post.title || `Post #${post.id}`} {post.deleted && <span className="deleted-badge">[DELETED]</span>}</h3>
               <div className="item-actions">
                 <button 
                   className="delete-btn"
                   onClick={() => handleDelete(post.id, 'post')}
+                  disabled={post.deleted}
                 >
                   Delete
                 </button>
               </div>
             </div>
-            <p>{post.content}</p>
+            <p>{post.body}</p>
             <div className="item-meta">
-              <span>Votes: ↑{Number(post.upvotes)} ↓{Number(post.downvotes)}</span>
+              <span>ID: {Number(post.id)}</span>
+              <span>Votes: ↑{Number(post.upvote_score)} ↓{Number(post.downvote_score)}</span>
               <span>Created: {formatDate(post.created_at)}</span>
-              <span>By: {post.created_by.toString()}</span>
-              {post.parent_post_id.length > 0 && (
-                <span>Reply to: #{Number(post.parent_post_id[0])}</span>
+              <span>By: {post.created_by.toString().slice(0, 8)}...</span>
+              {post.reply_to_post_id && post.reply_to_post_id.length > 0 && (
+                <span>Reply to: #{Number(post.reply_to_post_id[0])}</span>
               )}
             </div>
           </div>
