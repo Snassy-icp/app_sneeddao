@@ -189,6 +189,11 @@ module {
         caller: Principal,
         input: T.CreateForumInput
     ) : Result<Nat, ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
         // Validate input
         switch (validate_text(input.title, "Title", 100)) {
             case (#err(e)) return #err(e);
@@ -268,6 +273,11 @@ module {
         caller: Principal,
         input: T.CreateTopicInput
     ) : Result<Nat, ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
         // Validate input
         switch (validate_text(input.title, "Title", 100)) {
             case (#err(e)) return #err(e);
@@ -394,6 +404,11 @@ module {
         caller: Principal,
         input: T.CreateThreadInput
     ) : Result<Nat, ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
         // Validate input
         switch (input.title) {
             case (?title) {
@@ -487,6 +502,11 @@ module {
         input: T.CreatePostInput,
         initial_voting_power: Nat
     ) : Result<Nat, ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
         // Validate input
         switch (input.title) {
             case (?title) {
