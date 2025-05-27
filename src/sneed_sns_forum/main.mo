@@ -15,28 +15,36 @@ import T "Types";
 import Lib "lib";
 
 actor SneedSNSForum {
-    // RLL canister interface for voting power validation
-    type RLLNeuron = {
+    // SNS Governance canister interface for voting power validation
+    type NeuronPermission = {
+        principal: ?Principal;
+        permission_type: [Int32];
+    };
+
+    type Neuron = {
         id: ?T.NeuronId;
-        permissions: [{
-            principal: ?Principal;
-            permission_type: [Int32];
-        }];
+        permissions: [NeuronPermission];
         cached_neuron_stake_e8s: Nat64;
         neuron_fees_e8s: Nat64;
         created_timestamp_seconds: Nat64;
         aging_since_timestamp_seconds: Nat64;
         voting_power_percentage_multiplier: Nat64;
+        dissolve_delay_seconds: Nat64;
+        followees: [(Int32, { followees: [T.NeuronId] })];
     };
 
-    type RLLVotingPowerResponse = {
-        distribution_voting_power: Nat64;
-        neurons_by_owner: [(Principal, [RLLNeuron])];
-        total_voting_power: Nat64;
+    type ListNeuronsResponse = {
+        neurons: [Neuron];
     };
 
-    type RLLCanister = actor {
-        get_hotkey_voting_power: ([RLLNeuron]) -> async RLLVotingPowerResponse;
+    type SNSGovernanceCanister = actor {
+        list_neurons: ({
+            of_principal: ?Principal;
+            limit: Nat32;
+            start_page_at: ?T.NeuronId;
+        }) -> async ListNeuronsResponse;
+        
+        get_neuron: (T.NeuronId) -> async ?Neuron;
     };
 
     // Stable storage using stable Map and Vector structures
@@ -79,118 +87,104 @@ actor SneedSNSForum {
         thread_proposals = stable_thread_proposals;
     };
 
-    // Helper function to get caller's voting power from SNS
-    private func get_caller_voting_power(caller: Principal, neuron_id: T.NeuronId, sns_root: ?Principal) : async Nat {
-        // Get the RLL canister ID based on the SNS root
-        let rll_canister_id = switch (sns_root) {
-            case (?root) {
-                // For now, use the default RLL canister - in production you'd map SNS roots to their RLL canisters
-                Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai") // Default Sneed RLL canister
-            };
-            case null {
-                Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai") // Default Sneed RLL canister
-            };
-        };
-
-        try {
-            let rll_canister : RLLCanister = actor(Principal.toText(rll_canister_id));
-            
-            // Create a neuron object to query with
-            let query_neuron : RLLNeuron = {
-                id = ?neuron_id;
-                permissions = [];
-                cached_neuron_stake_e8s = 0;
-                neuron_fees_e8s = 0;
-                created_timestamp_seconds = 0;
-                aging_since_timestamp_seconds = 0;
-                voting_power_percentage_multiplier = 0;
-            };
-
-            // Call RLL canister to get voting power for this caller's neurons
-            let response = await rll_canister.get_hotkey_voting_power([query_neuron]);
-            
-            // Find the caller's neurons and calculate their total voting power
-            var total_voting_power : Nat = 0;
-            for ((owner, neurons) in response.neurons_by_owner.vals()) {
-                if (Principal.equal(owner, caller)) {
-                    for (neuron in neurons.vals()) {
-                        switch (neuron.id) {
-                            case (?nid) {
-                                // Check if this is the neuron they're trying to vote with
-                                if (Blob.equal(nid.id, neuron_id.id)) {
-                                    // Calculate voting power based on stake and multiplier
-                                    let stake = Nat64.toNat(neuron.cached_neuron_stake_e8s);
-                                    let multiplier = Nat64.toNat(neuron.voting_power_percentage_multiplier);
-                                    if (multiplier > 0) {
-                                        total_voting_power += (stake * multiplier) / 100;
-                                    };
-                                };
-                            };
-                            case null {};
-                        };
+    // Helper function to get SNS governance canister ID from forum
+    private func get_sns_governance_canister_id(forum_id: Nat) : ?Principal {
+        switch (Lib.get_forum(state, forum_id)) {
+            case (?forum_response) {
+                switch (forum_response.sns_root_canister_id) {
+                    case (?sns_root) {
+                        // For SNS, the governance canister is typically the root + "-cai" suffix
+                        // This is a simplified mapping - in production you'd need proper SNS root -> governance mapping
+                        ?sns_root
                     };
+                    case null null;
                 };
             };
-            
-            total_voting_power
-        } catch (error) {
-            // If we can't reach the RLL canister, return 0 voting power for security
-            Debug.print("Error calling RLL canister for voting power validation");
-            0
+            case null null;
+        };
+    };
+
+    // Helper function to calculate voting power for a neuron
+    private func calculate_neuron_voting_power(neuron: Neuron) : Nat {
+        let stake = Nat64.toNat(neuron.cached_neuron_stake_e8s);
+        let multiplier = Nat64.toNat(neuron.voting_power_percentage_multiplier);
+        
+        if (multiplier > 0) {
+            (stake * multiplier) / 100
+        } else {
+            stake
         }
     };
 
-    // Helper function to validate that caller has hotkey access to the neuron
-    private func validate_neuron_access(caller: Principal, neuron_id: T.NeuronId, sns_root: ?Principal) : async Bool {
-        // Get the RLL canister ID based on the SNS root
-        let rll_canister_id = switch (sns_root) {
-            case (?root) {
-                Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai") // Default Sneed RLL canister
-            };
-            case null {
-                Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai") // Default Sneed RLL canister
-            };
-        };
-
-        try {
-            let rll_canister : RLLCanister = actor(Principal.toText(rll_canister_id));
-            
-            // Create a neuron object to query with
-            let query_neuron : RLLNeuron = {
-                id = ?neuron_id;
-                permissions = [];
-                cached_neuron_stake_e8s = 0;
-                neuron_fees_e8s = 0;
-                created_timestamp_seconds = 0;
-                aging_since_timestamp_seconds = 0;
-                voting_power_percentage_multiplier = 0;
-            };
-
-            // Call RLL canister to get voting power for this caller's neurons
-            let response = await rll_canister.get_hotkey_voting_power([query_neuron]);
-            
-            // Check if the caller has access to this neuron
-            for ((owner, neurons) in response.neurons_by_owner.vals()) {
-                if (Principal.equal(owner, caller)) {
-                    for (neuron in neurons.vals()) {
-                        switch (neuron.id) {
-                            case (?nid) {
-                                if (Blob.equal(nid.id, neuron_id.id)) {
-                                    return true;
-                                };
+    // Helper function to check if caller has hotkey permission for neuron
+    private func has_hotkey_permission(caller: Principal, neuron: Neuron) : Bool {
+        for (permission in neuron.permissions.vals()) {
+            switch (permission.principal) {
+                case (?principal) {
+                    if (Principal.equal(principal, caller)) {
+                        // Check if they have voting permission (permission type 1 is typically voting)
+                        for (perm_type in permission.permission_type.vals()) {
+                            if (perm_type == 1) { // Voting permission
+                                return true;
                             };
-                            case null {};
                         };
                     };
                 };
+                case null {};
             };
-            
-            false
-        } catch (error) {
-            // If we can't reach the RLL canister, deny access for security
-            Debug.print("Error calling RLL canister for neuron validation");
-            false
-        }
+        };
+        false
+    };
+
+    // Helper function to validate that caller has hotkey access to the neuron
+    private func validate_neuron_access(caller: Principal, neuron_id: T.NeuronId, forum_id: Nat) : async Bool {
+        switch (get_sns_governance_canister_id(forum_id)) {
+            case (?governance_canister_id) {
+                try {
+                    let governance_canister : SNSGovernanceCanister = actor(Principal.toText(governance_canister_id));
+                    
+                    // Get the specific neuron
+                    switch (await governance_canister.get_neuron(neuron_id)) {
+                        case (?neuron) {
+                            has_hotkey_permission(caller, neuron)
+                        };
+                        case null false;
+                    };
+                } catch (error) {
+                    Debug.print("Error calling SNS governance canister for neuron validation");
+                    false
+                }
+            };
+            case null false;
+        };
+    };
+
+    // Helper function to get caller's voting power from SNS
+    private func get_caller_voting_power(caller: Principal, neuron_id: T.NeuronId, forum_id: Nat) : async Nat {
+        switch (get_sns_governance_canister_id(forum_id)) {
+            case (?governance_canister_id) {
+                try {
+                    let governance_canister : SNSGovernanceCanister = actor(Principal.toText(governance_canister_id));
+                    
+                    // Get the specific neuron
+                    switch (await governance_canister.get_neuron(neuron_id)) {
+                        case (?neuron) {
+                            // Check if caller has permission to use this neuron
+                            if (has_hotkey_permission(caller, neuron)) {
+                                calculate_neuron_voting_power(neuron)
+                            } else {
+                                0
+                            }
+                        };
+                        case null 0;
+                    };
+                } catch (error) {
+                    Debug.print("Error calling SNS governance canister for voting power");
+                    0
+                }
+            };
+            case null 0;
+        };
     };
 
     // Admin management endpoints
@@ -282,13 +276,13 @@ actor SneedSNSForum {
                         switch (Lib.get_forum(state, topic_response.forum_id)) {
                             case (?forum_response) {
                                 // Validate that caller has access to this neuron
-                                let has_access = await validate_neuron_access(caller, neuron_id, forum_response.sns_root_canister_id);
+                                let has_access = await validate_neuron_access(caller, neuron_id, topic_response.forum_id);
                                 if (not has_access) {
                                     return #err(#Unauthorized("You do not have access to this neuron"));
                                 };
                                 
                                 // Get voting power for initial score
-                                let voting_power = await get_caller_voting_power(caller, neuron_id, forum_response.sns_root_canister_id);
+                                let voting_power = await get_caller_voting_power(caller, neuron_id, topic_response.forum_id);
                                 if (voting_power == 0) {
                                     return #err(#Unauthorized("Neuron has no voting power"));
                                 };
@@ -337,13 +331,13 @@ actor SneedSNSForum {
                                 switch (Lib.get_forum(state, topic_response.forum_id)) {
                                     case (?forum_response) {
                                         // Validate that caller has access to this neuron
-                                        let has_access = await validate_neuron_access(caller, neuron_id, forum_response.sns_root_canister_id);
+                                        let has_access = await validate_neuron_access(caller, neuron_id, topic_response.forum_id);
                                         if (not has_access) {
                                             return #err(#Unauthorized("You do not have access to this neuron"));
                                         };
                                         
                                         // Get voting power from SNS
-                                        let voting_power = await get_caller_voting_power(caller, neuron_id, forum_response.sns_root_canister_id);
+                                        let voting_power = await get_caller_voting_power(caller, neuron_id, topic_response.forum_id);
                                         if (voting_power == 0) {
                                             return #err(#Unauthorized("Neuron has no voting power"));
                                         };
@@ -377,7 +371,7 @@ actor SneedSNSForum {
                                 switch (Lib.get_forum(state, topic_response.forum_id)) {
                                     case (?forum_response) {
                                         // Validate that caller has access to this neuron
-                                        let has_access = await validate_neuron_access(caller, neuron_id, forum_response.sns_root_canister_id);
+                                        let has_access = await validate_neuron_access(caller, neuron_id, topic_response.forum_id);
                                         if (not has_access) {
                                             return #err(#Unauthorized("You do not have access to this neuron"));
                                         };
@@ -406,52 +400,42 @@ actor SneedSNSForum {
         // Get the forum to determine which SNS this belongs to
         switch (Lib.get_forum(state, forum_id)) {
             case (?forum_response) {
-                // Get the RLL canister ID based on the SNS root
-                let rll_canister_id = switch (forum_response.sns_root_canister_id) {
-                    case (?root) {
-                        Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai") // Default Sneed RLL canister
-                    };
-                    case null {
-                        Principal.fromText("fi3zi-fyaaa-aaaaq-aachq-cai") // Default Sneed RLL canister
-                    };
-                };
-
-                try {
-                    let rll_canister : RLLCanister = actor(Principal.toText(rll_canister_id));
-                    
-                    // Call RLL canister to get voting power for this caller's neurons
-                    let response = await rll_canister.get_hotkey_voting_power([]);
-                    
-                    // Find the caller's neurons and their voting power
-                    let neurons_buffer = Buffer.Buffer<(T.NeuronId, Nat)>(0);
-                    for ((owner, neurons) in response.neurons_by_owner.vals()) {
-                        if (Principal.equal(owner, caller)) {
-                            for (neuron in neurons.vals()) {
+                switch (get_sns_governance_canister_id(forum_id)) {
+                    case (?governance_canister_id) {
+                        try {
+                            let governance_canister : SNSGovernanceCanister = actor(Principal.toText(governance_canister_id));
+                            
+                            // List neurons for this caller
+                            let response = await governance_canister.list_neurons({
+                                of_principal = ?caller;
+                                limit = 100; // Reasonable limit
+                                start_page_at = null;
+                            });
+                            
+                            // Find the caller's neurons and their voting power
+                            let neurons_buffer = Buffer.Buffer<(T.NeuronId, Nat)>(0);
+                            for (neuron in response.neurons.vals()) {
                                 switch (neuron.id) {
                                     case (?nid) {
-                                        // Calculate voting power based on stake and multiplier
-                                        let stake = Nat64.toNat(neuron.cached_neuron_stake_e8s);
-                                        let multiplier = Nat64.toNat(neuron.voting_power_percentage_multiplier);
-                                        let voting_power = if (multiplier > 0) {
-                                            (stake * multiplier) / 100
-                                        } else {
-                                            0
-                                        };
-                                        
-                                        if (voting_power > 0) {
-                                            neurons_buffer.add((nid, voting_power));
+                                        // Check if caller has hotkey permission for this neuron
+                                        if (has_hotkey_permission(caller, neuron)) {
+                                            let voting_power = calculate_neuron_voting_power(neuron);
+                                            if (voting_power > 0) {
+                                                neurons_buffer.add((nid, voting_power));
+                                            };
                                         };
                                     };
                                     case null {};
                                 };
                             };
-                        };
+                            
+                            #ok(Buffer.toArray(neurons_buffer))
+                        } catch (error) {
+                            #err(#InternalError("Failed to fetch voting neurons from SNS governance canister"))
+                        }
                     };
-                    
-                    #ok(Buffer.toArray(neurons_buffer))
-                } catch (error) {
-                    #err(#InternalError("Failed to fetch voting neurons from RLL canister"))
-                }
+                    case null #err(#InternalError("No SNS governance canister found for this forum"));
+                };
             };
             case null #err(#NotFound("Forum not found"));
         }
