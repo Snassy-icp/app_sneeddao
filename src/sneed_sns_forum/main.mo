@@ -72,7 +72,7 @@ actor SneedSNSForum {
     };
 
     // Constants
-    private let NNS_SNS_W_CANISTER_ID = "qaa6y-5yaaa-aaaah-qcbsq-cai"; // NNS SNS-W canister
+    private let NNS_SNS_W_CANISTER_ID = "qaa6y-5yaaa-aaaaa-aaafa-cai"; // NNS SNS-W canister
     private let CACHE_EXPIRY_NANOSECONDS = 24 * 60 * 60 * 1_000_000_000; // 24 hours in nanoseconds
 
     // Non-stable cache for SNS instances (will be refreshed on canister upgrade)
