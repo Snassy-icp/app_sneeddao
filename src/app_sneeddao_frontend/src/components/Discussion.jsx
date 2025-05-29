@@ -235,6 +235,9 @@ function Discussion({
                     return; // Error already handled in createProposalThread
                 }
                 newThreadCreated = true;
+                
+                // Immediately refresh thread data to update UI state
+                await fetchDiscussionThread();
             }
 
             // Create post - always create a post whether thread existed or was just created
@@ -311,11 +314,6 @@ function Discussion({
                 console.error('Failed to create comment:', result.err);
                 if (onError) onError('Failed to create comment: ' + JSON.stringify(result.err));
                 return;
-            }
-
-            // Refresh thread data if a new thread was created
-            if (newThreadCreated) {
-                await fetchDiscussionThread();
             }
         } catch (err) {
             console.error('Error submitting comment:', err);
