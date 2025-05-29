@@ -380,15 +380,19 @@ const HotkeyNeurons = ({
         section: {
             backgroundColor: '#2a2a2a',
             borderRadius: '8px',
-            padding: '20px',
+            padding: '0px',
             marginBottom: '20px',
             border: '1px solid #3a3a3a'
         },
         sectionHeader: {
+            backgroundColor: '#3a3a3a',
+            borderRadius: '6px',
+            padding: '10px',
+            cursor: showExpandButton ? 'pointer' : 'default',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '15px'
+            marginBottom: isExpanded ? '15px' : '0px'
         },
         heading: {
             color: '#ffffff',
@@ -414,10 +418,15 @@ const HotkeyNeurons = ({
         expandButton: {
             backgroundColor: 'transparent',
             border: 'none',
-            color: '#3498db',
+            color: '#ffffff',
             cursor: 'pointer',
             fontSize: '1.2em',
-            padding: '5px'
+            padding: '5px',
+            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform 0.2s ease'
+        },
+        contentContainer: {
+            padding: '20px'
         },
         statusGrid: {
             display: 'grid',
@@ -496,11 +505,13 @@ const HotkeyNeurons = ({
     if (!isAuthenticated) {
         return (
             <section style={styles.section}>
-                <h2 style={styles.heading}>
-                    {title}
-                    <span style={styles.infoIcon} title={infoTooltip}>i</span>
-                </h2>
-                <div style={styles.noNeuronsMessage}>
+                <div style={styles.sectionHeader}>
+                    <h2 style={styles.heading}>
+                        {title}
+                        <span style={styles.infoIcon} title={infoTooltip}>i</span>
+                    </h2>
+                </div>
+                <div style={{...styles.noNeuronsMessage, ...styles.contentContainer}}>
                     <p>Please connect your wallet to view your hotkey neurons.</p>
                 </div>
             </section>
@@ -510,16 +521,18 @@ const HotkeyNeurons = ({
     if (hotkeyNeurons.neurons_by_owner.length === 0 && !loadingHotkeyNeurons) {
         return (
             <section style={styles.section}>
-                <h2 style={styles.heading}>
-                    Add Your Principal as a Hotkey
-                    <span 
-                        style={styles.infoIcon} 
-                        title="To participate in Sneed DAO and earn rewards, add your principal as a hotkey to one Sneed neuron in your NNS account. This will automatically give access to all other Sneed neurons in the same account. If you have multiple NNS accounts (different Internet Identities), you'll need to set up one hotkey neuron per account."
-                    >
-                        i
-                    </span>
-                </h2>
-                <div style={styles.noNeuronsMessage}>
+                <div style={styles.sectionHeader}>
+                    <h2 style={styles.heading}>
+                        Add Your Principal as a Hotkey
+                        <span 
+                            style={styles.infoIcon} 
+                            title="To participate in Sneed DAO and earn rewards, add your principal as a hotkey to one Sneed neuron in your NNS account. This will automatically give access to all other Sneed neurons in the same account. If you have multiple NNS accounts (different Internet Identities), you'll need to set up one hotkey neuron per account."
+                        >
+                            i
+                        </span>
+                    </h2>
+                </div>
+                <div style={{...styles.noNeuronsMessage, ...styles.contentContainer}}>
                     <p>To participate in Sneed DAO and earn rewards:</p>
                     <ol style={styles.instructionsList}>
                         <li>First, you need to have a Sneed neuron</li>
@@ -549,18 +562,18 @@ const HotkeyNeurons = ({
 
     return (
         <section style={styles.section}>
-            <div style={styles.sectionHeader}>
+            <div 
+                style={styles.sectionHeader}
+                onClick={showExpandButton ? () => setIsExpanded(!isExpanded) : undefined}
+            >
                 <h2 style={styles.heading}>
                     {title}
                     <span style={styles.infoIcon} title={infoTooltip}>i</span>
                 </h2>
                 {showExpandButton && (
-                    <button 
-                        onClick={() => setIsExpanded(!isExpanded)}
-                        style={styles.expandButton}
-                    >
-                        {isExpanded ? '▼' : '▶'}
-                    </button>
+                    <span style={styles.expandButton}>
+                        ▶
+                    </span>
                 )}
             </div>
             {(isExpanded || !showExpandButton) && (
@@ -569,7 +582,7 @@ const HotkeyNeurons = ({
                         <div style={styles.spinner} />
                     </div>
                 ) : (
-                    <div>
+                    <div style={styles.contentContainer}>
                         {showVotingStats && (
                             <div style={styles.statusGrid}>
                                 <div style={styles.statusItem}>
