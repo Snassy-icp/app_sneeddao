@@ -215,7 +215,29 @@
 }
 
 .select-btn:hover {
-  background: #357abd;
+  background: #3a3a3a;
+}
+
+.edit-btn {
+  background: #ffc107;
+  border: none;
+  color: #000000;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.2s ease;
+}
+
+.edit-btn:hover:not(:disabled) {
+  background: #e0a800;
+}
+
+.edit-btn:disabled {
+  background: #6c757d;
+  color: #ffffff;
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .delete-btn {
@@ -234,6 +256,27 @@
 }
 
 .delete-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.undelete-btn {
+  background: #28a745;
+  border: none;
+  color: #ffffff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.2s ease;
+}
+
+.undelete-btn:hover {
+  background: #218838;
+}
+
+.undelete-btn:disabled {
   background: #6c757d;
   cursor: not-allowed;
   opacity: 0.5;

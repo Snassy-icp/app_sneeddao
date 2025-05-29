@@ -1204,6 +1204,111 @@ module {
         }
     };
 
+    // Undelete operations
+    public func undelete_forum(
+        state: ForumState,
+        caller: Principal,
+        forum_id: Nat
+    ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
+        switch (Map.get(state.forums, Map.nhash, forum_id)) {
+            case (?forum) {
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let updated_forum = {
+                    forum with
+                    deleted = false;
+                    updated_by = caller_index;
+                    updated_at = Time.now();
+                };
+                ignore Map.put(state.forums, Map.nhash, forum_id, updated_forum);
+                #ok()
+            };
+            case null #err(#NotFound("Forum not found"));
+        }
+    };
+
+    public func undelete_topic(
+        state: ForumState,
+        caller: Principal,
+        topic_id: Nat
+    ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
+        switch (Map.get(state.topics, Map.nhash, topic_id)) {
+            case (?topic) {
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let updated_topic = {
+                    topic with
+                    deleted = false;
+                    updated_by = caller_index;
+                    updated_at = Time.now();
+                };
+                ignore Map.put(state.topics, Map.nhash, topic_id, updated_topic);
+                #ok()
+            };
+            case null #err(#NotFound("Topic not found"));
+        }
+    };
+
+    public func undelete_thread(
+        state: ForumState,
+        caller: Principal,
+        thread_id: Nat
+    ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
+        switch (Map.get(state.threads, Map.nhash, thread_id)) {
+            case (?thread) {
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let updated_thread = {
+                    thread with
+                    deleted = false;
+                    updated_by = caller_index;
+                    updated_at = Time.now();
+                };
+                ignore Map.put(state.threads, Map.nhash, thread_id, updated_thread);
+                #ok()
+            };
+            case null #err(#NotFound("Thread not found"));
+        }
+    };
+
+    public func undelete_post(
+        state: ForumState,
+        caller: Principal,
+        post_id: Nat
+    ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
+        switch (Map.get(state.posts, Map.nhash, post_id)) {
+            case (?post) {
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let updated_post = {
+                    post with
+                    deleted = false;
+                    updated_by = caller_index;
+                    updated_at = Time.now();
+                };
+                ignore Map.put(state.posts, Map.nhash, post_id, updated_post);
+                #ok()
+            };
+            case null #err(#NotFound("Post not found"));
+        }
+    };
+
     // Helper function to filter out deleted items for non-admin users
     public func get_forums_filtered(state: ForumState, show_deleted: Bool) : [T.ForumResponse] {
         let forums = Buffer.Buffer<T.ForumResponse>(0);

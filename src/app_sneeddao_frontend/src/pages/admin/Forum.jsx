@@ -447,6 +447,43 @@ export default function Forum() {
     }
   };
 
+  const handleUndelete = async (id, type) => {
+    if (!forumActor || !confirm(`Are you sure you want to undelete this ${type}?`)) return;
+
+    setLoading(true);
+    try {
+      let result;
+      switch (type) {
+        case 'forum':
+          result = await forumActor.undelete_forum(id);
+          break;
+        case 'topic':
+          result = await forumActor.undelete_topic(id);
+          break;
+        case 'thread':
+          result = await forumActor.undelete_thread(id);
+          break;
+        case 'post':
+          result = await forumActor.undelete_post(id);
+          break;
+        default:
+          setError('Undelete operation not supported');
+          return;
+      }
+
+      if ('ok' in result) {
+        await fetchData();
+      } else {
+        setError('Error: ' + JSON.stringify(result.err));
+      }
+    } catch (err) {
+      console.error('Error undeleting:', err);
+      setError('Failed to undelete item: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatDate = (timestamp) => {
     return new Date(Number(timestamp) / 1000000).toLocaleString();
   };
@@ -545,13 +582,21 @@ export default function Forum() {
                 >
                   Edit
                 </button>
-                <button 
-                  className="delete-btn"
-                  onClick={() => handleDelete(forum.id, 'forum')}
-                  disabled={forum.deleted}
-                >
-                  Delete
-                </button>
+                {forum.deleted ? (
+                  <button 
+                    className="undelete-btn"
+                    onClick={() => handleUndelete(forum.id, 'forum')}
+                  >
+                    Undelete
+                  </button>
+                ) : (
+                  <button 
+                    className="delete-btn"
+                    onClick={() => handleDelete(forum.id, 'forum')}
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
             <p>{forum.description}</p>
@@ -702,13 +747,21 @@ export default function Forum() {
                   >
                     Edit
                   </button>
-                  <button 
-                    className="delete-btn"
-                    onClick={() => handleDelete(topic.id, 'topic')}
-                    disabled={topic.deleted}
-                  >
-                    Delete
-                  </button>
+                  {topic.deleted ? (
+                    <button 
+                      className="undelete-btn"
+                      onClick={() => handleUndelete(topic.id, 'topic')}
+                    >
+                      Undelete
+                    </button>
+                  ) : (
+                    <button 
+                      className="delete-btn"
+                      onClick={() => handleDelete(topic.id, 'topic')}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
               <p>{topic.description}</p>
@@ -816,13 +869,21 @@ export default function Forum() {
                 >
                   Edit
                 </button>
-                <button 
-                  className="delete-btn"
-                  onClick={() => handleDelete(thread.id, 'thread')}
-                  disabled={thread.deleted}
-                >
-                  Delete
-                </button>
+                {thread.deleted ? (
+                  <button 
+                    className="undelete-btn"
+                    onClick={() => handleUndelete(thread.id, 'thread')}
+                  >
+                    Undelete
+                  </button>
+                ) : (
+                  <button 
+                    className="delete-btn"
+                    onClick={() => handleDelete(thread.id, 'thread')}
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
             <p>{thread.body}</p>
@@ -947,13 +1008,21 @@ export default function Forum() {
                   >
                     Edit
                   </button>
-                  <button 
-                    className="delete-btn"
-                    onClick={() => handleDelete(post.id, 'post')}
-                    disabled={post.deleted}
-                  >
-                    Delete
-                  </button>
+                  {post.deleted ? (
+                    <button 
+                      className="create-btn"
+                      onClick={() => handleUndelete(post.id, 'post')}
+                    >
+                      Undelete
+                    </button>
+                  ) : (
+                    <button 
+                      className="delete-btn"
+                      onClick={() => handleDelete(post.id, 'post')}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               </div>
               <p>{post.body}</p>

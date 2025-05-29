@@ -278,6 +278,23 @@ actor SneedSNSForum {
         Lib.soft_delete_post(state, caller, id)
     };
 
+    // Admin undelete endpoints
+    public shared ({ caller }) func undelete_forum(id: Nat) : async T.Result<(), T.ForumError> {
+        Lib.undelete_forum(state, caller, id)
+    };
+
+    public shared ({ caller }) func undelete_topic(id: Nat) : async T.Result<(), T.ForumError> {
+        Lib.undelete_topic(state, caller, id)
+    };
+
+    public shared ({ caller }) func undelete_thread(id: Nat) : async T.Result<(), T.ForumError> {
+        Lib.undelete_thread(state, caller, id)
+    };
+
+    public shared ({ caller }) func undelete_post(id: Nat) : async T.Result<(), T.ForumError> {
+        Lib.undelete_post(state, caller, id)
+    };
+
     // Admin query functions that show deleted items
     public query ({ caller }) func get_forums_admin() : async [T.ForumResponse] {
         if (not Lib.is_admin(state, caller)) {
