@@ -699,309 +699,322 @@ function Discussion({
             <div 
                 key={post.id}
                 style={{
-                    marginLeft: isFlat ? '0' : `${depth * 20}px`,
                     marginBottom: '10px'
                 }}
             >
                 <div style={{
-                    backgroundColor: isNegative ? '#3a2a2a' : '#2a2a2a',
-                    border: isNegative ? '1px solid #8b4513' : '1px solid #4a4a4a',
-                    borderRadius: '6px',
-                    padding: '15px'
+                    marginLeft: isFlat ? '0' : `${depth * 20}px`,
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px'
                 }}>
-                    {/* Post Header */}
-                    <div style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center',
-                        marginBottom: isCollapsed ? '0' : '10px'
-                    }}>
-                        <div style={{ 
-                            color: '#888', 
+                    {/* +/- Collapse Button */}
+                    <button
+                        onClick={() => togglePostCollapse(Number(post.id))}
+                        style={{
+                            backgroundColor: 'transparent',
+                            border: '1px solid #666',
+                            color: '#888',
+                            borderRadius: '4px',
+                            padding: '4px 8px',
+                            cursor: 'pointer',
                             fontSize: '14px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px'
-                        }}>
-                            <span>By: <PrincipalDisplay 
-                                principal={post.created_by} 
-                                displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
-                                showCopyButton={false} 
-                            /></span>
-                            <span>•</span>
-                            <span>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
-                            {isFlat && parentPost && (
-                                <>
-                                    <span>•</span>
-                                    <span style={{ color: '#3498db' }}>
-                                        Reply to #{Number(post.reply_to_post_id[0])}
-                                        {(() => {
-                                            // Find the parent's parent if it exists
-                                            const parentParentPost = parentPost.reply_to_post_id && parentPost.reply_to_post_id.length > 0 
-                                                ? findPostById(discussionPosts, parentPost.reply_to_post_id[0])
-                                                : null;
-                                            const parentDerivedTitle = getDerivedTitle(parentPost, parentParentPost);
-                                            return <span>: {parentDerivedTitle}</span>;
-                                        })()}
-                                    </span>
-                                </>
-                            )}
-                            {isNegative && (
-                                <>
-                                    <span>•</span>
-                                    <span style={{ color: '#ff6b6b' }}>Low Score</span>
-                                </>
-                            )}
-                            {isCollapsed && (
-                                <>
-                                    <span>•</span>
-                                    <span style={{ color: '#888' }}>[Collapsed]</span>
-                                    <span>•</span>
-                                    <span style={{ color: '#666', fontStyle: 'italic' }}>
-                                        {post.body.slice(0, 50)}...
-                                    </span>
-                                </>
-                            )}
-                        </div>
+                            minWidth: '28px',
+                            height: '28px',
+                            marginTop: '0',
+                            flexShrink: 0
+                        }}
+                    >
+                        {isCollapsed ? '+' : '−'}
+                    </button>
+
+                    <div style={{
+                        backgroundColor: isNegative ? '#3a2a2a' : '#2a2a2a',
+                        border: isNegative ? '1px solid #8b4513' : '1px solid #4a4a4a',
+                        borderRadius: '6px',
+                        padding: '15px',
+                        flex: 1
+                    }}>
+                        {/* Post Header */}
                         <div style={{ 
                             display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '10px'
+                            justifyContent: 'space-between', 
+                            alignItems: 'center',
+                            marginBottom: isCollapsed ? '0' : '10px'
                         }}>
+                            <div style={{ 
+                                color: '#888', 
+                                fontSize: '14px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px'
+                            }}>
+                                <span>By: <PrincipalDisplay 
+                                    principal={post.created_by} 
+                                    displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
+                                    showCopyButton={false} 
+                                /></span>
+                                <span>•</span>
+                                <span>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
+                                {isFlat && parentPost && (
+                                    <>
+                                        <span>•</span>
+                                        <span style={{ color: '#3498db' }}>
+                                            Reply to #{Number(post.reply_to_post_id[0])}
+                                            {(() => {
+                                                // Find the parent's parent if it exists
+                                                const parentParentPost = parentPost.reply_to_post_id && parentPost.reply_to_post_id.length > 0 
+                                                    ? findPostById(discussionPosts, parentPost.reply_to_post_id[0])
+                                                    : null;
+                                                const parentDerivedTitle = getDerivedTitle(parentPost, parentParentPost);
+                                                return <span>: {parentDerivedTitle}</span>;
+                                            })()}
+                                        </span>
+                                    </>
+                                )}
+                                {isNegative && (
+                                    <>
+                                        <span>•</span>
+                                        <span style={{ color: '#ff6b6b' }}>Low Score</span>
+                                    </>
+                                )}
+                                {isCollapsed && (
+                                    <>
+                                        <span>•</span>
+                                        <span style={{ color: '#888' }}>[Collapsed]</span>
+                                        <span>•</span>
+                                        <span style={{ color: '#666', fontStyle: 'italic' }}>
+                                            {post.body.slice(0, 50)}...
+                                        </span>
+                                    </>
+                                )}
+                            </div>
                             <div style={{ 
                                 display: 'flex', 
                                 alignItems: 'center', 
-                                gap: '10px',
-                                color: '#888',
-                                fontSize: '14px'
+                                gap: '10px'
                             }}>
-                                <span style={{ color: score > 0 ? '#2ecc71' : score < 0 ? '#e74c3c' : '#888' }}>
-                                    {votingStates[post.id.toString()] === 'voting' ? (
-                                        <div style={{ 
-                                            display: 'inline-block',
-                                            width: '12px',
-                                            height: '12px',
-                                            border: '2px solid #f3f3f3',
-                                            borderTop: '2px solid #3498db',
-                                            borderRadius: '50%',
-                                            animation: 'spin 1s linear infinite'
-                                        }} />
-                                    ) : (
-                                        (score > 0 ? '+' : '') + score
-                                    )}
-                                </span>
-                                <span style={{ color: '#2ecc71' }}>↑{post.upvote_score}</span>
-                                <span style={{ color: '#e74c3c' }}>↓{post.downvote_score}</span>
-                            </div>
-                            <button
-                                onClick={() => togglePostCollapse(Number(post.id))}
-                                style={{
-                                    backgroundColor: 'transparent',
-                                    border: '1px solid #666',
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '10px',
                                     color: '#888',
-                                    borderRadius: '4px',
-                                    padding: '4px 8px',
-                                    cursor: 'pointer',
-                                    fontSize: '12px'
-                                }}
-                            >
-                                {isCollapsed ? 'Expand' : 'Collapse'}
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Post Content */}
-                    {!isCollapsed && (
-                        <>
-                            {/* Show post title */}
-                            {hasExplicitTitle ? (
-                                <div style={{ 
-                                    color: '#ffffff', 
-                                    fontSize: '18px', 
-                                    fontWeight: 'bold', 
-                                    marginBottom: '10px' 
+                                    fontSize: '14px'
                                 }}>
-                                    {displayTitle}
+                                    <span style={{ color: score > 0 ? '#2ecc71' : score < 0 ? '#e74c3c' : '#888' }}>
+                                        {votingStates[post.id.toString()] === 'voting' ? (
+                                            <div style={{ 
+                                                display: 'inline-block',
+                                                width: '12px',
+                                                height: '12px',
+                                                border: '2px solid #f3f3f3',
+                                                borderTop: '2px solid #3498db',
+                                                borderRadius: '50%',
+                                                animation: 'spin 1s linear infinite'
+                                            }} />
+                                        ) : (
+                                            (score > 0 ? '+' : '') + score
+                                        )}
+                                    </span>
+                                    <span style={{ color: '#2ecc71' }}>↑{post.upvote_score}</span>
+                                    <span style={{ color: '#e74c3c' }}>↓{post.downvote_score}</span>
                                 </div>
-                            ) : (
-                                <div style={{ 
-                                    color: '#ffc107', 
-                                    fontSize: '16px', 
-                                    fontWeight: 'bold', 
-                                    marginBottom: '8px' 
-                                }}>
-                                    {displayTitle}
-                                </div>
-                            )}
-                            
-                            <div style={{ color: '#ffffff', lineHeight: '1.6', marginBottom: '10px' }}>
-                                <ReactMarkdown>{post.body}</ReactMarkdown>
                             </div>
-                            
-                            {/* Action Buttons */}
-                            {isAuthenticated && (
-                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                    {/* Voting Buttons */}
-                                    {hotkeyNeurons.length > 0 && (
-                                        <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                                            {/* Upvote Button */}
-                                            <button
-                                                onClick={() => voteOnPost(post.id, 'upvote')}
-                                                disabled={votingStates[post.id.toString()] === 'voting'}
-                                                style={{
-                                                    backgroundColor: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#2ecc71' : 'transparent',
-                                                    border: '1px solid #2ecc71',
-                                                    color: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#ffffff' : '#2ecc71',
-                                                    borderRadius: '4px',
-                                                    padding: '4px 8px',
-                                                    cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
-                                                    fontSize: '12px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '4px',
-                                                    opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
-                                                }}
-                                            >
-                                                ↑ {votingStates[post.id.toString()] === 'voting' ? '...' : 'Up'}
-                                            </button>
+                        </div>
 
-                                            {/* Downvote Button */}
-                                            <button
-                                                onClick={() => voteOnPost(post.id, 'downvote')}
-                                                disabled={votingStates[post.id.toString()] === 'voting'}
-                                                style={{
-                                                    backgroundColor: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#e74c3c' : 'transparent',
-                                                    border: '1px solid #e74c3c',
-                                                    color: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#ffffff' : '#e74c3c',
-                                                    borderRadius: '4px',
-                                                    padding: '4px 8px',
-                                                    cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
-                                                    fontSize: '12px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '4px',
-                                                    opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
-                                                }}
-                                            >
-                                                ↓ {votingStates[post.id.toString()] === 'voting' ? '...' : 'Down'}
-                                            </button>
-
-                                            {/* Retract Vote Button */}
-                                            {userVotes[post.id.toString()] && (
+                        {/* Post Content */}
+                        {!isCollapsed && (
+                            <>
+                                {/* Show post title */}
+                                {hasExplicitTitle ? (
+                                    <div style={{ 
+                                        color: '#ffffff', 
+                                        fontSize: '18px', 
+                                        fontWeight: 'bold', 
+                                        marginBottom: '10px' 
+                                    }}>
+                                        {displayTitle}
+                                    </div>
+                                ) : (
+                                    <div style={{ 
+                                        color: '#ffc107', 
+                                        fontSize: '16px', 
+                                        fontWeight: 'bold', 
+                                        marginBottom: '8px' 
+                                    }}>
+                                        {displayTitle}
+                                    </div>
+                                )}
+                                
+                                <div style={{ color: '#ffffff', lineHeight: '1.6', marginBottom: '10px' }}>
+                                    <ReactMarkdown>{post.body}</ReactMarkdown>
+                                </div>
+                                
+                                {/* Action Buttons */}
+                                {isAuthenticated && (
+                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        {/* Voting Buttons */}
+                                        {hotkeyNeurons.length > 0 && (
+                                            <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                                                {/* Upvote Button */}
                                                 <button
-                                                    onClick={() => retractVote(post.id)}
+                                                    onClick={() => voteOnPost(post.id, 'upvote')}
                                                     disabled={votingStates[post.id.toString()] === 'voting'}
                                                     style={{
-                                                        backgroundColor: 'transparent',
-                                                        border: '1px solid #f39c12',
-                                                        color: '#f39c12',
+                                                        backgroundColor: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#2ecc71' : 'transparent',
+                                                        border: '1px solid #2ecc71',
+                                                        color: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#ffffff' : '#2ecc71',
                                                         borderRadius: '4px',
                                                         padding: '4px 8px',
                                                         cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
                                                         fontSize: '12px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
                                                         opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
                                                     }}
                                                 >
-                                                    {votingStates[post.id.toString()] === 'voting' ? 'Retracting...' : 'Retract'}
+                                                    ↑ {votingStates[post.id.toString()] === 'voting' ? '...' : 'Up'}
                                                 </button>
-                                            )}
 
-                                            {/* Voting Status */}
-                                            {votingStates[post.id.toString()] === 'success' && (
-                                                <span style={{ color: '#2ecc71', fontSize: '12px' }}>✓ Voted</span>
-                                            )}
-                                            {votingStates[post.id.toString()] === 'error' && (
-                                                <span style={{ color: '#e74c3c', fontSize: '12px' }}>✗ Error</span>
-                                            )}
-                                        </div>
-                                    )}
+                                                {/* Downvote Button */}
+                                                <button
+                                                    onClick={() => voteOnPost(post.id, 'downvote')}
+                                                    disabled={votingStates[post.id.toString()] === 'voting'}
+                                                    style={{
+                                                        backgroundColor: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#e74c3c' : 'transparent',
+                                                        border: '1px solid #e74c3c',
+                                                        color: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#ffffff' : '#e74c3c',
+                                                        borderRadius: '4px',
+                                                        padding: '4px 8px',
+                                                        cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
+                                                        fontSize: '12px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
+                                                    }}
+                                                >
+                                                    ↓ {votingStates[post.id.toString()] === 'voting' ? '...' : 'Down'}
+                                                </button>
 
-                                    {/* Reply Button */}
-                                    <button
-                                        onClick={() => {
-                                            if (isReplying) {
-                                                setReplyingTo(null);
-                                                setReplyText('');
-                                            } else {
-                                                setReplyingTo(Number(post.id));
-                                                setReplyText('');
-                                            }
-                                        }}
-                                        style={{
-                                            backgroundColor: 'transparent',
-                                            border: '1px solid #3498db',
-                                            color: '#3498db',
-                                            borderRadius: '4px',
-                                            padding: '6px 12px',
-                                            cursor: 'pointer',
-                                            fontSize: '12px'
-                                        }}
-                                    >
-                                        {isReplying ? 'Cancel Reply' : 'Reply'}
-                                    </button>
-                                </div>
-                            )}
+                                                {/* Retract Vote Button */}
+                                                {userVotes[post.id.toString()] && (
+                                                    <button
+                                                        onClick={() => retractVote(post.id)}
+                                                        disabled={votingStates[post.id.toString()] === 'voting'}
+                                                        style={{
+                                                            backgroundColor: 'transparent',
+                                                            border: '1px solid #f39c12',
+                                                            color: '#f39c12',
+                                                            borderRadius: '4px',
+                                                            padding: '4px 8px',
+                                                            cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
+                                                            fontSize: '12px',
+                                                            opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
+                                                        }}
+                                                    >
+                                                        {votingStates[post.id.toString()] === 'voting' ? 'Retracting...' : 'Retract'}
+                                                    </button>
+                                                )}
 
-                            {/* Reply Form */}
-                            {isReplying && (
-                                <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
-                                    <textarea
-                                        defaultValue=""
-                                        onChange={(e) => {
-                                            replyTextRef.current = e.target.value;
-                                            setReplyText(e.target.value);
-                                        }}
-                                        placeholder={`Reply to ${post.created_by.toString().slice(0, 8)}...`}
-                                        style={{
-                                            width: '100%',
-                                            minHeight: '80px',
-                                            backgroundColor: '#2a2a2a',
-                                            border: '1px solid #4a4a4a',
-                                            borderRadius: '4px',
-                                            color: '#ffffff',
-                                            padding: '10px',
-                                            fontSize: '14px',
-                                            resize: 'vertical',
-                                            marginBottom: '10px'
-                                        }}
-                                    />
-                                    <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
-                                        <button
-                                            onClick={() => submitReply(post.id, replyTextRef.current)}
-                                            disabled={!replyTextRef.current?.trim() || submittingComment}
-                                            style={{
-                                                padding: '8px 16px',
-                                                backgroundColor: (replyTextRef.current?.trim() && !submittingComment) ? '#4CAF50' : '#333',
-                                                color: (replyTextRef.current?.trim() && !submittingComment) ? 'white' : '#666',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                cursor: (replyTextRef.current?.trim() && !submittingComment) ? 'pointer' : 'not-allowed'
-                                            }}
-                                        >
-                                            {submittingComment ? 'Submitting...' : 'Submit Reply'}
-                                        </button>
+                                                {/* Voting Status */}
+                                                {votingStates[post.id.toString()] === 'success' && (
+                                                    <span style={{ color: '#2ecc71', fontSize: '12px' }}>✓ Voted</span>
+                                                )}
+                                                {votingStates[post.id.toString()] === 'error' && (
+                                                    <span style={{ color: '#e74c3c', fontSize: '12px' }}>✗ Error</span>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Reply Button */}
                                         <button
                                             onClick={() => {
-                                                setReplyingTo(null);
-                                                setReplyText('');
-                                                replyTextRef.current = '';
+                                                if (isReplying) {
+                                                    setReplyingTo(null);
+                                                    setReplyText('');
+                                                } else {
+                                                    setReplyingTo(Number(post.id));
+                                                    setReplyText('');
+                                                }
                                             }}
                                             style={{
-                                                padding: '8px 16px',
-                                                backgroundColor: '#666',
-                                                color: 'white',
-                                                border: 'none',
+                                                backgroundColor: 'transparent',
+                                                border: '1px solid #3498db',
+                                                color: '#3498db',
                                                 borderRadius: '4px',
-                                                cursor: 'pointer'
+                                                padding: '6px 12px',
+                                                cursor: 'pointer',
+                                                fontSize: '12px'
                                             }}
                                         >
-                                            Cancel
+                                            {isReplying ? 'Cancel Reply' : 'Reply'}
                                         </button>
                                     </div>
-                                </div>
-                            )}
-                        </>
-                    )}
+                                )}
+
+                                {/* Reply Form */}
+                                {isReplying && (
+                                    <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
+                                        <textarea
+                                            defaultValue=""
+                                            onChange={(e) => {
+                                                replyTextRef.current = e.target.value;
+                                                setReplyText(e.target.value);
+                                            }}
+                                            placeholder={`Reply to ${post.created_by.toString().slice(0, 8)}...`}
+                                            style={{
+                                                width: '100%',
+                                                minHeight: '80px',
+                                                backgroundColor: '#2a2a2a',
+                                                border: '1px solid #4a4a4a',
+                                                borderRadius: '4px',
+                                                color: '#ffffff',
+                                                padding: '10px',
+                                                fontSize: '14px',
+                                                resize: 'vertical',
+                                                marginBottom: '10px'
+                                            }}
+                                        />
+                                        <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
+                                            <button
+                                                onClick={() => submitReply(post.id, replyTextRef.current)}
+                                                disabled={!replyTextRef.current?.trim() || submittingComment}
+                                                style={{
+                                                    padding: '8px 16px',
+                                                    backgroundColor: (replyTextRef.current?.trim() && !submittingComment) ? '#4CAF50' : '#333',
+                                                    color: (replyTextRef.current?.trim() && !submittingComment) ? 'white' : '#666',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    cursor: (replyTextRef.current?.trim() && !submittingComment) ? 'pointer' : 'not-allowed'
+                                                }}
+                                            >
+                                                {submittingComment ? 'Submitting...' : 'Submit Reply'}
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setReplyingTo(null);
+                                                    setReplyText('');
+                                                    replyTextRef.current = '';
+                                                }}
+                                                style={{
+                                                    padding: '8px 16px',
+                                                    backgroundColor: '#666',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 {/* Render replies in tree mode */}
