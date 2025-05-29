@@ -887,7 +887,6 @@ function Discussion({
                                             defaultValue=""
                                             onChange={(e) => {
                                                 replyTextRef.current = e.target.value;
-                                                setReplyText(e.target.value);
                                             }}
                                             placeholder={`Reply to ${post.created_by.toString().slice(0, 8)}...`}
                                             style={{
