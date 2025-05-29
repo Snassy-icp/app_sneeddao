@@ -390,7 +390,7 @@ const HotkeyNeurons = ({
             padding: '10px',
             cursor: showExpandButton ? 'pointer' : 'default',
             display: 'flex',
-            justifyContent: 'space-between',
+            justifyContent: 'flex-start',
             alignItems: 'center',
             marginBottom: isExpanded ? '15px' : '0px'
         },
@@ -566,15 +566,15 @@ const HotkeyNeurons = ({
                 style={styles.sectionHeader}
                 onClick={showExpandButton ? () => setIsExpanded(!isExpanded) : undefined}
             >
-                <h2 style={styles.heading}>
-                    {title}
-                    <span style={styles.infoIcon} title={infoTooltip}>i</span>
-                </h2>
                 {showExpandButton && (
                     <span style={styles.expandButton}>
                         ▶
                     </span>
                 )}
+                <h2 style={styles.heading}>
+                    {title}
+                    <span style={styles.infoIcon} title={infoTooltip}>i</span>
+                </h2>
             </div>
             {(isExpanded || !showExpandButton) && (
                 loadingHotkeyNeurons ? (
