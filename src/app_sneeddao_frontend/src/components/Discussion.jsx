@@ -201,7 +201,15 @@ function Discussion({
                     console.log('Comment created successfully, post ID:', result.ok);
                     const postId = result.ok;
                     
-                    // Automatically upvote the newly created post
+                    // Clear form immediately
+                    setCommentText('');
+                    setCommentTitle('');
+                    setShowCommentForm(false);
+                    
+                    // Refresh posts immediately to show the new post with 0 score
+                    await fetchDiscussionPosts(Number(threadId));
+                    
+                    // Now automatically upvote the newly created post with spinner
                     const postIdStr = postId.toString();
                     setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
                     
@@ -220,6 +228,9 @@ function Discussion({
                                     voting_power: 1
                                 }
                             }));
+                            
+                            // Refresh posts again to show updated score
+                            await fetchDiscussionPosts(Number(threadId));
                             
                             // Clear voting state after a delay
                             setTimeout(() => {
@@ -252,16 +263,12 @@ function Discussion({
                 }
             }
 
-            // Clear form and refresh
-            setCommentText('');
-            setCommentTitle('');
-            setShowCommentForm(false);
-            
-            // Refresh discussion thread or posts
+            // Clear form and refresh for new thread case
             if (newThreadCreated) {
+                setCommentText('');
+                setCommentTitle('');
+                setShowCommentForm(false);
                 await fetchDiscussionThread();
-            } else {
-                await fetchDiscussionPosts(Number(threadId));
             }
         } catch (err) {
             console.error('Error submitting comment:', err);
@@ -440,7 +447,15 @@ function Discussion({
                 console.log('Reply created successfully, post ID:', result.ok);
                 const postId = result.ok;
                 
-                // Automatically upvote the newly created post
+                // Clear form immediately
+                setReplyText('');
+                setReplyingTo(null);
+                replyTextRef.current = '';
+                
+                // Refresh posts immediately to show the new post with 0 score
+                await fetchDiscussionPosts(Number(discussionThread.thread_id));
+                
+                // Now automatically upvote the newly created post with spinner
                 const postIdStr = postId.toString();
                 setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
                 
@@ -459,6 +474,9 @@ function Discussion({
                                 voting_power: 1
                             }
                         }));
+                        
+                        // Refresh posts again to show updated score
+                        await fetchDiscussionPosts(Number(discussionThread.thread_id));
                         
                         // Clear voting state after a delay
                         setTimeout(() => {
@@ -484,13 +502,6 @@ function Discussion({
                         return newState;
                     });
                 }
-                
-                setReplyText('');
-                setReplyingTo(null);
-                replyTextRef.current = '';
-                
-                // Refresh posts
-                await fetchDiscussionPosts(Number(discussionThread.thread_id));
             } else {
                 console.error('Failed to create reply:', result.err);
                 if (onError) onError('Failed to create reply: ' + JSON.stringify(result.err));
