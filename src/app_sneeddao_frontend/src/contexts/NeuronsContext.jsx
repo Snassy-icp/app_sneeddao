@@ -35,7 +35,10 @@ export function NeuronsProvider({ children }) {
 
     // Function to fetch hotkey neurons data with voting power
     const fetchHotkeyNeuronsData = useCallback(async (snsRoot = selectedSnsRoot) => {
+        console.log('fetchHotkeyNeuronsData called with:', { snsRoot, hasIdentity: !!identity });
+        
         if (!identity || !snsRoot) {
+            console.log('fetchHotkeyNeuronsData: Missing identity or snsRoot, clearing data');
             setNeuronsData({
                 neurons_by_owner: [],
                 total_voting_power: 0,
@@ -46,25 +49,41 @@ export function NeuronsProvider({ children }) {
         
         // Check cache first
         const cacheKey = `${identity.getPrincipal().toString()}-${snsRoot}`;
-        if (neuronsBySns.has(cacheKey)) {
-            setNeuronsData(neuronsBySns.get(cacheKey));
+        console.log('fetchHotkeyNeuronsData: Checking cache for key:', cacheKey);
+        
+        // Use functional update to access current cache state
+        let cachedData = null;
+        setNeuronsBySns(prev => {
+            cachedData = prev.get(cacheKey);
+            return prev;
+        });
+        
+        if (cachedData) {
+            console.log('fetchHotkeyNeuronsData: Found cached data, using it');
+            setNeuronsData(cachedData);
             return;
         }
         
+        console.log('fetchHotkeyNeuronsData: No cached data, fetching from network');
         setLoading(true);
         setError(null);
         
         try {
             // First get neurons from SNS
+            console.log('fetchHotkeyNeuronsData: Fetching neurons from SNS...');
             const neurons = await fetchNeuronsForSns(snsRoot);
+            console.log('fetchHotkeyNeuronsData: Got neurons from SNS:', neurons.length);
             
             // Then get voting power data from RLL
+            console.log('fetchHotkeyNeuronsData: Calling RLL get_hotkey_voting_power...');
             const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
             const result = await rllActor.get_hotkey_voting_power(neurons);
+            console.log('fetchHotkeyNeuronsData: Got result from RLL:', result);
             
             // Cache the result
             setNeuronsBySns(prev => new Map(prev).set(cacheKey, result));
             setNeuronsData(result);
+            console.log('fetchHotkeyNeuronsData: Successfully cached and set data');
         } catch (err) {
             console.error('Error fetching hotkey neurons:', err);
             setError(err.message);
@@ -76,7 +95,7 @@ export function NeuronsProvider({ children }) {
         } finally {
             setLoading(false);
         }
-    }, [identity, selectedSnsRoot, fetchNeuronsForSns, neuronsBySns]);
+    }, [identity, selectedSnsRoot, fetchNeuronsForSns]);
 
     // Function to get all neurons from the nested structure
     const getAllNeurons = useCallback(() => {
@@ -113,14 +132,64 @@ export function NeuronsProvider({ children }) {
     // Function to refresh neurons data
     const refreshNeurons = useCallback(async (snsRoot = selectedSnsRoot) => {
         clearCache(snsRoot);
-        await fetchHotkeyNeuronsData(snsRoot);
-    }, [selectedSnsRoot, clearCache, fetchHotkeyNeuronsData]);
+        // Call fetchHotkeyNeuronsData directly without including it in dependencies
+        if (identity && snsRoot) {
+            console.log('refreshNeurons: Refreshing neurons for SNS:', snsRoot);
+            
+            // Clear cache first
+            const cacheKey = `${identity.getPrincipal().toString()}-${snsRoot}`;
+            setNeuronsBySns(prev => {
+                const newMap = new Map(prev);
+                newMap.delete(cacheKey);
+                return newMap;
+            });
+            
+            // Then fetch fresh data
+            setLoading(true);
+            setError(null);
+            
+            try {
+                const selectedSns = getSnsById(snsRoot);
+                if (!selectedSns) {
+                    throw new Error('Selected SNS not found');
+                }
+                
+                const neurons = await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
+                const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+                const result = await rllActor.get_hotkey_voting_power(neurons);
+                
+                // Cache and set the result
+                setNeuronsBySns(prev => new Map(prev).set(cacheKey, result));
+                setNeuronsData(result);
+                console.log('refreshNeurons: Successfully refreshed data');
+            } catch (err) {
+                console.error('Error refreshing neurons:', err);
+                setError(err.message);
+                setNeuronsData({
+                    neurons_by_owner: [],
+                    total_voting_power: 0,
+                    distribution_voting_power: 0
+                });
+            } finally {
+                setLoading(false);
+            }
+        }
+    }, [selectedSnsRoot, identity, clearCache]);
 
     // Effect to fetch neurons when authentication or SNS changes
     useEffect(() => {
+        console.log('NeuronsContext useEffect triggered:', {
+            isAuthenticated,
+            hasIdentity: !!identity,
+            selectedSnsRoot,
+            identityPrincipal: identity?.getPrincipal()?.toString()
+        });
+        
         if (isAuthenticated && identity && selectedSnsRoot) {
+            console.log('NeuronsContext: Proactively fetching neurons for SNS:', selectedSnsRoot);
             fetchHotkeyNeuronsData(selectedSnsRoot);
         } else {
+            console.log('NeuronsContext: Clearing neurons data - missing requirements');
             setNeuronsData({
                 neurons_by_owner: [],
                 total_voting_power: 0,

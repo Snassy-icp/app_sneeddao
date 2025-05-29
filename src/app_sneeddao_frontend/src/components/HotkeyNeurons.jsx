@@ -610,6 +610,73 @@ const HotkeyNeurons = ({
                                 </button>
                             </div>
                         )}
+
+                        {/* Hotkeyed Voting Power Total */}
+                        {(() => {
+                            const allNeurons = getAllNeurons();
+                            const hotkeyedNeurons = allNeurons.filter(neuron => 
+                                neuron.permissions.some(p => 
+                                    p.principal?.toString() === identity?.getPrincipal()?.toString() &&
+                                    p.permission_type.includes(4)
+                                )
+                            );
+                            
+                            const totalHotkeyedVP = hotkeyedNeurons.reduce((total, neuron) => {
+                                try {
+                                    const votingPower = nervousSystemParameters ? 
+                                        calculateVotingPower(neuron, nervousSystemParameters) : 0;
+                                    return total + votingPower;
+                                } catch (error) {
+                                    console.warn('Error calculating voting power for neuron:', neuron.id, error);
+                                    return total;
+                                }
+                            }, 0);
+
+                            if (hotkeyedNeurons.length > 0) {
+                                return (
+                                    <div style={{
+                                        backgroundColor: '#1a1a1a',
+                                        border: '1px solid #2ecc71',
+                                        borderRadius: '6px',
+                                        padding: '12px',
+                                        marginTop: '15px',
+                                        marginBottom: '15px'
+                                    }}>
+                                        <div style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            fontSize: '14px'
+                                        }}>
+                                            <span style={{ color: '#888' }}>
+                                                Total Hotkeyed Voting Power:
+                                            </span>
+                                            <span style={{ 
+                                                color: '#2ecc71', 
+                                                fontWeight: 'bold',
+                                                fontSize: '16px'
+                                            }}>
+                                                {nervousSystemParameters ? 
+                                                    formatVotingPower(totalHotkeyedVP) : 
+                                                    'Loading...'
+                                                } VP
+                                            </span>
+                                        </div>
+                                        <div style={{
+                                            fontSize: '12px',
+                                            color: '#666',
+                                            marginTop: '4px'
+                                        }}>
+                                            From {hotkeyedNeurons.length} hotkeyed neuron{hotkeyedNeurons.length !== 1 ? 's' : ''} 
+                                            {allNeurons.length > hotkeyedNeurons.length && 
+                                                ` (${allNeurons.length - hotkeyedNeurons.length} additional reachable neuron${allNeurons.length - hotkeyedNeurons.length !== 1 ? 's' : ''} cannot vote)`
+                                            }
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })()}
                         
                         <div style={{marginTop: showVotingStats ? '20px' : '0'}}>
                             {(hotkeyNeurons?.neurons_by_owner || []).map(([owner, neurons], index) => (
