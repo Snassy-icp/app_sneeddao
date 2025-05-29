@@ -7,6 +7,7 @@ import { useNeurons } from '../contexts/NeuronsContext';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from '../AuthContext';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
+import { useAdminCheck } from '../hooks/useAdminCheck';
 
 // Add CSS for spinner animation
 const spinnerStyles = `
@@ -35,6 +36,13 @@ function Discussion({
     const { identity } = useAuth();
     const { getHotkeyNeurons, loading: neuronsLoading, neuronsData } = useNeurons();
     
+    // Admin check - silent mode (no redirect)
+    const { isAdmin } = useAdminCheck({ 
+        identity, 
+        isAuthenticated, 
+        redirectPath: null 
+    });
+    
     // State for discussion
     const [discussionThread, setDiscussionThread] = useState(null); // Thread mapping
     const [threadDetails, setThreadDetails] = useState(null); // Actual thread details
@@ -51,6 +59,13 @@ function Discussion({
     const [collapsedPosts, setCollapsedPosts] = useState(new Set());
     const [replyingTo, setReplyingTo] = useState(null);
     const [replyText, setReplyText] = useState('');
+    
+    // State for editing posts
+    const [editingPost, setEditingPost] = useState(null);
+    const [editTitle, setEditTitle] = useState('');
+    const [editBody, setEditBody] = useState('');
+    const [submittingEdit, setSubmittingEdit] = useState(false);
+    const [deletingPosts, setDeletingPosts] = useState(new Set());
     
     // Ref for reply text to avoid re-renders
     const replyTextRef = useRef('');
@@ -875,6 +890,118 @@ function Discussion({
                                         >
                                             {isReplying ? 'Cancel Reply' : 'Reply'}
                                         </button>
+
+                                        {/* Edit and Delete Buttons */}
+                                        {canEditOrDeletePost(post) && (
+                                            <>
+                                                <button
+                                                    onClick={() => {
+                                                        if (editingPost?.id === post.id) {
+                                                            cancelEditPost();
+                                                        } else {
+                                                            startEditPost(post);
+                                                        }
+                                                    }}
+                                                    disabled={deletingPosts.has(post.id.toString())}
+                                                    style={{
+                                                        backgroundColor: 'transparent',
+                                                        border: '1px solid #f39c12',
+                                                        color: '#f39c12',
+                                                        borderRadius: '4px',
+                                                        padding: '6px 12px',
+                                                        cursor: deletingPosts.has(post.id.toString()) ? 'not-allowed' : 'pointer',
+                                                        fontSize: '12px',
+                                                        opacity: deletingPosts.has(post.id.toString()) ? 0.6 : 1
+                                                    }}
+                                                >
+                                                    {editingPost?.id === post.id ? 'Cancel Edit' : 'Edit'}
+                                                </button>
+                                                <button
+                                                    onClick={() => deletePost(post.id)}
+                                                    disabled={deletingPosts.has(post.id.toString()) || editingPost?.id === post.id}
+                                                    style={{
+                                                        backgroundColor: 'transparent',
+                                                        border: '1px solid #e74c3c',
+                                                        color: '#e74c3c',
+                                                        borderRadius: '4px',
+                                                        padding: '6px 12px',
+                                                        cursor: (deletingPosts.has(post.id.toString()) || editingPost?.id === post.id) ? 'not-allowed' : 'pointer',
+                                                        fontSize: '12px',
+                                                        opacity: (deletingPosts.has(post.id.toString()) || editingPost?.id === post.id) ? 0.6 : 1
+                                                    }}
+                                                >
+                                                    {deletingPosts.has(post.id.toString()) ? 'Deleting...' : 'Delete'}
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Edit Form */}
+                                {editingPost?.id === post.id && (
+                                    <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
+                                        <input
+                                            type="text"
+                                            value={editTitle}
+                                            onChange={(e) => setEditTitle(e.target.value)}
+                                            placeholder="Title (optional)"
+                                            style={{
+                                                width: '100%',
+                                                backgroundColor: '#2a2a2a',
+                                                border: '1px solid #4a4a4a',
+                                                borderRadius: '4px',
+                                                color: '#ffffff',
+                                                padding: '10px',
+                                                fontSize: '14px',
+                                                marginBottom: '10px'
+                                            }}
+                                        />
+                                        <textarea
+                                            value={editBody}
+                                            onChange={(e) => setEditBody(e.target.value)}
+                                            placeholder="Edit your post..."
+                                            style={{
+                                                width: '100%',
+                                                minHeight: '100px',
+                                                backgroundColor: '#2a2a2a',
+                                                border: '1px solid #4a4a4a',
+                                                borderRadius: '4px',
+                                                color: '#ffffff',
+                                                padding: '10px',
+                                                fontSize: '14px',
+                                                resize: 'vertical',
+                                                marginBottom: '10px'
+                                            }}
+                                        />
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                            <button
+                                                onClick={submitEditPost}
+                                                disabled={!editBody.trim() || submittingEdit}
+                                                style={{
+                                                    padding: '8px 16px',
+                                                    backgroundColor: (editBody.trim() && !submittingEdit) ? '#2ecc71' : '#333',
+                                                    color: (editBody.trim() && !submittingEdit) ? 'white' : '#666',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    cursor: (editBody.trim() && !submittingEdit) ? 'pointer' : 'not-allowed'
+                                                }}
+                                            >
+                                                {submittingEdit ? 'Updating...' : 'Update Post'}
+                                            </button>
+                                            <button
+                                                onClick={cancelEditPost}
+                                                style={{
+                                                    padding: '8px 16px',
+                                                    backgroundColor: '#666',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
 
@@ -1108,6 +1235,89 @@ function Discussion({
                     return newState;
                 });
             }, 3000);
+        }
+    };
+
+    // Edit and Delete functions
+    const canEditOrDeletePost = (post) => {
+        if (!identity) return false;
+        // User can edit/delete their own posts, or admin can edit/delete any post
+        return post.created_by?.toString() === identity.getPrincipal().toString() || isAdmin;
+    };
+
+    const startEditPost = (post) => {
+        setEditingPost(post);
+        setEditTitle(post.title && post.title.length > 0 ? post.title[0] : '');
+        setEditBody(post.body || '');
+    };
+
+    const cancelEditPost = () => {
+        setEditingPost(null);
+        setEditTitle('');
+        setEditBody('');
+    };
+
+    const submitEditPost = async () => {
+        if (!editingPost || !forumActor || !editBody.trim()) return;
+
+        setSubmittingEdit(true);
+        try {
+            const result = await forumActor.update_post(Number(editingPost.id), {
+                title: editTitle.trim() ? [editTitle.trim()] : [],
+                body: editBody.trim()
+            });
+
+            if ('ok' in result) {
+                // Clear edit state
+                setEditingPost(null);
+                setEditTitle('');
+                setEditBody('');
+
+                // Refresh posts to show updated content
+                if (discussionThread) {
+                    await fetchDiscussionPosts(Number(discussionThread.thread_id));
+                }
+            } else {
+                console.error('Failed to edit post:', result.err);
+                if (onError) onError('Failed to edit post: ' + JSON.stringify(result.err));
+            }
+        } catch (error) {
+            console.error('Error editing post:', error);
+            if (onError) onError('Failed to edit post: ' + error.message);
+        } finally {
+            setSubmittingEdit(false);
+        }
+    };
+
+    const deletePost = async (postId) => {
+        if (!forumActor || !confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
+            return;
+        }
+
+        const postIdStr = postId.toString();
+        setDeletingPosts(prev => new Set(prev).add(postIdStr));
+
+        try {
+            const result = await forumActor.delete_post(Number(postId));
+
+            if ('ok' in result) {
+                // Refresh posts to show updated list
+                if (discussionThread) {
+                    await fetchDiscussionPosts(Number(discussionThread.thread_id));
+                }
+            } else {
+                console.error('Failed to delete post:', result.err);
+                if (onError) onError('Failed to delete post: ' + JSON.stringify(result.err));
+            }
+        } catch (error) {
+            console.error('Error deleting post:', error);
+            if (onError) onError('Failed to delete post: ' + error.message);
+        } finally {
+            setDeletingPosts(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(postIdStr);
+                return newSet;
+            });
         }
     };
 
