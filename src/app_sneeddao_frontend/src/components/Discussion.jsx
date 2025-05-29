@@ -45,6 +45,7 @@ function Discussion({
     const [submittingComment, setSubmittingComment] = useState(false);
     const [commentTitle, setCommentTitle] = useState('');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    const [creatingFirstPost, setCreatingFirstPost] = useState(false); // Track when creating first post after new thread
     
     // State for view mode and interactions
     const [viewMode, setViewMode] = useState('flat');
@@ -238,6 +239,9 @@ function Discussion({
                 
                 // Immediately refresh thread data to update UI state
                 await fetchDiscussionThread();
+                
+                // Set flag to indicate we're creating the first post
+                setCreatingFirstPost(true);
             }
 
             // Create post - always create a post whether thread existed or was just created
@@ -262,6 +266,9 @@ function Discussion({
                 
                 // Refresh posts immediately to show the new post with 0 score
                 await fetchDiscussionPosts(Number(threadId));
+                
+                // Clear the first post creation flag
+                setCreatingFirstPost(false);
                 
                 // Now automatically upvote the newly created post with spinner
                 const postIdStr = postId.toString();
@@ -313,11 +320,15 @@ function Discussion({
             } else {
                 console.error('Failed to create comment:', result.err);
                 if (onError) onError('Failed to create comment: ' + JSON.stringify(result.err));
+                // Clear the first post creation flag on error
+                setCreatingFirstPost(false);
                 return;
             }
         } catch (err) {
             console.error('Error submitting comment:', err);
             if (onError) onError('Failed to submit comment: ' + err.message);
+            // Clear the first post creation flag on error
+            setCreatingFirstPost(false);
         } finally {
             setSubmittingComment(false);
         }
@@ -1264,7 +1275,7 @@ function Discussion({
                                         ))
                                     )}
                                 </div>
-                            ) : (
+                            ) : !creatingFirstPost ? (
                                 <div style={{ 
                                     color: '#888', 
                                     fontStyle: 'italic', 
@@ -1276,7 +1287,7 @@ function Discussion({
                                 }}>
                                     No comments yet. Be the first to start the discussion!
                                 </div>
-                            )}
+                            ) : null}
                         </div>
                     )}
 
