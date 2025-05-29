@@ -6,11 +6,14 @@ import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
 import SnsDropdown from './SnsDropdown';
 import { useAdminCheck } from '../hooks/useAdminCheck';
+import { useNeurons } from '../contexts/NeuronsContext';
+import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 
 function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const location = useLocation();
     const navigate = useNavigate();
     const { isAuthenticated, identity, login, logout } = useAuth();
+    const { getAllNeurons, getHotkeyNeurons, loading: neuronsLoading } = useNeurons();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef(null);
     const [activeSection, setActiveSection] = useState(() => {
@@ -309,7 +312,88 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             </div>
             <div className="header-right" style={{ display: 'flex', alignItems: 'center' }}>
                 {showSnsDropdown ? (
-                    <SnsDropdown onSnsChange={onSnsChange} />
+                    <>
+                        <SnsDropdown onSnsChange={onSnsChange} />
+                        {/* Neurons and Voting Power Display */}
+                        {isAuthenticated && (
+                            <div style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'flex-end',
+                                marginRight: '15px',
+                                fontSize: '12px',
+                                color: '#888',
+                                minWidth: '120px'
+                            }}>
+                                {neuronsLoading ? (
+                                    <div style={{ color: '#888', fontStyle: 'italic' }}>
+                                        Loading neurons...
+                                    </div>
+                                ) : (
+                                    <>
+                                        {(() => {
+                                            const allNeurons = getAllNeurons();
+                                            const hotkeyNeurons = getHotkeyNeurons();
+                                            
+                                            // Calculate reachable VP (all neurons)
+                                            const reachableVP = allNeurons.reduce((total, neuron) => {
+                                                try {
+                                                    const votingPower = calculateVotingPower(neuron);
+                                                    return total + votingPower;
+                                                } catch (error) {
+                                                    console.warn('Error calculating voting power for neuron:', neuron.id, error);
+                                                    return total;
+                                                }
+                                            }, 0);
+                                            
+                                            // Calculate hotkeyed VP (only hotkeyed neurons)
+                                            const hotkeyedVP = hotkeyNeurons.reduce((total, neuron) => {
+                                                try {
+                                                    const votingPower = calculateVotingPower(neuron);
+                                                    return total + votingPower;
+                                                } catch (error) {
+                                                    console.warn('Error calculating voting power for neuron:', neuron.id, error);
+                                                    return total;
+                                                }
+                                            }, 0);
+                                            
+                                            return (
+                                                <>
+                                                    <div style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '8px',
+                                                        marginBottom: '2px'
+                                                    }}>
+                                                        <span style={{ color: '#2ecc71' }}>
+                                                            {allNeurons.length} reachable
+                                                        </span>
+                                                        <span style={{ color: '#666' }}>•</span>
+                                                        <span style={{ color: '#2ecc71' }}>
+                                                            {formatVotingPower(reachableVP)} VP
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '8px'
+                                                    }}>
+                                                        <span style={{ color: '#3498db' }}>
+                                                            {hotkeyNeurons.length} hotkeyed
+                                                        </span>
+                                                        <span style={{ color: '#666' }}>•</span>
+                                                        <span style={{ color: '#3498db' }}>
+                                                            {formatVotingPower(hotkeyedVP)} VP
+                                                        </span>
+                                                    </div>
+                                                </>
+                                            );
+                                        })()}
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </>
                 ) : (
                     <img
                         src={"sneed_logo.png"}
