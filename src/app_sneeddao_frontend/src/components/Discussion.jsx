@@ -24,6 +24,62 @@ if (typeof document !== 'undefined') {
     document.head.appendChild(styleSheet);
 }
 
+// Separate ReplyForm component to prevent PostComponent re-renders
+const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy }) => {
+    const [replyText, setReplyText] = useState('');
+    
+    return (
+        <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
+            <textarea
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                placeholder={`Reply to ${createdBy.toString().slice(0, 8)}...`}
+                style={{
+                    width: '100%',
+                    minHeight: '80px',
+                    backgroundColor: '#2a2a2a',
+                    border: '1px solid #4a4a4a',
+                    borderRadius: '4px',
+                    color: '#ffffff',
+                    padding: '10px',
+                    fontSize: '14px',
+                    resize: 'vertical',
+                    marginBottom: '10px'
+                }}
+            />
+            <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
+                <button
+                    onClick={() => onSubmit(replyText)}
+                    disabled={!replyText.trim() || submittingComment}
+                    style={{
+                        padding: '8px 16px',
+                        backgroundColor: (replyText.trim() && !submittingComment) ? '#4CAF50' : '#333',
+                        color: (replyText.trim() && !submittingComment) ? 'white' : '#666',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: (replyText.trim() && !submittingComment) ? 'pointer' : 'not-allowed'
+                    }}
+                >
+                    {submittingComment ? 'Submitting...' : 'Submit Reply'}
+                </button>
+                <button
+                    onClick={onCancel}
+                    style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#666',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                    }}
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>
+    );
+};
+
 function Discussion({ 
     forumActor, 
     currentProposalId, 
@@ -51,11 +107,7 @@ function Discussion({
     const [viewMode, setViewMode] = useState('flat');
     const [collapsedPosts, setCollapsedPosts] = useState(new Set());
     const [replyingTo, setReplyingTo] = useState(null);
-    const [replyText, setReplyText] = useState('');
     
-    // Ref for reply text to avoid re-renders
-    const replyTextRef = useRef('');
-
     // State for voting
     const [votingStates, setVotingStates] = useState({}); // postId -> 'voting' | 'success' | 'error'
     const [userVotes, setUserVotes] = useState({}); // postId -> { vote_type, voting_power }
@@ -528,9 +580,7 @@ function Discussion({
                 const postId = result.ok;
                 
                 // Clear form immediately
-                setReplyText('');
                 setReplyingTo(null);
-                replyTextRef.current = '';
                 
                 // Refresh posts immediately to show the new post with 0 score
                 await fetchDiscussionPosts(Number(discussionThread.thread_id));
@@ -859,10 +909,8 @@ function Discussion({
                                             onClick={() => {
                                                 if (isReplying) {
                                                     setReplyingTo(null);
-                                                    setReplyText('');
                                                 } else {
                                                     setReplyingTo(Number(post.id));
-                                                    setReplyText('');
                                                 }
                                             }}
                                             style={{
@@ -882,60 +930,13 @@ function Discussion({
 
                                 {/* Reply Form */}
                                 {isReplying && (
-                                    <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
-                                        <textarea
-                                            defaultValue=""
-                                            onChange={(e) => {
-                                                replyTextRef.current = e.target.value;
-                                            }}
-                                            placeholder={`Reply to ${post.created_by.toString().slice(0, 8)}...`}
-                                            style={{
-                                                width: '100%',
-                                                minHeight: '80px',
-                                                backgroundColor: '#2a2a2a',
-                                                border: '1px solid #4a4a4a',
-                                                borderRadius: '4px',
-                                                color: '#ffffff',
-                                                padding: '10px',
-                                                fontSize: '14px',
-                                                resize: 'vertical',
-                                                marginBottom: '10px'
-                                            }}
-                                        />
-                                        <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
-                                            <button
-                                                onClick={() => submitReply(post.id, replyTextRef.current)}
-                                                disabled={!replyTextRef.current?.trim() || submittingComment}
-                                                style={{
-                                                    padding: '8px 16px',
-                                                    backgroundColor: (replyTextRef.current?.trim() && !submittingComment) ? '#4CAF50' : '#333',
-                                                    color: (replyTextRef.current?.trim() && !submittingComment) ? 'white' : '#666',
-                                                    border: 'none',
-                                                    borderRadius: '4px',
-                                                    cursor: (replyTextRef.current?.trim() && !submittingComment) ? 'pointer' : 'not-allowed'
-                                                }}
-                                            >
-                                                {submittingComment ? 'Submitting...' : 'Submit Reply'}
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setReplyingTo(null);
-                                                    setReplyText('');
-                                                    replyTextRef.current = '';
-                                                }}
-                                                style={{
-                                                    padding: '8px 16px',
-                                                    backgroundColor: '#666',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    borderRadius: '4px',
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                Cancel
-                                            </button>
-                                        </div>
-                                    </div>
+                                    <ReplyForm 
+                                        postId={post.id}
+                                        onSubmit={(replyText) => submitReply(post.id, replyText)}
+                                        onCancel={() => setReplyingTo(null)}
+                                        submittingComment={submittingComment}
+                                        createdBy={post.created_by}
+                                    />
                                 )}
                             </>
                         )}
