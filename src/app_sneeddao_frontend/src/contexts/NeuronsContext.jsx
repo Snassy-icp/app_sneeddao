@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from '../AuthContext';
 import { useSns } from './SnsContext';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
@@ -69,16 +68,19 @@ export function NeuronsProvider({ children }) {
         setError(null);
         
         try {
-            // First get neurons from SNS
+            // Get neurons from SNS
             console.log('fetchHotkeyNeuronsData: Fetching neurons from SNS...');
             const neurons = await fetchNeuronsForSns(snsRoot);
             console.log('fetchHotkeyNeuronsData: Got neurons from SNS:', neurons.length);
             
-            // Then get voting power data from RLL
-            console.log('fetchHotkeyNeuronsData: Calling RLL get_hotkey_voting_power...');
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            const result = await rllActor.get_hotkey_voting_power(neurons);
-            console.log('fetchHotkeyNeuronsData: Got result from RLL:', result);
+            // Create the data structure without RLL call
+            const result = {
+                neurons_by_owner: [[identity.getPrincipal().toString(), neurons]],
+                total_voting_power: 0, // Will be calculated by frontend
+                distribution_voting_power: 0 // Will be calculated by frontend
+            };
+            
+            console.log('fetchHotkeyNeuronsData: Created result structure:', result);
             
             // Cache the result
             setNeuronsBySns(prev => new Map(prev).set(cacheKey, result));
@@ -155,8 +157,13 @@ export function NeuronsProvider({ children }) {
                 }
                 
                 const neurons = await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
-                const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-                const result = await rllActor.get_hotkey_voting_power(neurons);
+                
+                // Create the data structure without RLL call
+                const result = {
+                    neurons_by_owner: [[identity.getPrincipal().toString(), neurons]],
+                    total_voting_power: 0, // Will be calculated by frontend
+                    distribution_voting_power: 0 // Will be calculated by frontend
+                };
                 
                 // Cache and set the result
                 setNeuronsBySns(prev => new Map(prev).set(cacheKey, result));
