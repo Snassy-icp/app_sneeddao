@@ -1,5 +1,4 @@
 import Principal "mo:base/Principal";
-import Time "mo:base/Time";
 import Map "mo:map/Map";
 import Dedup "mo:dedup";
 import Vector "mo:vector";
@@ -235,9 +234,7 @@ actor SneedSNSForum {
         result
     };
 
-    public shared ({ caller }) func retract_vote(
-        post_id: Nat
-    ) : async T.Result<(), T.ForumError> {
+    public shared ({ caller }) func retract_vote(post_id: Nat) : async T.Result<(), T.ForumError> {
         let (result, updated_cache) = await Lib.retract_vote_with_sns(state, caller, post_id, sns_cache);
         sns_cache := updated_cache;
         result

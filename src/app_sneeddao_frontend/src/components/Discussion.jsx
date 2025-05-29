@@ -167,10 +167,13 @@ function Discussion({
 
             // Create post if thread already exists or after creating new thread
             if (!newThreadCreated) {
+                // Only use the title if it's explicitly provided and not a "Re:" title
+                const shouldUseTitle = commentTitle && commentTitle.trim() && !commentTitle.trim().startsWith('Re: ');
+                
                 const result = await forumActor.create_post(
                     Number(threadId),
                     [],
-                    commentTitle && commentTitle.trim() ? [commentTitle.trim()] : [],
+                    shouldUseTitle ? [commentTitle.trim()] : [],
                     commentText
                 );
                 
@@ -212,22 +215,89 @@ function Discussion({
         return posts.find(post => Number(post.id) === Number(postId));
     };
 
-    // Helper function to generate reply title
+    // Helper function to generate reply title - now returns null for "Re:" cases
     const generateReplyTitle = (parentPost) => {
-        if (!parentPost) return null;
+        // Always return null for replies - we'll derive the title in presentation
+        return null;
+    };
+
+    // Helper function to derive display title for presentation
+    const getDerivedTitle = (post, parentPost = null, thread = null) => {
+        // Debug logging
+        console.log('getDerivedTitle called with:', {
+            postId: post.id,
+            postTitle: post.title,
+            hasParentPost: !!parentPost,
+            parentPostId: parentPost?.id,
+            threadTitle: thread?.title,
+            threadId: thread?.id
+        });
         
-        // If parent has a title
-        if (parentPost.title && parentPost.title.length > 0) {
-            const parentTitle = parentPost.title[0];
-            // Check if it already starts with "Re: "
-            if (parentTitle.startsWith('Re: ')) {
-                return parentTitle; // Don't add another "Re: "
+        // If post has an explicit title, use it
+        if (post.title && post.title.length > 0) {
+            return post.title[0];
+        }
+        
+        // If it's a reply to a post, recursively find the first ancestor with a title
+        if (post.reply_to_post_id && post.reply_to_post_id.length > 0) {
+            // If we have a parent post, check if it has a title
+            if (parentPost) {
+                if (parentPost.title && parentPost.title.length > 0) {
+                    const parentTitle = parentPost.title[0];
+                    // Check if parent title already starts with "Re: "
+                    if (parentTitle.startsWith('Re: ')) {
+                        return parentTitle; // Don't add another "Re: "
+                    } else {
+                        return `Re: ${parentTitle}`;
+                    }
+                } else {
+                    // Parent has no title, so recursively check the parent's parent
+                    const grandparentPost = parentPost.reply_to_post_id && parentPost.reply_to_post_id.length > 0
+                        ? findPostById(discussionPosts, parentPost.reply_to_post_id[0])
+                        : null;
+                    
+                    if (grandparentPost) {
+                        // Recursively get the derived title from the grandparent
+                        const ancestorTitle = getDerivedTitle(parentPost, grandparentPost, thread);
+                        // If the ancestor title already starts with "Re: ", use it as is
+                        if (ancestorTitle.startsWith('Re: ')) {
+                            return ancestorTitle;
+                        } else {
+                            return `Re: ${ancestorTitle}`;
+                        }
+                    } else {
+                        // No grandparent found, fall back to thread title
+                        if (thread && thread.title && thread.title.length > 0) {
+                            return `Re: ${thread.title[0]}`;
+                        } else {
+                            return `Re: Thread #${thread?.id || 'Unknown'}`;
+                        }
+                    }
+                }
             } else {
-                return `Re: ${parentTitle}`;
+                // No parent post provided, try to find it
+                const foundParent = findPostById(discussionPosts, post.reply_to_post_id[0]);
+                if (foundParent) {
+                    return getDerivedTitle(post, foundParent, thread);
+                } else {
+                    // Parent not found, fall back to thread title
+                    if (thread && thread.title && thread.title.length > 0) {
+                        return `Re: ${thread.title[0]}`;
+                    } else {
+                        return `Re: Thread #${thread?.id || 'Unknown'}`;
+                    }
+                }
             }
         }
         
-        return null; // No title to reply to
+        // If it's a top-level post in a thread
+        if (thread && thread.title && thread.title.length > 0) {
+            return `Re: ${thread.title[0]}`;
+        }
+        
+        // Fallback
+        console.log('Falling back to Post #' + post.id);
+        return `Post #${post.id}`;
     };
 
     const organizePostsFlat = (posts) => {
@@ -295,7 +365,7 @@ function Discussion({
             const result = await forumActor.create_post(
                 Number(discussionThread.thread_id),
                 [Number(parentPostId)],
-                replyTitle ? [replyTitle] : [],
+                [], // Always pass empty array for title since we derive it in presentation
                 replyText
             );
             
@@ -475,13 +545,14 @@ function Discussion({
         const isCollapsed = isManuallyCollapsed || (isNegative && !collapsedPosts.has(Number(post.id)));
         const isReplying = replyingTo === Number(post.id);
         
-        // Find parent post if this is a reply (for flat mode)
-        const parentPost = isFlat && post.reply_to_post_id && post.reply_to_post_id.length > 0 
+        // Find parent post if this is a reply
+        const parentPost = post.reply_to_post_id && post.reply_to_post_id.length > 0 
             ? findPostById(discussionPosts, post.reply_to_post_id[0])
             : null;
         
-        // Generate reply title if this is a reply
-        const replyTitle = parentPost ? generateReplyTitle(parentPost) : null;
+        // Get the derived display title for this post
+        const displayTitle = getDerivedTitle(post, parentPost, discussionThread);
+        const hasExplicitTitle = post.title && post.title.length > 0;
         
         return (
             <div 
@@ -523,9 +594,14 @@ function Discussion({
                                     <span>•</span>
                                     <span style={{ color: '#3498db' }}>
                                         Reply to #{Number(post.reply_to_post_id[0])}
-                                        {parentPost.title && parentPost.title.length > 0 && (
-                                            <span>: {parentPost.title[0]}</span>
-                                        )}
+                                        {(() => {
+                                            // Find the parent's parent if it exists
+                                            const parentParentPost = parentPost.reply_to_post_id && parentPost.reply_to_post_id.length > 0 
+                                                ? findPostById(discussionPosts, parentPost.reply_to_post_id[0])
+                                                : null;
+                                            const parentDerivedTitle = getDerivedTitle(parentPost, parentParentPost, discussionThread);
+                                            return <span>: {parentDerivedTitle}</span>;
+                                        })()}
                                     </span>
                                 </>
                             )}
@@ -584,27 +660,24 @@ function Discussion({
                     {/* Post Content */}
                     {!isCollapsed && (
                         <>
-                            {/* Show post title if it exists and it's not a duplicate of reply title */}
-                            {post.title && post.title.length > 0 && !replyTitle && (
+                            {/* Show post title */}
+                            {hasExplicitTitle ? (
                                 <div style={{ 
                                     color: '#ffffff', 
                                     fontSize: '18px', 
                                     fontWeight: 'bold', 
                                     marginBottom: '10px' 
                                 }}>
-                                    {post.title[0]}
+                                    {displayTitle}
                                 </div>
-                            )}
-                            
-                            {/* Show reply title if this is a reply */}
-                            {replyTitle && (
+                            ) : (
                                 <div style={{ 
                                     color: '#ffc107', 
                                     fontSize: '16px', 
                                     fontWeight: 'bold', 
                                     marginBottom: '8px' 
                                 }}>
-                                    {replyTitle}
+                                    {displayTitle}
                                 </div>
                             )}
                             

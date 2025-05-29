@@ -207,6 +207,33 @@ export default function Forum() {
     }
   };
 
+  // Helper function to derive display titles for posts (same logic as Discussion.jsx)
+  const getDerivedTitle = (post, parentPost = null, thread = null) => {
+    // If post has an explicit title, use it
+    if (post.title && post.title.trim()) {
+      return post.title.trim();
+    }
+    
+    // If it's a reply to another post
+    if (post.reply_to_post_id && post.reply_to_post_id.length > 0 && parentPost) {
+      if (parentPost.title && parentPost.title.trim()) {
+        return `Re: ${parentPost.title.trim()}`;
+      } else {
+        // Parent post doesn't have a title, derive it recursively
+        const parentDerivedTitle = getDerivedTitle(parentPost, null, thread);
+        return `Re: ${parentDerivedTitle}`;
+      }
+    }
+    
+    // If it's a top-level post in a thread
+    if (thread && thread.title && thread.title.trim()) {
+      return `Re: ${thread.title.trim()}`;
+    }
+    
+    // Fallback
+    return `Post #${post.id}`;
+  };
+
   const fetchProposalsTopic = async () => {
     if (selectedForum) {
       try {
@@ -858,13 +885,14 @@ export default function Forum() {
             <option value="">No Reply (Top Level Post)</option>
             {posts.filter(post => !post.deleted).map(post => {
               const postIdStr = Number(post.id).toString();
-              const displayText = post.title 
-                ? `Post #${Number(post.id)}: ${post.title}` 
-                : `Post #${Number(post.id)}`;
-              console.log('Post option:', postIdStr, displayText);
+              const parentPost = post.reply_to_post_id && post.reply_to_post_id.length > 0 
+                ? posts.find(p => Number(p.id) === Number(post.reply_to_post_id[0]))
+                : null;
+              const displayTitle = getDerivedTitle(post, parentPost, selectedThread);
+              console.log('Post option:', postIdStr, displayTitle);
               return (
                 <option key={post.id} value={postIdStr}>
-                  Reply to: {displayText}
+                  Reply to: {displayTitle}
                 </option>
               );
             })}
@@ -899,39 +927,48 @@ export default function Forum() {
       )}
 
       <div className="items-list">
-        {posts.map(post => (
-          <div key={post.id} className={`item-card ${post.deleted ? 'deleted' : ''}`}>
-            <div className="item-header">
-              <h3>{post.title || `Post #${post.id}`} {post.deleted && <span className="deleted-badge">[DELETED]</span>}</h3>
-              <div className="item-actions">
-                <button 
-                  className="edit-btn"
-                  onClick={() => startEdit(post, 'post')}
-                  disabled={post.deleted}
-                >
-                  Edit
-                </button>
-                <button 
-                  className="delete-btn"
-                  onClick={() => handleDelete(post.id, 'post')}
-                  disabled={post.deleted}
-                >
-                  Delete
-                </button>
+        {posts.map(post => {
+          // Find parent post if this is a reply
+          const parentPost = post.reply_to_post_id && post.reply_to_post_id.length > 0 
+            ? posts.find(p => Number(p.id) === Number(post.reply_to_post_id[0]))
+            : null;
+          
+          const displayTitle = getDerivedTitle(post, parentPost, selectedThread);
+          
+          return (
+            <div key={post.id} className={`item-card ${post.deleted ? 'deleted' : ''}`}>
+              <div className="item-header">
+                <h3>{displayTitle} {post.deleted && <span className="deleted-badge">[DELETED]</span>}</h3>
+                <div className="item-actions">
+                  <button 
+                    className="edit-btn"
+                    onClick={() => startEdit(post, 'post')}
+                    disabled={post.deleted}
+                  >
+                    Edit
+                  </button>
+                  <button 
+                    className="delete-btn"
+                    onClick={() => handleDelete(post.id, 'post')}
+                    disabled={post.deleted}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+              <p>{post.body}</p>
+              <div className="item-meta">
+                <span>ID: {Number(post.id)}</span>
+                <span>Votes: ↑{Number(post.upvote_score)} ↓{Number(post.downvote_score)}</span>
+                <span>Created: {formatDate(post.created_at)}</span>
+                <span>By: {post.created_by.toString().slice(0, 8)}...</span>
+                {post.reply_to_post_id && post.reply_to_post_id.length > 0 && (
+                  <span>Reply to: #{Number(post.reply_to_post_id[0])}</span>
+                )}
               </div>
             </div>
-            <p>{post.body}</p>
-            <div className="item-meta">
-              <span>ID: {Number(post.id)}</span>
-              <span>Votes: ↑{Number(post.upvote_score)} ↓{Number(post.downvote_score)}</span>
-              <span>Created: {formatDate(post.created_at)}</span>
-              <span>By: {post.created_by.toString().slice(0, 8)}...</span>
-              {post.reply_to_post_id && post.reply_to_post_id.length > 0 && (
-                <span>Reply to: #{Number(post.reply_to_post_id[0])}</span>
-              )}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
