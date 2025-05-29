@@ -6,6 +6,7 @@ import { useNaming } from '../NamingContext';
 import { useNeurons } from '../contexts/NeuronsContext';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from '../AuthContext';
+import { useAdminCheck } from '../hooks/useAdminCheck';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 
 // Add CSS for spinner animation
@@ -25,15 +26,19 @@ if (typeof document !== 'undefined') {
 }
 
 // Separate ReplyForm component to prevent PostComponent re-renders
-const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy }) => {
+const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, principalDisplayInfo }) => {
     const [replyText, setReplyText] = useState('');
+    
+    // Get display name for the user being replied to
+    const displayInfo = principalDisplayInfo?.get(createdBy?.toString());
+    const displayName = displayInfo?.displayName || createdBy.toString().slice(0, 8) + '...';
     
     return (
         <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
             <textarea
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
-                placeholder={`Reply to ${createdBy.toString().slice(0, 8)}...`}
+                placeholder={`Reply to ${displayName}`}
                 style={{
                     width: '100%',
                     minHeight: '80px',
@@ -91,6 +96,13 @@ function Discussion({
     const { identity } = useAuth();
     const { getHotkeyNeurons, loading: neuronsLoading, neuronsData } = useNeurons();
     
+    // Admin check
+    const { isAdmin } = useAdminCheck({
+        identity,
+        isAuthenticated,
+        redirectPath: null // Don't redirect, just check status
+    });
+    
     // State for discussion
     const [discussionThread, setDiscussionThread] = useState(null); // Thread mapping
     const [threadDetails, setThreadDetails] = useState(null); // Actual thread details
@@ -102,6 +114,11 @@ function Discussion({
     const [commentTitle, setCommentTitle] = useState('');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [creatingFirstPost, setCreatingFirstPost] = useState(false); // Track when creating first post after new thread
+    
+    // State for editing posts
+    const [editingPost, setEditingPost] = useState(null);
+    const [editFormData, setEditFormData] = useState({ title: '', body: '' });
+    const [submittingEdit, setSubmittingEdit] = useState(false);
     
     // State for view mode and interactions
     const [viewMode, setViewMode] = useState('flat');
@@ -925,6 +942,42 @@ function Discussion({
                                         >
                                             {isReplying ? 'Cancel Reply' : 'Reply'}
                                         </button>
+
+                                        {/* Edit Button - show if user owns the post or is admin */}
+                                        {(identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin)) && (
+                                            <button
+                                                onClick={() => startEditPost(post)}
+                                                style={{
+                                                    backgroundColor: 'transparent',
+                                                    border: '1px solid #f39c12',
+                                                    color: '#f39c12',
+                                                    borderRadius: '4px',
+                                                    padding: '6px 12px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '12px'
+                                                }}
+                                            >
+                                                Edit
+                                            </button>
+                                        )}
+
+                                        {/* Delete Button - show if user owns the post or is admin */}
+                                        {(identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin)) && (
+                                            <button
+                                                onClick={() => deletePost(post.id)}
+                                                style={{
+                                                    backgroundColor: 'transparent',
+                                                    border: '1px solid #e74c3c',
+                                                    color: '#e74c3c',
+                                                    borderRadius: '4px',
+                                                    padding: '6px 12px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '12px'
+                                                }}
+                                            >
+                                                Delete
+                                            </button>
+                                        )}
                                     </div>
                                 )}
 
@@ -936,7 +989,77 @@ function Discussion({
                                         onCancel={() => setReplyingTo(null)}
                                         submittingComment={submittingComment}
                                         createdBy={post.created_by}
+                                        principalDisplayInfo={principalDisplayInfo}
                                     />
+                                )}
+
+                                {/* Edit Form */}
+                                {editingPost === Number(post.id) && (
+                                    <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
+                                        <h4 style={{ color: '#f39c12', marginBottom: '10px' }}>Edit Post</h4>
+                                        <input
+                                            type="text"
+                                            placeholder="Post Title (optional)"
+                                            value={editFormData.title}
+                                            onChange={(e) => setEditFormData({...editFormData, title: e.target.value})}
+                                            style={{
+                                                width: '100%',
+                                                backgroundColor: '#2a2a2a',
+                                                border: '1px solid #4a4a4a',
+                                                borderRadius: '4px',
+                                                color: '#ffffff',
+                                                padding: '10px',
+                                                fontSize: '14px',
+                                                marginBottom: '10px'
+                                            }}
+                                        />
+                                        <textarea
+                                            value={editFormData.body}
+                                            onChange={(e) => setEditFormData({...editFormData, body: e.target.value})}
+                                            placeholder="Post content..."
+                                            style={{
+                                                width: '100%',
+                                                minHeight: '100px',
+                                                backgroundColor: '#2a2a2a',
+                                                border: '1px solid #4a4a4a',
+                                                borderRadius: '4px',
+                                                color: '#ffffff',
+                                                padding: '10px',
+                                                fontSize: '14px',
+                                                resize: 'vertical',
+                                                marginBottom: '10px'
+                                            }}
+                                        />
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                            <button
+                                                onClick={submitEditPost}
+                                                disabled={!editFormData.body.trim() || submittingEdit}
+                                                style={{
+                                                    padding: '8px 16px',
+                                                    backgroundColor: (editFormData.body.trim() && !submittingEdit) ? '#f39c12' : '#333',
+                                                    color: (editFormData.body.trim() && !submittingEdit) ? 'white' : '#666',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    cursor: (editFormData.body.trim() && !submittingEdit) ? 'pointer' : 'not-allowed'
+                                                }}
+                                            >
+                                                {submittingEdit ? 'Updating...' : 'Update Post'}
+                                            </button>
+                                            <button
+                                                onClick={cancelEditPost}
+                                                style={{
+                                                    padding: '8px 16px',
+                                                    backgroundColor: '#666',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
                                 )}
                             </>
                         )}
@@ -958,7 +1081,7 @@ function Discussion({
                 )}
             </div>
         );
-    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo, hotkeyNeurons, votingStates, userVotes, submittingComment]);
+    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo, hotkeyNeurons, votingStates, userVotes, submittingComment, editingPost, editFormData, submittingEdit, isAdmin, identity]);
 
     // Effect to fetch discussion when props change
     useEffect(() => {
@@ -1110,6 +1233,75 @@ function Discussion({
                     return newState;
                 });
             }, 3000);
+        }
+    };
+
+    // Function to start editing a post
+    const startEditPost = (post) => {
+        setEditingPost(Number(post.id));
+        setEditFormData({
+            title: post.title || '',
+            body: post.body || ''
+        });
+    };
+
+    // Function to cancel editing
+    const cancelEditPost = () => {
+        setEditingPost(null);
+        setEditFormData({ title: '', body: '' });
+    };
+
+    // Function to submit post edit
+    const submitEditPost = async () => {
+        if (!forumActor || !editingPost) return;
+        
+        setSubmittingEdit(true);
+        try {
+            const result = await forumActor.edit_post(
+                Number(editingPost),
+                editFormData.title,
+                editFormData.body
+            );
+            
+            if ('ok' in result) {
+                // Refresh posts to show updated content
+                if (discussionThread) {
+                    await fetchDiscussionPosts(Number(discussionThread.thread_id));
+                }
+                cancelEditPost();
+            } else {
+                console.error('Failed to edit post:', result.err);
+                if (onError) onError('Failed to edit post: ' + JSON.stringify(result.err));
+            }
+        } catch (err) {
+            console.error('Error editing post:', err);
+            if (onError) onError('Failed to edit post: ' + err.message);
+        } finally {
+            setSubmittingEdit(false);
+        }
+    };
+
+    // Function to delete a post
+    const deletePost = async (postId) => {
+        if (!forumActor) return;
+        
+        if (!confirm('Are you sure you want to delete this post?')) return;
+        
+        try {
+            const result = await forumActor.delete_post(Number(postId));
+            
+            if ('ok' in result) {
+                // Refresh posts to show updated content
+                if (discussionThread) {
+                    await fetchDiscussionPosts(Number(discussionThread.thread_id));
+                }
+            } else {
+                console.error('Failed to delete post:', result.err);
+                if (onError) onError('Failed to delete post: ' + JSON.stringify(result.err));
+            }
+        } catch (err) {
+            console.error('Error deleting post:', err);
+            if (onError) onError('Failed to delete post: ' + err.message);
         }
     };
 
