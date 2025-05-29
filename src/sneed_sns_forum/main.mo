@@ -68,7 +68,10 @@ actor SneedSNSForum {
 
 
     // Non-stable cache for SNS instances (will be refreshed on canister upgrade)
-    private var sns_cache : SnsCache = null;
+    private var sns_cache : SnsCache = {
+        instances = [];
+        last_updated = 0;
+    };
 
     // Stable storage using stable Map and Vector structures
     stable var stable_next_id : Nat = 1;
