@@ -167,16 +167,13 @@ function Discussion({
 
             // Create post if thread already exists or after creating new thread
             if (!newThreadCreated) {
-                const postInput = {
-                    thread_id: Number(threadId),
-                    reply_to_post_id: [],
-                    title: commentTitle && commentTitle.trim() ? [commentTitle.trim()] : [],
-                    body: commentText
-                };
-
-                const dummyNeuronId = { id: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]) };
+                const result = await forumActor.create_post(
+                    Number(threadId),
+                    [],
+                    commentTitle && commentTitle.trim() ? [commentTitle.trim()] : [],
+                    commentText
+                );
                 
-                const result = await forumActor.create_post(postInput, dummyNeuronId);
                 if ('ok' in result) {
                     console.log('Comment created successfully, post ID:', result.ok);
                 } else {
@@ -295,16 +292,13 @@ function Discussion({
             const parentPost = findPostById(discussionPosts, parentPostId);
             const replyTitle = generateReplyTitle(parentPost);
             
-            const postInput = {
-                thread_id: Number(discussionThread.thread_id),
-                reply_to_post_id: [Number(parentPostId)],
-                title: replyTitle ? [replyTitle] : [],
-                body: replyText
-            };
-
-            const dummyNeuronId = { id: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]) };
+            const result = await forumActor.create_post(
+                Number(discussionThread.thread_id),
+                [Number(parentPostId)],
+                replyTitle ? [replyTitle] : [],
+                replyText
+            );
             
-            const result = await forumActor.create_post(postInput, dummyNeuronId);
             if ('ok' in result) {
                 console.log('Reply created successfully, post ID:', result.ok);
                 setReplyText('');
@@ -361,8 +355,8 @@ function Discussion({
     };
 
     const voteOnPost = async (postId, voteType) => {
-        if (!identity || !forumActor || hotkeyNeurons.length === 0) {
-            if (onError) onError('No eligible neurons found for voting');
+        if (!identity || !forumActor) {
+            if (onError) onError('Please connect your wallet to vote');
             return;
         }
 
@@ -370,13 +364,8 @@ function Discussion({
         setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
 
         try {
-            // Use the first eligible neuron for voting
-            const neuron = hotkeyNeurons[0];
-            const neuronId = { id: neuron.id[0].id };
-
             const result = await forumActor.vote_on_post(
                 Number(postId),
-                neuronId,
                 voteType === 'upvote' ? { upvote: null } : { downvote: null }
             );
 
@@ -388,7 +377,7 @@ function Discussion({
                     ...prev,
                     [postIdStr]: {
                         vote_type: voteType,
-                        voting_power: calculateVotingPower(neuron) || 1
+                        voting_power: 1 // Since we don't know the exact power, use 1 as placeholder
                     }
                 }));
 
@@ -425,8 +414,8 @@ function Discussion({
     };
 
     const retractVote = async (postId) => {
-        if (!identity || !forumActor || hotkeyNeurons.length === 0) {
-            if (onError) onError('No eligible neurons found for retracting vote');
+        if (!identity || !forumActor) {
+            if (onError) onError('Please connect your wallet to retract vote');
             return;
         }
 
@@ -434,11 +423,7 @@ function Discussion({
         setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
 
         try {
-            // Use the first eligible neuron
-            const neuron = hotkeyNeurons[0];
-            const neuronId = { id: neuron.id[0].id };
-
-            const result = await forumActor.retract_vote(Number(postId), neuronId);
+            const result = await forumActor.retract_vote(Number(postId));
 
             if ('ok' in result) {
                 setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));

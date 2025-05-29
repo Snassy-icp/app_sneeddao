@@ -268,14 +268,12 @@ export default function Forum() {
           }
           console.log('Creating post with formData:', formData);
           console.log('replyToPostId:', formData.replyToPostId, 'type:', typeof formData.replyToPostId);
-          // For admin posts, use a dummy neuron ID since voting power will be set to 1 by default
-          const dummyNeuronId = { id: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]) };
-          result = await forumActor.create_post({
-            thread_id: Number(selectedThread.id),
-            reply_to_post_id: formData.replyToPostId ? [parseInt(formData.replyToPostId)] : [],
-            title: formData.title ? [formData.title] : [],
-            body: formData.body,
-          }, dummyNeuronId);
+          result = await forumActor.create_post(
+            Number(selectedThread.id),
+            formData.replyToPostId ? [parseInt(formData.replyToPostId)] : [],
+            formData.title ? [formData.title] : [],
+            formData.body
+          );
           break;
         default:
           setError('Create operation not supported for this tab');
