@@ -851,79 +851,77 @@ function Discussion({
                                         </span>
 
                                         {/* Voting Buttons */}
-                                        {hotkeyNeurons.length > 0 && (
-                                            <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                                                {/* Upvote Button */}
+                                        <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                                            {/* Upvote Button */}
+                                            <button
+                                                onClick={() => voteOnPost(post.id, 'upvote')}
+                                                disabled={votingStates[post.id.toString()] === 'voting'}
+                                                style={{
+                                                    backgroundColor: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#2ecc71' : 'transparent',
+                                                    border: '1px solid #2ecc71',
+                                                    color: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#ffffff' : '#2ecc71',
+                                                    borderRadius: '4px',
+                                                    padding: '4px 8px',
+                                                    cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
+                                                    fontSize: '12px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
+                                                }}
+                                            >
+                                                ↑ {votingStates[post.id.toString()] === 'voting' ? '...' : 'Up'}
+                                            </button>
+
+                                            {/* Downvote Button */}
+                                            <button
+                                                onClick={() => voteOnPost(post.id, 'downvote')}
+                                                disabled={votingStates[post.id.toString()] === 'voting'}
+                                                style={{
+                                                    backgroundColor: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#e74c3c' : 'transparent',
+                                                    border: '1px solid #e74c3c',
+                                                    color: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#ffffff' : '#e74c3c',
+                                                    borderRadius: '4px',
+                                                    padding: '4px 8px',
+                                                    cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
+                                                    fontSize: '12px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px',
+                                                    opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
+                                                }}
+                                            >
+                                                ↓ {votingStates[post.id.toString()] === 'voting' ? '...' : 'Down'}
+                                            </button>
+
+                                            {/* Retract Vote Button */}
+                                            {userVotes[post.id.toString()] && (
                                                 <button
-                                                    onClick={() => voteOnPost(post.id, 'upvote')}
+                                                    onClick={() => retractVote(post.id)}
                                                     disabled={votingStates[post.id.toString()] === 'voting'}
                                                     style={{
-                                                        backgroundColor: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#2ecc71' : 'transparent',
-                                                        border: '1px solid #2ecc71',
-                                                        color: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#ffffff' : '#2ecc71',
+                                                        backgroundColor: 'transparent',
+                                                        border: '1px solid #f39c12',
+                                                        color: '#f39c12',
                                                         borderRadius: '4px',
                                                         padding: '4px 8px',
                                                         cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
                                                         fontSize: '12px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px',
                                                         opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
                                                     }}
                                                 >
-                                                    ↑ {votingStates[post.id.toString()] === 'voting' ? '...' : 'Up'}
+                                                    {votingStates[post.id.toString()] === 'voting' ? 'Retracting...' : 'Retract'}
                                                 </button>
+                                            )}
 
-                                                {/* Downvote Button */}
-                                                <button
-                                                    onClick={() => voteOnPost(post.id, 'downvote')}
-                                                    disabled={votingStates[post.id.toString()] === 'voting'}
-                                                    style={{
-                                                        backgroundColor: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#e74c3c' : 'transparent',
-                                                        border: '1px solid #e74c3c',
-                                                        color: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#ffffff' : '#e74c3c',
-                                                        borderRadius: '4px',
-                                                        padding: '4px 8px',
-                                                        cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
-                                                        fontSize: '12px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px',
-                                                        opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
-                                                    }}
-                                                >
-                                                    ↓ {votingStates[post.id.toString()] === 'voting' ? '...' : 'Down'}
-                                                </button>
-
-                                                {/* Retract Vote Button */}
-                                                {userVotes[post.id.toString()] && (
-                                                    <button
-                                                        onClick={() => retractVote(post.id)}
-                                                        disabled={votingStates[post.id.toString()] === 'voting'}
-                                                        style={{
-                                                            backgroundColor: 'transparent',
-                                                            border: '1px solid #f39c12',
-                                                            color: '#f39c12',
-                                                            borderRadius: '4px',
-                                                            padding: '4px 8px',
-                                                            cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
-                                                            fontSize: '12px',
-                                                            opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
-                                                        }}
-                                                    >
-                                                        {votingStates[post.id.toString()] === 'voting' ? 'Retracting...' : 'Retract'}
-                                                    </button>
-                                                )}
-
-                                                {/* Voting Status */}
-                                                {votingStates[post.id.toString()] === 'success' && (
-                                                    <span style={{ color: '#2ecc71', fontSize: '12px' }}>✓ Voted</span>
-                                                )}
-                                                {votingStates[post.id.toString()] === 'error' && (
-                                                    <span style={{ color: '#e74c3c', fontSize: '12px' }}>✗ Error</span>
-                                                )}
-                                            </div>
-                                        )}
+                                            {/* Voting Status */}
+                                            {votingStates[post.id.toString()] === 'success' && (
+                                                <span style={{ color: '#2ecc71', fontSize: '12px' }}>✓ Voted</span>
+                                            )}
+                                            {votingStates[post.id.toString()] === 'error' && (
+                                                <span style={{ color: '#e74c3c', fontSize: '12px' }}>✗ Error</span>
+                                            )}
+                                        </div>
 
                                         {/* Reply Button */}
                                         <button
