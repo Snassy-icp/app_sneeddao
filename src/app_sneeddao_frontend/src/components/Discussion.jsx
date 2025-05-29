@@ -7,6 +7,22 @@ import { createActor as createRllActor, canisterId as rllCanisterId } from 'exte
 import { useAuth } from '../AuthContext';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 
+// Add CSS for spinner animation
+const spinnerStyles = `
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+`;
+
+// Inject styles into document head
+if (typeof document !== 'undefined') {
+    const styleSheet = document.createElement('style');
+    styleSheet.type = 'text/css';
+    styleSheet.innerText = spinnerStyles;
+    document.head.appendChild(styleSheet);
+}
+
 function Discussion({ 
     forumActor, 
     currentProposalId, 
@@ -760,7 +776,19 @@ function Discussion({
                                 fontSize: '14px'
                             }}>
                                 <span style={{ color: score > 0 ? '#2ecc71' : score < 0 ? '#e74c3c' : '#888' }}>
-                                    {votingStates[post.id.toString()] === 'voting' ? '⟳' : (score > 0 ? '+' : '') + score}
+                                    {votingStates[post.id.toString()] === 'voting' ? (
+                                        <div style={{ 
+                                            display: 'inline-block',
+                                            width: '12px',
+                                            height: '12px',
+                                            border: '2px solid #f3f3f3',
+                                            borderTop: '2px solid #3498db',
+                                            borderRadius: '50%',
+                                            animation: 'spin 1s linear infinite'
+                                        }} />
+                                    ) : (
+                                        (score > 0 ? '+' : '') + score
+                                    )}
                                 </span>
                                 <span style={{ color: '#2ecc71' }}>↑{post.upvote_score}</span>
                                 <span style={{ color: '#e74c3c' }}>↓{post.downvote_score}</span>
@@ -991,7 +1019,7 @@ function Discussion({
                 )}
             </div>
         );
-    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo, hotkeyNeurons, votingStates, userVotes]);
+    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo, hotkeyNeurons, votingStates, userVotes, submittingComment]);
 
     // Effect to fetch discussion when props change
     useEffect(() => {
