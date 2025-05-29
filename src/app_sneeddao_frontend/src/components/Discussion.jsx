@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
+import { useNeurons } from '../contexts/NeuronsContext';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from '../AuthContext';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
@@ -32,6 +33,7 @@ function Discussion({
 }) {
     const { principalNames, principalNicknames } = useNaming();
     const { identity } = useAuth();
+    const { getHotkeyNeurons, loading: neuronsLoading } = useNeurons();
     
     // State for discussion
     const [discussionThread, setDiscussionThread] = useState(null); // Thread mapping
@@ -56,9 +58,10 @@ function Discussion({
     // State for voting
     const [votingStates, setVotingStates] = useState({}); // postId -> 'voting' | 'success' | 'error'
     const [userVotes, setUserVotes] = useState({}); // postId -> { vote_type, voting_power }
-    const [hotkeyNeurons, setHotkeyNeurons] = useState([]);
-    const [loadingNeurons, setLoadingNeurons] = useState(false);
     const [retractingStates, setRetractingStates] = useState({});
+
+    // Get hotkey neurons from global context
+    const hotkeyNeurons = getHotkeyNeurons() || [];
 
     // Fetch discussion thread and thread details
     const fetchDiscussionThread = async () => {
@@ -554,154 +557,6 @@ function Discussion({
         }
     };
 
-    // Voting functions
-    const fetchHotkeyNeurons = async () => {
-        if (!identity || !selectedSnsRoot) return [];
-        
-        setLoadingNeurons(true);
-        try {
-            const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-            
-            // Get neurons from the selected SNS
-            // This is a simplified approach - in a real implementation you'd need to 
-            // fetch neurons from the SNS governance canister
-            const result = await rllActor.get_hotkey_voting_power([]);
-            
-            // Extract all neurons from the nested structure
-            const allNeurons = result.neurons_by_owner.flatMap(([owner, neurons]) => neurons);
-            
-            // Filter neurons that the user has hotkey access to
-            const eligibleNeurons = allNeurons.filter(neuron => {
-                return neuron.permissions.some(p => 
-                    p.principal?.toString() === identity.getPrincipal().toString() &&
-                    p.permission_type.includes(4) // Hotkey permission
-                );
-            });
-            
-            setHotkeyNeurons(eligibleNeurons);
-            return eligibleNeurons;
-        } catch (error) {
-            console.error('Error fetching hotkey neurons:', error);
-            setHotkeyNeurons([]);
-            return [];
-        } finally {
-            setLoadingNeurons(false);
-        }
-    };
-
-    const voteOnPost = async (postId, voteType) => {
-        if (!identity || !forumActor) {
-            if (onError) onError('Please connect your wallet to vote');
-            return;
-        }
-
-        const postIdStr = postId.toString();
-        setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
-
-        try {
-            const result = await forumActor.vote_on_post(
-                Number(postId),
-                voteType === 'upvote' ? { upvote: null } : { downvote: null }
-            );
-
-            if ('ok' in result) {
-                setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
-                
-                // Update user votes state
-                setUserVotes(prev => ({
-                    ...prev,
-                    [postIdStr]: {
-                        vote_type: voteType,
-                        voting_power: 1 // Since we don't know the exact power, use 1 as placeholder
-                    }
-                }));
-
-                // Refresh posts to get updated scores
-                if (discussionThread) {
-                    await fetchDiscussionPosts(Number(discussionThread.thread_id));
-                }
-
-                // Clear voting state after a delay
-                setTimeout(() => {
-                    setVotingStates(prev => {
-                        const newState = { ...prev };
-                        delete newState[postIdStr];
-                        return newState;
-                    });
-                }, 2000);
-            } else {
-                throw new Error(JSON.stringify(result.err));
-            }
-        } catch (error) {
-            console.error('Error voting on post:', error);
-            setVotingStates(prev => ({ ...prev, [postIdStr]: 'error' }));
-            if (onError) onError('Failed to vote: ' + error.message);
-
-            // Clear error state after a delay
-            setTimeout(() => {
-                setVotingStates(prev => {
-                    const newState = { ...prev };
-                    delete newState[postIdStr];
-                    return newState;
-                });
-            }, 3000);
-        }
-    };
-
-    const retractVote = async (postId) => {
-        if (!identity || !forumActor) {
-            if (onError) onError('Please connect your wallet to retract vote');
-            return;
-        }
-
-        const postIdStr = postId.toString();
-        setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
-
-        try {
-            const result = await forumActor.retract_vote(Number(postId));
-
-            if ('ok' in result) {
-                setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
-                
-                // Remove from user votes state
-                setUserVotes(prev => {
-                    const newState = { ...prev };
-                    delete newState[postIdStr];
-                    return newState;
-                });
-
-                // Refresh posts to get updated scores
-                if (discussionThread) {
-                    await fetchDiscussionPosts(Number(discussionThread.thread_id));
-                }
-
-                // Clear voting state after a delay
-                setTimeout(() => {
-                    setVotingStates(prev => {
-                        const newState = { ...prev };
-                        delete newState[postIdStr];
-                        return newState;
-                    });
-                }, 2000);
-            } else {
-                throw new Error(JSON.stringify(result.err));
-            }
-        } catch (error) {
-            console.error('Error retracting vote:', error);
-            setVotingStates(prev => ({ ...prev, [postIdStr]: 'error' }));
-            if (onError) onError('Failed to retract vote: ' + error.message);
-
-            // Clear error state after a delay
-            setTimeout(() => {
-                setVotingStates(prev => {
-                    const newState = { ...prev };
-                    delete newState[postIdStr];
-                    return newState;
-                });
-            }, 3000);
-        }
-    };
-
     // Component to render individual posts
     const PostComponent = useCallback(({ post, depth = 0, isFlat = false }) => {
         const score = calculatePostScore(post);
@@ -1099,14 +954,119 @@ function Discussion({
         fetchPrincipalInfo();
     }, [discussionPosts, principalNames, principalNicknames]);
 
-    // Effect to fetch hotkey neurons for voting
-    useEffect(() => {
-        if (isAuthenticated && identity && selectedSnsRoot) {
-            fetchHotkeyNeurons();
-        } else {
-            setHotkeyNeurons([]);
+    // Voting functions
+    const voteOnPost = async (postId, voteType) => {
+        if (!identity || !forumActor) {
+            if (onError) onError('Please connect your wallet to vote');
+            return;
         }
-    }, [isAuthenticated, identity, selectedSnsRoot]);
+
+        const postIdStr = postId.toString();
+        setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
+
+        try {
+            const result = await forumActor.vote_on_post(
+                Number(postId),
+                voteType === 'upvote' ? { upvote: null } : { downvote: null }
+            );
+
+            if ('ok' in result) {
+                setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
+                
+                // Update user votes state
+                setUserVotes(prev => ({
+                    ...prev,
+                    [postIdStr]: {
+                        vote_type: voteType,
+                        voting_power: 1 // Since we don't know the exact power, use 1 as placeholder
+                    }
+                }));
+
+                // Refresh posts to get updated scores
+                if (discussionThread) {
+                    await fetchDiscussionPosts(Number(discussionThread.thread_id));
+                }
+
+                // Clear voting state after a delay
+                setTimeout(() => {
+                    setVotingStates(prev => {
+                        const newState = { ...prev };
+                        delete newState[postIdStr];
+                        return newState;
+                    });
+                }, 2000);
+            } else {
+                throw new Error(JSON.stringify(result.err));
+            }
+        } catch (error) {
+            console.error('Error voting on post:', error);
+            setVotingStates(prev => ({ ...prev, [postIdStr]: 'error' }));
+            if (onError) onError('Failed to vote: ' + error.message);
+
+            // Clear error state after a delay
+            setTimeout(() => {
+                setVotingStates(prev => {
+                    const newState = { ...prev };
+                    delete newState[postIdStr];
+                    return newState;
+                });
+            }, 3000);
+        }
+    };
+
+    const retractVote = async (postId) => {
+        if (!identity || !forumActor) {
+            if (onError) onError('Please connect your wallet to retract vote');
+            return;
+        }
+
+        const postIdStr = postId.toString();
+        setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
+
+        try {
+            const result = await forumActor.retract_vote(Number(postId));
+
+            if ('ok' in result) {
+                setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
+                
+                // Remove from user votes state
+                setUserVotes(prev => {
+                    const newState = { ...prev };
+                    delete newState[postIdStr];
+                    return newState;
+                });
+
+                // Refresh posts to get updated scores
+                if (discussionThread) {
+                    await fetchDiscussionPosts(Number(discussionThread.thread_id));
+                }
+
+                // Clear voting state after a delay
+                setTimeout(() => {
+                    setVotingStates(prev => {
+                        const newState = { ...prev };
+                        delete newState[postIdStr];
+                        return newState;
+                    });
+                }, 2000);
+            } else {
+                throw new Error(JSON.stringify(result.err));
+            }
+        } catch (error) {
+            console.error('Error retracting vote:', error);
+            setVotingStates(prev => ({ ...prev, [postIdStr]: 'error' }));
+            if (onError) onError('Failed to retract vote: ' + error.message);
+
+            // Clear error state after a delay
+            setTimeout(() => {
+                setVotingStates(prev => {
+                    const newState = { ...prev };
+                    delete newState[postIdStr];
+                    return newState;
+                });
+            }, 3000);
+        }
+    };
 
     return (
         <div style={{ marginTop: '20px' }}>
@@ -1133,7 +1093,7 @@ function Discussion({
                                     padding: '10px', 
                                     borderRadius: '4px', 
                                     marginBottom: '15px',
-                                    border: `1px solid ${hotkeyNeurons.length > 0 ? '#2ecc71' : '#f39c12'}`
+                                    border: `1px solid ${(hotkeyNeurons && hotkeyNeurons.length > 0) ? '#2ecc71' : '#f39c12'}`
                                 }}>
                                     <div style={{ 
                                         display: 'flex', 
@@ -1141,11 +1101,11 @@ function Discussion({
                                         gap: '8px',
                                         fontSize: '12px'
                                     }}>
-                                        {loadingNeurons ? (
+                                        {neuronsLoading ? (
                                             <>
                                                 <span style={{ color: '#888' }}>⏳ Loading voting neurons...</span>
                                             </>
-                                        ) : hotkeyNeurons.length > 0 ? (
+                                        ) : (hotkeyNeurons && hotkeyNeurons.length > 0) ? (
                                             <>
                                                 <span style={{ color: '#2ecc71' }}>✓ Voting enabled</span>
                                                 <span style={{ color: '#888' }}>•</span>

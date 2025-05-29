@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from '../AuthContext';
+import { useNeurons } from '../contexts/NeuronsContext';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { getSnsById } from '../utils/SnsUtils';
@@ -21,12 +22,7 @@ const HotkeyNeurons = ({
 }) => {
     const { isAuthenticated, identity } = useAuth();
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
-    const [hotkeyNeurons, setHotkeyNeurons] = useState({
-        neurons_by_owner: [],
-        total_voting_power: 0,
-        distribution_voting_power: 0
-    });
-    const [loadingHotkeyNeurons, setLoadingHotkeyNeurons] = useState(false);
+    const { getHotkeyNeurons, loading: neuronsLoading, refreshNeurons, neuronsData } = useNeurons();
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [votingStates, setVotingStates] = useState({});
     const [tokenSymbol, setTokenSymbol] = useState('SNS');
@@ -34,6 +30,13 @@ const HotkeyNeurons = ({
 
     // Get the effective SNS root - use SNEED if forced, otherwise use selected
     const effectiveSnsRoot = forceSneedSns ? SNEED_SNS_ROOT : selectedSnsRoot;
+
+    // Get hotkey neurons from global context
+    const hotkeyNeurons = neuronsData || {
+        neurons_by_owner: [],
+        total_voting_power: 0,
+        distribution_voting_power: 0
+    };
 
     // Helper functions
     const uint8ArrayToHex = (uint8Array) => {
@@ -65,7 +68,7 @@ const HotkeyNeurons = ({
 
     // Helper function to get all neurons from the nested structure
     const getAllNeurons = () => {
-        return hotkeyNeurons.neurons_by_owner.flatMap(([owner, neurons]) => neurons);
+        return hotkeyNeurons?.neurons_by_owner?.flatMap(([owner, neurons]) => neurons) || [];
     };
 
     // Helper function to check if there are eligible neurons for voting
@@ -177,6 +180,8 @@ const HotkeyNeurons = ({
             
             if (response?.command?.[0]?.RegisterVote) {
                 setVotingStates(prev => ({ ...prev, [neuronIdHex]: 'success' }));
+                // Refresh neurons data from global context
+                await refreshNeurons(effectiveSnsRoot);
                 if (onVoteSuccess) onVoteSuccess();
             } else if (response?.command?.[0]?.Error) {
                 throw new Error(response.command[0].Error.error_message);
@@ -274,6 +279,8 @@ const HotkeyNeurons = ({
 
             if (successfulVotes > 0) {
                 alert(`Successfully voted with ${successfulVotes} neuron(s)!${failedVotes > 0 ? ` ${failedVotes} vote(s) failed.` : ''}`);
+                // Refresh neurons data from global context
+                await refreshNeurons(effectiveSnsRoot);
                 if (onVoteSuccess) {
                     onVoteSuccess();
                 }
@@ -285,39 +292,6 @@ const HotkeyNeurons = ({
             alert('Error voting with all neurons: ' + error.message);
         }
     };
-
-    // Fetch hotkey neurons data
-    useEffect(() => {
-        const fetchHotkeyNeuronsData = async () => {
-            if (!identity || !fetchNeuronsFromSns) {
-                setLoadingHotkeyNeurons(false);
-                return;
-            }
-            
-            setLoadingHotkeyNeurons(true);
-            try {
-                const neurons = await fetchNeuronsFromSns();
-                const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
-                const result = await rllActor.get_hotkey_voting_power(neurons);
-                setHotkeyNeurons(result);
-            } catch (error) {
-                console.error('Error fetching hotkey neurons:', error);
-                setHotkeyNeurons({
-                    neurons_by_owner: [],
-                    total_voting_power: 0,
-                    distribution_voting_power: 0
-                });
-            } finally {
-                setLoadingHotkeyNeurons(false);
-            }
-        };
-
-        if (isAuthenticated && identity) {
-            fetchHotkeyNeuronsData();
-        } else {
-            setLoadingHotkeyNeurons(false);
-        }
-    }, [isAuthenticated, identity, fetchNeuronsFromSns]);
 
     // Fetch token symbol when selectedSnsRoot changes
     useEffect(() => {
@@ -518,7 +492,7 @@ const HotkeyNeurons = ({
         );
     }
 
-    if (hotkeyNeurons.neurons_by_owner.length === 0 && !loadingHotkeyNeurons) {
+    if (hotkeyNeurons?.neurons_by_owner?.length === 0 && !neuronsLoading) {
         return (
             <section style={styles.section}>
                 <div style={styles.sectionHeader}>
@@ -577,7 +551,7 @@ const HotkeyNeurons = ({
                 </h2>
             </div>
             {(isExpanded || !showExpandButton) && (
-                loadingHotkeyNeurons ? (
+                neuronsLoading ? (
                     <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
                         <div style={styles.spinner} />
                     </div>
@@ -587,15 +561,15 @@ const HotkeyNeurons = ({
                             <div style={styles.statusGrid}>
                                 <div style={styles.statusItem}>
                                     <span title="The sum of all voting power you have cast across all Sneed proposals through your hotkey neurons">Total Voting Power:</span>
-                                    <span title="Your total voting power used across all Sneed proposals">{Number(hotkeyNeurons.total_voting_power).toLocaleString()}</span>
+                                    <span title="Your total voting power used across all Sneed proposals">{Number(hotkeyNeurons?.total_voting_power || 0).toLocaleString()}</span>
                                 </div>
                                 <div style={styles.statusItem}>
                                     <span title="The sum of all voting power cast by all users across all Sneed proposals">Distribution Voting Power:</span>
-                                    <span title="Total voting power from all users participating in Sneed proposals">{Number(hotkeyNeurons.distribution_voting_power).toLocaleString()}</span>
+                                    <span title="Total voting power from all users participating in Sneed proposals">{Number(hotkeyNeurons?.distribution_voting_power || 0).toLocaleString()}</span>
                                 </div>
                                 <div style={styles.statusItem}>
                                     <span title="Your percentage share of the total distribution voting power, which determines your share of distributed rewards">Your Voting Share:</span>
-                                    <span title="This percentage represents your share of distributed rewards based on your voting participation">{((Number(hotkeyNeurons.total_voting_power) / Number(hotkeyNeurons.distribution_voting_power)) * 100).toFixed(2)}%</span>
+                                    <span title="This percentage represents your share of distributed rewards based on your voting participation">{((Number(hotkeyNeurons?.total_voting_power || 0) / Number(hotkeyNeurons?.distribution_voting_power || 1)) * 100).toFixed(2)}%</span>
                                 </div>
                             </div>
                         )}
@@ -638,7 +612,7 @@ const HotkeyNeurons = ({
                         )}
                         
                         <div style={{marginTop: showVotingStats ? '20px' : '0'}}>
-                            {hotkeyNeurons.neurons_by_owner.map(([owner, neurons], index) => (
+                            {(hotkeyNeurons?.neurons_by_owner || []).map(([owner, neurons], index) => (
                                 <div key={owner.toText()} style={{
                                     backgroundColor: '#3a3a3a',
                                     borderRadius: '6px',

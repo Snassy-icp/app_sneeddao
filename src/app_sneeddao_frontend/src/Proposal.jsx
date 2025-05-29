@@ -4,6 +4,7 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from './AuthContext';
 import { useSns } from './contexts/SnsContext';
+import { useNeurons } from './contexts/NeuronsContext';
 import { useForum } from './contexts/ForumContext';
 import Header from './components/Header';
 import HotkeyNeurons from './components/HotkeyNeurons';
@@ -19,6 +20,7 @@ import { Principal } from '@dfinity/principal';
 function Proposal() {
     const { isAuthenticated, identity } = useAuth();
     const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
+    const { fetchNeuronsForSns, refreshNeurons } = useNeurons();
     const { createForumActor } = useForum();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -222,12 +224,10 @@ function Proposal() {
         return (Number(e8s) / 100000000).toFixed(8);
     };
 
-    // Function to fetch neurons directly from SNS
+    // Function to fetch neurons directly from SNS using global context
     const fetchNeuronsFromSns = async () => {
         if (!selectedSnsRoot) return [];
-        const selectedSns = getSnsById(selectedSnsRoot);
-        if (!selectedSns) return [];
-        return await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
+        return await fetchNeuronsForSns(selectedSnsRoot);
     };
 
     const getProposalStatus = (data) => {
@@ -967,6 +967,8 @@ function Proposal() {
                             onVoteSuccess={() => {
                                 // Refresh proposal data after successful vote
                                 fetchProposalData();
+                                // Refresh neurons data to update voting power
+                                refreshNeurons(selectedSnsRoot);
                             }}
                         />
                     )}
