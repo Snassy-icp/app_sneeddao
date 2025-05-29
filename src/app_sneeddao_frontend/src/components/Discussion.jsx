@@ -85,6 +85,80 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
     );
 };
 
+// Separate EditForm component to prevent PostComponent re-renders
+const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdit }) => {
+    const [title, setTitle] = useState(initialTitle || '');
+    const [body, setBody] = useState(initialBody || '');
+    
+    return (
+        <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
+            <h4 style={{ color: '#f39c12', marginBottom: '10px' }}>Edit Post</h4>
+            <input
+                type="text"
+                placeholder="Post Title (optional)"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                style={{
+                    width: '100%',
+                    backgroundColor: '#2a2a2a',
+                    border: '1px solid #4a4a4a',
+                    borderRadius: '4px',
+                    color: '#ffffff',
+                    padding: '10px',
+                    fontSize: '14px',
+                    marginBottom: '10px'
+                }}
+            />
+            <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Post content..."
+                style={{
+                    width: '100%',
+                    minHeight: '100px',
+                    backgroundColor: '#2a2a2a',
+                    border: '1px solid #4a4a4a',
+                    borderRadius: '4px',
+                    color: '#ffffff',
+                    padding: '10px',
+                    fontSize: '14px',
+                    resize: 'vertical',
+                    marginBottom: '10px'
+                }}
+            />
+            <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                    onClick={() => onSubmit(title, body)}
+                    disabled={!body.trim() || submittingEdit}
+                    style={{
+                        padding: '8px 16px',
+                        backgroundColor: (body.trim() && !submittingEdit) ? '#f39c12' : '#333',
+                        color: (body.trim() && !submittingEdit) ? 'white' : '#666',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: (body.trim() && !submittingEdit) ? 'pointer' : 'not-allowed'
+                    }}
+                >
+                    {submittingEdit ? 'Updating...' : 'Update Post'}
+                </button>
+                <button
+                    onClick={onCancel}
+                    style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#666',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                    }}
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>
+    );
+};
+
 function Discussion({ 
     forumActor, 
     currentProposalId, 
@@ -117,7 +191,6 @@ function Discussion({
     
     // State for editing posts
     const [editingPost, setEditingPost] = useState(null);
-    const [editFormData, setEditFormData] = useState({ title: '', body: '' });
     const [submittingEdit, setSubmittingEdit] = useState(false);
     
     // State for view mode and interactions
@@ -995,71 +1068,13 @@ function Discussion({
 
                                 {/* Edit Form */}
                                 {editingPost === Number(post.id) && (
-                                    <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
-                                        <h4 style={{ color: '#f39c12', marginBottom: '10px' }}>Edit Post</h4>
-                                        <input
-                                            type="text"
-                                            placeholder="Post Title (optional)"
-                                            value={editFormData.title}
-                                            onChange={(e) => setEditFormData({...editFormData, title: e.target.value})}
-                                            style={{
-                                                width: '100%',
-                                                backgroundColor: '#2a2a2a',
-                                                border: '1px solid #4a4a4a',
-                                                borderRadius: '4px',
-                                                color: '#ffffff',
-                                                padding: '10px',
-                                                fontSize: '14px',
-                                                marginBottom: '10px'
-                                            }}
-                                        />
-                                        <textarea
-                                            value={editFormData.body}
-                                            onChange={(e) => setEditFormData({...editFormData, body: e.target.value})}
-                                            placeholder="Post content..."
-                                            style={{
-                                                width: '100%',
-                                                minHeight: '100px',
-                                                backgroundColor: '#2a2a2a',
-                                                border: '1px solid #4a4a4a',
-                                                borderRadius: '4px',
-                                                color: '#ffffff',
-                                                padding: '10px',
-                                                fontSize: '14px',
-                                                resize: 'vertical',
-                                                marginBottom: '10px'
-                                            }}
-                                        />
-                                        <div style={{ display: 'flex', gap: '10px' }}>
-                                            <button
-                                                onClick={submitEditPost}
-                                                disabled={!editFormData.body.trim() || submittingEdit}
-                                                style={{
-                                                    padding: '8px 16px',
-                                                    backgroundColor: (editFormData.body.trim() && !submittingEdit) ? '#f39c12' : '#333',
-                                                    color: (editFormData.body.trim() && !submittingEdit) ? 'white' : '#666',
-                                                    border: 'none',
-                                                    borderRadius: '4px',
-                                                    cursor: (editFormData.body.trim() && !submittingEdit) ? 'pointer' : 'not-allowed'
-                                                }}
-                                            >
-                                                {submittingEdit ? 'Updating...' : 'Update Post'}
-                                            </button>
-                                            <button
-                                                onClick={cancelEditPost}
-                                                style={{
-                                                    padding: '8px 16px',
-                                                    backgroundColor: '#666',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    borderRadius: '4px',
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                Cancel
-                                            </button>
-                                        </div>
-                                    </div>
+                                    <EditForm 
+                                        initialTitle={post.title || ''}
+                                        initialBody={post.body || ''}
+                                        onSubmit={submitEditPost}
+                                        onCancel={cancelEditPost}
+                                        submittingEdit={submittingEdit}
+                                    />
                                 )}
                             </>
                         )}
@@ -1081,7 +1096,7 @@ function Discussion({
                 )}
             </div>
         );
-    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo, hotkeyNeurons, votingStates, userVotes, submittingComment, editingPost, editFormData, submittingEdit, isAdmin, identity]);
+    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo, hotkeyNeurons, votingStates, userVotes, submittingComment, editingPost, submittingEdit, isAdmin, identity]);
 
     // Effect to fetch discussion when props change
     useEffect(() => {
@@ -1239,28 +1254,23 @@ function Discussion({
     // Function to start editing a post
     const startEditPost = (post) => {
         setEditingPost(Number(post.id));
-        setEditFormData({
-            title: post.title || '',
-            body: post.body || ''
-        });
     };
 
     // Function to cancel editing
     const cancelEditPost = () => {
         setEditingPost(null);
-        setEditFormData({ title: '', body: '' });
     };
 
     // Function to submit post edit
-    const submitEditPost = async () => {
+    const submitEditPost = async (title, body) => {
         if (!forumActor || !editingPost) return;
         
         setSubmittingEdit(true);
         try {
             const result = await forumActor.edit_post(
                 Number(editingPost),
-                editFormData.title,
-                editFormData.body
+                title,
+                body
             );
             
             if ('ok' in result) {
