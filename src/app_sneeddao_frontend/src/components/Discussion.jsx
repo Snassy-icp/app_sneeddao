@@ -18,7 +18,8 @@ function Discussion({
     const { identity } = useAuth();
     
     // State for discussion
-    const [discussionThread, setDiscussionThread] = useState(null);
+    const [discussionThread, setDiscussionThread] = useState(null); // Thread mapping
+    const [threadDetails, setThreadDetails] = useState(null); // Actual thread details
     const [discussionPosts, setDiscussionPosts] = useState([]);
     const [loadingDiscussion, setLoadingDiscussion] = useState(false);
     const [commentText, setCommentText] = useState('');
@@ -41,8 +42,9 @@ function Discussion({
     const [userVotes, setUserVotes] = useState({}); // postId -> { vote_type, voting_power }
     const [hotkeyNeurons, setHotkeyNeurons] = useState([]);
     const [loadingNeurons, setLoadingNeurons] = useState(false);
+    const [retractingStates, setRetractingStates] = useState({});
 
-    // Fetch discussion thread
+    // Fetch discussion thread and thread details
     const fetchDiscussionThread = async () => {
         if (!forumActor || !currentProposalId || !selectedSnsRoot) return;
         
@@ -66,20 +68,38 @@ function Discussion({
                 if (mapping && mapping.thread_id) {
                     console.log('Found thread mapping:', mapping);
                     setDiscussionThread(mapping);
+                    
+                    // Fetch the actual thread details
+                    try {
+                        const threadDetails = await forumActor.get_thread(Number(mapping.thread_id));
+                        console.log('Thread details result:', threadDetails);
+                        if (threadDetails && threadDetails.length > 0) {
+                            setThreadDetails(threadDetails[0]);
+                        } else {
+                            setThreadDetails(null);
+                        }
+                    } catch (threadErr) {
+                        console.error('Error fetching thread details:', threadErr);
+                        setThreadDetails(null);
+                    }
+                    
                     await fetchDiscussionPosts(Number(mapping.thread_id));
                 } else {
                     console.log('No valid thread mapping found');
                     setDiscussionThread(null);
+                    setThreadDetails(null);
                     setDiscussionPosts([]);
                 }
             } else {
                 console.log('No thread mapping found for proposal ID:', currentProposalId);
                 setDiscussionThread(null);
+                setThreadDetails(null);
                 setDiscussionPosts([]);
             }
         } catch (err) {
             console.error('Error fetching discussion thread:', err);
             setDiscussionThread(null);
+            setThreadDetails(null);
             setDiscussionPosts([]);
         } finally {
             setLoadingDiscussion(false);
@@ -222,15 +242,16 @@ function Discussion({
     };
 
     // Helper function to derive display title for presentation
-    const getDerivedTitle = (post, parentPost = null, thread = null) => {
+    const getDerivedTitle = (post, parentPost = null) => {
         // Debug logging
         console.log('getDerivedTitle called with:', {
             postId: post.id,
             postTitle: post.title,
             hasParentPost: !!parentPost,
             parentPostId: parentPost?.id,
-            threadTitle: thread?.title,
-            threadId: thread?.id
+            threadDetailsTitle: threadDetails?.title,
+            threadDetailsId: threadDetails?.id,
+            fullThreadDetails: threadDetails
         });
         
         // If post has an explicit title, use it
@@ -258,7 +279,7 @@ function Discussion({
                     
                     if (grandparentPost) {
                         // Recursively get the derived title from the grandparent
-                        const ancestorTitle = getDerivedTitle(parentPost, grandparentPost, thread);
+                        const ancestorTitle = getDerivedTitle(parentPost, grandparentPost);
                         // If the ancestor title already starts with "Re: ", use it as is
                         if (ancestorTitle.startsWith('Re: ')) {
                             return ancestorTitle;
@@ -267,10 +288,10 @@ function Discussion({
                         }
                     } else {
                         // No grandparent found, fall back to thread title
-                        if (thread && thread.title && thread.title.length > 0) {
-                            return `Re: ${thread.title[0]}`;
+                        if (threadDetails && threadDetails.title && threadDetails.title.length > 0) {
+                            return `Re: ${threadDetails.title[0]}`;
                         } else {
-                            return `Re: Thread #${thread?.id || 'Unknown'}`;
+                            return `Re: Thread #${threadDetails?.id || discussionThread?.thread_id || 'Unknown'}`;
                         }
                     }
                 }
@@ -278,21 +299,21 @@ function Discussion({
                 // No parent post provided, try to find it
                 const foundParent = findPostById(discussionPosts, post.reply_to_post_id[0]);
                 if (foundParent) {
-                    return getDerivedTitle(post, foundParent, thread);
+                    return getDerivedTitle(post, foundParent);
                 } else {
                     // Parent not found, fall back to thread title
-                    if (thread && thread.title && thread.title.length > 0) {
-                        return `Re: ${thread.title[0]}`;
+                    if (threadDetails && threadDetails.title && threadDetails.title.length > 0) {
+                        return `Re: ${threadDetails.title[0]}`;
                     } else {
-                        return `Re: Thread #${thread?.id || 'Unknown'}`;
+                        return `Re: Thread #${threadDetails?.id || discussionThread?.thread_id || 'Unknown'}`;
                     }
                 }
             }
         }
         
         // If it's a top-level post in a thread
-        if (thread && thread.title && thread.title.length > 0) {
-            return `Re: ${thread.title[0]}`;
+        if (threadDetails && threadDetails.title && threadDetails.title.length > 0) {
+            return `Re: ${threadDetails.title[0]}`;
         }
         
         // Fallback
@@ -551,7 +572,7 @@ function Discussion({
             : null;
         
         // Get the derived display title for this post
-        const displayTitle = getDerivedTitle(post, parentPost, discussionThread);
+        const displayTitle = getDerivedTitle(post, parentPost);
         const hasExplicitTitle = post.title && post.title.length > 0;
         
         return (
@@ -599,7 +620,7 @@ function Discussion({
                                             const parentParentPost = parentPost.reply_to_post_id && parentPost.reply_to_post_id.length > 0 
                                                 ? findPostById(discussionPosts, parentPost.reply_to_post_id[0])
                                                 : null;
-                                            const parentDerivedTitle = getDerivedTitle(parentPost, parentParentPost, discussionThread);
+                                            const parentDerivedTitle = getDerivedTitle(parentPost, parentParentPost);
                                             return <span>: {parentDerivedTitle}</span>;
                                         })()}
                                     </span>
@@ -971,6 +992,38 @@ function Discussion({
                                             </>
                                         )}
                                     </div>
+                                </div>
+                            )}
+                            
+                            {/* Thread Title and Description */}
+                            {threadDetails && (
+                                <div style={{ 
+                                    backgroundColor: '#1a1a1a', 
+                                    padding: '15px', 
+                                    borderRadius: '6px', 
+                                    marginBottom: '20px',
+                                    border: '1px solid #4a4a4a'
+                                }}>
+                                    {threadDetails.title && threadDetails.title.length > 0 && (
+                                        <h3 style={{ 
+                                            color: '#ffffff', 
+                                            margin: '0 0 10px 0', 
+                                            fontSize: '18px',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            {threadDetails.title[0]}
+                                        </h3>
+                                    )}
+                                    {threadDetails.body && (
+                                        <div style={{ 
+                                            color: '#cccccc', 
+                                            fontSize: '14px',
+                                            lineHeight: '1.5',
+                                            whiteSpace: 'pre-wrap'
+                                        }}>
+                                            {threadDetails.body}
+                                        </div>
+                                    )}
                                 </div>
                             )}
                             
