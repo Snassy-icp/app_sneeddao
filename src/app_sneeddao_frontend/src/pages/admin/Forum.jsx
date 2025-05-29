@@ -210,14 +210,14 @@ export default function Forum() {
   // Helper function to derive display titles for posts (same logic as Discussion.jsx)
   const getDerivedTitle = (post, parentPost = null, thread = null) => {
     // If post has an explicit title, use it
-    if (post.title && post.title.trim()) {
-      return post.title.trim();
+    if (post.title && post.title.length > 0) {
+      return post.title[0];
     }
     
     // If it's a reply to another post
     if (post.reply_to_post_id && post.reply_to_post_id.length > 0 && parentPost) {
-      if (parentPost.title && parentPost.title.trim()) {
-        return `Re: ${parentPost.title.trim()}`;
+      if (parentPost.title && parentPost.title.length > 0) {
+        return `Re: ${parentPost.title[0]}`;
       } else {
         // Parent post doesn't have a title, derive it recursively
         const parentDerivedTitle = getDerivedTitle(parentPost, null, thread);
@@ -226,8 +226,8 @@ export default function Forum() {
     }
     
     // If it's a top-level post in a thread
-    if (thread && thread.title && thread.title.trim()) {
-      return `Re: ${thread.title.trim()}`;
+    if (thread && thread.title && thread.title.length > 0) {
+      return `Re: ${thread.title[0]}`;
     }
     
     // Fallback
