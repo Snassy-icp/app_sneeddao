@@ -680,7 +680,7 @@ const HotkeyNeurons = ({
                         
                         <div style={{marginTop: showVotingStats ? '20px' : '0'}}>
                             {(hotkeyNeurons?.neurons_by_owner || []).map(([owner, neurons], index) => (
-                                <div key={owner.toText()} style={{
+                                <div key={owner} style={{
                                     backgroundColor: '#3a3a3a',
                                     borderRadius: '6px',
                                     padding: '15px',
@@ -693,7 +693,7 @@ const HotkeyNeurons = ({
                                         marginBottom: '10px'
                                     }}>
                                         <span>Owner:</span>
-                                        <span style={{fontFamily: 'monospace'}}>{owner.toText()}</span>
+                                        <span style={{fontFamily: 'monospace'}}>{owner}</span>
                                     </div>
                                     <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
                                         {neurons.map((neuron, neuronIndex) => (
