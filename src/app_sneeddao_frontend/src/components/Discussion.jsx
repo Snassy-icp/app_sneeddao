@@ -760,7 +760,7 @@ function Discussion({
                                 fontSize: '14px'
                             }}>
                                 <span style={{ color: score > 0 ? '#2ecc71' : score < 0 ? '#e74c3c' : '#888' }}>
-                                    {score > 0 ? '+' : ''}{score}
+                                    {votingStates[post.id.toString()] === 'voting' ? '⟳' : (score > 0 ? '+' : '') + score}
                                 </span>
                                 <span style={{ color: '#2ecc71' }}>↑{post.upvote_score}</span>
                                 <span style={{ color: '#e74c3c' }}>↓{post.downvote_score}</span>
@@ -940,17 +940,17 @@ function Discussion({
                                     <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
                                         <button
                                             onClick={() => submitReply(post.id, replyTextRef.current)}
-                                            disabled={!replyTextRef.current?.trim()}
+                                            disabled={!replyTextRef.current?.trim() || submittingComment}
                                             style={{
                                                 padding: '8px 16px',
-                                                backgroundColor: replyTextRef.current?.trim() ? '#4CAF50' : '#333',
-                                                color: replyTextRef.current?.trim() ? 'white' : '#666',
+                                                backgroundColor: (replyTextRef.current?.trim() && !submittingComment) ? '#4CAF50' : '#333',
+                                                color: (replyTextRef.current?.trim() && !submittingComment) ? 'white' : '#666',
                                                 border: 'none',
                                                 borderRadius: '4px',
-                                                cursor: replyTextRef.current?.trim() ? 'pointer' : 'not-allowed'
+                                                cursor: (replyTextRef.current?.trim() && !submittingComment) ? 'pointer' : 'not-allowed'
                                             }}
                                         >
-                                            Submit Reply
+                                            {submittingComment ? 'Submitting...' : 'Submit Reply'}
                                         </button>
                                         <button
                                             onClick={() => {
