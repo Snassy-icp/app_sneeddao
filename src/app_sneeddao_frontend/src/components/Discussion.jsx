@@ -682,8 +682,13 @@ function Discussion({
     const PostComponent = useCallback(({ post, depth = 0, isFlat = false }) => {
         const score = calculatePostScore(post);
         const isNegative = score < 0;
-        const isManuallyCollapsed = collapsedPosts.has(Number(post.id));
-        const isCollapsed = isManuallyCollapsed || (isNegative && !collapsedPosts.has(Number(post.id)));
+        const hasBeenManuallyToggled = collapsedPosts.has(Number(post.id));
+        
+        // Default state: negative posts are collapsed, positive posts are expanded
+        // If manually toggled, use the opposite of the default state
+        const defaultCollapsed = isNegative;
+        const isCollapsed = hasBeenManuallyToggled ? !defaultCollapsed : defaultCollapsed;
+        
         const isReplying = replyingTo === Number(post.id);
         
         // Find parent post if this is a reply
