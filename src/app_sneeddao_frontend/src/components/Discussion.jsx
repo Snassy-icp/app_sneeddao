@@ -860,7 +860,6 @@ function Discussion({
 
     return (
         <div style={{ marginTop: '20px' }}>
-            <h2 style={{ color: '#ffffff', marginBottom: '15px' }}>Discussion</h2>
             
             {loadingDiscussion ? (
                 <div style={{ 
@@ -876,7 +875,6 @@ function Discussion({
                 <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px' }}>
                     {discussionThread && (
                         <div style={{ marginBottom: '20px' }}>
-                            <h3 style={{ color: '#ffffff', marginBottom: '15px' }}>Discussion</h3>
                             
                             {/* Voting Status Indicator */}
                             {isAuthenticated && (
