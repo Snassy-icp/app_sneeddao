@@ -10,6 +10,9 @@ import Text "mo:base/Text";
 import Blob "mo:base/Blob";
 import Nat "mo:base/Nat";
 import Vector "mo:vector";
+import Nat64 "mo:base/Nat64";
+import Debug "mo:base/Debug";
+import SnsUtil "../SnsUtil";
 
 import T "Types";
 
@@ -26,6 +29,310 @@ module {
     public type ForumError = T.ForumError;
     public type Result<A, B> = T.Result<A, B>;
     public type AdminInfo = T.AdminInfo;
+    public type SnsCache = T.SnsCache;
+    public type DeployedSns = T.DeployedSns;
+    public type ListDeployedSnsesResponse = T.ListDeployedSnsesResponse;
+    public type NNSSnsWCanister = T.NNSSnsWCanister;
+
+
+
+    // Constants
+    private let NNS_SNS_W_CANISTER_ID = "qaa6y-5yaaa-aaaaa-aaafa-cai"; // NNS SNS-W canister
+    private let CACHE_EXPIRY_NANOSECONDS = 86400000000000; // 24 hours in nanoseconds
+
+    // SNS cache management functions
+    public func is_cache_expired(cache: ?SnsCache, current_time: Int) : Bool {
+        switch (cache) {
+            case (?c) {
+                (current_time - c.last_updated) > CACHE_EXPIRY_NANOSECONDS
+            };
+            case null true;
+        }
+    };
+
+    public func refresh_sns_cache(current_time: Int) : async ?SnsCache {
+        try {
+            let nns_sns_w : NNSSnsWCanister = actor(NNS_SNS_W_CANISTER_ID);
+            let response = await nns_sns_w.list_deployed_snses({});
+            
+            ?{
+                instances = response.instances;
+                last_updated = current_time;
+            }
+        } catch (error) {
+            null
+        }
+    };
+
+    public func get_governance_canister_from_cache(cache: ?SnsCache, root_canister_id: Principal) : ?Principal {
+        switch (cache) {
+            case (?c) {
+                for (instance in c.instances.vals()) {
+                    switch (instance.root_canister_id) {
+                        case (?root_id) {
+                            if (Principal.equal(root_id, root_canister_id)) {
+                                return instance.governance_canister_id;
+                            };
+                        };
+                        case null {};
+                    };
+                };
+                null
+            };
+            case null null;
+        }
+    };
+
+    public func ensure_sns_cache(cache: ?SnsCache, current_time: Int) : async ?SnsCache {
+        if (is_cache_expired(cache, current_time)) {
+            await refresh_sns_cache(current_time)
+        } else {
+            cache
+        }
+    };
+
+    // Utility function to get SNS governance canister ID from forum
+    public func get_governance_canister_id_from_forum(state: ForumState, forum_id: Nat, cache: ?SnsCache, current_time: Int) : async (?Principal, ?SnsCache) {
+        switch (get_forum(state, forum_id)) {
+            case (?forum_response) {
+                switch (forum_response.sns_root_canister_id) {
+                    case (?sns_root) {
+                        let updated_cache = await ensure_sns_cache(cache, current_time);
+                        switch (updated_cache) {
+                            case (?fresh_cache) {
+                                let governance_id = get_governance_canister_from_cache(?fresh_cache, sns_root);
+                                (governance_id, ?fresh_cache)
+                            };
+                            case null (null, cache);
+                        };
+                    };
+                    case null (null, cache);
+                };
+            };
+            case null (null, cache);
+        };
+    };
+
+    // Utility function to get governance canister ID from thread hierarchy
+    public func get_governance_canister_id_from_thread(state: ForumState, thread_id: Nat, cache: ?SnsCache, current_time: Int) : async (?Principal, ?SnsCache) {
+        switch (get_thread(state, thread_id)) {
+            case (?thread_response) {
+                switch (get_topic(state, thread_response.topic_id)) {
+                    case (?topic_response) {
+                        await get_governance_canister_id_from_forum(state, topic_response.forum_id, cache, current_time)
+                    };
+                    case null (null, cache);
+                };
+            };
+            case null (null, cache);
+        }
+    };
+
+    // Utility function to get governance canister ID from post hierarchy
+    public func get_governance_canister_id_from_post(state: ForumState, post_id: Nat, cache: ?SnsCache, current_time: Int) : async (?Principal, ?SnsCache) {
+        switch (get_post(state, post_id)) {
+            case (?post_response) {
+                switch (get_thread(state, post_response.thread_id)) {
+                    case (?thread_response) {
+                        switch (get_topic(state, thread_response.topic_id)) {
+                            case (?topic_response) {
+                                await get_governance_canister_id_from_forum(state, topic_response.forum_id, cache, current_time)
+                            };
+                            case null (null, cache);
+                        };
+                    };
+                    case null (null, cache);
+                };
+            };
+            case null (null, cache);
+        }
+    };
+
+    // Utility function to calculate total voting power for a caller
+    public func calculate_caller_total_voting_power(governance_canister_id: Principal, caller: Principal) : async Nat {
+        try {
+            let reachable_neurons = await SnsUtil.get_reachable_neurons(governance_canister_id, caller);
+            
+            var total_voting_power = 0;
+            for (neuron in reachable_neurons.vals()) {
+                let neuron_power = await SnsUtil.get_neuron_voting_power(governance_canister_id, neuron);
+                total_voting_power += neuron_power;
+            };
+            
+            total_voting_power
+        } catch (error) {
+            0
+        }
+    };
+
+    // New create_post function that handles SNS integration internally
+    public func create_post_with_sns(
+        state: ForumState,
+        caller: Principal,
+        input: T.CreatePostInput,
+        cache: ?SnsCache,
+        current_time: Int
+    ) : async (T.Result<Nat, T.ForumError>, ?SnsCache) {
+        let (governance_canister_id_opt, updated_cache) = await get_governance_canister_id_from_thread(state, input.thread_id, cache, current_time);
+        
+        switch (governance_canister_id_opt) {
+            case (?governance_canister_id) {
+                try {
+                    // Get all reachable neurons for the caller using SnsUtil
+                    let reachable_neurons = await SnsUtil.get_reachable_neurons(governance_canister_id, caller);
+                    
+                    if (reachable_neurons.size() == 0) {
+                        return (#err(#Unauthorized("No accessible neurons found")), updated_cache);
+                    };
+                    
+                    // Get system parameters once for efficiency
+                    let system_parameters = await SnsUtil.get_system_parameters(governance_canister_id);
+                    
+                    // Calculate total voting power from all reachable neurons
+                    var total_voting_power : Nat = 0;
+                    for (neuron in reachable_neurons.vals()) {
+                        let voting_power = SnsUtil.calculate_neuron_voting_power(neuron, system_parameters);
+                        total_voting_power += voting_power;
+                    };
+                    
+                    if (total_voting_power == 0) {
+                        return (#err(#Unauthorized("No voting power available")), updated_cache);
+                    };
+                    
+                    // Create the post with the total voting power as initial upvote score
+                    (create_post(state, caller, input, total_voting_power), updated_cache)
+                } catch (error) {
+                    (#err(#InternalError("Failed to process SNS post creation")), updated_cache)
+                }
+            };
+            case null {
+                (#err(#InternalError("No SNS governance canister found")), updated_cache)
+            };
+        }
+    };
+
+    // New vote_on_post function that handles SNS integration internally
+    public func vote_on_post_with_sns(
+        state: ForumState,
+        caller: Principal,
+        post_id: Nat,
+        vote_type: VoteType,
+        cache: ?SnsCache,
+        current_time: Int
+    ) : async (T.Result<(), T.ForumError>, ?SnsCache) {
+        // Get the governance canister ID for this post
+        let (governance_canister_id_opt, updated_cache) = await get_governance_canister_id_from_post(state, post_id, cache, current_time);
+        
+        switch (governance_canister_id_opt) {
+            case (?governance_canister_id) {
+                try {
+                    // Get all reachable neurons for the caller using SnsUtil
+                    let reachable_neurons = await SnsUtil.get_reachable_neurons(governance_canister_id, caller);
+                    
+                    if (reachable_neurons.size() == 0) {
+                        return (#err(#Unauthorized("No accessible neurons found")), updated_cache);
+                    };
+                    
+                    // Get system parameters once for efficiency
+                    let system_parameters = await SnsUtil.get_system_parameters(governance_canister_id);
+                    
+                    // Calculate total voting power and create votes for each neuron
+                    var total_voting_power : Nat = 0;
+                    let votes_buffer = Buffer.Buffer<(T.NeuronId, Nat)>(reachable_neurons.size());
+                    
+                    for (neuron in reachable_neurons.vals()) {
+                        switch (neuron.id) {
+                            case (?neuron_id) {
+                                let voting_power = SnsUtil.calculate_neuron_voting_power(neuron, system_parameters);
+                                if (voting_power > 0) {
+                                    total_voting_power += voting_power;
+                                    votes_buffer.add((neuron_id, voting_power));
+                                };
+                            };
+                            case null {};
+                        };
+                    };
+                    
+                    if (total_voting_power == 0) {
+                        return (#err(#Unauthorized("No voting power available")), updated_cache);
+                    };
+                    
+                    // Create individual votes for each neuron with voting power
+                    let votes_to_create = Buffer.toArray(votes_buffer);
+                    for ((neuron_id, voting_power) in votes_to_create.vals()) {
+                        switch (vote_on_post(state, caller, post_id, neuron_id, vote_type, voting_power)) {
+                            case (#err(e)) {
+                                // If any vote fails, return the error
+                                return (#err(e), updated_cache);
+                            };
+                            case (#ok()) {};
+                        };
+                    };
+                    
+                    (#ok(), updated_cache)
+                } catch (error) {
+                    (#err(#InternalError("Failed to process SNS voting")), updated_cache)
+                }
+            };
+            case null {
+                (#err(#InternalError("No SNS governance canister found")), updated_cache)
+            };
+        }
+    };
+
+    // New retract_vote function that handles SNS integration internally
+    public func retract_vote_with_sns(
+        state: ForumState,
+        caller: Principal,
+        post_id: Nat,
+        cache: ?SnsCache,
+        current_time: Int
+    ) : async (Result<(), ForumError>, ?SnsCache) {
+        // Get the governance canister ID for this post
+        let (governance_canister_id_opt, updated_cache) = await get_governance_canister_id_from_post(state, post_id, cache, current_time);
+        
+        switch (governance_canister_id_opt) {
+            case (?governance_canister_id) {
+                try {
+                    // Get all reachable neurons for the caller using SnsUtil
+                    let reachable_neurons = await SnsUtil.get_reachable_neurons(governance_canister_id, caller);
+                    
+                    if (reachable_neurons.size() == 0) {
+                        return (#err(#Unauthorized("No accessible neurons found")), updated_cache);
+                    };
+                    
+                    // Retract votes for each neuron that has an existing vote
+                    var votes_retracted = false;
+                    for (neuron in reachable_neurons.vals()) {
+                        switch (neuron.id) {
+                            case (?neuron_id) {
+                                switch (retract_vote(state, caller, post_id, neuron_id)) {
+                                    case (#ok()) {
+                                        votes_retracted := true;
+                                    };
+                                    case (#err(_)) {
+                                        // Vote doesn't exist for this neuron, continue
+                                    };
+                                };
+                            };
+                            case null {};
+                        };
+                    };
+                    
+                    if (votes_retracted) {
+                        (#ok(), updated_cache)
+                    } else {
+                        (#err(#NotFound("No votes found to retract")), updated_cache)
+                    }
+                } catch (error) {
+                    (#err(#InternalError("Failed to process SNS vote retraction")), updated_cache)
+                }
+            };
+            case null {
+                (#err(#InternalError("No SNS governance canister found")), updated_cache)
+            };
+        }
+    };
 
     // Hash utilities for VoteKey
     private let vote_key_hash_utils = (T.vote_key_hash, T.vote_key_equal);
@@ -631,7 +938,7 @@ module {
     };
 
     // Voting operations
-    public func vote_on_post(
+    private func vote_on_post(
         state: ForumState,
         caller: Principal,
         post_id: Nat,
@@ -646,7 +953,7 @@ module {
         };
 
         let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
-        let neuron_index = Dedup.getOrCreateIndex(state.neuron_dedup_state, Principal.toBlob(Principal.fromText("neuron:" # debug_show(neuron_id))));
+        let neuron_index = Dedup.getOrCreateIndex(state.neuron_dedup_state, neuron_id.id);
         
         let vote_key : VoteKey = (post_id, neuron_index);
         let now = Time.now();
@@ -763,9 +1070,8 @@ module {
         #ok()
     };
 
-    public func retract_vote(
+    private func retract_vote(
         state: ForumState,
-        caller: Principal,
         post_id: Nat,
         neuron_id: NeuronId
     ) : Result<(), ForumError> {
@@ -775,7 +1081,7 @@ module {
             case null return #err(#NotFound("Post not found"));
         };
 
-        let neuron_index = Dedup.getOrCreateIndex(state.neuron_dedup_state, Principal.toBlob(Principal.fromText("neuron:" # debug_show(neuron_id))));
+        let neuron_index = Dedup.getOrCreateIndex(state.neuron_dedup_state, neuron_id.id);
         
         let vote_key : VoteKey = (post_id, neuron_index);
 

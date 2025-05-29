@@ -8,6 +8,60 @@ import Nat32 "mo:base/Nat32";
 import Vector "mo:vector";
 
 module {
+    // SNS cache types
+    public type DeployedSns = {
+        root_canister_id : ?Principal;
+        governance_canister_id : ?Principal;
+        index_canister_id : ?Principal;
+        swap_canister_id : ?Principal;
+        ledger_canister_id : ?Principal;
+    };
+
+    public type ListDeployedSnsesResponse = {
+        instances : [DeployedSns];
+    };
+
+    public type NNSSnsWCanister = actor {
+        list_deployed_snses : ({}) -> async ListDeployedSnsesResponse;
+    };
+
+    public type SnsCache = {
+        instances: [DeployedSns];
+        last_updated: Int;
+    };
+
+    // SNS Governance canister interface for voting power validation
+    public type NeuronPermission = {
+        principal: ?Principal;
+        permission_type: [Int32];
+    };
+
+    public type Neuron = {
+        id: ?NeuronId;
+        permissions: [NeuronPermission];
+        cached_neuron_stake_e8s: Nat64;
+        neuron_fees_e8s: Nat64;
+        created_timestamp_seconds: Nat64;
+        aging_since_timestamp_seconds: Nat64;
+        voting_power_percentage_multiplier: Nat64;
+        dissolve_delay_seconds: Nat64;
+        followees: [(Int32, { followees: [NeuronId] })];
+    };
+
+    public type ListNeuronsResponse = {
+        neurons: [SNSNeuron];
+    };
+
+    public type SNSGovernanceCanister = actor {
+        list_neurons: ({
+            of_principal: ?Principal;
+            limit: Nat32;
+            start_page_at: ?NeuronId;
+        }) -> async ListNeuronsResponse;
+        
+        get_neuron: (NeuronId) -> async ?Neuron;
+    };
+
     // Basic types from SNS governance
     public type NeuronId = {
         id: Blob;
@@ -289,10 +343,6 @@ module {
         created_timestamp_seconds: Nat64;
         aging_since_timestamp_seconds: Nat64;
         voting_power_percentage_multiplier: Nat64;
-    };
-
-    public type ListNeuronsResponse = {
-        neurons: [SNSNeuron];
     };
 
     // Error types
