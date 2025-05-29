@@ -166,52 +166,8 @@ module {
                         return (#err(#Unauthorized("No accessible neurons found")), updated_cache);
                     };
                     
-                    let system_parameters = await SnsUtil.get_system_parameters(governance_canister_id);
-                    
-                    var total_voting_power: Nat = 0;
-                    let neuron_voting_powers = Buffer.Buffer<(T.NeuronId, Nat)>(reachable_neurons.size());
-                    
-                    for (neuron in reachable_neurons.vals()) {
-                        switch (neuron.id) {
-                            case (?neuron_id) {
-                                let voting_power = SnsUtil.calculate_neuron_voting_power(neuron, system_parameters);
-                                if (voting_power > 0) {
-                                    total_voting_power += voting_power;
-                                    neuron_voting_powers.add((neuron_id, voting_power));
-                                };
-                            };
-                            case null { };
-                        };
-                    };
-                    
-                    if (total_voting_power == 0) {
-                        return (#err(#Unauthorized("No voting power available")), updated_cache);
-                    };
-                    
-                    let post_id = create_post(state, caller, thread_id, reply_to_post_id, title, body, total_voting_power, Time.now());
-                    
-                    switch (post_id) {
-                        case (#ok(id)) {
-                            let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
-                            for ((neuron_id, voting_power) in neuron_voting_powers.vals()) {
-                                let neuron_index = Dedup.getOrCreateIndex(state.neuron_dedup_state, neuron_id.id);
-                                let vote_key : VoteKey = (id, neuron_index);
-
-                                let vote : Vote = {
-                                    post_id = id;
-                                    neuron_id = neuron_index;
-                                    voter_principal = caller_index;
-                                    vote_type = #upvote;
-                                    voting_power;
-                                    created_at = Time.now();
-                                    updated_at = Time.now();
-                                };
-                                
-                                ignore Map.put(state.votes, vote_key_hash_utils, vote_key, vote);
-                            };
-                        };
-                        case (#err(_)) { };
-                    };
+                    // Just create the post with 0 initial voting power - voting will be done separately
+                    let post_id = create_post(state, caller, thread_id, reply_to_post_id, title, body, 0, Time.now());
                     
                     (post_id, updated_cache)
                 } catch (error) {
