@@ -200,9 +200,7 @@ function Discussion({
         try {
             const threadInput = {
                 proposal_id: Number(currentProposalId),
-                sns_root_canister_id: Principal.fromText(selectedSnsRoot),
-                title: [], // Backend will generate standardized title
-                body: "" // Backend will generate standardized description
+                sns_root_canister_id: Principal.fromText(selectedSnsRoot)
             };
 
             const result = await forumActor.create_proposal_thread(threadInput);

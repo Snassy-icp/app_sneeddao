@@ -239,8 +239,6 @@ module {
     public type CreateProposalThreadInput = {
         proposal_id: Nat;
         sns_root_canister_id: Principal;
-        title: ?Text;
-        body: Text;
     };
 
     // Response types with resolved data
