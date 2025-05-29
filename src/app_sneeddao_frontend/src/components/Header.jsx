@@ -341,116 +341,228 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         </div>
                     </div>
                 </div>
+                
+                {/* Neurons and Voting Power Display - Desktop (to the left of SNS dropdown) */}
+                {showSnsDropdown && isAuthenticated && (
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'flex-end',
+                        marginRight: '15px',
+                        fontSize: '12px',
+                        color: '#888',
+                        minWidth: '140px',
+                        '@media (max-width: 768px)': {
+                            display: 'none'
+                        }
+                    }}
+                    className="neurons-display-desktop">
+                        {/* Header to clarify this is about user's neurons */}
+                        <div style={{ 
+                            fontSize: '10px', 
+                            color: '#666', 
+                            marginBottom: '4px',
+                            textAlign: 'right'
+                        }}>
+                            Your Neurons
+                        </div>
+                        {neuronsLoading ? (
+                            <div style={{ color: '#888', fontStyle: 'italic' }}>
+                                Loading neurons...
+                            </div>
+                        ) : (
+                            <>
+                                {(() => {
+                                    const allNeurons = getAllNeurons();
+                                    const hotkeyNeurons = getHotkeyNeurons();
+                                    
+                                    // Calculate hotkeyed VP (only hotkeyed neurons) - using nervousSystemParameters
+                                    const hotkeyedVP = hotkeyNeurons.reduce((total, neuron) => {
+                                        try {
+                                            const votingPower = nervousSystemParameters ? 
+                                                calculateVotingPower(neuron, nervousSystemParameters) : 0;
+                                            return total + votingPower;
+                                        } catch (error) {
+                                            console.warn('Error calculating voting power for neuron:', neuron.id, error);
+                                            return total;
+                                        }
+                                    }, 0);
+                                    
+                                    // Calculate reachable VP (all neurons) - using nervousSystemParameters
+                                    const reachableVP = allNeurons.reduce((total, neuron) => {
+                                        try {
+                                            const votingPower = nervousSystemParameters ? 
+                                                calculateVotingPower(neuron, nervousSystemParameters) : 0;
+                                            return total + votingPower;
+                                        } catch (error) {
+                                            console.warn('Error calculating voting power for neuron:', neuron.id, error);
+                                            return total;
+                                        }
+                                    }, 0);
+                                    
+                                    return (
+                                        <>
+                                            {/* Hotkeyed neurons first */}
+                                            <div 
+                                                style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '8px',
+                                                    marginBottom: '2px'
+                                                }}
+                                                title="Neurons where you have hotkey permission - can vote on SNS proposals"
+                                            >
+                                                <span style={{ color: '#3498db' }}>
+                                                    {hotkeyNeurons.length} hotkeyed
+                                                </span>
+                                                <span style={{ color: '#666' }}>•</span>
+                                                <span style={{ color: '#3498db' }}>
+                                                    {nervousSystemParameters ? 
+                                                        formatVotingPower(hotkeyedVP) : 
+                                                        'Loading...'
+                                                    } VP
+                                                </span>
+                                            </div>
+                                            {/* Reachable neurons second */}
+                                            <div 
+                                                style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '8px'
+                                                }}
+                                                title="All neurons you can access (owned + hotkeyed) - for forum voting"
+                                            >
+                                                <span style={{ color: '#2ecc71' }}>
+                                                    {allNeurons.length} reachable
+                                                </span>
+                                                <span style={{ color: '#666' }}>•</span>
+                                                <span style={{ color: '#2ecc71' }}>
+                                                    {nervousSystemParameters ? 
+                                                        formatVotingPower(reachableVP) : 
+                                                        'Loading...'
+                                                    } VP
+                                                </span>
+                                            </div>
+                                        </>
+                                    );
+                                })()}
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
+            
+            {/* Mobile Neurons Display - Under logo/dropdown on narrow screens */}
+            {showSnsDropdown && isAuthenticated && (
+                <div style={{
+                    display: 'none',
+                    width: '100%',
+                    marginTop: '10px',
+                    padding: '10px',
+                    backgroundColor: 'rgba(42, 42, 42, 0.8)',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(255, 255, 255, 0.1)'
+                }}
+                className="neurons-display-mobile">
+                    <div style={{ 
+                        fontSize: '11px', 
+                        color: '#666', 
+                        marginBottom: '6px',
+                        textAlign: 'center'
+                    }}>
+                        Your Neurons
+                    </div>
+                    {neuronsLoading ? (
+                        <div style={{ color: '#888', fontStyle: 'italic', textAlign: 'center', fontSize: '12px' }}>
+                            Loading neurons...
+                        </div>
+                    ) : (
+                        <>
+                            {(() => {
+                                const allNeurons = getAllNeurons();
+                                const hotkeyNeurons = getHotkeyNeurons();
+                                
+                                // Calculate hotkeyed VP (only hotkeyed neurons) - using nervousSystemParameters
+                                const hotkeyedVP = hotkeyNeurons.reduce((total, neuron) => {
+                                    try {
+                                        const votingPower = nervousSystemParameters ? 
+                                            calculateVotingPower(neuron, nervousSystemParameters) : 0;
+                                        return total + votingPower;
+                                    } catch (error) {
+                                        console.warn('Error calculating voting power for neuron:', neuron.id, error);
+                                        return total;
+                                    }
+                                }, 0);
+                                
+                                // Calculate reachable VP (all neurons) - using nervousSystemParameters
+                                const reachableVP = allNeurons.reduce((total, neuron) => {
+                                    try {
+                                        const votingPower = nervousSystemParameters ? 
+                                            calculateVotingPower(neuron, nervousSystemParameters) : 0;
+                                        return total + votingPower;
+                                    } catch (error) {
+                                        console.warn('Error calculating voting power for neuron:', neuron.id, error);
+                                        return total;
+                                    }
+                                }, 0);
+                                
+                                return (
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-around',
+                                        fontSize: '12px'
+                                    }}>
+                                        {/* Hotkeyed neurons */}
+                                        <div 
+                                            style={{ 
+                                                display: 'flex', 
+                                                flexDirection: 'column',
+                                                alignItems: 'center',
+                                                gap: '2px'
+                                            }}
+                                            title="Neurons where you have hotkey permission - can vote on SNS proposals"
+                                        >
+                                            <span style={{ color: '#3498db' }}>
+                                                {hotkeyNeurons.length} hotkeyed
+                                            </span>
+                                            <span style={{ color: '#3498db' }}>
+                                                {nervousSystemParameters ? 
+                                                    formatVotingPower(hotkeyedVP) : 
+                                                    'Loading...'
+                                                } VP
+                                            </span>
+                                        </div>
+                                        {/* Reachable neurons */}
+                                        <div 
+                                            style={{ 
+                                                display: 'flex', 
+                                                flexDirection: 'column',
+                                                alignItems: 'center',
+                                                gap: '2px'
+                                            }}
+                                            title="All neurons you can access (owned + hotkeyed) - for forum voting"
+                                        >
+                                            <span style={{ color: '#2ecc71' }}>
+                                                {allNeurons.length} reachable
+                                            </span>
+                                            <span style={{ color: '#2ecc71' }}>
+                                                {nervousSystemParameters ? 
+                                                    formatVotingPower(reachableVP) : 
+                                                    'Loading...'
+                                                } VP
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </>
+                    )}
+                </div>
+            )}
+            
             <div className="header-right" style={{ display: 'flex', alignItems: 'center' }}>
                 {showSnsDropdown ? (
-                    <>
-                        <SnsDropdown onSnsChange={onSnsChange} />
-                        {/* Neurons and Voting Power Display */}
-                        {isAuthenticated && (
-                            <div style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'flex-end',
-                                marginRight: '15px',
-                                fontSize: '12px',
-                                color: '#888',
-                                minWidth: '140px'
-                            }}>
-                                {/* Header to clarify this is about user's neurons */}
-                                <div style={{ 
-                                    fontSize: '10px', 
-                                    color: '#666', 
-                                    marginBottom: '4px',
-                                    textAlign: 'right'
-                                }}>
-                                    Your Neurons
-                                </div>
-                                {neuronsLoading ? (
-                                    <div style={{ color: '#888', fontStyle: 'italic' }}>
-                                        Loading neurons...
-                                    </div>
-                                ) : (
-                                    <>
-                                        {(() => {
-                                            const allNeurons = getAllNeurons();
-                                            const hotkeyNeurons = getHotkeyNeurons();
-                                            
-                                            // Calculate hotkeyed VP (only hotkeyed neurons) - using nervousSystemParameters
-                                            const hotkeyedVP = hotkeyNeurons.reduce((total, neuron) => {
-                                                try {
-                                                    const votingPower = nervousSystemParameters ? 
-                                                        calculateVotingPower(neuron, nervousSystemParameters) : 0;
-                                                    return total + votingPower;
-                                                } catch (error) {
-                                                    console.warn('Error calculating voting power for neuron:', neuron.id, error);
-                                                    return total;
-                                                }
-                                            }, 0);
-                                            
-                                            // Calculate reachable VP (all neurons) - using nervousSystemParameters
-                                            const reachableVP = allNeurons.reduce((total, neuron) => {
-                                                try {
-                                                    const votingPower = nervousSystemParameters ? 
-                                                        calculateVotingPower(neuron, nervousSystemParameters) : 0;
-                                                    return total + votingPower;
-                                                } catch (error) {
-                                                    console.warn('Error calculating voting power for neuron:', neuron.id, error);
-                                                    return total;
-                                                }
-                                            }, 0);
-                                            
-                                            return (
-                                                <>
-                                                    {/* Hotkeyed neurons first */}
-                                                    <div 
-                                                        style={{ 
-                                                            display: 'flex', 
-                                                            alignItems: 'center', 
-                                                            gap: '8px',
-                                                            marginBottom: '2px'
-                                                        }}
-                                                        title="Neurons where you have hotkey permission - can vote on SNS proposals"
-                                                    >
-                                                        <span style={{ color: '#3498db' }}>
-                                                            {hotkeyNeurons.length} hotkeyed
-                                                        </span>
-                                                        <span style={{ color: '#666' }}>•</span>
-                                                        <span style={{ color: '#3498db' }}>
-                                                            {nervousSystemParameters ? 
-                                                                formatVotingPower(hotkeyedVP) : 
-                                                                'Loading...'
-                                                            } VP
-                                                        </span>
-                                                    </div>
-                                                    {/* Reachable neurons second */}
-                                                    <div 
-                                                        style={{ 
-                                                            display: 'flex', 
-                                                            alignItems: 'center', 
-                                                            gap: '8px'
-                                                        }}
-                                                        title="All neurons you can access (owned + hotkeyed) - for forum voting"
-                                                    >
-                                                        <span style={{ color: '#2ecc71' }}>
-                                                            {allNeurons.length} reachable
-                                                        </span>
-                                                        <span style={{ color: '#666' }}>•</span>
-                                                        <span style={{ color: '#2ecc71' }}>
-                                                            {nervousSystemParameters ? 
-                                                                formatVotingPower(reachableVP) : 
-                                                                'Loading...'
-                                                            } VP
-                                                        </span>
-                                                    </div>
-                                                </>
-                                            );
-                                        })()}
-                                    </>
-                                )}
-                            </div>
-                        )}
-                    </>
+                    <SnsDropdown onSnsChange={onSnsChange} />
                 ) : (
                     <img
                         src={"sneed_logo.png"}
