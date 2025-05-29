@@ -201,8 +201,8 @@ function Discussion({
             const threadInput = {
                 proposal_id: Number(currentProposalId),
                 sns_root_canister_id: Principal.fromText(selectedSnsRoot),
-                title: [`Discussion for Proposal ${currentProposalId}`],
-                body: firstCommentText
+                title: [], // Backend will generate standardized title
+                body: "" // Backend will generate standardized description
             };
 
             const result = await forumActor.create_proposal_thread(threadInput);
@@ -239,89 +239,84 @@ function Discussion({
                 newThreadCreated = true;
             }
 
-            // Create post if thread already exists or after creating new thread
-            if (!newThreadCreated) {
-                // Only use the title if it's explicitly provided and not a "Re:" title
-                const shouldUseTitle = commentTitle && commentTitle.trim() && !commentTitle.trim().startsWith('Re: ');
+            // Create post - always create a post whether thread existed or was just created
+            // Only use the title if it's explicitly provided and not a "Re:" title
+            const shouldUseTitle = commentTitle && commentTitle.trim() && !commentTitle.trim().startsWith('Re: ');
+            
+            const result = await forumActor.create_post(
+                Number(threadId),
+                [],
+                shouldUseTitle ? [commentTitle.trim()] : [],
+                commentText
+            );
+            
+            if ('ok' in result) {
+                console.log('Comment created successfully, post ID:', result.ok);
+                const postId = result.ok;
                 
-                const result = await forumActor.create_post(
-                    Number(threadId),
-                    [],
-                    shouldUseTitle ? [commentTitle.trim()] : [],
-                    commentText
-                );
+                // Clear form immediately
+                setCommentText('');
+                setCommentTitle('');
+                setShowCommentForm(false);
                 
-                if ('ok' in result) {
-                    console.log('Comment created successfully, post ID:', result.ok);
-                    const postId = result.ok;
+                // Refresh posts immediately to show the new post with 0 score
+                await fetchDiscussionPosts(Number(threadId));
+                
+                // Now automatically upvote the newly created post with spinner
+                const postIdStr = postId.toString();
+                setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
+                
+                try {
+                    const voteResult = await forumActor.vote_on_post(
+                        Number(postId),
+                        { upvote: null }
+                    );
                     
-                    // Clear form immediately
-                    setCommentText('');
-                    setCommentTitle('');
-                    setShowCommentForm(false);
-                    
-                    // Refresh posts immediately to show the new post with 0 score
-                    await fetchDiscussionPosts(Number(threadId));
-                    
-                    // Now automatically upvote the newly created post with spinner
-                    const postIdStr = postId.toString();
-                    setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
-                    
-                    try {
-                        const voteResult = await forumActor.vote_on_post(
-                            Number(postId),
-                            { upvote: null }
-                        );
+                    if ('ok' in voteResult) {
+                        setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
+                        setUserVotes(prev => ({
+                            ...prev,
+                            [postIdStr]: {
+                                vote_type: 'upvote',
+                                voting_power: 1
+                            }
+                        }));
                         
-                        if ('ok' in voteResult) {
-                            setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
-                            setUserVotes(prev => ({
-                                ...prev,
-                                [postIdStr]: {
-                                    vote_type: 'upvote',
-                                    voting_power: 1
-                                }
-                            }));
-                            
-                            // Refresh posts again to show updated score
-                            await fetchDiscussionPosts(Number(threadId));
-                            
-                            // Clear voting state after a delay
-                            setTimeout(() => {
-                                setVotingStates(prev => {
-                                    const newState = { ...prev };
-                                    delete newState[postIdStr];
-                                    return newState;
-                                });
-                            }, 2000);
-                        } else {
-                            console.warn('Failed to auto-upvote post:', voteResult.err);
+                        // Refresh posts again to show updated score
+                        await fetchDiscussionPosts(Number(threadId));
+                        
+                        // Clear voting state after a delay
+                        setTimeout(() => {
                             setVotingStates(prev => {
                                 const newState = { ...prev };
                                 delete newState[postIdStr];
                                 return newState;
                             });
-                        }
-                    } catch (voteErr) {
-                        console.warn('Error auto-upvoting post:', voteErr);
+                        }, 2000);
+                    } else {
+                        console.warn('Failed to auto-upvote post:', voteResult.err);
                         setVotingStates(prev => {
                             const newState = { ...prev };
                             delete newState[postIdStr];
                             return newState;
                         });
                     }
-                } else {
-                    console.error('Failed to create comment:', result.err);
-                    if (onError) onError('Failed to create comment: ' + JSON.stringify(result.err));
-                    return;
+                } catch (voteErr) {
+                    console.warn('Error auto-upvoting post:', voteErr);
+                    setVotingStates(prev => {
+                        const newState = { ...prev };
+                        delete newState[postIdStr];
+                        return newState;
+                    });
                 }
+            } else {
+                console.error('Failed to create comment:', result.err);
+                if (onError) onError('Failed to create comment: ' + JSON.stringify(result.err));
+                return;
             }
 
-            // Clear form and refresh for new thread case
+            // Refresh thread data if a new thread was created
             if (newThreadCreated) {
-                setCommentText('');
-                setCommentTitle('');
-                setShowCommentForm(false);
                 await fetchDiscussionThread();
             }
         } catch (err) {

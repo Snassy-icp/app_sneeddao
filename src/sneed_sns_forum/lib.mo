@@ -1712,7 +1712,6 @@ module {
         caller: Principal,
         input: T.CreateProposalThreadInput
     ) : Result<Nat, ForumError> {
-
         // Get deduplicated index for SNS root
         let sns_root_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, input.sns_root_canister_id);
 
@@ -1725,11 +1724,13 @@ module {
 
         // Find the forum for this specific SNS
         var found_forum_id : ?Nat = null;
+        var found_forum : ?Forum = null;
         for ((forum_id, forum) in Map.entries(state.forums)) {
             switch (forum.sns_root_canister_id) {
                 case (?root) {
                     if (Principal.equal(root, input.sns_root_canister_id)) {
                         found_forum_id := ?forum_id;
+                        found_forum := ?forum;
                     };
                 };
                 case null {};
@@ -1741,26 +1742,20 @@ module {
             case null return #err(#NotFound("No forum found for this SNS"));
         };
 
+        let forum = switch (found_forum) {
+            case (?f) f;
+            case null return #err(#NotFound("No forum found for this SNS"));
+        };
+
         // Get the proposal topic for this specific forum
         let topic_id = switch (Map.get(state.proposal_topics, Map.nhash, forum_id)) {
             case (?mapping) mapping.proposals_topic_id;
             case null return #err(#InvalidInput("No proposals topic set for this SNS"));
         };
 
-        // Validate input
-        switch (input.title) {
-            case (?title) {
-                switch (validate_text(title, "Title", 200)) {
-                    case (#err(e)) return #err(e);
-                    case (#ok()) {};
-                };
-            };
-            case null {};
-        };
-        switch (validate_text(input.body, "Body", 10000)) {
-            case (#err(e)) return #err(e);
-            case (#ok()) {};
-        };
+        // Generate standardized title and description based on forum name and proposal ID
+        let standardized_title = forum.title # " Proposal #" # Nat.toText(input.proposal_id);
+        let standardized_description = "Discussion thread for " # forum.title # " Proposal #" # Nat.toText(input.proposal_id);
 
         let thread_id = get_next_id(state);
         let now = Time.now();
@@ -1769,8 +1764,8 @@ module {
         let thread : Thread = {
             id = thread_id;
             topic_id = topic_id;
-            title = input.title;
-            body = input.body;
+            title = ?standardized_title;
+            body = standardized_description;
             created_by = caller_index;
             created_at = now;
             updated_by = caller_index;
