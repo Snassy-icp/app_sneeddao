@@ -1,14 +1,8 @@
 import Principal "mo:base/Principal";
 import Time "mo:base/Time";
-import Result "mo:base/Result";
 import Map "mo:map/Map";
-import Buffer "mo:base/Buffer";
 import Dedup "mo:dedup";
-import Array "mo:base/Array";
-import Iter "mo:base/Iter";
-import Debug "mo:base/Debug";
 import Vector "mo:vector";
-import Blob "mo:base/Blob";
 import Nat64 "mo:base/Nat64";
 import Nat "mo:base/Nat";
 
@@ -71,9 +65,7 @@ actor SneedSNSForum {
         get_neuron: (T.NeuronId) -> async ?Neuron;
     };
 
-    // Constants
-    private let NNS_SNS_W_CANISTER_ID = "qaa6y-5yaaa-aaaaa-aaafa-cai"; // NNS SNS-W canister
-    private let CACHE_EXPIRY_NANOSECONDS = 24 * 60 * 60 * 1_000_000_000; // 24 hours in nanoseconds
+
 
     // Non-stable cache for SNS instances (will be refreshed on canister upgrade)
     private var sns_cache : ?SnsCache = null;
@@ -118,167 +110,10 @@ actor SneedSNSForum {
         thread_proposals = stable_thread_proposals;
     };
 
-    // SNS cache management functions
-    private func is_cache_expired() : Bool {
-        switch (sns_cache) {
-            case (?cache) {
-                let current_time = Time.now();
-                (current_time - cache.last_updated) > CACHE_EXPIRY_NANOSECONDS
-            };
-            case null true;
-        }
-    };
 
-    private func refresh_sns_cache() : async Bool {
-        try {
-            let nns_sns_w : NNSSnsWCanister = actor(NNS_SNS_W_CANISTER_ID);
-            let response = await nns_sns_w.list_deployed_snses({});
-            
-            sns_cache := ?{
-                instances = response.instances;
-                last_updated = Time.now();
-            };
-            
-            Debug.print("SNS cache refreshed with " # Nat.toText(response.instances.size()) # " instances");
-            true
-        } catch (error) {
-            Debug.print("Failed to refresh SNS cache");
-            false
-        }
-    };
 
-    private func get_governance_canister_from_cache(root_canister_id: Principal) : ?Principal {
-        switch (sns_cache) {
-            case (?cache) {
-                for (instance in cache.instances.vals()) {
-                    switch (instance.root_canister_id) {
-                        case (?root_id) {
-                            if (Principal.equal(root_id, root_canister_id)) {
-                                return instance.governance_canister_id;
-                            };
-                        };
-                        case null {};
-                    };
-                };
-                null
-            };
-            case null null;
-        }
-    };
 
-    private func ensure_sns_cache() : async Bool {
-        if (is_cache_expired()) {
-            await refresh_sns_cache()
-        } else {
-            true
-        }
-    };
 
-    // Helper function to get SNS governance canister ID from forum
-    private func get_sns_governance_canister_id(forum_id: Nat) : async ?Principal {
-        switch (Lib.get_forum(state, forum_id)) {
-            case (?forum_response) {
-                switch (forum_response.sns_root_canister_id) {
-                    case (?sns_root) {
-                        // Ensure cache is fresh
-                        let cache_ok = await ensure_sns_cache();
-                        if (not cache_ok) {
-                            Debug.print("Failed to refresh SNS cache, cannot get governance canister ID");
-                            return null;
-                        };
-                        
-                        // Look up governance canister from cache
-                        get_governance_canister_from_cache(sns_root)
-                    };
-                    case null null;
-                };
-            };
-            case null null;
-        };
-    };
-
-    // Helper function to calculate voting power for a neuron
-    private func calculate_neuron_voting_power(neuron: Neuron) : Nat {
-        let stake = Nat64.toNat(neuron.cached_neuron_stake_e8s);
-        let multiplier = Nat64.toNat(neuron.voting_power_percentage_multiplier);
-        
-        if (multiplier > 0) {
-            (stake * multiplier) / 100
-        } else {
-            stake
-        }
-    };
-
-    // Helper function to check if caller has hotkey permission for neuron
-    private func has_hotkey_permission(caller: Principal, neuron: Neuron) : Bool {
-        for (permission in neuron.permissions.vals()) {
-            switch (permission.principal) {
-                case (?principal) {
-                    if (Principal.equal(principal, caller)) {
-                        // Check if they have voting permission (permission type 1 is typically voting)
-                        for (perm_type in permission.permission_type.vals()) {
-                            if (perm_type == 1) { // Voting permission
-                                return true;
-                            };
-                        };
-                    };
-                };
-                case null {};
-            };
-        };
-        false
-    };
-
-    // Helper function to validate that caller has hotkey access to the neuron
-    private func validate_neuron_access(caller: Principal, neuron_id: T.NeuronId, forum_id: Nat) : async Bool {
-        switch (await get_sns_governance_canister_id(forum_id)) {
-            case (?governance_canister_id) {
-                try {
-                    let governance_canister : SNSGovernanceCanister = actor(Principal.toText(governance_canister_id));
-                    
-                    // Get the specific neuron
-                    switch (await governance_canister.get_neuron(neuron_id)) {
-                        case (?neuron) {
-                            has_hotkey_permission(caller, neuron)
-                        };
-                        case null false;
-                    };
-                } catch (error) {
-                    Debug.print("Error calling SNS governance canister for neuron validation");
-                    false
-                }
-            };
-            case null false;
-        };
-    };
-
-    // Helper function to get caller's voting power from SNS
-    private func get_caller_voting_power(caller: Principal, neuron_id: T.NeuronId, forum_id: Nat) : async Nat {
-        switch (await get_sns_governance_canister_id(forum_id)) {
-            case (?governance_canister_id) {
-                try {
-                    let governance_canister : SNSGovernanceCanister = actor(Principal.toText(governance_canister_id));
-                    
-                    // Get the specific neuron
-                    switch (await governance_canister.get_neuron(neuron_id)) {
-                        case (?neuron) {
-                            // Check if caller has permission to use this neuron
-                            if (has_hotkey_permission(caller, neuron)) {
-                                calculate_neuron_voting_power(neuron)
-                            } else {
-                                0
-                            }
-                        };
-                        case null 0;
-                    };
-                } catch (error) {
-                    Debug.print("Error calling SNS governance canister for voting power");
-                    0
-                }
-            };
-            case null 0;
-        };
-    };
 
     // Admin management endpoints
     public shared ({ caller }) func add_admin(new_admin: Principal) : async T.Result<(), T.ForumError> {
@@ -360,36 +195,11 @@ actor SneedSNSForum {
     };
 
     // Post API endpoints
-    public shared ({ caller }) func create_post(input: T.CreatePostInput, neuron_id: T.NeuronId) : async T.Result<Nat, T.ForumError> {
-        // Get the thread to determine which forum/SNS this belongs to
-        switch (Lib.get_thread(state, input.thread_id)) {
-            case (?thread_response) {
-                switch (Lib.get_topic(state, thread_response.topic_id)) {
-                    case (?topic_response) {
-                        switch (Lib.get_forum(state, topic_response.forum_id)) {
-                            case (?forum_response) {
-                                // Validate that caller has access to this neuron
-                                let has_access = await validate_neuron_access(caller, neuron_id, topic_response.forum_id);
-                                if (not has_access) {
-                                    return #err(#Unauthorized("You do not have access to this neuron"));
-                                };
-                                
-                                // Get voting power for initial score
-                                let voting_power = await get_caller_voting_power(caller, neuron_id, topic_response.forum_id);
-                                if (voting_power == 0) {
-                                    return #err(#Unauthorized("Neuron has no voting power"));
-                                };
-                                
-                                Lib.create_post(state, caller, input, voting_power)
-                            };
-                            case null #err(#NotFound("Forum not found"));
-                        };
-                    };
-                    case null #err(#NotFound("Topic not found"));
-                };
-            };
-            case null #err(#NotFound("Thread not found"));
-        }
+    public shared ({ caller }) func create_post(input: T.CreatePostInput) : async T.Result<Nat, T.ForumError> {
+        let current_time = Time.now();
+        let (result, updated_cache) = await Lib.create_post_with_sns(state, caller, input, sns_cache, current_time);
+        sns_cache := updated_cache;
+        result
     };
 
     public shared ({ caller }) func update_post(id: Nat, title: ?Text, body: Text) : async T.Result<(), T.ForumError> {
@@ -411,128 +221,27 @@ actor SneedSNSForum {
     // Voting API endpoints
     public shared ({ caller }) func vote_on_post(
         post_id: Nat,
-        neuron_id: T.NeuronId,
         vote_type: T.VoteType
     ) : async T.Result<(), T.ForumError> {
-        // Get the post to determine which forum/SNS this belongs to
-        switch (Lib.get_post(state, post_id)) {
-            case (?post_response) {
-                switch (Lib.get_thread(state, post_response.thread_id)) {
-                    case (?thread_response) {
-                        switch (Lib.get_topic(state, thread_response.topic_id)) {
-                            case (?topic_response) {
-                                switch (Lib.get_forum(state, topic_response.forum_id)) {
-                                    case (?forum_response) {
-                                        // Validate that caller has access to this neuron
-                                        let has_access = await validate_neuron_access(caller, neuron_id, topic_response.forum_id);
-                                        if (not has_access) {
-                                            return #err(#Unauthorized("You do not have access to this neuron"));
-                                        };
-                                        
-                                        // Get voting power from SNS
-                                        let voting_power = await get_caller_voting_power(caller, neuron_id, topic_response.forum_id);
-                                        if (voting_power == 0) {
-                                            return #err(#Unauthorized("Neuron has no voting power"));
-                                        };
-                                        
-                                        Lib.vote_on_post(state, caller, post_id, neuron_id, vote_type, voting_power)
-                                    };
-                                    case null #err(#NotFound("Forum not found"));
-                                };
-                            };
-                            case null #err(#NotFound("Topic not found"));
-                        };
-                    };
-                    case null #err(#NotFound("Thread not found"));
-                };
-            };
-            case null #err(#NotFound("Post not found"));
-        }
+        let current_time = Time.now();
+        let (result, updated_cache) = await Lib.vote_on_post_with_sns(state, caller, post_id, vote_type, sns_cache, current_time);
+        sns_cache := updated_cache;
+        result
     };
 
     public shared ({ caller }) func retract_vote(
-        post_id: Nat,
-        neuron_id: T.NeuronId
+        post_id: Nat
     ) : async T.Result<(), T.ForumError> {
-        // Get the post to determine which forum/SNS this belongs to
-        switch (Lib.get_post(state, post_id)) {
-            case (?post_response) {
-                switch (Lib.get_thread(state, post_response.thread_id)) {
-                    case (?thread_response) {
-                        switch (Lib.get_topic(state, thread_response.topic_id)) {
-                            case (?topic_response) {
-                                switch (Lib.get_forum(state, topic_response.forum_id)) {
-                                    case (?forum_response) {
-                                        // Validate that caller has access to this neuron
-                                        let has_access = await validate_neuron_access(caller, neuron_id, topic_response.forum_id);
-                                        if (not has_access) {
-                                            return #err(#Unauthorized("You do not have access to this neuron"));
-                                        };
-                                        
-                                        Lib.retract_vote(state, caller, post_id, neuron_id)
-                                    };
-                                    case null #err(#NotFound("Forum not found"));
-                                };
-                            };
-                            case null #err(#NotFound("Topic not found"));
-                        };
-                    };
-                    case null #err(#NotFound("Thread not found"));
-                };
-            };
-            case null #err(#NotFound("Post not found"));
-        }
+        let current_time = Time.now();
+        let (result, updated_cache) = await Lib.retract_vote_with_sns(state, caller, post_id, sns_cache, current_time);
+        sns_cache := updated_cache;
+        result
     };
 
     public query func get_post_votes(post_id: Nat) : async [T.VoteResponse] {
         Lib.get_post_votes(state, post_id)
     };
 
-    // Get caller's available voting neurons for a specific forum
-    public shared ({ caller }) func get_caller_voting_neurons(forum_id: Nat) : async T.Result<[(T.NeuronId, Nat)], T.ForumError> {
-        // Get the forum to determine which SNS this belongs to
-        switch (Lib.get_forum(state, forum_id)) {
-            case (?forum_response) {
-                switch (await get_sns_governance_canister_id(forum_id)) {
-                    case (?governance_canister_id) {
-                        try {
-                            let governance_canister : SNSGovernanceCanister = actor(Principal.toText(governance_canister_id));
-                            
-                            // List neurons for this caller
-                            let response = await governance_canister.list_neurons({
-                                of_principal = ?caller;
-                                limit = 100; // Reasonable limit
-                                start_page_at = null;
-                            });
-                            
-                            // Find the caller's neurons and their voting power
-                            let neurons_buffer = Buffer.Buffer<(T.NeuronId, Nat)>(0);
-                            for (neuron in response.neurons.vals()) {
-                                switch (neuron.id) {
-                                    case (?nid) {
-                                        // Check if caller has hotkey permission for this neuron
-                                        if (has_hotkey_permission(caller, neuron)) {
-                                            let voting_power = calculate_neuron_voting_power(neuron);
-                                            if (voting_power > 0) {
-                                                neurons_buffer.add((nid, voting_power));
-                                            };
-                                        };
-                                    };
-                                    case null {};
-                                };
-                            };
-                            
-                            #ok(Buffer.toArray(neurons_buffer))
-                        } catch (error) {
-                            #err(#InternalError("Failed to fetch voting neurons from SNS governance canister"))
-                        }
-                    };
-                    case null #err(#InternalError("No SNS governance canister found for this forum"));
-                };
-            };
-            case null #err(#NotFound("Forum not found"));
-        }
-    };
 
     // Admin/utility endpoints
     public query func get_stats() : async T.ForumStats {

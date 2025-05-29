@@ -39,7 +39,6 @@ module {
     // Constants
     private let NNS_SNS_W_CANISTER_ID = "qaa6y-5yaaa-aaaaa-aaafa-cai"; // NNS SNS-W canister
     private let CACHE_EXPIRY_NANOSECONDS = 86400000000000; // 24 hours in nanoseconds
-
     // SNS cache management functions
     public func is_cache_expired(cache: ?SnsCache, current_time: Int) : Bool {
         switch (cache) {
@@ -306,7 +305,7 @@ module {
                     for (neuron in reachable_neurons.vals()) {
                         switch (neuron.id) {
                             case (?neuron_id) {
-                                switch (retract_vote(state, caller, post_id, neuron_id)) {
+                                switch (retract_vote(state, post_id, neuron_id)) {
                                     case (#ok()) {
                                         votes_retracted := true;
                                     };
