@@ -296,7 +296,31 @@ function Discussion({
 
     // Helper functions for post organization
     const calculatePostScore = (post) => {
-        return Number(post.upvote_score) - Number(post.downvote_score);
+        const upvotes = Number(post.upvote_score);
+        const downvotes = Number(post.downvote_score);
+        return upvotes - downvotes;
+    };
+
+    const formatScore = (score) => {
+        // Convert from e8s (divide by 10^8)
+        const scoreInTokens = score / 100000000;
+        
+        // Format with commas and only necessary decimal places
+        if (scoreInTokens === 0) {
+            return '0';
+        } else if (Math.abs(scoreInTokens) >= 1) {
+            // For values >= 1, show up to 2 decimal places, removing trailing zeros
+            return scoreInTokens.toLocaleString('en-US', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            });
+        } else {
+            // For values < 1, show up to 8 decimal places, removing trailing zeros
+            return scoreInTokens.toLocaleString('en-US', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 8
+            });
+        }
     };
 
     // Helper function to find a post by ID
@@ -876,7 +900,7 @@ function Discussion({
                                                         animation: 'spin 1s linear infinite'
                                                     }} />
                                                 ) : (
-                                                    (score > 0 ? '+' : '') + score
+                                                    (score > 0 ? '+' : '') + formatScore(score)
                                                 )}
                                             </span>
 
