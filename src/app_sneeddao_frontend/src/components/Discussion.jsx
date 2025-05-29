@@ -794,31 +794,7 @@ function Discussion({
                                 alignItems: 'center', 
                                 gap: '10px'
                             }}>
-                                <div style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: '10px',
-                                    color: '#888',
-                                    fontSize: '14px'
-                                }}>
-                                    <span style={{ color: score > 0 ? '#2ecc71' : score < 0 ? '#e74c3c' : '#888' }}>
-                                        {votingStates[post.id.toString()] === 'voting' ? (
-                                            <div style={{ 
-                                                display: 'inline-block',
-                                                width: '12px',
-                                                height: '12px',
-                                                border: '2px solid #f3f3f3',
-                                                borderTop: '2px solid #3498db',
-                                                borderRadius: '50%',
-                                                animation: 'spin 1s linear infinite'
-                                            }} />
-                                        ) : (
-                                            (score > 0 ? '+' : '') + score
-                                        )}
-                                    </span>
-                                    <span style={{ color: '#2ecc71' }}>↑{post.upvote_score}</span>
-                                    <span style={{ color: '#e74c3c' }}>↓{post.downvote_score}</span>
-                                </div>
+                                {/* Removed voting display from header - moved to action buttons below */}
                             </div>
                         </div>
 
@@ -853,6 +829,27 @@ function Discussion({
                                 {/* Action Buttons */}
                                 {isAuthenticated && (
                                     <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        {/* Score Display */}
+                                        <span style={{ 
+                                            color: score > 0 ? '#2ecc71' : score < 0 ? '#e74c3c' : '#888',
+                                            fontSize: '14px',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            {votingStates[post.id.toString()] === 'voting' ? (
+                                                <div style={{ 
+                                                    display: 'inline-block',
+                                                    width: '12px',
+                                                    height: '12px',
+                                                    border: '2px solid #f3f3f3',
+                                                    borderTop: '2px solid #3498db',
+                                                    borderRadius: '50%',
+                                                    animation: 'spin 1s linear infinite'
+                                                }} />
+                                            ) : (
+                                                (score > 0 ? '+' : '') + score
+                                            )}
+                                        </span>
+
                                         {/* Voting Buttons */}
                                         {hotkeyNeurons.length > 0 && (
                                             <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
