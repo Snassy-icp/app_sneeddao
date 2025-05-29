@@ -40,49 +40,35 @@ module {
     private let NNS_SNS_W_CANISTER_ID = "qaa6y-5yaaa-aaaaa-aaafa-cai"; // NNS SNS-W canister
     private let CACHE_EXPIRY_NANOSECONDS = 86400000000000; // 24 hours in nanoseconds
     // SNS cache management functions
-    public func is_cache_expired(cache: ?SnsCache, current_time: Int) : Bool {
-        switch (cache) {
-            case (?c) {
-                (current_time - c.last_updated) > CACHE_EXPIRY_NANOSECONDS
-            };
-            case null true;
+    public func is_cache_expired(cache: SnsCache, current_time: Int) : Bool {
+        (current_time - cache.last_updated) > CACHE_EXPIRY_NANOSECONDS
+    };
+
+    public func refresh_sns_cache(current_time: Int) : async SnsCache {
+        let nns_sns_w : NNSSnsWCanister = actor(NNS_SNS_W_CANISTER_ID);
+        let response = await nns_sns_w.list_deployed_snses({});
+        
+        {
+            instances = response.instances;
+            last_updated = current_time;
         }
     };
 
-    public func refresh_sns_cache(current_time: Int) : async ?SnsCache {
-        try {
-            let nns_sns_w : NNSSnsWCanister = actor(NNS_SNS_W_CANISTER_ID);
-            let response = await nns_sns_w.list_deployed_snses({});
-            
-            ?{
-                instances = response.instances;
-                last_updated = current_time;
-            }
-        } catch (error) {
-            null
-        }
-    };
-
-    public func get_governance_canister_from_cache(cache: ?SnsCache, root_canister_id: Principal) : ?Principal {
-        switch (cache) {
-            case (?c) {
-                for (instance in c.instances.vals()) {
-                    switch (instance.root_canister_id) {
-                        case (?root_id) {
-                            if (Principal.equal(root_id, root_canister_id)) {
-                                return instance.governance_canister_id;
-                            };
-                        };
-                        case null {};
+    public func get_governance_canister_from_cache(cache: SnsCache, root_canister_id: Principal) : ?Principal {
+        for (instance in cache.instances.vals()) {
+            switch (instance.root_canister_id) {
+                case (?root_id) {
+                    if (Principal.equal(root_id, root_canister_id)) {
+                        return instance.governance_canister_id;
                     };
                 };
-                null
+                case null {};
             };
-            case null null;
-        }
+        };
+        null
     };
 
-    public func ensure_sns_cache(cache: ?SnsCache, current_time: Int) : async ?SnsCache {
+    public func ensure_sns_cache(cache: SnsCache, current_time: Int) : async SnsCache {
         if (is_cache_expired(cache, current_time)) {
             await refresh_sns_cache(current_time)
         } else {
@@ -91,19 +77,14 @@ module {
     };
 
     // Utility function to get SNS governance canister ID from forum
-    public func get_governance_canister_id_from_forum(state: ForumState, forum_id: Nat, cache: ?SnsCache, current_time: Int) : async (?Principal, ?SnsCache) {
+    public func get_governance_canister_id_from_forum(state: ForumState, forum_id: Nat, cache: SnsCache, current_time: Int) : async (?Principal, SnsCache) {
         switch (get_forum(state, forum_id)) {
             case (?forum_response) {
                 switch (forum_response.sns_root_canister_id) {
                     case (?sns_root) {
                         let updated_cache = await ensure_sns_cache(cache, current_time);
-                        switch (updated_cache) {
-                            case (?fresh_cache) {
-                                let governance_id = get_governance_canister_from_cache(?fresh_cache, sns_root);
-                                (governance_id, ?fresh_cache)
-                            };
-                            case null (null, cache);
-                        };
+                        let governance_id = get_governance_canister_from_cache(updated_cache, sns_root);
+                        (governance_id, updated_cache)
                     };
                     case null (null, cache);
                 };
@@ -113,7 +94,7 @@ module {
     };
 
     // Utility function to get governance canister ID from thread hierarchy
-    public func get_governance_canister_id_from_thread(state: ForumState, thread_id: Nat, cache: ?SnsCache, current_time: Int) : async (?Principal, ?SnsCache) {
+    public func get_governance_canister_id_from_thread(state: ForumState, thread_id: Nat, cache: SnsCache, current_time: Int) : async (?Principal, SnsCache) {
         switch (get_thread(state, thread_id)) {
             case (?thread_response) {
                 switch (get_topic(state, thread_response.topic_id)) {
@@ -128,7 +109,7 @@ module {
     };
 
     // Utility function to get governance canister ID from post hierarchy
-    public func get_governance_canister_id_from_post(state: ForumState, post_id: Nat, cache: ?SnsCache, current_time: Int) : async (?Principal, ?SnsCache) {
+    public func get_governance_canister_id_from_post(state: ForumState, post_id: Nat, cache: SnsCache, current_time: Int) : async (?Principal, SnsCache) {
         switch (get_post(state, post_id)) {
             case (?post_response) {
                 switch (get_thread(state, post_response.thread_id)) {
@@ -168,40 +149,73 @@ module {
     public func create_post_with_sns(
         state: ForumState,
         caller: Principal,
-        input: T.CreatePostInput,
-        cache: ?SnsCache,
-        current_time: Int
-    ) : async (T.Result<Nat, T.ForumError>, ?SnsCache) {
-        let (governance_canister_id_opt, updated_cache) = await get_governance_canister_id_from_thread(state, input.thread_id, cache, current_time);
+        thread_id: Nat,
+        reply_to_post_id: ?Nat,
+        title: ?Text,
+        body: Text,
+        cache: SnsCache
+    ) : async (T.Result<Nat, T.ForumError>, SnsCache) {
+        let (governance_canister_id_opt, updated_cache) = await get_governance_canister_id_from_thread(state, thread_id, cache, Time.now());
         
         switch (governance_canister_id_opt) {
             case (?governance_canister_id) {
                 try {
-                    // Get all reachable neurons for the caller using SnsUtil
                     let reachable_neurons = await SnsUtil.get_reachable_neurons(governance_canister_id, caller);
                     
                     if (reachable_neurons.size() == 0) {
                         return (#err(#Unauthorized("No accessible neurons found")), updated_cache);
                     };
                     
-                    // Get system parameters once for efficiency
                     let system_parameters = await SnsUtil.get_system_parameters(governance_canister_id);
                     
-                    // Calculate total voting power from all reachable neurons
-                    var total_voting_power : Nat = 0;
+                    var total_voting_power: Nat = 0;
+                    let neuron_voting_powers = Buffer.Buffer<(T.NeuronId, Nat)>(reachable_neurons.size());
+                    
                     for (neuron in reachable_neurons.vals()) {
-                        let voting_power = SnsUtil.calculate_neuron_voting_power(neuron, system_parameters);
-                        total_voting_power += voting_power;
+                        switch (neuron.id) {
+                            case (?neuron_id) {
+                                let voting_power = SnsUtil.calculate_neuron_voting_power(neuron, system_parameters);
+                                if (voting_power > 0) {
+                                    total_voting_power += voting_power;
+                                    neuron_voting_powers.add((neuron_id, voting_power));
+                                };
+                            };
+                            case null { };
+                        };
                     };
                     
                     if (total_voting_power == 0) {
                         return (#err(#Unauthorized("No voting power available")), updated_cache);
                     };
                     
-                    // Create the post with the total voting power as initial upvote score
-                    (create_post(state, caller, input, total_voting_power), updated_cache)
+                    let post_id = create_post(state, caller, thread_id, reply_to_post_id, title, body, total_voting_power, Time.now());
+                    
+                    switch (post_id) {
+                        case (#ok(id)) {
+                            let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                            for ((neuron_id, voting_power) in neuron_voting_powers.vals()) {
+                                let neuron_index = Dedup.getOrCreateIndex(state.neuron_dedup_state, neuron_id.id);
+                                let vote_key : VoteKey = (id, neuron_index);
+
+                                let vote : Vote = {
+                                    post_id = id;
+                                    neuron_id = neuron_index;
+                                    voter_principal = caller_index;
+                                    vote_type = #upvote;
+                                    voting_power;
+                                    created_at = Time.now();
+                                    updated_at = Time.now();
+                                };
+                                
+                                ignore Map.put(state.votes, vote_key_hash_utils, vote_key, vote);
+                            };
+                        };
+                        case (#err(_)) { };
+                    };
+                    
+                    (post_id, updated_cache)
                 } catch (error) {
-                    (#err(#InternalError("Failed to process SNS post creation")), updated_cache)
+                    (#err(#InternalError("Failed to create post with SNS")), updated_cache)
                 }
             };
             case null {
@@ -216,61 +230,42 @@ module {
         caller: Principal,
         post_id: Nat,
         vote_type: VoteType,
-        cache: ?SnsCache,
-        current_time: Int
-    ) : async (T.Result<(), T.ForumError>, ?SnsCache) {
+        cache: SnsCache
+    ) : async (T.Result<(), T.ForumError>, SnsCache) {
         // Get the governance canister ID for this post
-        let (governance_canister_id_opt, updated_cache) = await get_governance_canister_id_from_post(state, post_id, cache, current_time);
+        let (governance_canister_id_opt, updated_cache) = await get_governance_canister_id_from_post(state, post_id, cache, Time.now());
         
         switch (governance_canister_id_opt) {
             case (?governance_canister_id) {
                 try {
-                    // Get all reachable neurons for the caller using SnsUtil
                     let reachable_neurons = await SnsUtil.get_reachable_neurons(governance_canister_id, caller);
                     
                     if (reachable_neurons.size() == 0) {
                         return (#err(#Unauthorized("No accessible neurons found")), updated_cache);
                     };
                     
-                    // Get system parameters once for efficiency
                     let system_parameters = await SnsUtil.get_system_parameters(governance_canister_id);
-                    
-                    // Calculate total voting power and create votes for each neuron
-                    var total_voting_power : Nat = 0;
-                    let votes_buffer = Buffer.Buffer<(T.NeuronId, Nat)>(reachable_neurons.size());
                     
                     for (neuron in reachable_neurons.vals()) {
                         switch (neuron.id) {
                             case (?neuron_id) {
                                 let voting_power = SnsUtil.calculate_neuron_voting_power(neuron, system_parameters);
                                 if (voting_power > 0) {
-                                    total_voting_power += voting_power;
-                                    votes_buffer.add((neuron_id, voting_power));
+                                    switch (vote_on_post(state, caller, post_id, vote_type, neuron_id, voting_power, Time.now())) {
+                                        case (#err(error)) {
+                                            return (#err(error), updated_cache);
+                                        };
+                                        case (#ok()) { };
+                                    };
                                 };
                             };
-                            case null {};
-                        };
-                    };
-                    
-                    if (total_voting_power == 0) {
-                        return (#err(#Unauthorized("No voting power available")), updated_cache);
-                    };
-                    
-                    // Create individual votes for each neuron with voting power
-                    let votes_to_create = Buffer.toArray(votes_buffer);
-                    for ((neuron_id, voting_power) in votes_to_create.vals()) {
-                        switch (vote_on_post(state, caller, post_id, neuron_id, vote_type, voting_power)) {
-                            case (#err(e)) {
-                                // If any vote fails, return the error
-                                return (#err(e), updated_cache);
-                            };
-                            case (#ok()) {};
+                            case null { };
                         };
                     };
                     
                     (#ok(), updated_cache)
                 } catch (error) {
-                    (#err(#InternalError("Failed to process SNS voting")), updated_cache)
+                    (#err(#InternalError("Failed to vote on post with SNS")), updated_cache)
                 }
             };
             case null {
@@ -284,47 +279,42 @@ module {
         state: ForumState,
         caller: Principal,
         post_id: Nat,
-        cache: ?SnsCache,
-        current_time: Int
-    ) : async (Result<(), ForumError>, ?SnsCache) {
+        cache: SnsCache
+    ) : async (T.Result<(), T.ForumError>, SnsCache) {
         // Get the governance canister ID for this post
-        let (governance_canister_id_opt, updated_cache) = await get_governance_canister_id_from_post(state, post_id, cache, current_time);
+        let (governance_canister_id_opt, updated_cache) = await get_governance_canister_id_from_post(state, post_id, cache, Time.now());
         
         switch (governance_canister_id_opt) {
             case (?governance_canister_id) {
                 try {
-                    // Get all reachable neurons for the caller using SnsUtil
                     let reachable_neurons = await SnsUtil.get_reachable_neurons(governance_canister_id, caller);
                     
                     if (reachable_neurons.size() == 0) {
                         return (#err(#Unauthorized("No accessible neurons found")), updated_cache);
                     };
                     
-                    // Retract votes for each neuron that has an existing vote
-                    var votes_retracted = false;
+                    var any_vote_retracted = false;
                     for (neuron in reachable_neurons.vals()) {
                         switch (neuron.id) {
                             case (?neuron_id) {
                                 switch (retract_vote(state, post_id, neuron_id)) {
                                     case (#ok()) {
-                                        votes_retracted := true;
+                                        any_vote_retracted := true;
                                     };
-                                    case (#err(_)) {
-                                        // Vote doesn't exist for this neuron, continue
-                                    };
+                                    case (#err(_)) { };
                                 };
                             };
-                            case null {};
+                            case null { };
                         };
                     };
                     
-                    if (votes_retracted) {
+                    if (any_vote_retracted) {
                         (#ok(), updated_cache)
                     } else {
                         (#err(#NotFound("No votes found to retract")), updated_cache)
                     }
                 } catch (error) {
-                    (#err(#InternalError("Failed to process SNS vote retraction")), updated_cache)
+                    (#err(#InternalError("Failed to retract vote with SNS")), updated_cache)
                 }
             };
             case null {
@@ -805,37 +795,41 @@ module {
     public func create_post(
         state: ForumState,
         caller: Principal,
-        input: T.CreatePostInput,
-        initial_voting_power: Nat
+        thread_id: Nat,
+        reply_to_post_id: ?Nat,
+        title: ?Text,
+        body: Text,
+        initial_voting_power: Nat,
+        current_time: Int
     ) : Result<Nat, ForumError> {
         // Validate input
-        switch (input.title) {
-            case (?title) {
-                switch (validate_text(title, "Title", 200)) {
+        switch (title) {
+            case (?t) {
+                switch (validate_text(t, "Title", 200)) {
                     case (#err(e)) return #err(e);
                     case (#ok()) {};
                 };
             };
             case null {};
         };
-        switch (validate_text(input.body, "Body", 10000)) {
+        switch (validate_text(body, "Body", 10000)) {
             case (#err(e)) return #err(e);
             case (#ok()) {};
         };
 
         // Check if thread exists
-        switch (Map.get(state.threads, Map.nhash, input.thread_id)) {
+        switch (Map.get(state.threads, Map.nhash, thread_id)) {
             case null return #err(#NotFound("Thread not found"));
             case (?_) {};
         };
 
         // Check if reply_to_post exists and belongs to the same thread
-        switch (input.reply_to_post_id) {
+        switch (reply_to_post_id) {
             case (?reply_id) {
                 switch (Map.get(state.posts, Map.nhash, reply_id)) {
                     case null return #err(#NotFound("Reply target post not found"));
                     case (?reply_post) {
-                        if (reply_post.thread_id != input.thread_id) {
+                        if (reply_post.thread_id != thread_id) {
                             return #err(#InvalidInput("Reply target must be in the same thread"));
                         };
                     };
@@ -850,10 +844,10 @@ module {
 
         let post : Post = {
             id;
-            thread_id = input.thread_id;
-            reply_to_post_id = input.reply_to_post_id;
-            title = input.title;
-            body = input.body;
+            thread_id = thread_id;
+            reply_to_post_id = reply_to_post_id;
+            title = title;
+            body = body;
             upvote_score = initial_voting_power;
             downvote_score = 0;
             created_by = caller_index;
@@ -864,9 +858,9 @@ module {
         };
 
         ignore Map.put(state.posts, Map.nhash, id, post);
-        add_to_index(state.thread_posts, input.thread_id, id);
+        add_to_index(state.thread_posts, thread_id, id);
         
-        switch (input.reply_to_post_id) {
+        switch (reply_to_post_id) {
             case (?reply_id) add_to_index(state.post_replies, reply_id, id);
             case null {};
         };
@@ -941,9 +935,10 @@ module {
         state: ForumState,
         caller: Principal,
         post_id: Nat,
-        neuron_id: NeuronId,
         vote_type: VoteType,
-        voting_power: Nat
+        neuron_id: NeuronId,
+        voting_power: Nat,
+        current_time: Int
     ) : Result<(), ForumError> {
         // Check if post exists
         let post = switch (Map.get(state.posts, Map.nhash, post_id)) {
@@ -955,7 +950,6 @@ module {
         let neuron_index = Dedup.getOrCreateIndex(state.neuron_dedup_state, neuron_id.id);
         
         let vote_key : VoteKey = (post_id, neuron_index);
-        let now = Time.now();
 
         // Check if vote already exists
         switch (Map.get(state.votes, vote_key_hash_utils, vote_key)) {
@@ -968,7 +962,7 @@ module {
                     vote_type;
                     voting_power;
                     created_at = existing_vote.created_at;
-                    updated_at = now;
+                    updated_at = current_time;
                 };
 
                 // Update post scores
@@ -983,7 +977,7 @@ module {
                         {
                             post with
                             upvote_score = new_upvote_score;
-                            updated_at = now;
+                            updated_at = current_time;
                         }
                     };
                     case (#downvote, #downvote) {
@@ -996,7 +990,7 @@ module {
                         {
                             post with
                             downvote_score = new_downvote_score;
-                            updated_at = now;
+                            updated_at = current_time;
                         }
                     };
                     case (#upvote, #downvote) {
@@ -1010,7 +1004,7 @@ module {
                             post with
                             upvote_score = new_upvote_score;
                             downvote_score = post.downvote_score + voting_power;
-                            updated_at = now;
+                            updated_at = current_time;
                         }
                     };
                     case (#downvote, #upvote) {
@@ -1024,7 +1018,7 @@ module {
                             post with
                             downvote_score = new_downvote_score;
                             upvote_score = post.upvote_score + voting_power;
-                            updated_at = now;
+                            updated_at = current_time;
                         }
                     };
                 };
@@ -1040,8 +1034,8 @@ module {
                     voter_principal = caller_index;
                     vote_type;
                     voting_power;
-                    created_at = now;
-                    updated_at = now;
+                    created_at = current_time;
+                    updated_at = current_time;
                 };
 
                 let updated_post = switch (vote_type) {
@@ -1049,14 +1043,14 @@ module {
                         {
                             post with
                             upvote_score = post.upvote_score + voting_power;
-                            updated_at = now;
+                            updated_at = current_time;
                         }
                     };
                     case (#downvote) {
                         {
                             post with
                             downvote_score = post.downvote_score + voting_power;
-                            updated_at = now;
+                            updated_at = current_time;
                         }
                     };
                 };

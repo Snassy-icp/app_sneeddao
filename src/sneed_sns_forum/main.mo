@@ -68,7 +68,7 @@ actor SneedSNSForum {
 
 
     // Non-stable cache for SNS instances (will be refreshed on canister upgrade)
-    private var sns_cache : ?SnsCache = null;
+    private var sns_cache : SnsCache = null;
 
     // Stable storage using stable Map and Vector structures
     stable var stable_next_id : Nat = 1;
@@ -195,9 +195,13 @@ actor SneedSNSForum {
     };
 
     // Post API endpoints
-    public shared ({ caller }) func create_post(input: T.CreatePostInput) : async T.Result<Nat, T.ForumError> {
-        let current_time = Time.now();
-        let (result, updated_cache) = await Lib.create_post_with_sns(state, caller, input, sns_cache, current_time);
+    public shared ({ caller }) func create_post(
+        thread_id: Nat,
+        reply_to_post_id: ?Nat,
+        title: ?Text,
+        body: Text
+    ) : async T.Result<Nat, T.ForumError> {
+        let (result, updated_cache) = await Lib.create_post_with_sns(state, caller, thread_id, reply_to_post_id, title, body, sns_cache);
         sns_cache := updated_cache;
         result
     };
@@ -223,8 +227,7 @@ actor SneedSNSForum {
         post_id: Nat,
         vote_type: T.VoteType
     ) : async T.Result<(), T.ForumError> {
-        let current_time = Time.now();
-        let (result, updated_cache) = await Lib.vote_on_post_with_sns(state, caller, post_id, vote_type, sns_cache, current_time);
+        let (result, updated_cache) = await Lib.vote_on_post_with_sns(state, caller, post_id, vote_type, sns_cache);
         sns_cache := updated_cache;
         result
     };
@@ -232,8 +235,7 @@ actor SneedSNSForum {
     public shared ({ caller }) func retract_vote(
         post_id: Nat
     ) : async T.Result<(), T.ForumError> {
-        let current_time = Time.now();
-        let (result, updated_cache) = await Lib.retract_vote_with_sns(state, caller, post_id, sns_cache, current_time);
+        let (result, updated_cache) = await Lib.retract_vote_with_sns(state, caller, post_id, sns_cache);
         sns_cache := updated_cache;
         result
     };
