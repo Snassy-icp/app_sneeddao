@@ -33,7 +33,7 @@ function Discussion({
 }) {
     const { principalNames, principalNicknames } = useNaming();
     const { identity } = useAuth();
-    const { getHotkeyNeurons, loading: neuronsLoading } = useNeurons();
+    const { getHotkeyNeurons, loading: neuronsLoading, neuronsData } = useNeurons();
     
     // State for discussion
     const [discussionThread, setDiscussionThread] = useState(null); // Thread mapping
@@ -62,6 +62,41 @@ function Discussion({
 
     // Get hotkey neurons from global context
     const hotkeyNeurons = getHotkeyNeurons() || [];
+
+    // Calculate total voting power from hotkey neurons
+    const totalVotingPower = React.useMemo(() => {
+        if (!hotkeyNeurons || hotkeyNeurons.length === 0) return 0;
+        
+        return hotkeyNeurons.reduce((total, neuron) => {
+            try {
+                const votingPower = calculateVotingPower(neuron);
+                return total + votingPower;
+            } catch (error) {
+                console.warn('Error calculating voting power for neuron:', neuron.id, error);
+                return total;
+            }
+        }, 0);
+    }, [hotkeyNeurons]);
+
+    // Format voting power for display
+    const formatVotingPowerDisplay = (votingPower) => {
+        if (votingPower === 0) return '0';
+        
+        // Convert from e8s to display units
+        const displayValue = votingPower / 100_000_000;
+        
+        if (displayValue >= 1) {
+            return displayValue.toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            });
+        } else {
+            return displayValue.toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 8
+            });
+        }
+    };
 
     // Fetch discussion thread and thread details
     const fetchDiscussionThread = async () => {
@@ -718,22 +753,26 @@ function Discussion({
                                             {/* Upvote Button */}
                                             <button
                                                 onClick={() => voteOnPost(post.id, 'upvote')}
-                                                disabled={votingStates[post.id.toString()] === 'voting'}
+                                                disabled={votingStates[post.id.toString()] === 'voting' || hotkeyNeurons.length === 0}
                                                 style={{
                                                     backgroundColor: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#2ecc71' : 'transparent',
                                                     border: '1px solid #2ecc71',
                                                     color: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#ffffff' : '#2ecc71',
                                                     borderRadius: '4px',
                                                     padding: '4px 8px',
-                                                    cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
+                                                    cursor: (votingStates[post.id.toString()] === 'voting' || hotkeyNeurons.length === 0) ? 'not-allowed' : 'pointer',
                                                     fontSize: '12px',
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     gap: '4px',
-                                                    opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
+                                                    opacity: (votingStates[post.id.toString()] === 'voting' || hotkeyNeurons.length === 0) ? 0.6 : 1
                                                 }}
+                                                title={hotkeyNeurons.length === 0 ? 'No voting neurons available' : `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
                                             >
-                                                ↑ {votingStates[post.id.toString()] === 'voting' ? '...' : 'Up'}
+                                                ↑ {votingStates[post.id.toString()] === 'voting' ? '...' : 
+                                                    neuronsLoading ? 'Loading...' : 
+                                                    hotkeyNeurons.length === 0 ? 'No VP' :
+                                                    totalVotingPower > 0 ? `${formatVotingPowerDisplay(totalVotingPower)}` : 'Up'}
                                             </button>
 
                                             {/* Score Display */}
@@ -762,22 +801,26 @@ function Discussion({
                                             {/* Downvote Button */}
                                             <button
                                                 onClick={() => voteOnPost(post.id, 'downvote')}
-                                                disabled={votingStates[post.id.toString()] === 'voting'}
+                                                disabled={votingStates[post.id.toString()] === 'voting' || hotkeyNeurons.length === 0}
                                                 style={{
                                                     backgroundColor: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#e74c3c' : 'transparent',
                                                     border: '1px solid #e74c3c',
                                                     color: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#ffffff' : '#e74c3c',
                                                     borderRadius: '4px',
                                                     padding: '4px 8px',
-                                                    cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
+                                                    cursor: (votingStates[post.id.toString()] === 'voting' || hotkeyNeurons.length === 0) ? 'not-allowed' : 'pointer',
                                                     fontSize: '12px',
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     gap: '4px',
-                                                    opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1
+                                                    opacity: (votingStates[post.id.toString()] === 'voting' || hotkeyNeurons.length === 0) ? 0.6 : 1
                                                 }}
+                                                title={hotkeyNeurons.length === 0 ? 'No voting neurons available' : `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
                                             >
-                                                ↓ {votingStates[post.id.toString()] === 'voting' ? '...' : 'Down'}
+                                                ↓ {votingStates[post.id.toString()] === 'voting' ? '...' : 
+                                                    neuronsLoading ? 'Loading...' : 
+                                                    hotkeyNeurons.length === 0 ? 'No VP' :
+                                                    totalVotingPower > 0 ? `${formatVotingPowerDisplay(totalVotingPower)}` : 'Down'}
                                             </button>
 
                                             {/* Retract Vote Button */}
@@ -1112,6 +1155,14 @@ function Discussion({
                                                 <span style={{ color: '#888' }}>
                                                     {hotkeyNeurons.length} eligible neuron{hotkeyNeurons.length !== 1 ? 's' : ''}
                                                 </span>
+                                                {totalVotingPower > 0 && (
+                                                    <>
+                                                        <span style={{ color: '#888' }}>•</span>
+                                                        <span style={{ color: '#2ecc71' }}>
+                                                            {formatVotingPowerDisplay(totalVotingPower)} VP
+                                                        </span>
+                                                    </>
+                                                )}
                                             </>
                                         ) : (
                                             <>
