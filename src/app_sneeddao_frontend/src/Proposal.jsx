@@ -917,6 +917,27 @@ function Proposal() {
                         </div>
                     )}
 
+                    {/* Hotkey Neurons Section */}
+                    {selectedSnsRoot && (
+                        <HotkeyNeurons 
+                            fetchNeuronsFromSns={fetchNeuronsFromSns}
+                            showVotingStats={false}
+                            showExpandButton={true}
+                            defaultExpanded={false}
+                            title="Vote with Your Neurons"
+                            infoTooltip="These are your neurons that can be used to vote on this proposal. You need hotkey access to vote."
+                            proposalData={proposalData}
+                            currentProposalId={currentProposalId}
+                            onVoteSuccess={() => {
+                                // Refresh proposal data after successful vote
+                                fetchProposalData();
+                                // Refresh neurons data to update voting power
+                                refreshNeurons(selectedSnsRoot);
+                            }}
+                        />
+                    )}
+
+
                     {/* Discussion Section */}
                     {proposalData && !loading && !error && (
                         <div style={{ marginTop: '20px' }}>
@@ -951,26 +972,6 @@ function Proposal() {
                                 />
                             )}
                         </div>
-                    )}
-
-                    {/* Hotkey Neurons Section */}
-                    {selectedSnsRoot && (
-                        <HotkeyNeurons 
-                            fetchNeuronsFromSns={fetchNeuronsFromSns}
-                            showVotingStats={false}
-                            showExpandButton={true}
-                            defaultExpanded={false}
-                            title="Vote with Your Neurons"
-                            infoTooltip="These are your neurons that can be used to vote on this proposal. You need hotkey access to vote."
-                            proposalData={proposalData}
-                            currentProposalId={currentProposalId}
-                            onVoteSuccess={() => {
-                                // Refresh proposal data after successful vote
-                                fetchProposalData();
-                                // Refresh neurons data to update voting power
-                                refreshNeurons(selectedSnsRoot);
-                            }}
-                        />
                     )}
                 </section>
             </main>
