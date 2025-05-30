@@ -160,12 +160,7 @@ module {
         switch (governance_canister_id_opt) {
             case (?governance_canister_id) {
                 try {
-                    let reachable_neurons = await SnsUtil.get_reachable_neurons(governance_canister_id, caller);
-                    
-                    if (reachable_neurons.size() == 0) {
-                        return (#err(#Unauthorized("No accessible neurons found")), updated_cache);
-                    };
-                    
+                    // Allow post creation without checking for neurons - users can post without voting power
                     // Just create the post with 0 initial voting power - voting will be done separately
                     let post_id = create_post(state, caller, thread_id, reply_to_post_id, title, body, 0, Time.now());
                     

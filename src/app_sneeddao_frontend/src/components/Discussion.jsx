@@ -413,52 +413,55 @@ function Discussion({
                 // Clear the first post creation flag
                 setCreatingFirstPost(false);
                 
-                // Now automatically upvote the newly created post with spinner
-                const postIdStr = postId.toString();
-                setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
-                
-                try {
-                    const voteResult = await forumActor.vote_on_post(
-                        Number(postId),
-                        { upvote: null }
-                    );
+                // Only auto-upvote if user has voting power
+                if (totalVotingPower > 0) {
+                    // Now automatically upvote the newly created post with spinner
+                    const postIdStr = postId.toString();
+                    setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
                     
-                    if ('ok' in voteResult) {
-                        setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
-                        setUserVotes(prev => ({
-                            ...prev,
-                            [postIdStr]: {
-                                vote_type: 'upvote',
-                                voting_power: 1
-                            }
-                        }));
+                    try {
+                        const voteResult = await forumActor.vote_on_post(
+                            Number(postId),
+                            { upvote: null }
+                        );
                         
-                        // Refresh posts again to show updated score
-                        await fetchDiscussionPosts(Number(threadId));
-                        
-                        // Clear voting state after a delay
-                        setTimeout(() => {
+                        if ('ok' in voteResult) {
+                            setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
+                            setUserVotes(prev => ({
+                                ...prev,
+                                [postIdStr]: {
+                                    vote_type: 'upvote',
+                                    voting_power: 1
+                                }
+                            }));
+                            
+                            // Refresh posts again to show updated score
+                            await fetchDiscussionPosts(Number(threadId));
+                            
+                            // Clear voting state after a delay
+                            setTimeout(() => {
+                                setVotingStates(prev => {
+                                    const newState = { ...prev };
+                                    delete newState[postIdStr];
+                                    return newState;
+                                });
+                            }, 2000);
+                        } else {
+                            console.warn('Failed to auto-upvote post:', voteResult.err);
                             setVotingStates(prev => {
                                 const newState = { ...prev };
                                 delete newState[postIdStr];
                                 return newState;
                             });
-                        }, 2000);
-                    } else {
-                        console.warn('Failed to auto-upvote post:', voteResult.err);
+                        }
+                    } catch (voteErr) {
+                        console.warn('Error auto-upvoting post:', voteErr);
                         setVotingStates(prev => {
                             const newState = { ...prev };
                             delete newState[postIdStr];
                             return newState;
                         });
                     }
-                } catch (voteErr) {
-                    console.warn('Error auto-upvoting post:', voteErr);
-                    setVotingStates(prev => {
-                        const newState = { ...prev };
-                        delete newState[postIdStr];
-                        return newState;
-                    });
                 }
             } else {
                 console.error('Failed to create comment:', result.err);
@@ -676,52 +679,55 @@ function Discussion({
                 // Refresh posts immediately to show the new post with 0 score
                 await fetchDiscussionPosts(Number(discussionThread.thread_id));
                 
-                // Now automatically upvote the newly created post with spinner
-                const postIdStr = postId.toString();
-                setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
-                
-                try {
-                    const voteResult = await forumActor.vote_on_post(
-                        Number(postId),
-                        { upvote: null }
-                    );
+                // Only auto-upvote if user has voting power
+                if (totalVotingPower > 0) {
+                    // Now automatically upvote the newly created post with spinner
+                    const postIdStr = postId.toString();
+                    setVotingStates(prev => ({ ...prev, [postIdStr]: 'voting' }));
                     
-                    if ('ok' in voteResult) {
-                        setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
-                        setUserVotes(prev => ({
-                            ...prev,
-                            [postIdStr]: {
-                                vote_type: 'upvote',
-                                voting_power: 1
-                            }
-                        }));
+                    try {
+                        const voteResult = await forumActor.vote_on_post(
+                            Number(postId),
+                            { upvote: null }
+                        );
                         
-                        // Refresh posts again to show updated score
-                        await fetchDiscussionPosts(Number(discussionThread.thread_id));
-                        
-                        // Clear voting state after a delay
-                        setTimeout(() => {
+                        if ('ok' in voteResult) {
+                            setVotingStates(prev => ({ ...prev, [postIdStr]: 'success' }));
+                            setUserVotes(prev => ({
+                                ...prev,
+                                [postIdStr]: {
+                                    vote_type: 'upvote',
+                                    voting_power: 1
+                                }
+                            }));
+                            
+                            // Refresh posts again to show updated score
+                            await fetchDiscussionPosts(Number(discussionThread.thread_id));
+                            
+                            // Clear voting state after a delay
+                            setTimeout(() => {
+                                setVotingStates(prev => {
+                                    const newState = { ...prev };
+                                    delete newState[postIdStr];
+                                    return newState;
+                                });
+                            }, 2000);
+                        } else {
+                            console.warn('Failed to auto-upvote reply:', voteResult.err);
                             setVotingStates(prev => {
                                 const newState = { ...prev };
                                 delete newState[postIdStr];
                                 return newState;
                             });
-                        }, 2000);
-                    } else {
-                        console.warn('Failed to auto-upvote reply:', voteResult.err);
+                        }
+                    } catch (voteErr) {
+                        console.warn('Error auto-upvoting reply:', voteErr);
                         setVotingStates(prev => {
                             const newState = { ...prev };
                             delete newState[postIdStr];
                             return newState;
                         });
                     }
-                } catch (voteErr) {
-                    console.warn('Error auto-upvoting reply:', voteErr);
-                    setVotingStates(prev => {
-                        const newState = { ...prev };
-                        delete newState[postIdStr];
-                        return newState;
-                    });
                 }
             } else {
                 console.error('Failed to create reply:', result.err);
