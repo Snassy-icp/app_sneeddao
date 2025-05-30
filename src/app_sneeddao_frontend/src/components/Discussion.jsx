@@ -896,25 +896,25 @@ function Discussion({
                                             {/* Upvote Button */}
                                             <button
                                                 onClick={() => voteOnPost(post.id, 'upvote')}
-                                                disabled={votingStates[post.id.toString()] === 'voting' || allNeurons.length === 0}
+                                                disabled={votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0}
                                                 style={{
                                                     backgroundColor: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#2ecc71' : 'transparent',
-                                                    border: '1px solid #2ecc71',
-                                                    color: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#ffffff' : '#2ecc71',
+                                                    border: `1px solid ${totalVotingPower === 0 ? '#666' : '#2ecc71'}`,
+                                                    color: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#ffffff' : (totalVotingPower === 0 ? '#666' : '#2ecc71'),
                                                     borderRadius: '4px',
                                                     padding: '4px 8px',
-                                                    cursor: (votingStates[post.id.toString()] === 'voting' || allNeurons.length === 0) ? 'not-allowed' : 'pointer',
+                                                    cursor: (votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
                                                     fontSize: '12px',
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     gap: '4px',
-                                                    opacity: (votingStates[post.id.toString()] === 'voting' || allNeurons.length === 0) ? 0.6 : 1
+                                                    opacity: (votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 0.6 : 1
                                                 }}
-                                                title={allNeurons.length === 0 ? 'No voting neurons available' : `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
+                                                title={totalVotingPower === 0 ? 'You must have hotkey neurons with voting power to vote on posts' : `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
                                             >
                                                 ↑ {votingStates[post.id.toString()] === 'voting' ? '...' : 
                                                     neuronsLoading ? 'Loading...' : 
-                                                    allNeurons.length === 0 ? 'No VP' :
+                                                    totalVotingPower === 0 ? 'No VP' :
                                                     totalVotingPower > 0 ? `${formatVotingPowerDisplay(totalVotingPower)}` : 'Up'}
                                             </button>
 
@@ -944,25 +944,25 @@ function Discussion({
                                             {/* Downvote Button */}
                                             <button
                                                 onClick={() => voteOnPost(post.id, 'downvote')}
-                                                disabled={votingStates[post.id.toString()] === 'voting' || allNeurons.length === 0}
+                                                disabled={votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0}
                                                 style={{
                                                     backgroundColor: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#e74c3c' : 'transparent',
-                                                    border: '1px solid #e74c3c',
-                                                    color: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#ffffff' : '#e74c3c',
+                                                    border: `1px solid ${totalVotingPower === 0 ? '#666' : '#e74c3c'}`,
+                                                    color: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#ffffff' : (totalVotingPower === 0 ? '#666' : '#e74c3c'),
                                                     borderRadius: '4px',
                                                     padding: '4px 8px',
-                                                    cursor: (votingStates[post.id.toString()] === 'voting' || allNeurons.length === 0) ? 'not-allowed' : 'pointer',
+                                                    cursor: (votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
                                                     fontSize: '12px',
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     gap: '4px',
-                                                    opacity: (votingStates[post.id.toString()] === 'voting' || allNeurons.length === 0) ? 0.6 : 1
+                                                    opacity: (votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 0.6 : 1
                                                 }}
-                                                title={allNeurons.length === 0 ? 'No voting neurons available' : `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
+                                                title={totalVotingPower === 0 ? 'You must have hotkey neurons with voting power to vote on posts' : `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
                                             >
                                                 ↓ {votingStates[post.id.toString()] === 'voting' ? '...' : 
                                                     neuronsLoading ? 'Loading...' : 
-                                                    allNeurons.length === 0 ? 'No VP' :
+                                                    totalVotingPower === 0 ? 'No VP' :
                                                     totalVotingPower > 0 ? `${formatVotingPowerDisplay(totalVotingPower)}` : 'Down'}
                                             </button>
 
@@ -1341,7 +1341,7 @@ function Discussion({
                                     padding: '10px', 
                                     borderRadius: '4px', 
                                     marginBottom: '15px',
-                                    border: `1px solid ${(allNeurons && allNeurons.length > 0) ? '#2ecc71' : '#f39c12'}`
+                                    border: `1px solid ${totalVotingPower > 0 ? '#2ecc71' : '#f39c12'}`
                                 }}>
                                     <div style={{ 
                                         display: 'flex', 
@@ -1353,28 +1353,24 @@ function Discussion({
                                             <>
                                                 <span style={{ color: '#888' }}>⏳ Loading voting neurons...</span>
                                             </>
-                                        ) : (allNeurons && allNeurons.length > 0) ? (
+                                        ) : totalVotingPower > 0 ? (
                                             <>
                                                 <span style={{ color: '#2ecc71' }}>✓ Forum voting enabled</span>
                                                 <span style={{ color: '#888' }}>•</span>
                                                 <span style={{ color: '#888' }}>
                                                     {allNeurons.length} reachable neuron{allNeurons.length !== 1 ? 's' : ''}
                                                 </span>
-                                                {totalVotingPower > 0 && (
-                                                    <>
-                                                        <span style={{ color: '#888' }}>•</span>
-                                                        <span style={{ color: '#2ecc71' }}>
-                                                            {formatVotingPowerDisplay(totalVotingPower)} VP
-                                                        </span>
-                                                    </>
-                                                )}
+                                                <span style={{ color: '#888' }}>•</span>
+                                                <span style={{ color: '#2ecc71' }}>
+                                                    {formatVotingPowerDisplay(totalVotingPower)} VP
+                                                </span>
                                             </>
                                         ) : (
                                             <>
-                                                <span style={{ color: '#f39c12' }}>⚠ No voting neurons</span>
+                                                <span style={{ color: '#f39c12' }}>⚠ No voting power</span>
                                                 <span style={{ color: '#888' }}>•</span>
                                                 <span style={{ color: '#888' }}>
-                                                    You need neurons (owned or hotkeyed) to vote on posts
+                                                    You need hotkey neurons with voting power to vote on posts
                                                 </span>
                                             </>
                                         )}
