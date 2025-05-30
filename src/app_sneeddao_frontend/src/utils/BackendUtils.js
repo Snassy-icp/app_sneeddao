@@ -396,16 +396,20 @@ export const getTextLimits = async (forumActor) => {
         
         // Map backend field names to frontend expected field names and convert BigInt to Number
         return {
+            // Frontend expected field names (for Discussion component)
             max_title_length: Number(result.post_title_max_length),
             max_body_length: Number(result.post_body_max_length),
             max_comment_length: Number(result.post_body_max_length), // Use post body length for comments
+            
+            // Backend field names (for admin form)
             post_title_max_length: Number(result.post_title_max_length),
-            post_content_max_length: Number(result.post_body_max_length),
-            comment_max_length: Number(result.post_body_max_length),
-            forum_name_max_length: Number(result.forum_title_max_length),
-            forum_description_max_length: Number(result.forum_description_max_length),
-            topic_name_max_length: Number(result.topic_title_max_length),
-            topic_description_max_length: Number(result.topic_description_max_length)
+            post_body_max_length: Number(result.post_body_max_length),
+            thread_title_max_length: Number(result.thread_title_max_length),
+            thread_body_max_length: Number(result.thread_body_max_length),
+            topic_title_max_length: Number(result.topic_title_max_length),
+            topic_description_max_length: Number(result.topic_description_max_length),
+            forum_title_max_length: Number(result.forum_title_max_length),
+            forum_description_max_length: Number(result.forum_description_max_length)
         };
     } catch (error) {
         console.error('Error fetching text limits:', error);
@@ -419,12 +423,12 @@ export const updateTextLimits = async (forumActor, textLimitsInput) => {
         // Map frontend field names to backend expected field names
         const backendInput = {
             post_title_max_length: textLimitsInput.post_title_max_length ? [textLimitsInput.post_title_max_length] : [],
-            post_body_max_length: textLimitsInput.post_content_max_length ? [textLimitsInput.post_content_max_length] : [],
-            thread_title_max_length: [],
-            thread_body_max_length: [],
-            topic_title_max_length: textLimitsInput.topic_name_max_length ? [textLimitsInput.topic_name_max_length] : [],
+            post_body_max_length: textLimitsInput.post_body_max_length ? [textLimitsInput.post_body_max_length] : [],
+            thread_title_max_length: textLimitsInput.thread_title_max_length ? [textLimitsInput.thread_title_max_length] : [],
+            thread_body_max_length: textLimitsInput.thread_body_max_length ? [textLimitsInput.thread_body_max_length] : [],
+            topic_title_max_length: textLimitsInput.topic_title_max_length ? [textLimitsInput.topic_title_max_length] : [],
             topic_description_max_length: textLimitsInput.topic_description_max_length ? [textLimitsInput.topic_description_max_length] : [],
-            forum_title_max_length: textLimitsInput.forum_name_max_length ? [textLimitsInput.forum_name_max_length] : [],
+            forum_title_max_length: textLimitsInput.forum_title_max_length ? [textLimitsInput.forum_title_max_length] : [],
             forum_description_max_length: textLimitsInput.forum_description_max_length ? [textLimitsInput.forum_description_max_length] : []
         };
         

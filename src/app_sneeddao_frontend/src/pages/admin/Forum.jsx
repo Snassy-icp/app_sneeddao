@@ -1210,13 +1210,13 @@ export default function Forum() {
           </div>
           
           <div className="form-group">
-            <label>Post Content Max Length</label>
+            <label>Post Body Max Length</label>
             <input
               type="number"
-              value={textLimits.post_content_max_length}
+              value={textLimits.post_body_max_length}
               onChange={(e) => setTextLimits({
                 ...textLimits,
-                post_content_max_length: parseInt(e.target.value) || 0
+                post_body_max_length: parseInt(e.target.value) || 0
               })}
               min="1"
               max="50000"
@@ -1224,55 +1224,41 @@ export default function Forum() {
           </div>
           
           <div className="form-group">
-            <label>Comment Max Length</label>
+            <label>Thread Title Max Length</label>
             <input
               type="number"
-              value={textLimits.comment_max_length}
+              value={textLimits.thread_title_max_length}
               onChange={(e) => setTextLimits({
                 ...textLimits,
-                comment_max_length: parseInt(e.target.value) || 0
+                thread_title_max_length: parseInt(e.target.value) || 0
               })}
               min="1"
-              max="10000"
+              max="1000"
             />
           </div>
           
           <div className="form-group">
-            <label>Forum Name Max Length</label>
+            <label>Thread Body Max Length</label>
             <input
               type="number"
-              value={textLimits.forum_name_max_length}
+              value={textLimits.thread_body_max_length}
               onChange={(e) => setTextLimits({
                 ...textLimits,
-                forum_name_max_length: parseInt(e.target.value) || 0
+                thread_body_max_length: parseInt(e.target.value) || 0
               })}
               min="1"
-              max="200"
+              max="50000"
             />
           </div>
           
           <div className="form-group">
-            <label>Forum Description Max Length</label>
+            <label>Topic Title Max Length</label>
             <input
               type="number"
-              value={textLimits.forum_description_max_length}
+              value={textLimits.topic_title_max_length}
               onChange={(e) => setTextLimits({
                 ...textLimits,
-                forum_description_max_length: parseInt(e.target.value) || 0
-              })}
-              min="1"
-              max="2000"
-            />
-          </div>
-          
-          <div className="form-group">
-            <label>Topic Name Max Length</label>
-            <input
-              type="number"
-              value={textLimits.topic_name_max_length}
-              onChange={(e) => setTextLimits({
-                ...textLimits,
-                topic_name_max_length: parseInt(e.target.value) || 0
+                topic_title_max_length: parseInt(e.target.value) || 0
               })}
               min="1"
               max="200"
@@ -1287,6 +1273,34 @@ export default function Forum() {
               onChange={(e) => setTextLimits({
                 ...textLimits,
                 topic_description_max_length: parseInt(e.target.value) || 0
+              })}
+              min="1"
+              max="2000"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>Forum Title Max Length</label>
+            <input
+              type="number"
+              value={textLimits.forum_title_max_length}
+              onChange={(e) => setTextLimits({
+                ...textLimits,
+                forum_title_max_length: parseInt(e.target.value) || 0
+              })}
+              min="1"
+              max="200"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>Forum Description Max Length</label>
+            <input
+              type="number"
+              value={textLimits.forum_description_max_length}
+              onChange={(e) => setTextLimits({
+                ...textLimits,
+                forum_description_max_length: parseInt(e.target.value) || 0
               })}
               min="1"
               max="2000"
