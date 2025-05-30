@@ -194,7 +194,15 @@ function Discussion({
     const [submittingEdit, setSubmittingEdit] = useState(false);
     
     // State for view mode and interactions
-    const [viewMode, setViewMode] = useState('flat');
+    const [viewMode, setViewMode] = useState(() => {
+        // Get saved preference from localStorage, default to 'tree'
+        try {
+            return localStorage.getItem('discussionViewMode') || 'tree';
+        } catch (error) {
+            console.warn('Could not access localStorage:', error);
+            return 'tree';
+        }
+    });
     const [collapsedPosts, setCollapsedPosts] = useState(new Set());
     const [replyingTo, setReplyingTo] = useState(null);
     
@@ -1337,6 +1345,16 @@ function Discussion({
         }
     };
 
+    // Save view mode preference to localStorage when it changes
+    const handleViewModeChange = (newViewMode) => {
+        setViewMode(newViewMode);
+        try {
+            localStorage.setItem('discussionViewMode', newViewMode);
+        } catch (error) {
+            console.warn('Could not save to localStorage:', error);
+        }
+    };
+
     return (
         <div style={{ marginTop: '20px' }}>
             
@@ -1440,7 +1458,7 @@ function Discussion({
                             }}>
                                 <span style={{ color: '#888', fontSize: '14px' }}>View:</span>
                                 <button
-                                    onClick={() => setViewMode('flat')}
+                                    onClick={() => handleViewModeChange('flat')}
                                     style={{
                                         backgroundColor: viewMode === 'flat' ? '#3498db' : 'transparent',
                                         border: '1px solid #3498db',
@@ -1454,7 +1472,7 @@ function Discussion({
                                     Flat
                                 </button>
                                 <button
-                                    onClick={() => setViewMode('tree')}
+                                    onClick={() => handleViewModeChange('tree')}
                                     style={{
                                         backgroundColor: viewMode === 'tree' ? '#3498db' : 'transparent',
                                         border: '1px solid #3498db',
