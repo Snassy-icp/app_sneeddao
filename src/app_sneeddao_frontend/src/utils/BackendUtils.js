@@ -391,13 +391,47 @@ export const setPrincipalNameFor = async (identity, principal, name, snsRootCani
 
 // Get text limits from the forum backend
 export const getTextLimits = async (forumActor) => {
-    if (!forumActor) return null;
-    
     try {
-        const response = await forumActor.get_text_limits();
-        return response;
+        const result = await forumActor.get_text_limits();
+        
+        // Map backend field names to frontend expected field names and convert BigInt to Number
+        return {
+            max_title_length: Number(result.post_title_max_length),
+            max_body_length: Number(result.post_body_max_length),
+            max_comment_length: Number(result.post_body_max_length), // Use post body length for comments
+            post_title_max_length: Number(result.post_title_max_length),
+            post_content_max_length: Number(result.post_body_max_length),
+            comment_max_length: Number(result.post_body_max_length),
+            forum_name_max_length: Number(result.forum_title_max_length),
+            forum_description_max_length: Number(result.forum_description_max_length),
+            topic_name_max_length: Number(result.topic_title_max_length),
+            topic_description_max_length: Number(result.topic_description_max_length)
+        };
     } catch (error) {
-        console.error('Error getting text limits:', error);
-        return null;
+        console.error('Error fetching text limits:', error);
+        throw error;
+    }
+};
+
+// Update text limits in the forum backend (admin only)
+export const updateTextLimits = async (forumActor, textLimitsInput) => {
+    try {
+        // Map frontend field names to backend expected field names
+        const backendInput = {
+            post_title_max_length: textLimitsInput.post_title_max_length ? [textLimitsInput.post_title_max_length] : [],
+            post_body_max_length: textLimitsInput.post_content_max_length ? [textLimitsInput.post_content_max_length] : [],
+            thread_title_max_length: [],
+            thread_body_max_length: [],
+            topic_title_max_length: textLimitsInput.topic_name_max_length ? [textLimitsInput.topic_name_max_length] : [],
+            topic_description_max_length: textLimitsInput.topic_description_max_length ? [textLimitsInput.topic_description_max_length] : [],
+            forum_title_max_length: textLimitsInput.forum_name_max_length ? [textLimitsInput.forum_name_max_length] : [],
+            forum_description_max_length: textLimitsInput.forum_description_max_length ? [textLimitsInput.forum_description_max_length] : []
+        };
+        
+        const result = await forumActor.update_text_limits(backendInput);
+        return result;
+    } catch (error) {
+        console.error('Error updating text limits:', error);
+        throw error;
     }
 }; 

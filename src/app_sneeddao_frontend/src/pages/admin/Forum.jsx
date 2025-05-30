@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import Header from '../../components/Header';
 import './Forum.css';
 import { Principal } from '@dfinity/principal';
+import { getTextLimits, updateTextLimits } from '../../utils/BackendUtils';
 
 export default function Forum() {
   const { isAuthenticated, identity } = useAuth();
@@ -23,6 +24,12 @@ export default function Forum() {
   const [stats, setStats] = useState(null);
   const [admins, setAdmins] = useState([]);
   const [proposalsTopic, setProposalsTopic] = useState(null);
+  
+  // State for text limits
+  const [textLimits, setTextLimits] = useState(null);
+  const [textLimitsLoading, setTextLimitsLoading] = useState(false);
+  const [textLimitsError, setTextLimitsError] = useState('');
+  const [updatingTextLimits, setUpdatingTextLimits] = useState(false);
   
   // Loading states
   const [loading, setLoading] = useState(false);
@@ -109,6 +116,9 @@ export default function Forum() {
           break;
         case 'stats':
           await fetchStats();
+          break;
+        case 'textlimits':
+          await fetchTextLimits();
           break;
       }
       setError('');
@@ -204,6 +214,39 @@ export default function Forum() {
       setAdmins(result);
     } catch (err) {
       console.error('Error fetching admins:', err);
+    }
+  };
+
+  const fetchTextLimits = async () => {
+    setTextLimitsLoading(true);
+    setTextLimitsError('');
+    try {
+      const result = await getTextLimits(forumActor);
+      setTextLimits(result);
+    } catch (err) {
+      console.error('Error fetching text limits:', err);
+      setTextLimitsError('Failed to fetch text limits: ' + err.message);
+    } finally {
+      setTextLimitsLoading(false);
+    }
+  };
+
+  const handleUpdateTextLimits = async (updatedLimits) => {
+    setUpdatingTextLimits(true);
+    setTextLimitsError('');
+    try {
+      const result = await updateTextLimits(forumActor, updatedLimits);
+      if ('ok' in result) {
+        await fetchTextLimits(); // Refresh the limits
+        setTextLimitsError('');
+      } else {
+        setTextLimitsError('Failed to update text limits: ' + JSON.stringify(result.err));
+      }
+    } catch (err) {
+      console.error('Error updating text limits:', err);
+      setTextLimitsError('Failed to update text limits: ' + err.message);
+    } finally {
+      setUpdatingTextLimits(false);
     }
   };
 
@@ -1137,6 +1180,140 @@ export default function Forum() {
     </div>
   );
 
+  const renderTextLimits = () => (
+    <div className="forum-section">
+      <div className="section-header">
+        <h2>Text Limits Configuration</h2>
+        <button 
+          className="create-btn"
+          onClick={fetchTextLimits}
+          disabled={loading}
+        >
+          Refresh
+        </button>
+      </div>
+
+      {textLimits && (
+        <div className="create-form">
+          <div className="form-group">
+            <label>Post Title Max Length</label>
+            <input
+              type="number"
+              value={textLimits.post_title_max_length}
+              onChange={(e) => setTextLimits({
+                ...textLimits,
+                post_title_max_length: parseInt(e.target.value) || 0
+              })}
+              min="1"
+              max="1000"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>Post Content Max Length</label>
+            <input
+              type="number"
+              value={textLimits.post_content_max_length}
+              onChange={(e) => setTextLimits({
+                ...textLimits,
+                post_content_max_length: parseInt(e.target.value) || 0
+              })}
+              min="1"
+              max="50000"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>Comment Max Length</label>
+            <input
+              type="number"
+              value={textLimits.comment_max_length}
+              onChange={(e) => setTextLimits({
+                ...textLimits,
+                comment_max_length: parseInt(e.target.value) || 0
+              })}
+              min="1"
+              max="10000"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>Forum Name Max Length</label>
+            <input
+              type="number"
+              value={textLimits.forum_name_max_length}
+              onChange={(e) => setTextLimits({
+                ...textLimits,
+                forum_name_max_length: parseInt(e.target.value) || 0
+              })}
+              min="1"
+              max="200"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>Forum Description Max Length</label>
+            <input
+              type="number"
+              value={textLimits.forum_description_max_length}
+              onChange={(e) => setTextLimits({
+                ...textLimits,
+                forum_description_max_length: parseInt(e.target.value) || 0
+              })}
+              min="1"
+              max="2000"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>Topic Name Max Length</label>
+            <input
+              type="number"
+              value={textLimits.topic_name_max_length}
+              onChange={(e) => setTextLimits({
+                ...textLimits,
+                topic_name_max_length: parseInt(e.target.value) || 0
+              })}
+              min="1"
+              max="200"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>Topic Description Max Length</label>
+            <input
+              type="number"
+              value={textLimits.topic_description_max_length}
+              onChange={(e) => setTextLimits({
+                ...textLimits,
+                topic_description_max_length: parseInt(e.target.value) || 0
+              })}
+              min="1"
+              max="2000"
+            />
+          </div>
+
+          <div className="form-actions">
+            <button 
+              type="button"
+              onClick={() => handleUpdateTextLimits(textLimits)}
+              disabled={loading}
+              className="create-btn"
+            >
+              {loading ? 'Updating...' : 'Update Text Limits'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!textLimits && (
+        <div className="no-selection">
+          Click "Refresh" to load current text limits.
+        </div>
+      )}
+    </div>
+  );
+
   const handleAddAdmin = async (e) => {
     e.preventDefault();
     if (!forumActor || !newAdminPrincipal.trim()) return;
@@ -1292,7 +1469,7 @@ export default function Forum() {
         <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Forum Administration</h1>
         
         <div className="forum-tabs">
-          {['forums', 'topics', 'threads', 'posts', 'stats'].map(tab => (
+          {['forums', 'topics', 'threads', 'posts', 'stats', 'textlimits'].map(tab => (
             <button
               key={tab}
               className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
@@ -1317,6 +1494,7 @@ export default function Forum() {
           {activeTab === 'threads' && renderThreads()}
           {activeTab === 'posts' && renderPosts()}
           {activeTab === 'stats' && renderStats()}
+          {activeTab === 'textlimits' && renderTextLimits()}
         </div>
       </main>
     </div>
