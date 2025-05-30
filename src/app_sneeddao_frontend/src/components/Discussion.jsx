@@ -398,17 +398,17 @@ function Discussion({
                 sns_root_canister_id: Principal.fromText(selectedSnsRoot)
             };
 
-            const result = await forumActor.create_proposal_thread(threadInput);
+            const result = await forumActor.create_proposal_thread_with_auto_setup(threadInput);
             if ('ok' in result) {
-                console.log('Thread created successfully, thread ID:', result.ok);
+                console.log('Thread created successfully with auto-setup, thread ID:', result.ok);
                 return result.ok;
             } else {
-                console.error('Failed to create thread:', result.err);
+                console.error('Failed to create thread with auto-setup:', result.err);
                 if (onError) onError('Failed to create discussion thread: ' + JSON.stringify(result.err));
                 return null;
             }
         } catch (err) {
-            console.error('Error creating proposal thread:', err);
+            console.error('Error creating proposal thread with auto-setup:', err);
             if (onError) onError('Error creating proposal thread: ' + err.message);
             return null;
         }

@@ -375,6 +375,12 @@ actor SneedSNSForum {
         Lib.create_proposal_thread(state, caller, input)
     };
 
+    public shared ({ caller }) func create_proposal_thread_with_auto_setup(input: T.CreateProposalThreadInput) : async T.Result<Nat, T.ForumError> {
+        let (result, updated_cache) = await Lib.create_proposal_thread_with_auto_setup(state, caller, input, sns_cache);
+        sns_cache := updated_cache;
+        result
+    };
+
     public query func get_proposal_thread(sns_root: Principal, proposal_id: Nat) : async ?T.ProposalThreadMappingResponse {
         Lib.get_proposal_thread_response(state, sns_root, proposal_id)
     };

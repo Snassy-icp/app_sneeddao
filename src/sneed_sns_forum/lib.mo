@@ -1706,6 +1706,162 @@ module {
         }
     };
 
+    // Helper function to get SNS name from governance canister
+    private func get_sns_name(governance_canister_id: Principal) : async Text {
+        try {
+            let governance_actor = actor(Principal.toText(governance_canister_id)) : actor {
+                get_metadata : () -> async {
+                    name: ?Text;
+                    description: ?Text;
+                    logo: ?Text;
+                    url: ?Text;
+                };
+            };
+            
+            let metadata = await governance_actor.get_metadata();
+            switch (metadata.name) {
+                case (?name) name;
+                case null "SNS " # Principal.toText(governance_canister_id);
+            }
+        } catch (error) {
+            "SNS " # Principal.toText(governance_canister_id)
+        }
+    };
+
+    // Helper function to automatically create forum and topic structure for SNS proposals
+    public func ensure_sns_proposal_structure(
+        state: ForumState,
+        caller: Principal,
+        sns_root_canister_id: Principal,
+        cache: SnsCache,
+        current_time: Int
+    ) : async (Result<Nat, ForumError>, SnsCache) {
+        // First, ensure we have the SNS cache updated
+        let updated_cache = await ensure_sns_cache(cache, current_time);
+        
+        // Get governance canister ID from cache
+        let governance_canister_id_opt = get_governance_canister_from_cache(updated_cache, sns_root_canister_id);
+        let governance_canister_id = switch (governance_canister_id_opt) {
+            case (?gov_id) gov_id;
+            case null return (#err(#NotFound("SNS governance canister not found")), updated_cache);
+        };
+
+        // Step 1: Check if forum exists for this SNS, if not create it
+        var found_forum_id : ?Nat = null;
+        for ((forum_id, forum) in Map.entries(state.forums)) {
+            switch (forum.sns_root_canister_id) {
+                case (?root) {
+                    if (Principal.equal(root, sns_root_canister_id)) {
+                        found_forum_id := ?forum_id;
+                    };
+                };
+                case null {};
+            };
+        };
+
+        let forum_id = switch (found_forum_id) {
+            case (?fid) fid;
+            case null {
+                // Create new forum for this SNS
+                let sns_name = await get_sns_name(governance_canister_id);
+                let forum_input : T.CreateForumInput = {
+                    title = sns_name # " Forum";
+                    description = "Discussion forum for " # sns_name # " governance and community topics";
+                    sns_root_canister_id = ?sns_root_canister_id;
+                };
+                
+                switch (create_forum(state, caller, forum_input)) {
+                    case (#ok(new_forum_id)) new_forum_id;
+                    case (#err(error)) return (#err(error), updated_cache);
+                }
+            };
+        };
+
+        // Step 2: Check if "Governance" topic exists, if not create it
+        var governance_topic_id : ?Nat = null;
+        switch (Map.get(state.forum_topics, Map.nhash, forum_id)) {
+            case (?topic_ids) {
+                for (topic_id in Vector.vals(topic_ids)) {
+                    switch (Map.get(state.topics, Map.nhash, topic_id)) {
+                        case (?topic) {
+                            if (topic.title == "Governance" and topic.parent_topic_id == null) {
+                                governance_topic_id := ?topic_id;
+                            };
+                        };
+                        case null {};
+                    };
+                };
+            };
+            case null {};
+        };
+
+        let governance_topic_id_final = switch (governance_topic_id) {
+            case (?tid) tid;
+            case null {
+                // Create "Governance" topic
+                let governance_topic_input : T.CreateTopicInput = {
+                    forum_id = forum_id;
+                    parent_topic_id = null;
+                    title = "Governance";
+                    description = "Topics related to governance, voting, and decision-making";
+                };
+                
+                switch (create_topic(state, caller, governance_topic_input)) {
+                    case (#ok(new_topic_id)) new_topic_id;
+                    case (#err(error)) return (#err(error), updated_cache);
+                }
+            };
+        };
+
+        // Step 3: Check if "Proposals" subtopic exists under Governance, if not create it
+        var proposals_topic_id : ?Nat = null;
+        switch (Map.get(state.topic_subtopics, Map.nhash, governance_topic_id_final)) {
+            case (?subtopic_ids) {
+                for (subtopic_id in Vector.vals(subtopic_ids)) {
+                    switch (Map.get(state.topics, Map.nhash, subtopic_id)) {
+                        case (?topic) {
+                            if (topic.title == "Proposals") {
+                                proposals_topic_id := ?subtopic_id;
+                            };
+                        };
+                        case null {};
+                    };
+                };
+            };
+            case null {};
+        };
+
+        let proposals_topic_id_final = switch (proposals_topic_id) {
+            case (?tid) tid;
+            case null {
+                // Create "Proposals" subtopic under Governance
+                let proposals_topic_input : T.CreateTopicInput = {
+                    forum_id = forum_id;
+                    parent_topic_id = ?governance_topic_id_final;
+                    title = "Proposals";
+                    description = "Discussion threads for individual governance proposals";
+                };
+                
+                switch (create_topic(state, caller, proposals_topic_input)) {
+                    case (#ok(new_topic_id)) new_topic_id;
+                    case (#err(error)) return (#err(error), updated_cache);
+                }
+            };
+        };
+
+        // Step 4: Register the "Proposals" topic as the special proposals topic for this forum
+        let mapping : T.ProposalTopicMapping = {
+            forum_id = forum_id;
+            proposals_topic_id = proposals_topic_id_final;
+            set_by = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+            set_at = current_time;
+        };
+
+        ignore Map.put(state.proposal_topics, Map.nhash, forum_id, mapping);
+
+        (#ok(proposals_topic_id_final), updated_cache)
+    };
+
     public func create_proposal_thread(
         state: ForumState,
         caller: Principal,
@@ -1791,60 +1947,131 @@ module {
         #ok(thread_id)
     };
 
-    public func get_proposal_thread(state: ForumState, sns_root: Principal, proposal_id: Nat) : ?T.ProposalThreadMapping {
-        let sns_root_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, sns_root);
-        let proposal_key : T.ProposalThreadKey = (sns_root_index, proposal_id);
-        Map.get(state.proposal_threads, (T.proposal_thread_key_hash, T.proposal_thread_key_equal), proposal_key)
-    };
-
-    public func get_proposal_thread_response(state: ForumState, sns_root: Principal, proposal_id: Nat) : ?T.ProposalThreadMappingResponse {
-        // Safely get the SNS root index - if it doesn't exist, return null instead of creating it
-        let sns_root_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, sns_root)) {
-            case (?index) index;
-            case null return null; // SNS root not found in dedup state, so no proposal thread exists
-        };
-        
-        let proposal_key : T.ProposalThreadKey = (sns_root_index, proposal_id);
-        switch (Map.get(state.proposal_threads, (T.proposal_thread_key_hash, T.proposal_thread_key_equal), proposal_key)) {
-            case (?mapping) {
-                let created_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, mapping.created_by)) {
-                    case (?p) p;
-                    case null Principal.fromText("2vxsx-fae");
-                };
-                let sns_root_principal = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, mapping.sns_root_canister_id)) {
-                    case (?p) p;
-                    case null Principal.fromText("2vxsx-fae");
-                };
-                ?{
-                    thread_id = mapping.thread_id;
-                    proposal_id = mapping.proposal_id;
-                    sns_root_canister_id = sns_root_principal;
-                    created_by;
-                    created_at = mapping.created_at;
-                }
-            };
-            case null null;
-        }
-    };
-
-    public func get_thread_proposal_id(state: ForumState, thread_id: Nat) : ?(Nat32, Nat) {
-        Map.get(state.thread_proposals, Map.nhash, thread_id)
-    };
-
-    public func remove_proposals_topic(
+    // New create_proposal_thread function that handles automatic forum/topic creation
+    public func create_proposal_thread_with_auto_setup(
         state: ForumState,
         caller: Principal,
-        forum_id: Nat
-    ) : Result<(), ForumError> {
-        // Check admin access
-        if (not is_admin(state, caller)) {
-            return #err(#Unauthorized("Admin access required"));
+        input: T.CreateProposalThreadInput,
+        cache: SnsCache
+    ) : async (Result<Nat, ForumError>, SnsCache) {
+        let current_time = Time.now();
+        
+        // Get deduplicated index for SNS root
+        let sns_root_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, input.sns_root_canister_id);
+
+        // Check if proposal thread already exists for this SNS and proposal ID
+        let proposal_key : T.ProposalThreadKey = (sns_root_index, input.proposal_id);
+        switch (Map.get(state.proposal_threads, (T.proposal_thread_key_hash, T.proposal_thread_key_equal), proposal_key)) {
+            case (?_) return (#err(#AlreadyExists("Thread for this proposal already exists")), cache);
+            case null {};
         };
 
-        switch (Map.remove(state.proposal_topics, Map.nhash, forum_id)) {
-            case (?_) #ok();
-            case null #err(#NotFound("No proposals topic set for this forum"));
-        }
+        // Find the forum for this specific SNS
+        var found_forum_id : ?Nat = null;
+        var found_forum : ?Forum = null;
+        for ((forum_id, forum) in Map.entries(state.forums)) {
+            switch (forum.sns_root_canister_id) {
+                case (?root) {
+                    if (Principal.equal(root, input.sns_root_canister_id)) {
+                        found_forum_id := ?forum_id;
+                        found_forum := ?forum;
+                    };
+                };
+                case null {};
+            };
+        };
+
+        // Check if proposals topic exists for this forum
+        let proposals_topic_exists = switch (found_forum_id) {
+            case (?forum_id) {
+                switch (Map.get(state.proposal_topics, Map.nhash, forum_id)) {
+                    case (?_) true;
+                    case null false;
+                }
+            };
+            case null false;
+        };
+
+        // If no forum exists or no proposals topic is set, create the full structure
+        let (proposals_topic_result, updated_cache) = if (found_forum_id == null or not proposals_topic_exists) {
+            await ensure_sns_proposal_structure(state, caller, input.sns_root_canister_id, cache, current_time)
+        } else {
+            (#ok(0), cache) // Dummy result, we'll get the real topic_id below
+        };
+
+        // Handle any errors from structure creation
+        switch (proposals_topic_result) {
+            case (#err(error)) return (#err(error), updated_cache);
+            case (#ok(_)) {};
+        };
+
+        // Now find the forum and topic again (they should exist now)
+        var final_forum_id : ?Nat = null;
+        var final_forum : ?Forum = null;
+        for ((forum_id, forum) in Map.entries(state.forums)) {
+            switch (forum.sns_root_canister_id) {
+                case (?root) {
+                    if (Principal.equal(root, input.sns_root_canister_id)) {
+                        final_forum_id := ?forum_id;
+                        final_forum := ?forum;
+                    };
+                };
+                case null {};
+            };
+        };
+
+        let forum_id = switch (final_forum_id) {
+            case (?fid) fid;
+            case null return (#err(#InternalError("Forum creation failed")), updated_cache);
+        };
+
+        let forum = switch (final_forum) {
+            case (?f) f;
+            case null return (#err(#InternalError("Forum creation failed")), updated_cache);
+        };
+
+        // Get the proposal topic for this specific forum
+        let topic_id = switch (Map.get(state.proposal_topics, Map.nhash, forum_id)) {
+            case (?mapping) mapping.proposals_topic_id;
+            case null return (#err(#InternalError("Proposals topic creation failed")), updated_cache);
+        };
+
+        // Generate standardized title and description based on forum name and proposal ID
+        let standardized_title = forum.title # " Proposal #" # Nat.toText(input.proposal_id);
+        let standardized_description = "Discussion thread for " # forum.title # " Proposal #" # Nat.toText(input.proposal_id);
+
+        let thread_id = get_next_id(state);
+        let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+
+        let thread : Thread = {
+            id = thread_id;
+            topic_id = topic_id;
+            title = ?standardized_title;
+            body = standardized_description;
+            created_by = caller_index;
+            created_at = current_time;
+            updated_by = caller_index;
+            updated_at = current_time;
+            deleted = false;
+        };
+
+        // Create the thread
+        ignore Map.put(state.threads, Map.nhash, thread_id, thread);
+        add_to_index(state.topic_threads, topic_id, thread_id);
+
+        // Create the proposal mapping
+        let proposal_mapping : T.ProposalThreadMapping = {
+            thread_id = thread_id;
+            proposal_id = input.proposal_id;
+            sns_root_canister_id = sns_root_index;
+            created_by = caller_index;
+            created_at = current_time;
+        };
+
+        ignore Map.put(state.proposal_threads, (T.proposal_thread_key_hash, T.proposal_thread_key_equal), proposal_key, proposal_mapping);
+        ignore Map.put(state.thread_proposals, Map.nhash, thread_id, (sns_root_index, input.proposal_id));
+
+        (#ok(thread_id), updated_cache)
     };
 
     // Text limits management functions
@@ -1913,6 +2140,62 @@ module {
             topic_description_max_length = 1000;
             forum_title_max_length = 100;
             forum_description_max_length = 1000;
+        }
+    };
+
+    public func get_proposal_thread(state: ForumState, sns_root: Principal, proposal_id: Nat) : ?T.ProposalThreadMapping {
+        let sns_root_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, sns_root);
+        let proposal_key : T.ProposalThreadKey = (sns_root_index, proposal_id);
+        Map.get(state.proposal_threads, (T.proposal_thread_key_hash, T.proposal_thread_key_equal), proposal_key)
+    };
+
+    public func get_proposal_thread_response(state: ForumState, sns_root: Principal, proposal_id: Nat) : ?T.ProposalThreadMappingResponse {
+        // Safely get the SNS root index - if it doesn't exist, return null instead of creating it
+        let sns_root_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, sns_root)) {
+            case (?index) index;
+            case null return null; // SNS root not found in dedup state, so no proposal thread exists
+        };
+        
+        let proposal_key : T.ProposalThreadKey = (sns_root_index, proposal_id);
+        switch (Map.get(state.proposal_threads, (T.proposal_thread_key_hash, T.proposal_thread_key_equal), proposal_key)) {
+            case (?mapping) {
+                let created_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, mapping.created_by)) {
+                    case (?p) p;
+                    case null Principal.fromText("2vxsx-fae");
+                };
+                let sns_root_principal = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, mapping.sns_root_canister_id)) {
+                    case (?p) p;
+                    case null Principal.fromText("2vxsx-fae");
+                };
+                ?{
+                    thread_id = mapping.thread_id;
+                    proposal_id = mapping.proposal_id;
+                    sns_root_canister_id = sns_root_principal;
+                    created_by;
+                    created_at = mapping.created_at;
+                }
+            };
+            case null null;
+        }
+    };
+
+    public func get_thread_proposal_id(state: ForumState, thread_id: Nat) : ?(Nat32, Nat) {
+        Map.get(state.thread_proposals, Map.nhash, thread_id)
+    };
+
+    public func remove_proposals_topic(
+        state: ForumState,
+        caller: Principal,
+        forum_id: Nat
+    ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
+        switch (Map.remove(state.proposal_topics, Map.nhash, forum_id)) {
+            case (?_) #ok();
+            case null #err(#NotFound("No proposals topic set for this forum"));
         }
     };
 }
