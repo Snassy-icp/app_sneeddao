@@ -165,10 +165,37 @@ module {
     // Composite key for proposal threads: (sns_root_index, proposal_id)
     public type ProposalThreadKey = (Nat32, Nat);
 
+    // Text limits configuration
+    public type TextLimits = {
+        post_title_max_length: Nat;
+        post_body_max_length: Nat;
+        thread_title_max_length: Nat;
+        thread_body_max_length: Nat;
+        topic_title_max_length: Nat;
+        topic_description_max_length: Nat;
+        forum_title_max_length: Nat;
+        forum_description_max_length: Nat;
+    };
+
+    // Input type for updating text limits
+    public type UpdateTextLimitsInput = {
+        post_title_max_length: ?Nat;
+        post_body_max_length: ?Nat;
+        thread_title_max_length: ?Nat;
+        thread_body_max_length: ?Nat;
+        topic_title_max_length: ?Nat;
+        topic_description_max_length: ?Nat;
+        forum_title_max_length: ?Nat;
+        forum_description_max_length: ?Nat;
+    };
+
     // State type for the forum system
     public type ForumState = {
         // Global ID counter
         var next_id: Nat;
+        
+        // Text limits configuration
+        var text_limits: TextLimits;
         
         // Core data storage
         forums: Map.Map<Nat, Forum>;

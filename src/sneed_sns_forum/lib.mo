@@ -422,11 +422,11 @@ module {
         };
 
         // Validate input
-        switch (validate_text(input.title, "Title", 100)) {
+        switch (validate_text(input.title, "Title", state.text_limits.forum_title_max_length)) {
             case (#err(e)) return #err(e);
             case (#ok()) {};
         };
-        switch (validate_text(input.description, "Description", 1000)) {
+        switch (validate_text(input.description, "Description", state.text_limits.forum_description_max_length)) {
             case (#err(e)) return #err(e);
             case (#ok()) {};
         };
@@ -506,11 +506,11 @@ module {
         };
 
         // Validate input
-        switch (validate_text(input.title, "Title", 100)) {
+        switch (validate_text(input.title, "Title", state.text_limits.topic_title_max_length)) {
             case (#err(e)) return #err(e);
             case (#ok()) {};
         };
-        switch (validate_text(input.description, "Description", 1000)) {
+        switch (validate_text(input.description, "Description", state.text_limits.topic_description_max_length)) {
             case (#err(e)) return #err(e);
             case (#ok()) {};
         };
@@ -659,14 +659,14 @@ module {
         // Validate input
         switch (input.title) {
             case (?title) {
-                switch (validate_text(title, "Title", 200)) {
+                switch (validate_text(title, "Title", state.text_limits.thread_title_max_length)) {
                     case (#err(e)) return #err(e);
                     case (#ok()) {};
                 };
             };
             case null {};
         };
-        switch (validate_text(input.body, "Body", 10000)) {
+        switch (validate_text(input.body, "Body", state.text_limits.thread_body_max_length)) {
             case (#err(e)) return #err(e);
             case (#ok()) {};
         };
@@ -756,14 +756,14 @@ module {
         // Validate input
         switch (title) {
             case (?t) {
-                switch (validate_text(t, "Title", 200)) {
+                switch (validate_text(t, "Title", state.text_limits.post_title_max_length)) {
                     case (#err(e)) return #err(e);
                     case (#ok()) {};
                 };
             };
             case null {};
         };
-        switch (validate_text(body, "Body", 10000)) {
+        switch (validate_text(body, "Body", state.text_limits.post_body_max_length)) {
             case (#err(e)) return #err(e);
             case (#ok()) {};
         };
@@ -1468,11 +1468,11 @@ module {
         switch (Map.get(state.forums, Map.nhash, forum_id)) {
             case (?forum) {
                 // Validate input
-                switch (validate_text(input.title, "Title", 100)) {
+                switch (validate_text(input.title, "Title", state.text_limits.forum_title_max_length)) {
                     case (#err(e)) return #err(e);
                     case (#ok()) {};
                 };
-                switch (validate_text(input.description, "Description", 1000)) {
+                switch (validate_text(input.description, "Description", state.text_limits.forum_description_max_length)) {
                     case (#err(e)) return #err(e);
                     case (#ok()) {};
                 };
@@ -1512,11 +1512,11 @@ module {
         switch (Map.get(state.topics, Map.nhash, topic_id)) {
             case (?topic) {
                 // Validate input
-                switch (validate_text(input.title, "Title", 100)) {
+                switch (validate_text(input.title, "Title", state.text_limits.topic_title_max_length)) {
                     case (#err(e)) return #err(e);
                     case (#ok()) {};
                 };
-                switch (validate_text(input.description, "Description", 1000)) {
+                switch (validate_text(input.description, "Description", state.text_limits.topic_description_max_length)) {
                     case (#err(e)) return #err(e);
                     case (#ok()) {};
                 };
@@ -1573,14 +1573,14 @@ module {
                 // Validate input
                 switch (title) {
                     case (?t) {
-                        switch (validate_text(t, "Title", 200)) {
+                        switch (validate_text(t, "Title", state.text_limits.thread_title_max_length)) {
                             case (#err(e)) return #err(e);
                             case (#ok()) {};
                         };
                     };
                     case null {};
                 };
-                switch (validate_text(body, "Body", 10000)) {
+                switch (validate_text(body, "Body", state.text_limits.thread_body_max_length)) {
                     case (#err(e)) return #err(e);
                     case (#ok()) {};
                 };
@@ -1620,14 +1620,14 @@ module {
                 // Validate input
                 switch (title) {
                     case (?t) {
-                        switch (validate_text(t, "Title", 200)) {
+                        switch (validate_text(t, "Title", state.text_limits.post_title_max_length)) {
                             case (#err(e)) return #err(e);
                             case (#ok()) {};
                         };
                     };
                     case null {};
                 };
-                switch (validate_text(body, "Body", 10000)) {
+                switch (validate_text(body, "Body", state.text_limits.post_body_max_length)) {
                     case (#err(e)) return #err(e);
                     case (#ok()) {};
                 };
@@ -1844,6 +1844,75 @@ module {
         switch (Map.remove(state.proposal_topics, Map.nhash, forum_id)) {
             case (?_) #ok();
             case null #err(#NotFound("No proposals topic set for this forum"));
+        }
+    };
+
+    // Text limits management functions
+    public func get_text_limits(state: ForumState) : T.TextLimits {
+        state.text_limits
+    };
+
+    public func update_text_limits(
+        state: ForumState,
+        caller: Principal,
+        input: T.UpdateTextLimitsInput
+    ) : Result<(), ForumError> {
+        // Check admin access
+        if (not is_admin(state, caller)) {
+            return #err(#Unauthorized("Admin access required"));
+        };
+
+        // Update only the provided fields
+        let updated_limits : T.TextLimits = {
+            post_title_max_length = switch (input.post_title_max_length) {
+                case (?value) value;
+                case null state.text_limits.post_title_max_length;
+            };
+            post_body_max_length = switch (input.post_body_max_length) {
+                case (?value) value;
+                case null state.text_limits.post_body_max_length;
+            };
+            thread_title_max_length = switch (input.thread_title_max_length) {
+                case (?value) value;
+                case null state.text_limits.thread_title_max_length;
+            };
+            thread_body_max_length = switch (input.thread_body_max_length) {
+                case (?value) value;
+                case null state.text_limits.thread_body_max_length;
+            };
+            topic_title_max_length = switch (input.topic_title_max_length) {
+                case (?value) value;
+                case null state.text_limits.topic_title_max_length;
+            };
+            topic_description_max_length = switch (input.topic_description_max_length) {
+                case (?value) value;
+                case null state.text_limits.topic_description_max_length;
+            };
+            forum_title_max_length = switch (input.forum_title_max_length) {
+                case (?value) value;
+                case null state.text_limits.forum_title_max_length;
+            };
+            forum_description_max_length = switch (input.forum_description_max_length) {
+                case (?value) value;
+                case null state.text_limits.forum_description_max_length;
+            };
+        };
+
+        state.text_limits := updated_limits;
+        #ok()
+    };
+
+    // Helper function to get default text limits
+    public func get_default_text_limits() : T.TextLimits {
+        {
+            post_title_max_length = 200;
+            post_body_max_length = 10000;
+            thread_title_max_length = 200;
+            thread_body_max_length = 10000;
+            topic_title_max_length = 100;
+            topic_description_max_length = 1000;
+            forum_title_max_length = 100;
+            forum_description_max_length = 1000;
         }
     };
 }

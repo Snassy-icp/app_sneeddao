@@ -387,4 +387,17 @@ export const setPrincipalNameFor = async (identity, principal, name, snsRootCani
         console.error('Error setting principal name for user:', error);
         throw error;
     }
+};
+
+// Get text limits from the forum backend
+export const getTextLimits = async (forumActor) => {
+    if (!forumActor) return null;
+    
+    try {
+        const response = await forumActor.get_text_limits();
+        return response;
+    } catch (error) {
+        console.error('Error getting text limits:', error);
+        return null;
+    }
 }; 

@@ -7,6 +7,7 @@ import { useNeurons } from '../contexts/NeuronsContext';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from '../AuthContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
+import { useTextLimits } from '../hooks/useTextLimits';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 
 // Add CSS for spinner animation
@@ -26,12 +27,17 @@ if (typeof document !== 'undefined') {
 }
 
 // Separate ReplyForm component to prevent PostComponent re-renders
-const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, principalDisplayInfo }) => {
+const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, principalDisplayInfo, textLimits }) => {
     const [replyText, setReplyText] = useState('');
     
     // Get display name for the user being replied to
     const displayInfo = principalDisplayInfo?.get(createdBy?.toString());
     const displayName = displayInfo?.displayName || createdBy.toString().slice(0, 8) + '...';
+    
+    // Character limit validation
+    const maxLength = textLimits?.max_comment_length || 5000;
+    const isOverLimit = replyText.length > maxLength;
+    const remainingChars = maxLength - replyText.length;
     
     return (
         <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
@@ -43,26 +49,35 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
                     width: '100%',
                     minHeight: '80px',
                     backgroundColor: '#2a2a2a',
-                    border: '1px solid #4a4a4a',
+                    border: `1px solid ${isOverLimit ? '#e74c3c' : '#4a4a4a'}`,
                     borderRadius: '4px',
                     color: '#ffffff',
                     padding: '10px',
                     fontSize: '14px',
                     resize: 'vertical',
-                    marginBottom: '10px'
+                    marginBottom: '5px'
                 }}
             />
+            <div style={{ 
+                fontSize: '12px', 
+                color: isOverLimit ? '#e74c3c' : remainingChars < 100 ? '#f39c12' : '#888',
+                marginBottom: '10px',
+                textAlign: 'right'
+            }}>
+                {replyText.length}/{maxLength} characters
+                {isOverLimit && <span style={{ marginLeft: '10px' }}>({Math.abs(remainingChars)} over limit)</span>}
+            </div>
             <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
                 <button
                     onClick={() => onSubmit(replyText)}
-                    disabled={!replyText.trim() || submittingComment}
+                    disabled={!replyText.trim() || submittingComment || isOverLimit}
                     style={{
                         padding: '8px 16px',
-                        backgroundColor: (replyText.trim() && !submittingComment) ? '#4CAF50' : '#333',
-                        color: (replyText.trim() && !submittingComment) ? 'white' : '#666',
+                        backgroundColor: (replyText.trim() && !submittingComment && !isOverLimit) ? '#4CAF50' : '#333',
+                        color: (replyText.trim() && !submittingComment && !isOverLimit) ? 'white' : '#666',
                         border: 'none',
                         borderRadius: '4px',
-                        cursor: (replyText.trim() && !submittingComment) ? 'pointer' : 'not-allowed'
+                        cursor: (replyText.trim() && !submittingComment && !isOverLimit) ? 'pointer' : 'not-allowed'
                     }}
                 >
                     {submittingComment ? 'Submitting...' : 'Submit Reply'}
@@ -86,9 +101,16 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
 };
 
 // Separate EditForm component to prevent PostComponent re-renders
-const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdit }) => {
+const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdit, textLimits }) => {
     const [title, setTitle] = useState(initialTitle || '');
     const [body, setBody] = useState(initialBody || '');
+    
+    // Character limit validation
+    const maxTitleLength = textLimits?.max_title_length || 200;
+    const maxBodyLength = textLimits?.max_body_length || 10000;
+    const isTitleOverLimit = title.length > maxTitleLength;
+    const isBodyOverLimit = body.length > maxBodyLength;
+    const isOverLimit = isTitleOverLimit || isBodyOverLimit;
     
     return (
         <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
@@ -101,14 +123,23 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
                 style={{
                     width: '100%',
                     backgroundColor: '#2a2a2a',
-                    border: '1px solid #4a4a4a',
+                    border: `1px solid ${isTitleOverLimit ? '#e74c3c' : '#4a4a4a'}`,
                     borderRadius: '4px',
                     color: '#ffffff',
                     padding: '10px',
                     fontSize: '14px',
-                    marginBottom: '10px'
+                    marginBottom: '5px'
                 }}
             />
+            <div style={{ 
+                fontSize: '12px', 
+                color: isTitleOverLimit ? '#e74c3c' : (maxTitleLength - title.length) < 20 ? '#f39c12' : '#888',
+                marginBottom: '10px',
+                textAlign: 'right'
+            }}>
+                Title: {title.length}/{maxTitleLength} characters
+                {isTitleOverLimit && <span style={{ marginLeft: '10px' }}>({title.length - maxTitleLength} over limit)</span>}
+            </div>
             <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
@@ -117,26 +148,35 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
                     width: '100%',
                     minHeight: '100px',
                     backgroundColor: '#2a2a2a',
-                    border: '1px solid #4a4a4a',
+                    border: `1px solid ${isBodyOverLimit ? '#e74c3c' : '#4a4a4a'}`,
                     borderRadius: '4px',
                     color: '#ffffff',
                     padding: '10px',
                     fontSize: '14px',
                     resize: 'vertical',
-                    marginBottom: '10px'
+                    marginBottom: '5px'
                 }}
             />
+            <div style={{ 
+                fontSize: '12px', 
+                color: isBodyOverLimit ? '#e74c3c' : (maxBodyLength - body.length) < 100 ? '#f39c12' : '#888',
+                marginBottom: '10px',
+                textAlign: 'right'
+            }}>
+                Body: {body.length}/{maxBodyLength} characters
+                {isBodyOverLimit && <span style={{ marginLeft: '10px' }}>({body.length - maxBodyLength} over limit)</span>}
+            </div>
             <div style={{ display: 'flex', gap: '10px' }}>
                 <button
                     onClick={() => onSubmit(title, body)}
-                    disabled={!body.trim() || submittingEdit}
+                    disabled={!body.trim() || submittingEdit || isOverLimit}
                     style={{
                         padding: '8px 16px',
-                        backgroundColor: (body.trim() && !submittingEdit) ? '#f39c12' : '#333',
-                        color: (body.trim() && !submittingEdit) ? 'white' : '#666',
+                        backgroundColor: (body.trim() && !submittingEdit && !isOverLimit) ? '#f39c12' : '#333',
+                        color: (body.trim() && !submittingEdit && !isOverLimit) ? 'white' : '#666',
                         border: 'none',
                         borderRadius: '4px',
-                        cursor: (body.trim() && !submittingEdit) ? 'pointer' : 'not-allowed'
+                        cursor: (body.trim() && !submittingEdit && !isOverLimit) ? 'pointer' : 'not-allowed'
                     }}
                 >
                     {submittingEdit ? 'Updating...' : 'Update Post'}
@@ -169,6 +209,9 @@ function Discussion({
     const { principalNames, principalNicknames } = useNaming();
     const { identity } = useAuth();
     const { getHotkeyNeurons, getAllNeurons, loading: neuronsLoading, neuronsData } = useNeurons();
+    
+    // Text limits hook
+    const { textLimits, loading: textLimitsLoading } = useTextLimits(forumActor);
     
     // Admin check
     const { isAdmin } = useAdminCheck({
@@ -1093,6 +1136,7 @@ function Discussion({
                                         submittingComment={submittingComment}
                                         createdBy={post.created_by}
                                         principalDisplayInfo={principalDisplayInfo}
+                                        textLimits={textLimits}
                                     />
                                 )}
 
@@ -1104,6 +1148,7 @@ function Discussion({
                                         onSubmit={submitEditPost}
                                         onCancel={cancelEditPost}
                                         submittingEdit={submittingEdit}
+                                        textLimits={textLimits}
                                     />
                                 )}
                             </>
@@ -1126,7 +1171,7 @@ function Discussion({
                 )}
             </div>
         );
-    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo, allNeurons, votingStates, userVotes, submittingComment, editingPost, submittingEdit, isAdmin, identity]);
+    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo, allNeurons, votingStates, userVotes, submittingComment, editingPost, submittingEdit, isAdmin, identity, textLimits]);
 
     // Effect to fetch discussion when props change
     useEffect(() => {
@@ -1558,14 +1603,28 @@ function Discussion({
                                         style={{
                                             width: '100%',
                                             backgroundColor: '#2a2a2a',
-                                            border: '1px solid #4a4a4a',
+                                            border: `1px solid ${textLimits && commentTitle.length > textLimits.max_title_length ? '#e74c3c' : '#4a4a4a'}`,
                                             borderRadius: '4px',
                                             color: '#ffffff',
                                             padding: '10px',
                                             fontSize: '14px',
-                                            marginBottom: '10px'
+                                            marginBottom: '5px'
                                         }}
                                     />
+                                    {textLimits && (
+                                        <div style={{ 
+                                            fontSize: '12px', 
+                                            color: commentTitle.length > textLimits.max_title_length ? '#e74c3c' : 
+                                                   (textLimits.max_title_length - commentTitle.length) < 20 ? '#f39c12' : '#888',
+                                            marginBottom: '10px',
+                                            textAlign: 'right'
+                                        }}>
+                                            Title: {commentTitle.length}/{textLimits.max_title_length} characters
+                                            {commentTitle.length > textLimits.max_title_length && 
+                                                <span style={{ marginLeft: '10px' }}>({commentTitle.length - textLimits.max_title_length} over limit)</span>
+                                            }
+                                        </div>
+                                    )}
                                     <textarea
                                         value={commentText}
                                         onChange={(e) => setCommentText(e.target.value)}
@@ -1574,26 +1633,46 @@ function Discussion({
                                             width: '100%',
                                             minHeight: '100px',
                                             backgroundColor: '#2a2a2a',
-                                            border: '1px solid #4a4a4a',
+                                            border: `1px solid ${textLimits && commentText.length > textLimits.max_body_length ? '#e74c3c' : '#4a4a4a'}`,
                                             borderRadius: '4px',
                                             color: '#ffffff',
                                             padding: '10px',
                                             fontSize: '14px',
                                             resize: 'vertical',
-                                            marginBottom: '10px'
+                                            marginBottom: '5px'
                                         }}
                                     />
+                                    {textLimits && (
+                                        <div style={{ 
+                                            fontSize: '12px', 
+                                            color: commentText.length > textLimits.max_body_length ? '#e74c3c' : 
+                                                   (textLimits.max_body_length - commentText.length) < 100 ? '#f39c12' : '#888',
+                                            marginBottom: '10px',
+                                            textAlign: 'right'
+                                        }}>
+                                            Body: {commentText.length}/{textLimits.max_body_length} characters
+                                            {commentText.length > textLimits.max_body_length && 
+                                                <span style={{ marginLeft: '10px' }}>({commentText.length - textLimits.max_body_length} over limit)</span>
+                                            }
+                                        </div>
+                                    )}
                                     <div style={{ display: 'flex', gap: '10px' }}>
                                         <button
                                             onClick={submitComment}
-                                            disabled={!commentText.trim() || submittingComment}
+                                            disabled={!commentText.trim() || submittingComment || 
+                                                     (textLimits && (commentTitle.length > textLimits.max_title_length || 
+                                                                    commentText.length > textLimits.max_body_length))}
                                             style={{
-                                                backgroundColor: commentText.trim() ? '#2ecc71' : '#666',
+                                                backgroundColor: (commentText.trim() && !submittingComment && 
+                                                                 (!textLimits || (commentTitle.length <= textLimits.max_title_length && 
+                                                                                  commentText.length <= textLimits.max_body_length))) ? '#2ecc71' : '#666',
                                                 color: '#ffffff',
                                                 border: 'none',
                                                 borderRadius: '4px',
                                                 padding: '8px 16px',
-                                                cursor: commentText.trim() && !submittingComment ? 'pointer' : 'not-allowed',
+                                                cursor: (commentText.trim() && !submittingComment && 
+                                                        (!textLimits || (commentTitle.length <= textLimits.max_title_length && 
+                                                                         commentText.length <= textLimits.max_body_length))) ? 'pointer' : 'not-allowed',
                                                 fontSize: '14px'
                                             }}
                                         >

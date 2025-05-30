@@ -90,10 +90,12 @@ actor SneedSNSForum {
     stable let stable_proposal_topics = Map.new<Nat, T.ProposalTopicMapping>();
     stable let stable_proposal_threads = Map.new<T.ProposalThreadKey, T.ProposalThreadMapping>();
     stable let stable_thread_proposals = Map.new<Nat, (Nat32, Nat)>();
+    stable var stable_text_limits : T.TextLimits = Lib.get_default_text_limits();
 
     // Runtime state that directly references stable storage
     private var state : T.ForumState = {
         var next_id = stable_next_id;
+        var text_limits = stable_text_limits;
         forums = stable_forums;
         topics = stable_topics;
         threads = stable_threads;
@@ -385,9 +387,19 @@ actor SneedSNSForum {
         Lib.remove_proposals_topic(state, caller, forum_id)
     };
 
+    // Text limits management endpoints
+    public query func get_text_limits() : async T.TextLimits {
+        Lib.get_text_limits(state)
+    };
+
+    public shared ({ caller }) func update_text_limits(input: T.UpdateTextLimitsInput) : async T.Result<(), T.ForumError> {
+        Lib.update_text_limits(state, caller, input)
+    };
+
     // System upgrade hooks to maintain stable storage consistency
     system func preupgrade() {
         stable_next_id := state.next_id;
+        stable_text_limits := state.text_limits;
     };
 
     system func postupgrade() {
