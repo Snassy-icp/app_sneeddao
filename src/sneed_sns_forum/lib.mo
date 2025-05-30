@@ -1183,14 +1183,16 @@ module {
         caller: Principal,
         post_id: Nat
     ) : Result<(), ForumError> {
-        // Check admin access
-        if (not is_admin(state, caller)) {
-            return #err(#Unauthorized("Admin access required"));
-        };
-
         switch (Map.get(state.posts, Map.nhash, post_id)) {
             case (?post) {
+                // Check if caller is admin or post owner
                 let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let is_post_owner = (post.created_by == caller_index);
+                
+                if (not (is_admin(state, caller) or is_post_owner)) {
+                    return #err(#Unauthorized("Only admins or post owners can delete posts"));
+                };
+
                 let updated_post = {
                     post with
                     deleted = true;
@@ -1610,13 +1612,16 @@ module {
         title: ?Text,
         body: Text
     ) : Result<(), ForumError> {
-        // Check admin access
-        if (not is_admin(state, caller)) {
-            return #err(#Unauthorized("Admin access required"));
-        };
-
         switch (Map.get(state.posts, Map.nhash, post_id)) {
             case (?post) {
+                // Check if caller is admin or post owner
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                let is_post_owner = (post.created_by == caller_index);
+                
+                if (not (is_admin(state, caller) or is_post_owner)) {
+                    return #err(#Unauthorized("Only admins or post owners can edit posts"));
+                };
+
                 // Validate input
                 switch (title) {
                     case (?t) {
@@ -1632,7 +1637,6 @@ module {
                     case (#ok()) {};
                 };
 
-                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
                 let updated_post = {
                     post with
                     title = title;

@@ -1267,7 +1267,7 @@ function Discussion({
         
         setSubmittingEdit(true);
         try {
-            const result = await forumActor.edit_post(
+            const result = await forumActor.update_post(
                 Number(editingPost),
                 title,
                 body
