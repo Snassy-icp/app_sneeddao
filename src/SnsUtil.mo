@@ -198,5 +198,10 @@ module SnsUtility {
         };
     };
 
+    public func get_sns_name(sns_governance_canister_id : Principal) : async ?Text {
+        let sns_gov_canister = get_sns_governance_canister(sns_governance_canister_id);
+        let metadata = await sns_gov_canister.get_metadata({});
+        metadata.name;
+    };
 
 }

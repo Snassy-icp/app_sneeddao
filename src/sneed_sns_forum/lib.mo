@@ -1707,25 +1707,8 @@ module {
     };
 
     // Helper function to get SNS name from governance canister
-    private func get_sns_name(governance_canister_id: Principal) : async Text {
-        try {
-            let governance_actor = actor(Principal.toText(governance_canister_id)) : actor {
-                get_metadata : () -> async {
-                    name: ?Text;
-                    description: ?Text;
-                    logo: ?Text;
-                    url: ?Text;
-                };
-            };
-            
-            let metadata = await governance_actor.get_metadata();
-            switch (metadata.name) {
-                case (?name) name;
-                case null "SNS " # Principal.toText(governance_canister_id);
-            }
-        } catch (error) {
-            "SNS " # Principal.toText(governance_canister_id)
-        }
+    public func get_sns_name(governance_canister_id: Principal): async ?Text {
+        await SnsUtil.get_sns_name(governance_canister_id);
     };
 
     // Helper function to automatically create forum and topic structure for SNS proposals
@@ -1763,7 +1746,11 @@ module {
             case (?fid) fid;
             case null {
                 // Create new forum for this SNS
-                let sns_name = await get_sns_name(governance_canister_id);
+                let sns_name_opt = await get_sns_name(governance_canister_id);
+                let sns_name = switch (sns_name_opt) {
+                    case (?name) name;
+                    case null "SNS " # Principal.toText(sns_root_canister_id);
+                };
                 let forum_input : T.CreateForumInput = {
                     title = sns_name # " Forum";
                     description = "Discussion forum for " # sns_name # " governance and community topics";

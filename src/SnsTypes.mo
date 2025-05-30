@@ -84,8 +84,16 @@ module SnsTypes {
         max_number_of_principals_per_neuron : ?Nat64;
     };
 
+    public type GetMetadataResponse = {
+        url : ?Text;
+        logo : ?Text;
+        name : ?Text;
+        description : ?Text;
+    };
+
     public type SnsGovernance = actor {
         list_neurons : shared query ListNeurons -> async ListNeuronsResponse;
-        get_nervous_system_parameters : shared () -> async NervousSystemParameters;        
+        get_nervous_system_parameters : shared () -> async NervousSystemParameters;
+        get_metadata : shared ({}) -> async GetMetadataResponse;
     };    
 }
