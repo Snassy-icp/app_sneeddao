@@ -1,8 +1,11 @@
 {
+  "app_sneeddao_backend": {
+    "ic": "g7s5u-tqaaa-aaaad-qhktq-cai"
+  },
   "app_sneeddao_frontend": {
     "ic": "pxtkg-giaaa-aaaal-ajjzq-cai"
   },
-  "app_sneeddao_backend": {
-    "ic": "g7s5u-tqaaa-aaaad-qhktq-cai"
+  "sneed_sns_forum": {
+    "ic": "mcigm-4aaaa-aaaad-qhlkq-cai"
   }
 }

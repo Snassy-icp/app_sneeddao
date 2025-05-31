@@ -4,6 +4,10 @@
       "main": "src/app_sneeddao_backend/main.mo",
       "type": "motoko"
     },
+    "sneed_sns_forum": {
+      "main": "src/sneed_sns_forum/main.mo",
+      "type": "motoko"
+    },
     "app_sneeddao_frontend": {
       "dependencies": [
         "app_sneeddao_backend"
@@ -117,7 +121,7 @@
   "defaults": {
     "build": {
       "args": "",
-      "packtool": ""
+      "packtool": "mops sources"
     }
   },
   "output_env_file": ".env",
