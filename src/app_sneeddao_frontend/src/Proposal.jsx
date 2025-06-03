@@ -53,6 +53,10 @@ function Proposal() {
         if (isAuthenticated && identity) {
             const actor = createForumActor(identity);
             setForumActor(actor);
+        } else {
+            // Create anonymous actor for unauthenticated users to allow read-only access
+            const actor = createForumActor(null);
+            setForumActor(actor);
         }
     }, [isAuthenticated, identity, createForumActor]);
 

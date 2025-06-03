@@ -13,7 +13,7 @@ export function ForumProvider({ children }) {
       const actor = createActor(canisterId, {
         agentOptions: {
           host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
-          identity,
+          identity: identity || undefined,
         },
       });
 

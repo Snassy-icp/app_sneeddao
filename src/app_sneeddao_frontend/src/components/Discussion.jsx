@@ -946,189 +946,200 @@ function Discussion({
                                 </div>
                                 
                                 {/* Action Buttons */}
-                                {isAuthenticated && (
-                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                        {/* Voting Buttons */}
-                                        <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
-                                            {/* Upvote Button */}
-                                            <button
-                                                onClick={() => voteOnPost(post.id, 'upvote')}
-                                                disabled={votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0}
-                                                style={{
-                                                    backgroundColor: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#6b8e6b' : 'transparent',
-                                                    border: 'none',
-                                                    color: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#ffffff' : (totalVotingPower === 0 ? '#666' : '#6b8e6b'),
-                                                    borderRadius: '4px',
-                                                    padding: '4px 6px',
-                                                    cursor: (votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
-                                                    fontSize: '12px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '3px',
-                                                    opacity: (votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 0.6 : 1,
-                                                    fontWeight: 'bold'
-                                                }}
-                                                title={totalVotingPower === 0 ? 'You must have hotkey neurons with voting power to vote on posts' : `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
-                                            >
-                                                ▲ {votingStates[post.id.toString()] === 'voting' ? '...' : 
-                                                    neuronsLoading ? 'Loading...' : 
-                                                    totalVotingPower === 0 ? 'No VP' :
-                                                    totalVotingPower > 0 ? `${formatVotingPowerDisplay(totalVotingPower)}` : 'Up'}
-                                            </button>
-
-                                            {/* Score Display */}
-                                            <span style={{ 
-                                                color: score > 0 ? '#6b8e6b' : score < 0 ? '#b85c5c' : '#888',
-                                                fontSize: '14px',
-                                                fontWeight: 'bold',
-                                                minWidth: '40px',
-                                                textAlign: 'center',
-                                                padding: '0 4px'
-                                            }}>
-                                                {votingStates[post.id.toString()] === 'voting' ? (
-                                                    <div style={{ 
-                                                        display: 'inline-block',
-                                                        width: '12px',
-                                                        height: '12px',
-                                                        border: '2px solid #f3f3f3',
-                                                        borderTop: '2px solid #3498db',
-                                                        borderRadius: '50%',
-                                                        animation: 'spin 1s linear infinite'
-                                                    }} />
-                                                ) : (
-                                                    (score > 0 ? '+' : '') + formatScore(score)
-                                                )}
-                                            </span>
-
-                                            {/* Downvote Button */}
-                                            <button
-                                                onClick={() => voteOnPost(post.id, 'downvote')}
-                                                disabled={votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0}
-                                                style={{
-                                                    backgroundColor: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#b85c5c' : 'transparent',
-                                                    border: 'none',
-                                                    color: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#ffffff' : (totalVotingPower === 0 ? '#666' : '#b85c5c'),
-                                                    borderRadius: '4px',
-                                                    padding: '4px 6px',
-                                                    cursor: (votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
-                                                    fontSize: '12px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '3px',
-                                                    opacity: (votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 0.6 : 1,
-                                                    fontWeight: 'bold'
-                                                }}
-                                                title={totalVotingPower === 0 ? 'You must have hotkey neurons with voting power to vote on posts' : `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
-                                            >
-                                                ▼ {votingStates[post.id.toString()] === 'voting' ? '...' : 
-                                                    neuronsLoading ? 'Loading...' : 
-                                                    totalVotingPower === 0 ? 'No VP' :
-                                                    totalVotingPower > 0 ? `${formatVotingPowerDisplay(totalVotingPower)}` : 'Down'}
-                                            </button>
-                                        </div>
-
-                                        {/* Reply Button */}
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                    {/* Voting Buttons - Always show, but disable for unauthenticated users */}
+                                    <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
+                                        {/* Upvote Button */}
                                         <button
-                                            onClick={() => {
-                                                if (isReplying) {
-                                                    setReplyingTo(null);
-                                                } else {
-                                                    setReplyingTo(Number(post.id));
-                                                }
-                                            }}
+                                            onClick={isAuthenticated ? () => voteOnPost(post.id, 'upvote') : undefined}
+                                            disabled={!isAuthenticated || votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0}
                                             style={{
-                                                backgroundColor: 'transparent',
+                                                backgroundColor: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#6b8e6b' : 'transparent',
                                                 border: 'none',
-                                                color: '#6b8eb8',
+                                                color: userVotes[post.id.toString()]?.vote_type === 'upvote' ? '#ffffff' : 
+                                                       (!isAuthenticated ? '#888' : (totalVotingPower === 0 ? '#666' : '#6b8e6b')),
                                                 borderRadius: '4px',
-                                                padding: '4px 8px',
-                                                cursor: 'pointer',
+                                                padding: '4px 6px',
+                                                cursor: (!isAuthenticated || votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
                                                 fontSize: '12px',
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                gap: '4px'
+                                                gap: '3px',
+                                                opacity: (!isAuthenticated || votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 0.6 : 1,
+                                                fontWeight: 'bold'
                                             }}
+                                            title={!isAuthenticated ? 'Connect your wallet to vote' : 
+                                                   totalVotingPower === 0 ? 'You must have hotkey neurons with voting power to vote on posts' : 
+                                                   `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
                                         >
-                                            💬 {isReplying ? 'Cancel Reply' : 'Reply'}
+                                            ▲ {!isAuthenticated ? 'Up' :
+                                                votingStates[post.id.toString()] === 'voting' ? '...' : 
+                                                neuronsLoading ? 'Loading...' : 
+                                                totalVotingPower === 0 ? 'No VP' :
+                                                totalVotingPower > 0 ? `${formatVotingPowerDisplay(totalVotingPower)}` : 'Up'}
                                         </button>
 
-                                        {/* Retract Vote Button */}
-                                        {userVotes[post.id.toString()] && (
-                                            <button
-                                                onClick={() => retractVote(post.id)}
-                                                disabled={votingStates[post.id.toString()] === 'voting'}
-                                                style={{
-                                                    backgroundColor: 'transparent',
-                                                    border: 'none',
-                                                    color: '#b8956b',
-                                                    borderRadius: '4px',
-                                                    padding: '4px 8px',
-                                                    cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
-                                                    fontSize: '12px',
-                                                    opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '4px'
-                                                }}
-                                            >
-                                                ↩️ {votingStates[post.id.toString()] === 'voting' ? 'Retracting...' : 'Retract'}
-                                            </button>
-                                        )}
+                                        {/* Score Display - Always show */}
+                                        <span style={{ 
+                                            color: score > 0 ? '#6b8e6b' : score < 0 ? '#b85c5c' : '#888',
+                                            fontSize: '14px',
+                                            fontWeight: 'bold',
+                                            minWidth: '40px',
+                                            textAlign: 'center',
+                                            padding: '0 4px'
+                                        }}>
+                                            {isAuthenticated && votingStates[post.id.toString()] === 'voting' ? (
+                                                <div style={{ 
+                                                    display: 'inline-block',
+                                                    width: '12px',
+                                                    height: '12px',
+                                                    border: '2px solid #f3f3f3',
+                                                    borderTop: '2px solid #3498db',
+                                                    borderRadius: '50%',
+                                                    animation: 'spin 1s linear infinite'
+                                                }} />
+                                            ) : (
+                                                (score > 0 ? '+' : '') + formatScore(score)
+                                            )}
+                                        </span>
 
-                                        {/* Edit Button - show if user owns the post or is admin */}
-                                        {(identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin)) && (
-                                            <button
-                                                onClick={() => startEditPost(post)}
-                                                style={{
-                                                    backgroundColor: 'transparent',
-                                                    border: 'none',
-                                                    color: '#b8956b',
-                                                    borderRadius: '4px',
-                                                    padding: '4px 8px',
-                                                    cursor: 'pointer',
-                                                    fontSize: '12px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '4px'
-                                                }}
-                                            >
-                                                ✏️ Edit
-                                            </button>
-                                        )}
-
-                                        {/* Delete Button - show if user owns the post or is admin */}
-                                        {(identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin)) && (
-                                            <button
-                                                onClick={() => deletePost(post.id)}
-                                                style={{
-                                                    backgroundColor: 'transparent',
-                                                    border: 'none',
-                                                    color: '#b85c5c',
-                                                    borderRadius: '4px',
-                                                    padding: '4px 8px',
-                                                    cursor: 'pointer',
-                                                    fontSize: '12px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '4px'
-                                                }}
-                                            >
-                                                🗑️ Delete
-                                            </button>
-                                        )}
-
-                                        {/* Voting Status */}
-                                        {votingStates[post.id.toString()] === 'success' && (
-                                            <span style={{ color: '#6b8e6b', fontSize: '12px' }}>✓ Voted</span>
-                                        )}
-                                        {votingStates[post.id.toString()] === 'error' && (
-                                            <span style={{ color: '#b85c5c', fontSize: '12px' }}>✗ Error</span>
-                                        )}
+                                        {/* Downvote Button */}
+                                        <button
+                                            onClick={isAuthenticated ? () => voteOnPost(post.id, 'downvote') : undefined}
+                                            disabled={!isAuthenticated || votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0}
+                                            style={{
+                                                backgroundColor: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#b85c5c' : 'transparent',
+                                                border: 'none',
+                                                color: userVotes[post.id.toString()]?.vote_type === 'downvote' ? '#ffffff' : 
+                                                       (!isAuthenticated ? '#888' : (totalVotingPower === 0 ? '#666' : '#b85c5c')),
+                                                borderRadius: '4px',
+                                                padding: '4px 6px',
+                                                cursor: (!isAuthenticated || votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
+                                                fontSize: '12px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '3px',
+                                                opacity: (!isAuthenticated || votingStates[post.id.toString()] === 'voting' || totalVotingPower === 0) ? 0.6 : 1,
+                                                fontWeight: 'bold'
+                                            }}
+                                            title={!isAuthenticated ? 'Connect your wallet to vote' : 
+                                                   totalVotingPower === 0 ? 'You must have hotkey neurons with voting power to vote on posts' : 
+                                                   `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
+                                        >
+                                            ▼ {!isAuthenticated ? 'Down' :
+                                                votingStates[post.id.toString()] === 'voting' ? '...' : 
+                                                neuronsLoading ? 'Loading...' : 
+                                                totalVotingPower === 0 ? 'No VP' :
+                                                totalVotingPower > 0 ? `${formatVotingPowerDisplay(totalVotingPower)}` : 'Down'}
+                                        </button>
                                     </div>
-                                )}
 
-                                {/* Reply Form */}
-                                {isReplying && (
+                                    {/* Interactive buttons - Only show for authenticated users */}
+                                    {isAuthenticated && (
+                                        <>
+                                            {/* Reply Button */}
+                                            <button
+                                                onClick={() => {
+                                                    if (isReplying) {
+                                                        setReplyingTo(null);
+                                                    } else {
+                                                        setReplyingTo(Number(post.id));
+                                                    }
+                                                }}
+                                                style={{
+                                                    backgroundColor: 'transparent',
+                                                    border: 'none',
+                                                    color: '#6b8eb8',
+                                                    borderRadius: '4px',
+                                                    padding: '4px 8px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '12px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}
+                                            >
+                                                💬 {isReplying ? 'Cancel Reply' : 'Reply'}
+                                            </button>
+
+                                            {/* Retract Vote Button */}
+                                            {userVotes[post.id.toString()] && (
+                                                <button
+                                                    onClick={() => retractVote(post.id)}
+                                                    disabled={votingStates[post.id.toString()] === 'voting'}
+                                                    style={{
+                                                        backgroundColor: 'transparent',
+                                                        border: 'none',
+                                                        color: '#b8956b',
+                                                        borderRadius: '4px',
+                                                        padding: '4px 8px',
+                                                        cursor: votingStates[post.id.toString()] === 'voting' ? 'not-allowed' : 'pointer',
+                                                        fontSize: '12px',
+                                                        opacity: votingStates[post.id.toString()] === 'voting' ? 0.6 : 1,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}
+                                                >
+                                                    ↩️ {votingStates[post.id.toString()] === 'voting' ? 'Retracting...' : 'Retract'}
+                                                </button>
+                                            )}
+
+                                            {/* Edit Button - show if user owns the post or is admin */}
+                                            {(identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin)) && (
+                                                <button
+                                                    onClick={() => startEditPost(post)}
+                                                    style={{
+                                                        backgroundColor: 'transparent',
+                                                        border: 'none',
+                                                        color: '#b8956b',
+                                                        borderRadius: '4px',
+                                                        padding: '4px 8px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '12px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}
+                                                >
+                                                    ✏️ Edit
+                                                </button>
+                                            )}
+
+                                            {/* Delete Button - show if user owns the post or is admin */}
+                                            {(identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin)) && (
+                                                <button
+                                                    onClick={() => deletePost(post.id)}
+                                                    style={{
+                                                        backgroundColor: 'transparent',
+                                                        border: 'none',
+                                                        color: '#b85c5c',
+                                                        borderRadius: '4px',
+                                                        padding: '4px 8px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '12px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}
+                                                >
+                                                    🗑️ Delete
+                                                </button>
+                                            )}
+
+                                            {/* Voting Status */}
+                                            {votingStates[post.id.toString()] === 'success' && (
+                                                <span style={{ color: '#6b8e6b', fontSize: '12px' }}>✓ Voted</span>
+                                            )}
+                                            {votingStates[post.id.toString()] === 'error' && (
+                                                <span style={{ color: '#b85c5c', fontSize: '12px' }}>✗ Error</span>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* Reply Form - Only show for authenticated users */}
+                                {isAuthenticated && isReplying && (
                                     <ReplyForm 
                                         postId={post.id}
                                         onSubmit={(replyText) => submitReply(post.id, replyText)}
