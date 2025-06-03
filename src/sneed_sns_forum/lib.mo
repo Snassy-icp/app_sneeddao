@@ -416,10 +416,19 @@ module {
         caller: Principal,
         input: T.CreateForumInput
     ) : Result<Nat, ForumError> {
-        // Check admin access
         if (not is_admin(state, caller)) {
             return #err(#Unauthorized("Admin access required"));
         };
+
+        create_forum_internal(state, caller, input)
+    };
+
+    private func create_forum_internal(
+        state: ForumState,
+        caller: Principal,
+        input: T.CreateForumInput
+    ) : Result<Nat, ForumError> {
+        // Check admin access
 
         // Validate input
         switch (validate_text(input.title, "Title", state.text_limits.forum_title_max_length)) {
@@ -504,6 +513,14 @@ module {
         if (not is_admin(state, caller)) {
             return #err(#Unauthorized("Admin access required"));
         };
+        create_topic_internal(state, caller, input)
+    };
+
+    private func create_topic_internal(
+        state: ForumState,
+        caller: Principal,
+        input: T.CreateTopicInput
+    ) : Result<Nat, ForumError> {
 
         // Validate input
         switch (validate_text(input.title, "Title", state.text_limits.topic_title_max_length)) {
@@ -1757,7 +1774,7 @@ module {
                     sns_root_canister_id = ?sns_root_canister_id;
                 };
                 
-                switch (create_forum(state, caller, forum_input)) {
+                switch (create_forum_internal(state, caller, forum_input)) {
                     case (#ok(new_forum_id)) new_forum_id;
                     case (#err(error)) return (#err(error), updated_cache);
                 }
@@ -1793,7 +1810,7 @@ module {
                     description = "Topics related to governance, voting, and decision-making";
                 };
                 
-                switch (create_topic(state, caller, governance_topic_input)) {
+                switch (create_topic_internal(state, caller, governance_topic_input)) {
                     case (#ok(new_topic_id)) new_topic_id;
                     case (#err(error)) return (#err(error), updated_cache);
                 }
@@ -1829,7 +1846,7 @@ module {
                     description = "Discussion threads for individual governance proposals";
                 };
                 
-                switch (create_topic(state, caller, proposals_topic_input)) {
+                switch (create_topic_internal(state, caller, proposals_topic_input)) {
                     case (#ok(new_topic_id)) new_topic_id;
                     case (#err(error)) return (#err(error), updated_cache);
                 }
