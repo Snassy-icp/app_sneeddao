@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
-import { fetchAndCacheSnsData, fetchSnsLogo } from '../utils/SnsUtils';
+import { fetchAndCacheSnsData, fetchSnsLogo, addSnsUpdateListener } from '../utils/SnsUtils';
 import { HttpAgent } from '@dfinity/agent';
 
 function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
@@ -106,6 +106,21 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
     useEffect(() => {
         console.log('SnsDropdown: Initial mount, loading SNS data...'); // Debug log
         loadSnsData();
+        
+        // Listen for background SNS data updates
+        const removeListener = addSnsUpdateListener((newData) => {
+            console.log('SnsDropdown: Received background SNS data update:', newData);
+            setSnsList(newData);
+            
+            // Start loading logos for any new SNSes
+            newData.forEach(sns => {
+                if (sns.canisters.governance && !snsLogos.has(sns.canisters.governance)) {
+                    loadSnsLogo(sns.canisters.governance);
+                }
+            });
+        });
+        
+        return removeListener;
     }, []); // Only run once on mount
 
     const handleSnsChange = (snsRoot) => {
