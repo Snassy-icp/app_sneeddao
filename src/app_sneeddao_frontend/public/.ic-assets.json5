@@ -28,7 +28,7 @@
             //   See: https://github.com/WebAssembly/content-security-policy/blob/main/proposals/CSP.md.
             // - We added img-src data: because data: images are used often.
             // - frame-ancestors: 'self' https://tacodao.com allows tacodao.com to embed this site in an iframe while preventing other sites from doing so.
-            "Content-Security-Policy": "default-src 'self';script-src 'self' 'unsafe-eval';connect-src 'self' http://localhost:* https://icp0.io https://*.icp0.io https://icp-api.io https://ic0.app https://*.ic0.app https://sns-api.internetcomputer.org;img-src 'self' data: github.com *.icp0.io *.s3.amazonaws.com sneeddao.com *.sneeddao.com;style-src * 'unsafe-inline';style-src-elem * 'unsafe-inline';font-src *;object-src 'none';base-uri 'self';frame-ancestors 'self' https://tacodao.com https://wxunf-maaaa-aaaab-qbzga-cai.icp0.io/;form-action 'self';upgrade-insecure-requests;",
+            "Content-Security-Policy": "default-src 'self';script-src 'self' 'unsafe-eval';connect-src 'self' http://localhost:* https://icp0.io https://*.icp0.io https://icp-api.io https://ic0.app https://*.ic0.app https://sns-api.internetcomputer.org;img-src 'self' data: github.com *.icp0.io *.s3.amazonaws.com sneeddao.com *.sneeddao.com;style-src * 'unsafe-inline';style-src-elem * 'unsafe-inline';font-src *;object-src 'none';base-uri 'self';frame-ancestors 'self' https://Banana.Enterprises https://tacodao.com https://wxunf-maaaa-aaaab-qbzga-cai.icp0.io/;form-action 'self';upgrade-insecure-requests;",
 
             // Security: The permissions policy disables all features for security reasons. If your site needs such permissions, activate them.
             // To configure permissions go here https://www.permissionspolicy.com/
