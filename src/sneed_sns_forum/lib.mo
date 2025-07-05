@@ -503,6 +503,20 @@ module {
         Buffer.toArray(forums)
     };
 
+    public func get_forum_by_sns_root(state: ForumState, sns_root_canister_id: Principal) : ?T.ForumResponse {
+        for ((forum_id, forum) in Map.entries(state.forums)) {
+            switch (forum.sns_root_canister_id) {
+                case (?root) {
+                    if (Principal.equal(root, sns_root_canister_id) and not forum.deleted) {
+                        return get_forum(state, forum_id);
+                    };
+                };
+                case null {};
+            };
+        };
+        null
+    };
+
     // Topic operations
     public func create_topic(
         state: ForumState,

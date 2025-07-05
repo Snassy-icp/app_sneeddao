@@ -155,6 +155,10 @@ actor SneedSNSForum {
         Lib.get_forums_filtered(state, is_admin)
     };
 
+    public query func get_forum_by_sns_root(sns_root_canister_id: Principal) : async ?T.ForumResponse {
+        Lib.get_forum_by_sns_root(state, sns_root_canister_id)
+    };
+
     // Topic API endpoints
     public shared ({ caller }) func create_topic(input: T.CreateTopicInput) : async T.Result<Nat, T.ForumError> {
         Lib.create_topic(state, caller, input)
