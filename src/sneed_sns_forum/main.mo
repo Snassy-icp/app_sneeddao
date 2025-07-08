@@ -375,6 +375,10 @@ actor SneedSNSForum {
         Lib.get_proposals_topic_response(state, forum_id)
     };
 
+    public query func get_proposals_topic_by_sns_root(sns_root_canister_id: Principal) : async ?T.ProposalTopicMappingResponse {
+        Lib.get_proposals_topic_by_sns_root(state, sns_root_canister_id)
+    };
+
     public shared ({ caller }) func create_proposal_thread(input: T.CreateProposalThreadInput) : async T.Result<Nat, T.ForumError> {
         Lib.create_proposal_thread(state, caller, input)
     };

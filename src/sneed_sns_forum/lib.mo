@@ -1737,6 +1737,17 @@ module {
         }
     };
 
+    public func get_proposals_topic_by_sns_root(state: ForumState, sns_root_canister_id: Principal) : ?T.ProposalTopicMappingResponse {
+        // First find the forum for this SNS root ID
+        switch (get_forum_by_sns_root(state, sns_root_canister_id)) {
+            case (?forum) {
+                // If forum exists, get the proposals topic for this forum
+                get_proposals_topic_response(state, forum.id)
+            };
+            case null null;
+        }
+    };
+
     // Helper function to get SNS name from governance canister
     public func get_sns_name(governance_canister_id: Principal): async ?Text {
         await SnsUtil.get_sns_name(governance_canister_id);
