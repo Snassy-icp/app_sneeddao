@@ -1277,7 +1277,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     };
   };
 
-  public query func get_blacklisted_words() : async [Text] {
+  public query ({ caller }) func get_blacklisted_words() : async [Text] {
+    if (not is_admin(caller)) {
+      return [];
+    };
     Iter.toArray(blacklisted_words.keys())
   };
 
