@@ -1,4 +1,5 @@
 import { createActor as createNeutriniteDappActor } from 'external/neutrinite_dapp';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { Principal } from "@dfinity/principal";
 import { formatAmountWithConversion } from './StringUtils';
 
@@ -34,16 +35,20 @@ function getTokenMetaData(metadata, key) {
 
 async function getTokenMetaFromIcrc1(ledgerActor) {
     try {
-        const [metadata, symbol, decimals] = await Promise.all([
-            ledgerActor.icrc1_metadata(),
-            ledgerActor.icrc1_symbol(),
-            ledgerActor.icrc1_decimals()
-        ]);
+        const metadata = await ledgerActor.icrc1_metadata();
+        
+        // Find symbol and decimals in the metadata array
+        const symbolEntry = metadata.find(([key]) => key === "symbol" || key === "icrc1:symbol");
+        const decimalsEntry = metadata.find(([key]) => key === "decimals" || key === "icrc1:decimals");
+        
+        if (!symbolEntry || !decimalsEntry) {
+            throw new Error("Required metadata fields not found");
+        }
 
         return [
-            ["symbol", { Text: symbol }],
-            ["decimals", { Nat: decimals }],
-            ...metadata.map(([key, value]) => [key, value])
+            ["symbol", symbolEntry[1]],
+            ["decimals", decimalsEntry[1]],
+            ...metadata
         ];
     } catch (error) {
         console.error("Error fetching ICRC1 token metadata:", error);
@@ -53,12 +58,14 @@ async function getTokenMetaFromIcrc1(ledgerActor) {
 
 async function getTokenMetaForSwap(swapActor, backendActor, swapCanisterId) {
     try {
+        console.log("SWAPACTOR!!!", swapCanisterId);
+
         // First try to get from cache
         const canisterPrincipal = typeof swapCanisterId === 'string' ? Principal.fromText(swapCanisterId) : swapCanisterId;
         const cachedMeta = await backendActor.get_cached_token_meta(canisterPrincipal);
-        if (cachedMeta && cachedMeta[0]) {
-            return cachedMeta[0];
-        }
+        //if (cachedMeta && cachedMeta[0]) {
+        //    return cachedMeta[0];
+        //}
 
         // If not in cache, fetch from ICRC1 ledgers
         const swapMeta = await swapActor.metadata();
@@ -78,6 +85,8 @@ async function getTokenMetaForSwap(swapActor, backendActor, swapCanisterId) {
             token0: token0Meta,
             token1: token1Meta
         };
+
+        console.log("TOKENMETA!!!", tokenMeta);
 
         // Cache the result
         await backendActor.set_cached_token_meta(canisterPrincipal, tokenMeta);

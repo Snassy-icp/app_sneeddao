@@ -298,14 +298,14 @@ function Wallet() {
                     const metadata1 = await ledgerActor1.icrc1_metadata();
                     var token1Logo = getTokenLogo(metadata1);
 
-                    const token0Decimals = token_meta.token0[2][1].Nat;
-                    const token0Symbol = token_meta.token0[1][1].Text;
-                    const token1Decimals = token_meta.token1[2][1].Nat;
-                    const token1Symbol = token_meta.token1[1][1].Text;
+                    const token0Decimals = token_meta?.token0?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 0;
+                    const token0Symbol = token_meta?.token0?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
+                    const token1Decimals = token_meta?.token1?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 0;
+                    const token1Symbol = token_meta?.token1?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
 
                     // ICP does not produce a logo in metadata.
-                    if (token0Symbol.toLowerCase() == "icp" && token0Logo == "") { token0Logo = "icp_symbol.svg"; }
-                    if (token1Symbol.toLowerCase() == "icp" && token1Logo == "") { token1Logo = "icp_symbol.svg"; }
+                    if (token0Symbol?.toLowerCase() === "icp" && token0Logo === "") { token0Logo = "icp_symbol.svg"; }
+                    if (token1Symbol?.toLowerCase() === "icp" && token1Logo === "") { token1Logo = "icp_symbol.svg"; }
 
                     const userPositionIds = (await swapActor.getUserPositionIdsByPrincipal(identity.getPrincipal())).ok;
 
