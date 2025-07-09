@@ -11,7 +11,7 @@ import HotkeyNeurons from './components/HotkeyNeurons';
 import Discussion from './components/Discussion';
 import ReactMarkdown from 'react-markdown';
 import './Wallet.css';
-import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
+import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache, addSnsUpdateListener } from './utils/SnsUtils';
 import { formatNeuronIdLink } from './utils/NeuronUtils';
 import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
@@ -99,6 +99,14 @@ function Proposal() {
         if (isAuthenticated) {
             console.log('User is authenticated, loading SNS data...'); // Debug log
             loadSnsData();
+            
+            // Listen for background SNS data updates
+            const removeListener = addSnsUpdateListener((newData) => {
+                console.log('Proposal: Received background SNS data update:', newData);
+                setSnsList(newData);
+            });
+            
+            return removeListener;
         } else {
             console.log('User is not authenticated'); // Debug log
         }
@@ -525,6 +533,20 @@ function Proposal() {
             }
         });
     };
+
+    // Check if selected SNS exists and handle errors
+    const currentSns = useMemo(() => {
+        if (!snsList.length || loadingSnses) {
+            return null; // Still loading, don't show error yet
+        }
+        
+        const sns = snsList.find(sns => sns.rootCanisterId === selectedSnsRoot);
+        if (!sns) {
+            console.log('Available SNSes:', snsList.map(s => ({ name: s.name, id: s.rootCanisterId })));
+            setError(`Selected SNS not found: ${selectedSnsRoot}`);
+        }
+        return sns;
+    }, [selectedSnsRoot, snsList, loadingSnses]);
 
     return (
         <div className='page-container'>

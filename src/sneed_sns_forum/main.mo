@@ -155,6 +155,10 @@ actor SneedSNSForum {
         Lib.get_forums_filtered(state, is_admin)
     };
 
+    public query func get_forum_by_sns_root(sns_root_canister_id: Principal) : async ?T.ForumResponse {
+        Lib.get_forum_by_sns_root(state, sns_root_canister_id)
+    };
+
     // Topic API endpoints
     public shared ({ caller }) func create_topic(input: T.CreateTopicInput) : async T.Result<Nat, T.ForumError> {
         Lib.create_topic(state, caller, input)
@@ -369,6 +373,10 @@ actor SneedSNSForum {
 
     public query func get_proposals_topic(forum_id: Nat) : async ?T.ProposalTopicMappingResponse {
         Lib.get_proposals_topic_response(state, forum_id)
+    };
+
+    public query func get_proposals_topic_by_sns_root(sns_root_canister_id: Principal) : async ?T.ProposalTopicMappingResponse {
+        Lib.get_proposals_topic_by_sns_root(state, sns_root_canister_id)
     };
 
     public shared ({ caller }) func create_proposal_thread(input: T.CreateProposalThreadInput) : async T.Result<Nat, T.ForumError> {
