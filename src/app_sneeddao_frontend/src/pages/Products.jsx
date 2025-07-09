@@ -315,7 +315,7 @@ function Products() {
 
         try {
             const [tokenMeta, positionsResult] = await Promise.all([
-                getTokenMetaForSwap(swapActor, backendActor),
+                getTokenMetaForSwap(swapActor, backendActor, canisterId),
                 swapActor.getUserPositionWithTokenAmount(0, 1000) // Increased limit to avoid pagination
             ]);
 

@@ -51,11 +51,11 @@ async function getTokenMetaFromIcrc1(ledgerActor) {
     }
 }
 
-async function getTokenMetaForSwap(swapActor, backendActor) {
+async function getTokenMetaForSwap(swapActor, backendActor, swapCanisterId) {
     try {
         // First try to get from cache
-        const swapCanisterId = swapActor.getCanisterId();
-        const cachedMeta = await backendActor.get_cached_token_meta(swapCanisterId);
+        const canisterPrincipal = typeof swapCanisterId === 'string' ? Principal.fromText(swapCanisterId) : swapCanisterId;
+        const cachedMeta = await backendActor.get_cached_token_meta(canisterPrincipal);
         if (cachedMeta && cachedMeta[0]) {
             return cachedMeta[0];
         }
@@ -80,7 +80,7 @@ async function getTokenMetaForSwap(swapActor, backendActor) {
         };
 
         // Cache the result
-        await backendActor.set_cached_token_meta(swapCanisterId, tokenMeta);
+        await backendActor.set_cached_token_meta(canisterPrincipal, tokenMeta);
         return tokenMeta;
     } catch (error) {
         console.error("Error fetching swap token metadata:", error);

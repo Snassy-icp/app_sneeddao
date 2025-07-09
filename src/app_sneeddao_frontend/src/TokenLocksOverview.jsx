@@ -147,7 +147,7 @@ function TokenLocksOverview() {
                                     const swap_meta = await swapActor.metadata();
                                     if (!swap_meta.ok) return null;
 
-                                    const token_meta = await getTokenMetaForSwap(swapActor, backendActor);
+                                    const token_meta = await getTokenMetaForSwap(swapActor, backendActor, swapCanisterId.toText());
 
                                     const token0 = swap_meta.ok.token0.address;
                                     const token1 = swap_meta.ok.token1.address;

@@ -47,7 +47,7 @@ function PositionLock() {
             const token0 = swap_meta.ok.token0.address;
             const token1 = swap_meta.ok.token1.address;
 
-            const token_meta = await getTokenMetaForSwap(swapActor, backendActor);
+            const token_meta = await getTokenMetaForSwap(swapActor, backendActor, swap_canister_id);
 
             const token0Decimals = token_meta.token0[2][1].Nat;
             const token0Symbol = token_meta.token0[1][1].Text;

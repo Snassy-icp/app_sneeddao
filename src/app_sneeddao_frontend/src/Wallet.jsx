@@ -284,7 +284,7 @@ function Wallet() {
 
                     // Cache meta
                     const swapActor = createIcpSwapActor(swap_canister);
-                    const token_meta = await getTokenMetaForSwap(swapActor, backendActor);
+                    const token_meta = await getTokenMetaForSwap(swapActor, backendActor, swap_canister);
 
                     var swap_meta = await swapActor.metadata();;
 
