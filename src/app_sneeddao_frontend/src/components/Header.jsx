@@ -10,7 +10,7 @@ import { useNeurons } from '../contexts/NeuronsContext';
 import { useSns } from '../contexts/SnsContext';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
-import { getSnsById, clearSnsCache } from '../utils/SnsUtils';
+import { getSnsById } from '../utils/SnsUtils';
 
 function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const location = useLocation();
@@ -196,17 +196,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const handleLogoClick = () => {
         // Only open the hamburger menu
         setIsMenuOpen(true);
-    };
-
-    const handleClearCache = () => {
-        try {
-            clearSnsCache();
-            alert('SNS cache cleared successfully! The page will refresh to reload SNS data.');
-            window.location.reload();
-        } catch (error) {
-            console.error('Error clearing cache:', error);
-            alert('Failed to clear cache');
-        }
     };
 
     // Helper function to determine if a submenu item should be highlighted
@@ -665,46 +654,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 {section}
                             </button>
                         ))}
-                        
-                        {/* Divider */}
-                        <div style={{
-                            height: '1px',
-                            background: 'linear-gradient(to right, transparent, rgba(255,255,255,0.2), transparent)',
-                            margin: '10px 0'
-                        }} />
-                        
-                        {/* Cache clearing button */}
-                        <button 
-                            onClick={handleClearCache}
-                            style={{
-                                color: '#f39c12',
-                                textDecoration: 'none',
-                                padding: '12px 16px',
-                                borderRadius: '8px',
-                                transition: 'all 0.2s ease',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '12px',
-                                background: 'linear-gradient(to right, rgba(243, 156, 18, 0.1), rgba(243, 156, 18, 0))',
-                                border: '1px solid rgba(243, 156, 18, 0.2)',
-                                fontSize: '14px',
-                                cursor: 'pointer',
-                                width: '100%',
-                                textAlign: 'left'
-                            }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(243, 156, 18, 0.2), rgba(243, 156, 18, 0.1))';
-                                e.currentTarget.style.transform = 'translateX(5px)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.background = 'linear-gradient(to right, rgba(243, 156, 18, 0.1), rgba(243, 156, 18, 0))';
-                                e.currentTarget.style.transform = 'translateX(0)';
-                            }}
-                            title="Clear cached SNS data and reload from network"
-                        >
-                            <FaCog size={16} />
-                            Clear SNS Cache
-                        </button>
                     </nav>
                 </div>
             )}
