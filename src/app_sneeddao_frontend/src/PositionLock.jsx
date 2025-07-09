@@ -5,7 +5,7 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-import { getTokenLogo, get_token_conversion_rates } from './utils/TokenUtils';
+import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rates } from './utils/TokenUtils';
 import PositionCard from './PositionCard';
 import './Wallet.css';
 import { lockFromLocks } from './utils/PositionUtils';
@@ -47,13 +47,7 @@ function PositionLock() {
             const token0 = swap_meta.ok.token0.address;
             const token1 = swap_meta.ok.token1.address;
 
-            var token_meta = await backendActor.get_cached_token_meta(Principal.fromText(swap_canister_id));
-            if (token_meta && token_meta[0]) {
-                token_meta = token_meta[0];
-            } else {
-                token_meta = await swapActor.getTokenMeta();
-                await backendActor.set_cached_token_meta(Principal.fromText(swap_canister_id), token_meta);
-            }
+            const token_meta = await getTokenMetaForSwap(swapActor, backendActor);
 
             const token0Decimals = token_meta.token0[2][1].Nat;
             const token0Symbol = token_meta.token0[1][1].Text;

@@ -32,6 +32,62 @@ function getTokenMetaData(metadata, key) {
     return null;
 }
 
+async function getTokenMetaFromIcrc1(ledgerActor) {
+    try {
+        const [metadata, symbol, decimals] = await Promise.all([
+            ledgerActor.icrc1_metadata(),
+            ledgerActor.icrc1_symbol(),
+            ledgerActor.icrc1_decimals()
+        ]);
+
+        return [
+            ["symbol", { Text: symbol }],
+            ["decimals", { Nat: decimals }],
+            ...metadata.map(([key, value]) => [key, value])
+        ];
+    } catch (error) {
+        console.error("Error fetching ICRC1 token metadata:", error);
+        throw error;
+    }
+}
+
+async function getTokenMetaForSwap(swapActor, backendActor) {
+    try {
+        // First try to get from cache
+        const swapCanisterId = swapActor.getCanisterId();
+        const cachedMeta = await backendActor.get_cached_token_meta(swapCanisterId);
+        if (cachedMeta && cachedMeta[0]) {
+            return cachedMeta[0];
+        }
+
+        // If not in cache, fetch from ICRC1 ledgers
+        const swapMeta = await swapActor.metadata();
+        if (!swapMeta.ok) {
+            throw new Error("Failed to fetch swap metadata");
+        }
+
+        const token0Actor = createLedgerActor(swapMeta.ok.token0.address);
+        const token1Actor = createLedgerActor(swapMeta.ok.token1.address);
+
+        const [token0Meta, token1Meta] = await Promise.all([
+            getTokenMetaFromIcrc1(token0Actor),
+            getTokenMetaFromIcrc1(token1Actor)
+        ]);
+
+        const tokenMeta = {
+            token0: token0Meta,
+            token1: token1Meta
+        };
+
+        // Cache the result
+        await backendActor.set_cached_token_meta(swapCanisterId, tokenMeta);
+        return tokenMeta;
+    } catch (error) {
+        console.error("Error fetching swap token metadata:", error);
+        throw error;
+    }
+}
+
 let tokenConversionRates = {};
 
 const get_token_conversion_rates = async () => {
@@ -178,5 +234,7 @@ export {
     get_token_conversion_rates,
     rewardAmountOrZero,
     availableOrZero,
-    getTokenTVL
+    getTokenTVL,
+    getTokenMetaFromIcrc1,
+    getTokenMetaForSwap
 };

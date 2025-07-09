@@ -22,7 +22,7 @@ import { get_short_timezone, format_duration, bigDateToReadable, dateToReadable 
 import { formatAmount, toJsonString } from './utils/StringUtils';
 import TokenCard from './TokenCard';
 import PositionCard from './PositionCard';
-import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rates, getTokenTVL } from './utils/TokenUtils';
+import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rates, getTokenTVL, getTokenMetaForSwap } from './utils/TokenUtils';
 import { getPositionTVL } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
@@ -284,17 +284,7 @@ function Wallet() {
 
                     // Cache meta
                     const swapActor = createIcpSwapActor(swap_canister);
-                    var token_meta = await backendActor.get_cached_token_meta(swap_canister);
-                    if (token_meta && token_meta[0]) {
-
-                        token_meta = token_meta[0];
-
-                    } else {
-
-                        token_meta = await swapActor.getTokenMeta();
-                        await backendActor.set_cached_token_meta(swap_canister, token_meta);
-
-                    }
+                    const token_meta = await getTokenMetaForSwap(swapActor, backendActor);
 
                     var swap_meta = await swapActor.metadata();;
 

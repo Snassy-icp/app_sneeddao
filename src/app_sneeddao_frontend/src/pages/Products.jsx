@@ -11,7 +11,7 @@ import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createSwapRunnerActor } from 'external/swaprunner_backend';
 import { canisterId as swapRunnerCanisterId } from 'external/swaprunner_backend';
 import { formatAmount } from '../utils/StringUtils';
-import { getTokenLogo } from '../utils/TokenUtils';
+import { getTokenLogo, getTokenMetaForSwap } from '../utils/TokenUtils';
 
 const styles = {
     container: {
@@ -311,10 +311,11 @@ function Products() {
         }
 
         const swapActor = createIcpSwapActor(swapCanisterId, { agentOptions: { identity } });
+        const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
 
         try {
             const [tokenMeta, positionsResult] = await Promise.all([
-                swapActor.getTokenMeta(),
+                getTokenMetaForSwap(swapActor, backendActor),
                 swapActor.getUserPositionWithTokenAmount(0, 1000) // Increased limit to avoid pagination
             ]);
 
