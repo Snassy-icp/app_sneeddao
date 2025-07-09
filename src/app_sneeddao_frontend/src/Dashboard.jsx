@@ -3,6 +3,8 @@ import { useAuth } from './AuthContext';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { toJsonString, formatAmount } from './utils/StringUtils';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
+import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
+import { getTokenMetaForSwap } from './utils/TokenUtils';
 import Header from './components/Header';
 import { Link } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';

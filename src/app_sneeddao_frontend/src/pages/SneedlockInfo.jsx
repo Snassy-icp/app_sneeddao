@@ -5,7 +5,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { formatAmount } from '../utils/StringUtils';
-import { getTokenLogo } from '../utils/TokenUtils';
+import { getTokenLogo, getTokenMetaForSwap } from '../utils/TokenUtils';
 import Header from '../components/Header';
 import { Principal } from '@dfinity/principal';
 import { createActor as createNeutriniteDappActor, canisterId as neutriniteCanisterId } from 'external/neutrinite_dapp';
