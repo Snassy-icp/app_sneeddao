@@ -41,13 +41,14 @@ function Dashboard() {
 
     async function fetchPositionDetails(swapCanisterId) {
         const swapActor = createIcpSwapActor(swapCanisterId, { agentOptions: { identity } });
+        const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
 
         try {
-            const tokenMeta = await swapActor.getTokenMeta();
-            const token0Decimals = tokenMeta.token0[2][1].Nat;
-            const token1Decimals = tokenMeta.token1[2][1].Nat;
-            const token0Symbol = tokenMeta.token0[1][1].Text;
-            const token1Symbol = tokenMeta.token1[1][1].Text;
+            const token_meta = await getTokenMetaForSwap(swapActor, backendActor, swapCanisterId);
+            const token0Decimals = token_meta?.token0?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 0;
+            const token0Symbol = token_meta?.token0?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
+            const token1Decimals = token_meta?.token1?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 0;
+            const token1Symbol = token_meta?.token1?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
 
             let offset = 0;
             const limit = 10;
