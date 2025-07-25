@@ -88,10 +88,11 @@ function PositionLock() {
 
             const token_meta = await getTokenMetaForSwap(swapActor, backendActor, swap_canister_id);
 
-            const token0Decimals = token_meta.token0[2][1].Nat;
-            const token0Symbol = token_meta.token0[1][1].Text;
-            const token1Decimals = token_meta.token1[2][1].Nat;
-            const token1Symbol = token_meta.token1[1][1].Text;
+            // Use the same robust approach as Wallet.jsx to extract token metadata
+            const token0Decimals = token_meta?.token0?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 8;
+            const token0Symbol = token_meta?.token0?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
+            const token1Decimals = token_meta?.token1?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 8;
+            const token1Symbol = token_meta?.token1?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
             
             const icrc1_ledger0 = swap_meta.ok.token0.address;
             const ledgerActor0 = createLedgerActor(icrc1_ledger0);
@@ -166,9 +167,8 @@ function PositionLock() {
                     token1Symbol: token1Symbol,
                     token0Logo: token0Logo,
                     token1Logo: token1Logo,
-                    // Use more reasonable decimal defaults - if one token's decimals are available, use that as a fallback
-                    token0Decimals: token0Decimals !== undefined ? token0Decimals : (token1Decimals !== undefined ? token1Decimals : 8n),
-                    token1Decimals: token1Decimals !== undefined ? token1Decimals : (token0Decimals !== undefined ? token0Decimals : 8n),
+                    token0Decimals: token0Decimals,
+                    token1Decimals: token1Decimals,
                     token0_conversion_rate: conversion_rates[token0Symbol] || 0,
                     token1_conversion_rate: conversion_rates[token1Symbol] || 0,
                     details: {
