@@ -136,6 +136,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                             color: '#fff',
                             fontSize: '14px'
                         }}>
+                            {/* ICPSwap owner is a hash, not a principal, so display it directly */}
                             <div title={positionDetails.icpSwapOwner} style={{ cursor: 'help' }}>
                                 {truncateText(positionDetails.icpSwapOwner)}
                             </div>

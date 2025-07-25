@@ -44,12 +44,11 @@ function PositionLock() {
 
             const uniquePrincipals = new Set();
             positions.forEach(position => {
+                // Only add SneedLock owner (which is a real principal), not ICPSwap owner (which is a hash)
                 if (position.details?.owner) {
                     uniquePrincipals.add(position.details.owner.toString());
                 }
-                if (position.details?.icpSwapOwner) {
-                    uniquePrincipals.add(position.details.icpSwapOwner);
-                }
+                // Skip icpSwapOwner as it's a hash, not a principal
             });
 
             const displayInfoMap = new Map();
@@ -167,9 +166,9 @@ function PositionLock() {
                     token1Symbol: token1Symbol,
                     token0Logo: token0Logo,
                     token1Logo: token1Logo,
-                    // Add defensive defaults for undefined decimals to prevent BigInt conversion errors
-                    token0Decimals: token0Decimals !== undefined ? token0Decimals : 8n,
-                    token1Decimals: token1Decimals !== undefined ? token1Decimals : 8n,
+                    // Use more reasonable decimal defaults - if one token's decimals are available, use that as a fallback
+                    token0Decimals: token0Decimals !== undefined ? token0Decimals : (token1Decimals !== undefined ? token1Decimals : 8n),
+                    token1Decimals: token1Decimals !== undefined ? token1Decimals : (token0Decimals !== undefined ? token0Decimals : 8n),
                     token0_conversion_rate: conversion_rates[token0Symbol] || 0,
                     token1_conversion_rate: conversion_rates[token1Symbol] || 0,
                     details: {
