@@ -860,9 +860,7 @@ function Wallet() {
             <Header showTotalValue={totalDollarValue} />
             <div className="wallet-container">
                 <div className="disclaimer">
-                    <h3>Disclaimer</h3>
-                    <p>This is <b>beta</b> software. Please only use small amounts (that you don't mind losing) and <b>use at your own risk.</b></p>
-                    <p>Maximum lock time is 31 days.</p>
+                    <p>Maximum lock time is 10 years.</p>
                 </div>
                 <p>Tokens <b className="card add-ledger-card" onClick={() => setShowAddLedgerModal(true)}>&nbsp;&nbsp;+&nbsp;&nbsp;</b></p>
                 <div className="card-grid">
