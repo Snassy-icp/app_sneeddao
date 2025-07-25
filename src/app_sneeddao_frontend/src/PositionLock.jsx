@@ -6,6 +6,8 @@ import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId 
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rates } from './utils/TokenUtils';
+import { getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
+import { useNaming } from './NamingContext';
 import PositionCard from './PositionCard';
 import './Wallet.css';
 import { lockFromLocks } from './utils/PositionUtils';
@@ -13,8 +15,10 @@ import Header from './components/Header';
 import { useAuth } from './AuthContext';
 
 function PositionLock() {
+    const { principalNames, principalNicknames } = useNaming();
     const [positions, setPositions] = useState([]);
     const [showSpinner, setShowSpinner] = useState(true);
+    const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const location = useLocation();
     const { identity } = useAuth();
 
@@ -32,6 +36,42 @@ function PositionLock() {
             fetchPositionDetails(swap_canister_id, positionIds);
         }
     }, [location]);
+
+    // Effect to fetch principal display info
+    useEffect(() => {
+        const fetchPrincipalInfo = () => {
+            if (!positions || positions.length === 0 || !principalNames || !principalNicknames) return;
+
+            const uniquePrincipals = new Set();
+            positions.forEach(position => {
+                if (position.details?.owner) {
+                    uniquePrincipals.add(position.details.owner.toString());
+                }
+                if (position.details?.icpSwapOwner) {
+                    uniquePrincipals.add(position.details.icpSwapOwner);
+                }
+            });
+
+            const displayInfoMap = new Map();
+            Array.from(uniquePrincipals).forEach(principalStr => {
+                try {
+                    const principal = Principal.fromText(principalStr);
+                    const displayInfo = getPrincipalDisplayInfoFromContext(
+                        principal, 
+                        principalNames, 
+                        principalNicknames
+                    );
+                    displayInfoMap.set(principalStr, displayInfo);
+                } catch (error) {
+                    console.error('Error processing principal:', principalStr, error);
+                }
+            });
+
+            setPrincipalDisplayInfo(displayInfoMap);
+        };
+
+        fetchPrincipalInfo();
+    }, [positions, principalNames, principalNicknames]);
 
     const fetchPositionDetails = async (swap_canister_id, positionIds) => {
         try {
@@ -119,6 +159,7 @@ function PositionLock() {
 
                 var position_detailed = {
                     swap_canister_id,
+                    swapCanisterId: swap_canister_id,
                     token0,
                     token1,
                     token0Symbol: token0Symbol,
@@ -162,6 +203,7 @@ function PositionLock() {
                     <PositionCard
                         position={positions[0]}
                         positionDetails={positions[0].details}
+                        principalDisplayInfo={principalDisplayInfo}
                         hideButtons={true}
                         hideUnclaimedFees={true}
                     />
