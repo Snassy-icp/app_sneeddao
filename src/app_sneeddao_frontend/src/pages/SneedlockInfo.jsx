@@ -934,22 +934,25 @@ function SneedlockInfo() {
                                                         <td colSpan="4" style={{ padding: '8px 40px' }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.9em', alignItems: 'center' }}>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                    <img src="sneedlock-logo1.png" alt="SneedLock" style={{ width: '24px', height: '24px' }} />
-                                                                    <div>
-                                                                        <span style={{ color: '#666' }}>Token Lock</span>{' '}
-                                                                        <a 
-                                                                            href={`/tokenlock?ledger=${token?.ledger_id || ''}&locks=${lock.lockId?.toString() || ''}`}
-                                                                            style={{ 
-                                                                                color: '#888',
-                                                                                textDecoration: 'none',
-                                                                                ':hover': {
-                                                                                    textDecoration: 'underline'
-                                                                                }
-                                                                            }}
-                                                                        >
-                                                                            #{lock.lockId?.toString() || 'Unknown'}
-                                                                        </a>
-                                                                    </div>
+                                                                    <a 
+                                                                        href={`/tokenlock?ledger=${token?.ledger_id || ''}&locks=${lock.lockId?.toString() || ''}`}
+                                                                        style={{ 
+                                                                            color: '#888',
+                                                                            textDecoration: 'none',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '8px',
+                                                                            cursor: 'pointer'
+                                                                        }}
+                                                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                                                    >
+                                                                        <img src="sneedlock-logo1.png" alt="SneedLock" style={{ width: '24px', height: '24px' }} />
+                                                                        <div>
+                                                                            <span style={{ color: '#666' }}>Token Lock</span>{' '}
+                                                                            <span>#{lock.lockId?.toString() || 'Unknown'}</span>
+                                                                        </div>
+                                                                    </a>
                                                                 </div>
                                                                 <div>
                                                                     Amount: {formatAmount(lock.amount, token?.decimals || 8)}{' '}
@@ -978,22 +981,25 @@ function SneedlockInfo() {
                                                         <td colSpan="4" style={{ padding: '8px 40px' }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#888', fontSize: '0.9em', alignItems: 'center' }}>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                    <img src="sneedlock-logo1.png" alt="SneedLock" style={{ width: '24px', height: '24px' }} />
-                                                                    <div>
-                                                                        <span style={{ color: '#666' }}>Position Lock</span>{' '}
-                                                                        <a 
-                                                                            href={`/positionlock?swap=${lock.swapCanisterId}&positions=${lock.positionId}`}
-                                                                            style={{ 
-                                                                                color: '#888',
-                                                                                textDecoration: 'none',
-                                                                                ':hover': {
-                                                                                    textDecoration: 'underline'
-                                                                                }
-                                                                            }}
-                                                                        >
-                                                                            #{lock.positionId?.toString() || 'Unknown'}
-                                                                        </a>
-                                                                    </div>
+                                                                    <a 
+                                                                        href={`/positionlock?swap=${lock.swapCanisterId}&positions=${lock.positionId}`}
+                                                                        style={{ 
+                                                                            color: '#888',
+                                                                            textDecoration: 'none',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '8px',
+                                                                            cursor: 'pointer'
+                                                                        }}
+                                                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                                                    >
+                                                                        <img src="sneedlock-logo1.png" alt="SneedLock" style={{ width: '24px', height: '24px' }} />
+                                                                        <div>
+                                                                            <span style={{ color: '#666' }}>Position Lock</span>{' '}
+                                                                            <span>#{lock.positionId?.toString() || 'Unknown'}</span>
+                                                                        </div>
+                                                                    </a>
                                                                 </div>
                                                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                                                                     <div>
