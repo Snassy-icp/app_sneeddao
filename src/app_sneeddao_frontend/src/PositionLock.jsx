@@ -93,7 +93,7 @@ function PositionLock() {
             const token0Symbol = token_meta.token0[1][1].Text;
             const token1Decimals = token_meta.token1[2][1].Nat;
             const token1Symbol = token_meta.token1[1][1].Text;
-
+            
             const icrc1_ledger0 = swap_meta.ok.token0.address;
             const ledgerActor0 = createLedgerActor(icrc1_ledger0);
             const metadata0 = await ledgerActor0.icrc1_metadata();
@@ -126,6 +126,7 @@ function PositionLock() {
             var position_locks = await sneedLockActor.get_swap_position_locks(Principal.fromText(swap_canister_id));
 
             const positions_detailed = await Promise.all(positions.map(async (position) => {
+                
                 const lock = lockFromLocks(position.id, position_locks);
                 
                 // Get the ICPSwap owner
@@ -166,8 +167,9 @@ function PositionLock() {
                     token1Symbol: token1Symbol,
                     token0Logo: token0Logo,
                     token1Logo: token1Logo,
-                    token0Decimals: token0Decimals,
-                    token1Decimals: token1Decimals,
+                    // Add defensive defaults for undefined decimals to prevent BigInt conversion errors
+                    token0Decimals: token0Decimals !== undefined ? token0Decimals : 8n,
+                    token1Decimals: token1Decimals !== undefined ? token1Decimals : 8n,
                     token0_conversion_rate: conversion_rates[token0Symbol] || 0,
                     token1_conversion_rate: conversion_rates[token1Symbol] || 0,
                     details: {
@@ -185,6 +187,7 @@ function PositionLock() {
                         ownershipStatus
                     }
                 }
+                
                 return position_detailed;
             }));
             setPositions(positions_detailed);
