@@ -2,8 +2,10 @@ import React from 'react';
 import { formatAmount, getUSD, formatAmountWithConversion } from './utils/StringUtils';
 import { dateToReadable, format_duration } from './utils/DateUtils'
 import { rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
+import { PrincipalDisplay } from './utils/PrincipalUtils';
+import { Principal } from '@dfinity/principal';
 
-const TokenCard = ({ token, locks, lockDetailsLoading, showDebug, hideAvailable = false, hideButtons = false, openSendModal, openLockModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards }) => {
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, openSendModal, openLockModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards }) => {
 
     function getTokenLockUrl(ledger, locks) {
         const baseUrl = '/tokenlock';
@@ -121,6 +123,19 @@ const TokenCard = ({ token, locks, lockDetailsLoading, showDebug, hideAvailable 
                                     <span className="lock-label">Duration:</span>
                                     <span className="lock-value">{format_duration(lock.expiry - new Date())}</span>
                                 </div>
+                                {lock.owner && (
+                                    <div className="lock-details">
+                                        <span className="lock-label">Owner:</span>
+                                        <span className="lock-value">
+                                            <PrincipalDisplay 
+                                                principal={Principal.fromText(lock.owner)}
+                                                displayInfo={principalDisplayInfo?.get(lock.owner)}
+                                                showCopyButton={true}
+                                                style={{ display: 'inline-flex' }}
+                                            />
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         ))
                     ) : (

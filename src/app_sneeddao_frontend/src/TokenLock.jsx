@@ -5,14 +5,18 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo, get_token_conversion_rates } from './utils/TokenUtils';
+import { getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
+import { useNaming } from './NamingContext';
 import TokenCard from './TokenCard';
 import './Wallet.css';
 import Header from './components/Header';
 
 function TokenLock() {
+    const { principalNames, principalNicknames } = useNaming();
     const [token, setToken] = useState(null);
     const [locks, setLocks] = useState({});
     const [lockDetailsLoading, setLockDetailsLoading] = useState({});
+    const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const location = useLocation();
 
     useEffect(() => {
@@ -24,6 +28,41 @@ function TokenLock() {
             fetchTokenDetails(ledgerCanisterId, lockIds);
         }
     }, [location]);
+
+    // Effect to fetch principal display info
+    useEffect(() => {
+        const fetchPrincipalInfo = () => {
+            if (!locks || Object.keys(locks).length === 0 || !principalNames || !principalNicknames) return;
+
+            const uniquePrincipals = new Set();
+            Object.values(locks).forEach(lockArray => {
+                lockArray.forEach(lock => {
+                    if (lock.owner) {
+                        uniquePrincipals.add(lock.owner);
+                    }
+                });
+            });
+
+            const displayInfoMap = new Map();
+            Array.from(uniquePrincipals).forEach(principalStr => {
+                try {
+                    const principal = Principal.fromText(principalStr);
+                    const displayInfo = getPrincipalDisplayInfoFromContext(
+                        principal, 
+                        principalNames, 
+                        principalNicknames
+                    );
+                    displayInfoMap.set(principalStr, displayInfo);
+                } catch (error) {
+                    console.error('Error processing principal:', principalStr, error);
+                }
+            });
+
+            setPrincipalDisplayInfo(displayInfoMap);
+        };
+
+        fetchPrincipalInfo();
+    }, [locks, principalNames, principalNicknames]);
 
     const fetchTokenDetails = async (ledgerCanisterId, lockIds) => {
         try {
@@ -44,8 +83,10 @@ function TokenLock() {
                 : tokenLocks;
 
             const formattedLocks = filteredLocks.map(lock => ({
+                lock_id: lock[2].lock_id,
                 amount: lock[2].amount,
-                expiry: new Date(Number(BigInt(lock[2].expiry) / BigInt(1000000)))
+                expiry: new Date(Number(BigInt(lock[2].expiry) / BigInt(1000000))),
+                owner: lock[0].toString() // Extract the lock owner from lock[0]
             }));
 
             const conversion_rates = await get_token_conversion_rates();
@@ -76,6 +117,7 @@ function TokenLock() {
                         token={token}
                         locks={locks}
                         lockDetailsLoading={lockDetailsLoading}
+                        principalDisplayInfo={principalDisplayInfo}
                         showDebug={false}
                         hideAvailable={true}
                         hideButtons={true}
