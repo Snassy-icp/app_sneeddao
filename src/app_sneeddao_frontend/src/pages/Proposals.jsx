@@ -414,7 +414,18 @@ function Proposals() {
                                             </div>
                                         </div>
                                         <h4 style={{ color: '#ffffff', margin: '0 0 5px 0' }}>
-                                            {proposal.proposal[0]?.title || 'No title'}
+                                            <Link 
+                                                to={`/proposal?proposalid=${proposal.id[0].id.toString()}&sns=${selectedSnsRoot}`}
+                                                style={{
+                                                    color: '#ffffff',
+                                                    textDecoration: 'none',
+                                                    cursor: 'pointer'
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                            >
+                                                {proposal.proposal[0]?.title || 'No title'}
+                                            </Link>
                                         </h4>
                                         <div style={{ color: '#888', fontSize: '14px', marginBottom: '5px' }}>
                                             Topic: {(() => {
