@@ -855,19 +855,60 @@ function Wallet() {
         setShowConfirmModal(true);
     };
 
+    const [isDisclaimerExpanded, setIsDisclaimerExpanded] = useState(() => {
+        try {
+            const saved = localStorage.getItem('sneedLockDisclaimerExpanded');
+            return saved !== null ? JSON.parse(saved) : true; // Default to expanded
+        } catch (error) {
+            console.warn('Could not read disclaimer state from localStorage:', error);
+            return true; // Default to expanded
+        }
+    });
+
     return (
         <div className='page-container'>
             <Header showTotalValue={totalDollarValue} />
             <div className="wallet-container">
                 <div className="disclaimer">
-                    <h3>Sneed Lock 2.0</h3>
-                    <p>Sneed Lock 2.0 is a new version of Sneed Lock that is permissionless, offers timed locks, and is integrated directly into the Sneed Wallet.</p>
-                    <p>After registering a token or liquidity position, you can lock it for a specified time period by clicking the lock icon in the token or position card. You can also transfer tokens and positions to a different address (unless locked).</p>
-                    <p>Locking tokens or a position means you will not be able to transfer it until the lock time expires.</p>
-                    <p><b>Do NOT lock tokens or positions that you might need access to during the lock period!</b></p>
-                    <p>NB: Sneed Locked funds do not give rewards! <br />Sneed Lock 2.0 is intended for token developers and team members that wish to give traders peace of mind by locking large token and liquidity positions.</p>
-                    <p><b>All use is at the user's own risk. Sneed DAO, its members and developers bear no responsibility for any funds lost or stolen.</b></p>
-                    <p>Maximum lock time is 10 years.</p>
+                    <h3 
+                        onClick={() => {
+                            const newState = !isDisclaimerExpanded;
+                            setIsDisclaimerExpanded(newState);
+                            try {
+                                localStorage.setItem('sneedLockDisclaimerExpanded', JSON.stringify(newState));
+                            } catch (error) {
+                                console.warn('Could not save disclaimer state to localStorage:', error);
+                            }
+                        }}
+                        style={{ 
+                            cursor: 'pointer', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '8px',
+                            margin: '0 0 10px 0',
+                            userSelect: 'none'
+                        }}
+                    >
+                        <span style={{ 
+                            fontSize: '14px', 
+                            transition: 'transform 0.2s ease',
+                            transform: isDisclaimerExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
+                        }}>
+                            ▶
+                        </span>
+                        Sneed Lock 2.0
+                    </h3>
+                    {isDisclaimerExpanded && (
+                        <div>
+                            <p>Sneed Lock 2.0 is a new version of Sneed Lock that is permissionless, offers timed locks, and is integrated directly into the Sneed Wallet.</p>
+                            <p>After registering a token or liquidity position, you can lock it for a specified time period by clicking the lock icon in the token or position card. You can also transfer tokens and positions to a different address (unless locked).</p>
+                            <p>Locking tokens or positions means you will not be able to transfer them until the lock time expires.</p>
+                            <p><b>Do NOT lock tokens or positions that you might need access to during the lock period!</b></p>
+                            <p>NB: Sneed Locked funds do not give rewards! <br />Sneed Lock 2.0 is intended for token developers, team members and whales who wish to make trading their token safer for users, preventing "rug pulls" by locking large token and liquidity positions.</p>
+                            <p><b>All use is at the user's own risk. Sneed DAO, its members, developers and contributors bear no responsibility for any funds lost or stolen.</b></p>
+                            <p>Maximum lock time is 10 years.</p>
+                        </div>
+                    )}
                 </div>
                 <p>Tokens <b className="card add-ledger-card" onClick={() => setShowAddLedgerModal(true)}>&nbsp;&nbsp;+&nbsp;&nbsp;</b></p>
                 <div className="card-grid">
