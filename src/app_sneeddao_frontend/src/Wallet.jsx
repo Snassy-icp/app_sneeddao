@@ -730,29 +730,46 @@ function Wallet() {
         const scaledAmount = amountFloat * (10 ** decimals);
         const bigIntAmount = BigInt(Math.floor(scaledAmount));
         
-        // Step 1: Approve sGLDT canister to spend GLDT (amount - 1 tx fee)
+        // Step 1: Check existing allowance and approve if needed
         const gldtLedgerActor = createLedgerActor(GLDT_CANISTER_ID, {
             agentOptions: { identity }
         });
         
         const approveAmount = bigIntAmount - token.fee; // amount - 1 GLDT tx fee
-        console.log('Approving amount:', approveAmount.toString());
+        console.log('Required approve amount:', approveAmount.toString());
         
-        const approveResult = await gldtLedgerActor.icrc2_approve({
-            spender: { owner: Principal.fromText(SGLDT_CANISTER_ID), subaccount: [] },
-            amount: approveAmount,
-            fee: [],
-            memo: [],
-            from_subaccount: [],
-            created_at_time: [],
-            expires_at: []
-        });
+        // Check current allowance
+        const allowanceArgs = {
+            account: { owner: identity.getPrincipal(), subaccount: [] },
+            spender: { owner: Principal.fromText(SGLDT_CANISTER_ID), subaccount: [] }
+        };
+        
+        const currentAllowance = await gldtLedgerActor.icrc2_allowance(allowanceArgs);
+        console.log('Current allowance:', currentAllowance.allowance.toString());
+        
+        // Only approve if current allowance is insufficient
+        if (currentAllowance.allowance < approveAmount) {
+            console.log('Insufficient allowance, calling icrc2_approve...');
+            
+            const approveResult = await gldtLedgerActor.icrc2_approve({
+                spender: { owner: Principal.fromText(SGLDT_CANISTER_ID), subaccount: [] },
+                amount: approveAmount,
+                fee: [],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+                expires_at: [],
+                expected_allowance: [currentAllowance.allowance] // Set current allowance as expected
+            });
 
-        // Check if approve was successful
-        if ('Err' in approveResult) {
-            throw new Error(`Approve failed: ${JSON.stringify(approveResult.Err)}`);
+            // Check if approve was successful
+            if ('Err' in approveResult) {
+                throw new Error(`Approve failed: ${JSON.stringify(approveResult.Err)}`);
+            }
+            console.log('Approve successful');
+        } else {
+            console.log('Sufficient allowance already exists, skipping approve');
         }
-        console.log('Approve successful');
 
         // Step 2: Call deposit on sGLDT canister (amount - 2 tx fees)
         const sgldtActor = createSgldtActor(SGLDT_CANISTER_ID, {
