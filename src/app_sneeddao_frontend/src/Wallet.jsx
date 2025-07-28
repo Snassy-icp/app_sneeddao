@@ -804,6 +804,46 @@ function Wallet() {
         console.log('Unwrap operation completed');
     };
 
+    const handleWithdrawFromBackend = async (token) => {
+        console.log('=== Starting backend withdrawal ===');
+        console.log('Token:', token.symbol, 'Backend balance:', token.available_backend.toString());
+        
+        if (token.available_backend <= 0n) {
+            console.log('No backend balance to withdraw');
+            return;
+        }
+
+        try {
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { 
+                agentOptions: { identity } 
+            });
+
+            // Transfer all available backend balance to user's frontend wallet
+            const result = await sneedLockActor.transfer_tokens(
+                identity.getPrincipal(),
+                [],
+                token.ledger_canister_id,
+                token.available_backend
+            );
+
+            console.log('Backend withdrawal result:', JSON.stringify(result, (key, value) => {
+                if (typeof value === 'bigint') {
+                    return value.toString();
+                }
+                return value;
+            }));
+
+            // Refresh the token balance
+            await fetchBalancesAndLocks(token.ledger_canister_id.toText());
+            console.log('=== Backend withdrawal completed ===');
+            
+        } catch (error) {
+            console.error('=== Backend withdrawal error ===');
+            console.error('Error details:', error);
+            throw error;
+        }
+    };
+
     const handleSendLiquidityPosition = async (liquidityPosition, recipient) => {
 
         if(liquidityPosition.frontendOwnership) {
@@ -1161,11 +1201,12 @@ function Wallet() {
                                 showDebug={showDebug}
                                 openSendModal={openSendModal}
                                 openLockModal={openLockModal}
-                                openWrapModal={openWrapModal}
-                                openUnwrapModal={openUnwrapModal}
-                                handleUnregisterToken={handleUnregisterToken}
-                                rewardDetailsLoading={rewardDetailsLoading}
-                                handleClaimRewards={handleClaimRewards}
+                                                            openWrapModal={openWrapModal}
+                            openUnwrapModal={openUnwrapModal}
+                            handleUnregisterToken={handleUnregisterToken}
+                            rewardDetailsLoading={rewardDetailsLoading}
+                            handleClaimRewards={handleClaimRewards}
+                            handleWithdrawFromBackend={handleWithdrawFromBackend}
                             />
                         );
                     })}

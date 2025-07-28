@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { formatAmount, getUSD, formatAmountWithConversion } from './utils/StringUtils';
 import { dateToReadable, format_duration } from './utils/DateUtils'
-import { rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
+import { rewardAmountOrZero, availableOrZero, get_available_backend } from './utils/TokenUtils';
 import { PrincipalDisplay } from './utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 
@@ -11,7 +11,9 @@ const SGLDT_CANISTER_ID = 'i2s4q-syaaa-aaaan-qz4sq-cai';
 
 console.log('TokenCard constants:', { GLDT_CANISTER_ID, SGLDT_CANISTER_ID });
 
-const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards }) => {
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend }) => {
+
+    const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(false);
 
     // Debug logging for wrap/unwrap buttons
     console.log('TokenCard Debug:', {
@@ -49,10 +51,78 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             <div className="balance-label">Total</div>
                             <div className="balance-value">${formatAmountWithConversion(availableOrZero(token.available) + token.locked + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate, 2)}</div>
                         </div>
-                        <div className="balance-item">
-                            <div className="balance-label">Available</div>
+                        <div className="balance-item" style={{ cursor: 'pointer' }} onClick={() => setShowBalanceBreakdown(!showBalanceBreakdown)}>
+                            <div className="balance-label">
+                                Available {showBalanceBreakdown ? '▼' : '▶'}
+                            </div>
                             <div className="balance-value">{formatAmount(token.available, token.decimals)}{getUSD(token.available, token.decimals, token.conversion_rate)}</div>
                         </div>
+                        
+                        {showBalanceBreakdown && (
+                            <div className="balance-breakdown" style={{ 
+                                marginLeft: '20px', 
+                                padding: '10px', 
+                                backgroundColor: '#f8f9fa', 
+                                borderRadius: '4px',
+                                border: '1px solid #e9ecef'
+                            }}>
+                                <div className="balance-breakdown-item" style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'center',
+                                    marginBottom: '8px'
+                                }}>
+                                    <div>
+                                        <div style={{ fontSize: '12px', color: '#666' }}>Frontend Wallet</div>
+                                        <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                                            {formatAmount(token.balance, token.decimals)} {token.symbol}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div className="balance-breakdown-item" style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'center'
+                                }}>
+                                    <div>
+                                        <div style={{ fontSize: '12px', color: '#666' }}>Backend Wallet</div>
+                                        <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                                            {formatAmount(token.available_backend, token.decimals)} {token.symbol}
+                                        </div>
+                                    </div>
+                                    {token.available_backend > 0n && !hideButtons && (
+                                        <button 
+                                            className="withdraw-button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleWithdrawFromBackend(token);
+                                            }}
+                                            style={{
+                                                padding: '4px 8px',
+                                                fontSize: '12px',
+                                                backgroundColor: '#007bff',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '3px',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Withdraw
+                                        </button>
+                                    )}
+                                </div>
+                                
+                                <div style={{ 
+                                    fontSize: '11px', 
+                                    color: '#999', 
+                                    marginTop: '8px', 
+                                    fontStyle: 'italic' 
+                                }}>
+                                    Click to collapse breakdown
+                                </div>
+                            </div>
+                        )}
                     </>
                 )}
                 <div className="balance-item">
