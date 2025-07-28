@@ -19,7 +19,7 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
   const isWrapMode = token?.ledger_canister_id?.toText() === GLDT_CANISTER_ID;
   const isUnwrapMode = token?.ledger_canister_id?.toText() === SGLDT_CANISTER_ID;
   
-  console.log('WrapUnwrapModal mode detection:', {
+  /*console.log('WrapUnwrapModal mode detection:', {
     token_symbol: token?.symbol,
     ledger_id: token?.ledger_canister_id?.toText(),
     GLDT_CANISTER_ID,
@@ -27,7 +27,7 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
     isWrapMode,
     isUnwrapMode,
     gldtToken: gldtToken ? `${gldtToken.symbol} (${gldtToken.ledger_canister_id?.toText()})` : 'not found'
-  });
+  });*/
 
   useEffect(() => {
     if (show) {

@@ -62,9 +62,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             <div className="balance-breakdown" style={{ 
                                 marginLeft: '20px', 
                                 padding: '10px', 
-                                backgroundColor: '#f8f9fa', 
+                                backgroundColor: '#2c3e50', 
                                 borderRadius: '4px',
-                                border: '1px solid #e9ecef'
+                                border: '1px solid #34495e'
                             }}>
                                 <div className="balance-breakdown-item" style={{ 
                                     display: 'flex', 
@@ -73,53 +73,61 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     marginBottom: '8px'
                                 }}>
                                     <div>
-                                        <div style={{ fontSize: '12px', color: '#666' }}>Frontend Wallet</div>
-                                        <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                                        <div style={{ fontSize: '12px', color: '#bdc3c7' }}>Frontend Wallet</div>
+                                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'white' }}>
                                             {formatAmount(token.balance, token.decimals)} {token.symbol}
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <div className="balance-breakdown-item" style={{ 
-                                    display: 'flex', 
-                                    justifyContent: 'space-between', 
-                                    alignItems: 'center'
-                                }}>
-                                    <div>
-                                        <div style={{ fontSize: '12px', color: '#666' }}>Backend Wallet</div>
-                                        <div style={{ fontSize: '14px', fontWeight: 'bold' }}>
-                                            {formatAmount(token.available_backend, token.decimals)} {token.symbol}
-                                        </div>
+                                <div className="balance-breakdown-item">
+                                    <div style={{ fontSize: '12px', color: '#bdc3c7' }}>Backend Wallet</div>
+                                    <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'white' }}>
+                                        {formatAmount(token.available_backend, token.decimals)} {token.symbol}
                                     </div>
-                                    {token.available_backend > 0n && !hideButtons && (
-                                        <button 
-                                            className="withdraw-button"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleWithdrawFromBackend(token);
-                                            }}
-                                            style={{
-                                                padding: '4px 8px',
-                                                fontSize: '12px',
-                                                backgroundColor: '#007bff',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '3px',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            Withdraw
-                                        </button>
-                                    )}
-                                </div>
-                                
-                                <div style={{ 
-                                    fontSize: '11px', 
-                                    color: '#999', 
-                                    marginTop: '8px', 
-                                    fontStyle: 'italic' 
-                                }}>
-                                    Click to collapse breakdown
+                                    {(() => {
+                                        const shouldShowButton = token.available_backend > 0n && !hideButtons;
+                                        console.log('Withdraw button debug:', {
+                                            symbol: token.symbol,
+                                            available_backend: token.available_backend?.toString(),
+                                            available_backend_bigint: typeof token.available_backend,
+                                            is_greater_than_zero: token.available_backend > 0n,
+                                            hideButtons,
+                                            shouldShowButton,
+                                            handleWithdrawFromBackend: typeof handleWithdrawFromBackend
+                                        });
+                                        
+                                        return shouldShowButton ? (
+                                            <div
+                                                onClick={(e) => {
+                                                    console.log('Withdraw button clicked!');
+                                                    e.stopPropagation();
+                                                    handleWithdrawFromBackend(token);
+                                                }}
+                                                style={{
+                                                    padding: '6px 10px',
+                                                    fontSize: '12px',
+                                                    backgroundColor: '#007bff',
+                                                    color: 'white',
+                                                    border: '1px solid #0056b3',
+                                                    borderRadius: '3px',
+                                                    cursor: 'pointer',
+                                                    marginTop: '4px',
+                                                    display: 'inline-block',
+                                                    textAlign: 'center',
+                                                    userSelect: 'none'
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    e.target.style.backgroundColor = '#0056b3';
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    e.target.style.backgroundColor = '#007bff';
+                                                }}
+                                            >
+                                                Withdraw
+                                            </div>
+                                        ) : null;
+                                    })()}
                                 </div>
                             </div>
                         )}
@@ -242,13 +250,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 const isGLDT = ledgerIdText === GLDT_CANISTER_ID;
                 const isSGLDT = ledgerIdText === SGLDT_CANISTER_ID;
                 
-                console.log(`Wrap/Unwrap button check for ${token.symbol}:`, {
+                /*console.log(`Wrap/Unwrap button check for ${token.symbol}:`, {
                     ledger_id_text: ledgerIdText,
                     isGLDT,
                     isSGLDT,
                     available: token.available?.toString(),
                     hasAvailable: token.available > 0n
-                });
+                });*/
                 
                 if ((isGLDT || isSGLDT) && token.available > 0n && !hideButtons) {
                     return (
