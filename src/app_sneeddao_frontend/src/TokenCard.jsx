@@ -5,7 +5,11 @@ import { rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
 import { PrincipalDisplay } from './utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 
-const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, openSendModal, openLockModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards }) => {
+// Constants for GLDT and sGLDT canister IDs
+const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
+const SGLDT_CANISTER_ID = 'i2s4q-syaaa-aaaan-qz4sq-cai';
+
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards }) => {
 
     function getTokenLockUrl(ledger, locks) {
         const baseUrl = '/tokenlock';
@@ -89,6 +93,24 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 <img src="sneedlock-logo-cropped.png" alt="Lock" />
                             </button>
                             <span className="tooltip">Lock Tokens</span>
+                        </div>
+                    )}
+                    {/* Add Wrap button for GLDT */}
+                    {token.ledger_canister_id === GLDT_CANISTER_ID && token.available > 0n && (
+                        <div className="tooltip-wrapper">
+                            <button className="wrap-button" onClick={() => openWrapModal(token)}>
+                                <img src="link-chain.png" alt="Wrap" />
+                            </button>
+                            <span className="tooltip">Wrap to sGLDT</span>
+                        </div>
+                    )}
+                    {/* Add Unwrap button for sGLDT */}
+                    {token.ledger_canister_id === SGLDT_CANISTER_ID && token.available > 0n && (
+                        <div className="tooltip-wrapper">
+                            <button className="unwrap-button" onClick={() => openUnwrapModal(token)}>
+                                <img src="red-x-black.png" alt="Unwrap" />
+                            </button>
+                            <span className="tooltip">Unwrap to GLDT</span>
                         </div>
                     )}
                     {token.available + BigInt(token.locked) + rewardAmountOrZero(token) === 0n && (

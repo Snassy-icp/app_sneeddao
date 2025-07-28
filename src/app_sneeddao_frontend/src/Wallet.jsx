@@ -7,11 +7,13 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
+import { createActor as createSgldtActor } from 'external/sgldt';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import PrincipalBox from './PrincipalBox';
 import './Wallet.css';
 import SendTokenModal from './SendTokenModal';
+import WrapUnwrapModal from './WrapUnwrapModal';
 import LockModal from './LockModal';
 import LockPositionModal from './LockPositionModal';
 import AddSwapCanisterModal from './AddSwapCanisterModal';
@@ -29,6 +31,10 @@ import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCan
 import Header from './components/Header';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 
+// Constants for GLDT and sGLDT canister IDs
+const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
+const SGLDT_CANISTER_ID = 'i2s4q-syaaa-aaaan-qz4sq-cai';
+
 const showDebug = false;
         
 const known_icrc1_ledgers = {};
@@ -40,6 +46,7 @@ function Wallet() {
     const location = useLocation();
     const [tokens, setTokens] = useState([]);
     const [showSendModal, setShowSendModal] = useState(false);
+    const [showWrapUnwrapModal, setShowWrapUnwrapModal] = useState(false);
     const [selectedToken, setSelectedToken] = useState(null);
     const [showLockModal, setShowLockModal] = useState(false);
     const [showLockPositionModal, setShowLockPositionModal] = useState(false);
@@ -575,6 +582,78 @@ function Wallet() {
         setShowSendModal(true);
     };
 
+    const openWrapModal = (token) => {
+        setSelectedToken(token);
+        setShowWrapUnwrapModal(true);
+    };
+
+    const openUnwrapModal = (token) => {
+        setSelectedToken(token);
+        setShowWrapUnwrapModal(true);
+    };
+
+    const handleWrap = async (token, amount) => {
+        const decimals = token.decimals;
+        const bigIntAmount = BigInt(amount * (10 ** decimals));
+        
+        // Step 1: Approve sGLDT canister to spend GLDT (amount - 1 tx fee)
+        const gldtLedgerActor = createLedgerActor(GLDT_CANISTER_ID, {
+            agentOptions: { identity }
+        });
+        
+        const approveAmount = bigIntAmount - token.fee; // amount - 1 GLDT tx fee
+        const approveResult = await gldtLedgerActor.icrc2_approve({
+            spender: { owner: Principal.fromText(SGLDT_CANISTER_ID), subaccount: [] },
+            amount: approveAmount,
+            fee: [],
+            memo: [],
+            from_subaccount: [],
+            created_at_time: [],
+            expires_at: []
+        });
+
+        // Check if approve was successful
+        if ('Err' in approveResult) {
+            throw new Error(`Approve failed: ${JSON.stringify(approveResult.Err)}`);
+        }
+
+        // Step 2: Call deposit on sGLDT canister (amount - 2 tx fees)
+        const sgldtActor = createSgldtActor(SGLDT_CANISTER_ID, {
+            agentOptions: { identity }
+        });
+
+        const depositAmount = bigIntAmount - (2n * token.fee); // amount - 2 GLDT tx fees
+        const depositResult = await sgldtActor.deposit([], depositAmount);
+        
+        if ('err' in depositResult) {
+            throw new Error(`Deposit failed: ${depositResult.err}`);
+        }
+
+        // Refresh balances for both tokens
+        /*await*/ fetchBalancesAndLocks(GLDT_CANISTER_ID);
+        /*await*/ fetchBalancesAndLocks(SGLDT_CANISTER_ID);
+    };
+
+    const handleUnwrap = async (token, amount) => {
+        const decimals = token.decimals;
+        const bigIntAmount = BigInt(amount * (10 ** decimals));
+        
+        // Call withdraw on sGLDT canister
+        const sgldtActor = createSgldtActor(SGLDT_CANISTER_ID, {
+            agentOptions: { identity }
+        });
+
+        const withdrawResult = await sgldtActor.withdraw([], bigIntAmount);
+        
+        if ('err' in withdrawResult) {
+            throw new Error(`Withdraw failed: ${withdrawResult.err}`);
+        }
+
+        // Refresh balances for both tokens
+        /*await*/ fetchBalancesAndLocks(GLDT_CANISTER_ID);
+        /*await*/ fetchBalancesAndLocks(SGLDT_CANISTER_ID);
+    };
+
     const handleSendLiquidityPosition = async (liquidityPosition, recipient) => {
 
         if(liquidityPosition.frontendOwnership) {
@@ -921,6 +1000,8 @@ function Wallet() {
                             showDebug={showDebug}
                             openSendModal={openSendModal}
                             openLockModal={openLockModal}
+                            openWrapModal={openWrapModal}
+                            openUnwrapModal={openUnwrapModal}
                             handleUnregisterToken={handleUnregisterToken}
                             rewardDetailsLoading={rewardDetailsLoading}
                             handleClaimRewards={handleClaimRewards}
@@ -993,6 +1074,14 @@ function Wallet() {
                     onClose={() => setShowSendModal(false)}
                     onSend={handleSendToken}
                     token={selectedToken}
+                />
+                <WrapUnwrapModal
+                    show={showWrapUnwrapModal}
+                    onClose={() => setShowWrapUnwrapModal(false)}
+                    onWrap={handleWrap}
+                    onUnwrap={handleUnwrap}
+                    token={selectedToken}
+                    gldtToken={tokens.find(t => t.ledger_canister_id === GLDT_CANISTER_ID)}
                 />
                 <LockModal
                     show={showLockModal}
