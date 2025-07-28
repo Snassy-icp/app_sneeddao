@@ -529,49 +529,62 @@ function Wallet() {
             fuller_amount: fuller_amount.toString()
         });
         
-        if (full_amount <= avail_tot) {
-            console.log('Condition 1: full_amount <= avail_tot → TRUE');
+        // New logic: Try backend first, then frontend, then split
+        const backendUsable = avail_backend - BigInt(token.fee); // Backend balance minus 1 tx fee
+        const frontendUsable = BigInt(token.balance) - BigInt(token.fee); // Frontend balance minus 1 tx fee
+        
+        console.log('Send logic calculations:', {
+            amount: amount.toString(),
+            backendBalance: avail_backend.toString(),
+            frontendBalance: token.balance.toString(),
+            backendUsable: backendUsable.toString(),
+            frontendUsable: frontendUsable.toString(),
+            txFee: token.fee.toString()
+        });
 
-            if (full_amount <= avail_backend) {
-                console.log('Condition 2a: full_amount <= avail_backend → TRUE, sending entirely from backend');
-                send_from_backend = amount;
-            } else if (amount <= token.balance) {
-                console.log('Condition 2b: amount <= token.balance → TRUE, sending entirely from frontend');
-                send_from_frontend = amount;
-            } else {
-                console.log('Condition 2c: Need to split between frontend and backend');
-                // Split send: frontend sends its full balance, backend sends remainder
-                // But backend needs to account for its own transaction fee
-                const backendAmountAfterFee = avail_backend - BigInt(token.fee);
-                const maxFromFrontend = BigInt(token.balance);
-                
-                if (amount <= maxFromFrontend + backendAmountAfterFee) {
-                    // Try to minimize backend usage (frontend doesn't cost extra fee)
-                    if (amount <= maxFromFrontend) {
-                        // Can send entirely from frontend
-                        send_from_frontend = amount;
-                        console.log('Actually can send entirely from frontend after recalculation');
-                    } else {
-                        // Need to split: send max from frontend, rest from backend
-                        send_from_frontend = maxFromFrontend;
-                        send_from_backend = amount - maxFromFrontend;
-                        
-                        console.log('Split send successful:', {
-                            send_from_frontend: send_from_frontend.toString(),
-                            send_from_backend: send_from_backend.toString(),
-                            backendAfterFee: backendAmountAfterFee.toString(),
-                            backendUsed: send_from_backend.toString()
-                        });
-                    }
-                } else {
-                    console.log('ERROR: Not enough total balance for split send');
-                    console.log('Amount needed:', amount.toString());
-                    console.log('Max available:', (maxFromFrontend + backendAmountAfterFee).toString());
-                }
-            }
-
+        if (amount <= backendUsable && backendUsable > 0n) {
+            // Rule 1: Send entirely from backend
+            send_from_backend = amount;
+            console.log('Rule 1: Sending entirely from backend:', amount.toString());
+            
+        } else if (amount <= frontendUsable && frontendUsable > 0n) {
+            // Rule 2: Send entirely from frontend  
+            send_from_frontend = amount;
+            console.log('Rule 2: Sending entirely from frontend:', amount.toString());
+            
         } else {
-            console.log('Condition 1: full_amount <= avail_tot → FALSE');
+            // Rule 3: Split send - backend first, then frontend
+            console.log('Rule 3: Need to split send');
+            
+            if (backendUsable > 0n) {
+                send_from_backend = backendUsable; // Send max possible from backend
+                const remaining = amount - backendUsable;
+                
+                if (remaining <= frontendUsable && frontendUsable > 0n) {
+                    send_from_frontend = remaining; // Send remainder from frontend
+                    console.log('Split send successful:', {
+                        backendSend: send_from_backend.toString(),
+                        frontendSend: send_from_frontend.toString(),
+                        remaining: remaining.toString()
+                    });
+                } else {
+                    console.log('ERROR: Cannot send remainder from frontend');
+                    console.log('Remaining needed:', remaining.toString(), 'Frontend usable:', frontendUsable.toString());
+                    // Reset to 0 since we can't complete the transaction
+                    send_from_backend = 0n;
+                    send_from_frontend = 0n;
+                }
+            } else if (frontendUsable > 0n) {
+                // Backend can't help, try frontend only
+                if (amount <= frontendUsable) {
+                    send_from_frontend = amount;
+                    console.log('Backend unavailable, sending from frontend only');
+                } else {
+                    console.log('ERROR: Amount exceeds frontend capacity');
+                }
+            } else {
+                console.log('ERROR: Neither backend nor frontend can send this amount');
+            }
         }
         
         console.log('calc_send_amounts result:', {
