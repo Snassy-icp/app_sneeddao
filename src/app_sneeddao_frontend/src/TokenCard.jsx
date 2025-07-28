@@ -9,7 +9,24 @@ import { Principal } from '@dfinity/principal';
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
 const SGLDT_CANISTER_ID = 'i2s4q-syaaa-aaaan-qz4sq-cai';
 
+console.log('TokenCard constants:', { GLDT_CANISTER_ID, SGLDT_CANISTER_ID });
+
 const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards }) => {
+
+    // Debug logging for wrap/unwrap buttons
+    console.log('TokenCard Debug:', {
+        symbol: token.symbol,
+        ledger_canister_id: token.ledger_canister_id,
+        available: token.available?.toString(),
+        GLDT_CANISTER_ID,
+        SGLDT_CANISTER_ID,
+        isGLDT: token.ledger_canister_id === GLDT_CANISTER_ID,
+        isSGLDT: token.ledger_canister_id === SGLDT_CANISTER_ID,
+        hasAvailable: token.available > 0n,
+        hideButtons,
+        openWrapModal: typeof openWrapModal,
+        openUnwrapModal: typeof openUnwrapModal
+    });
 
     function getTokenLockUrl(ledger, locks) {
         const baseUrl = '/tokenlock';
@@ -95,24 +112,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             <span className="tooltip">Lock Tokens</span>
                         </div>
                     )}
-                    {/* Add Wrap button for GLDT */}
-                    {token.ledger_canister_id === GLDT_CANISTER_ID && token.available > 0n && (
-                        <div className="tooltip-wrapper">
-                            <button className="wrap-button" onClick={() => openWrapModal(token)}>
-                                <img src="link-chain.png" alt="Wrap" />
-                            </button>
-                            <span className="tooltip">Wrap to sGLDT</span>
-                        </div>
-                    )}
-                    {/* Add Unwrap button for sGLDT */}
-                    {token.ledger_canister_id === SGLDT_CANISTER_ID && token.available > 0n && (
-                        <div className="tooltip-wrapper">
-                            <button className="unwrap-button" onClick={() => openUnwrapModal(token)}>
-                                <img src="red-x-black.png" alt="Unwrap" />
-                            </button>
-                            <span className="tooltip">Unwrap to GLDT</span>
-                        </div>
-                    )}
+
                     {token.available + BigInt(token.locked) + rewardAmountOrZero(token) === 0n && (
                         <div className="tooltip-wrapper">
                             <button className="remove-button" onClick={() => handleUnregisterToken(token.ledger_canister_id)}>
@@ -165,6 +165,67 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     )}
                 </div>
             )}
+            
+            {/* Wrap/Unwrap buttons at bottom of card */}
+            {(() => {
+                const ledgerIdText = token.ledger_canister_id.toText();
+                const isGLDT = ledgerIdText === GLDT_CANISTER_ID;
+                const isSGLDT = ledgerIdText === SGLDT_CANISTER_ID;
+                
+                console.log(`Wrap/Unwrap button check for ${token.symbol}:`, {
+                    ledger_id_text: ledgerIdText,
+                    isGLDT,
+                    isSGLDT,
+                    available: token.available?.toString(),
+                    hasAvailable: token.available > 0n
+                });
+                
+                if ((isGLDT || isSGLDT) && token.available > 0n && !hideButtons) {
+                    return (
+                        <div className="wrap-unwrap-section" style={{ marginTop: '10px', padding: '10px 0', borderTop: '1px solid #eee' }}>
+                            {isGLDT && (
+                                <button 
+                                    className="wrap-button-full" 
+                                    onClick={() => openWrapModal(token)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '8px 16px',
+                                        backgroundColor: '#4CAF50',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        fontSize: '14px',
+                                        fontWeight: 'bold'
+                                    }}
+                                >
+                                    Wrap to sGLDT
+                                </button>
+                            )}
+                            {isSGLDT && (
+                                <button 
+                                    className="unwrap-button-full" 
+                                    onClick={() => openUnwrapModal(token)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '8px 16px',
+                                        backgroundColor: '#FF9800',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        fontSize: '14px',
+                                        fontWeight: 'bold'
+                                    }}
+                                >
+                                    Unwrap to GLDT
+                                </button>
+                            )}
+                        </div>
+                    );
+                }
+                return null;
+            })()}
         </div>
     );
 };

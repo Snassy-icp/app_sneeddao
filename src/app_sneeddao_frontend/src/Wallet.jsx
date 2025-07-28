@@ -35,6 +35,8 @@ import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
 const SGLDT_CANISTER_ID = 'i2s4q-syaaa-aaaan-qz4sq-cai';
 
+console.log('Wallet constants:', { GLDT_CANISTER_ID, SGLDT_CANISTER_ID });
+
 const showDebug = false;
         
 const known_icrc1_ledgers = {};
@@ -991,22 +993,31 @@ function Wallet() {
                 </div>
                 <p>Tokens <b className="card add-ledger-card" onClick={() => setShowAddLedgerModal(true)}>&nbsp;&nbsp;+&nbsp;&nbsp;</b></p>
                 <div className="card-grid">
-                    {tokens.map((token, index) => (
-                        <TokenCard
-                            key={index}
-                            token={token}
-                            locks={locks}
-                            lockDetailsLoading={lockDetailsLoading}
-                            showDebug={showDebug}
-                            openSendModal={openSendModal}
-                            openLockModal={openLockModal}
-                            openWrapModal={openWrapModal}
-                            openUnwrapModal={openUnwrapModal}
-                            handleUnregisterToken={handleUnregisterToken}
-                            rewardDetailsLoading={rewardDetailsLoading}
-                            handleClaimRewards={handleClaimRewards}
-                        />
-                    ))}
+                    {tokens.map((token, index) => {
+                        // Debug logging for each token
+                        console.log(`Wallet passing functions to TokenCard for ${token.symbol}:`, {
+                            openWrapModal: typeof openWrapModal,
+                            openUnwrapModal: typeof openUnwrapModal,
+                            token_id: token.ledger_canister_id
+                        });
+                        
+                        return (
+                            <TokenCard
+                                key={index}
+                                token={token}
+                                locks={locks}
+                                lockDetailsLoading={lockDetailsLoading}
+                                showDebug={showDebug}
+                                openSendModal={openSendModal}
+                                openLockModal={openLockModal}
+                                openWrapModal={openWrapModal}
+                                openUnwrapModal={openUnwrapModal}
+                                handleUnregisterToken={handleUnregisterToken}
+                                rewardDetailsLoading={rewardDetailsLoading}
+                                handleClaimRewards={handleClaimRewards}
+                            />
+                        );
+                    })}
                     {showTokensSpinner ? (
                         <div className="card">
                             <div className="spinner"></div>
