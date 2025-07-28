@@ -103,6 +103,23 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
       return;
     }
 
+    // Check minimum amounts
+    if (isWrapMode) {
+      // Minimum wrap: 1 GLDT
+      const minWrapAmount = BigInt(10 ** token.decimals); // 1 GLDT
+      if (bigIntAmount < minWrapAmount) {
+        setErrorText("Minimum wrap amount is 1 GLDT.");
+        return;
+      }
+    } else if (isUnwrapMode) {
+      // Minimum unwrap: 0.5 sGLDT  
+      const minUnwrapAmount = BigInt(Math.floor(0.5 * (10 ** token.decimals))); // 0.5 sGLDT
+      if (bigIntAmount < minUnwrapAmount) {
+        setErrorText("Minimum unwrap amount is 0.5 sGLDT.");
+        return;
+      }
+    }
+
     if (isWrapMode) {
       // Validate wrap amount
       if (bigIntAmount > token.available) {
