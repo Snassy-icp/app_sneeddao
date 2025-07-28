@@ -519,7 +519,10 @@ function Wallet() {
     const handleSendToken = async (token, recipient, amount) => {
 
         const decimals = await token.decimals;
-        const bigintAmount = BigInt(amount * (10 ** decimals));
+        // Convert to BigInt safely - handle decimal inputs
+        const amountFloat = parseFloat(amount);
+        const scaledAmount = amountFloat * (10 ** decimals);
+        const bigintAmount = BigInt(Math.floor(scaledAmount));
         const send_amounts = calc_send_amounts(token, bigintAmount);
 
         if (send_amounts.send_from_backend + send_amounts.send_from_frontend <= BigInt(0)) {
@@ -598,7 +601,10 @@ function Wallet() {
         console.log('Starting wrap operation:', { token: token.symbol, amount });
         
         const decimals = token.decimals;
-        const bigIntAmount = BigInt(amount * (10 ** decimals));
+        // Convert to BigInt safely - handle decimal inputs
+        const amountFloat = parseFloat(amount);
+        const scaledAmount = amountFloat * (10 ** decimals);
+        const bigIntAmount = BigInt(Math.floor(scaledAmount));
         
         // Step 1: Approve sGLDT canister to spend GLDT (amount - 1 tx fee)
         const gldtLedgerActor = createLedgerActor(GLDT_CANISTER_ID, {
@@ -656,7 +662,10 @@ function Wallet() {
         console.log('Starting unwrap operation:', { token: token.symbol, amount });
         
         const decimals = token.decimals;
-        const bigIntAmount = BigInt(amount * (10 ** decimals));
+        // Convert to BigInt safely - handle decimal inputs  
+        const amountFloat = parseFloat(amount);
+        const scaledAmount = amountFloat * (10 ** decimals);
+        const bigIntAmount = BigInt(Math.floor(scaledAmount));
         
         // Call withdraw on sGLDT canister
         const sgldtActor = createSgldtActor(SGLDT_CANISTER_ID, {
@@ -723,7 +732,10 @@ function Wallet() {
         const ledger_canister_id = token.ledger_canister_id;
         const ledgerActor = createLedgerActor(ledger_canister_id, { agentOptions: { identity } });
         const decimals = await ledgerActor.icrc1_decimals();
-        const bigIntAmount = BigInt(amount * (10 ** decimals));
+        // Convert to BigInt safely - handle decimal inputs
+        const amountFloat = parseFloat(amount);
+        const scaledAmount = amountFloat * (10 ** decimals);
+        const bigIntAmount = BigInt(Math.floor(scaledAmount));
         const available_balance_backend = get_available_backend(token);
         const bigIntAmountSendToBackend = bigIntAmount - available_balance_backend;
 

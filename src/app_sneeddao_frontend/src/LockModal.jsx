@@ -53,11 +53,15 @@ function LockModal({ show, onClose, token, locks, onAddLock }) {
             return;
         }
 
-        const bigIntAmount = BigInt(newLockAmount * (10 ** token.decimals));
-        if (bigIntAmount <= 0n) {
+        // Convert to BigInt safely - handle decimal inputs from formatAmount
+        const amountFloat = parseFloat(newLockAmount);
+        if (isNaN(amountFloat) || amountFloat <= 0) {
             setErrorText("Invalid amount! Please enter a positive amount.");
             return;
         }
+        
+        const scaledAmount = amountFloat * (10 ** token.decimals);
+        const bigIntAmount = BigInt(Math.floor(scaledAmount));
 
         if (bigIntAmount > token.available_backend) {
             if (bigIntAmount > BigInt(token.available) - BigInt(token.fee)) {

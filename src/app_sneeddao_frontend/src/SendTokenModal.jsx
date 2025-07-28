@@ -46,11 +46,15 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       return;
     }
 
-    const bigIntAmount = BigInt(amount * (10 ** token.decimals));
-    if (bigIntAmount <= 0n) {
+    // Convert to BigInt safely - handle decimal inputs from formatAmount
+    const amountFloat = parseFloat(amount);
+    if (isNaN(amountFloat) || amountFloat <= 0) {
       setErrorText("Invalid amount! Please enter a positive amount.");
       return;
     }
+    
+    const scaledAmount = amountFloat * (10 ** token.decimals);
+    const bigIntAmount = BigInt(Math.floor(scaledAmount));
 
     if (bigIntAmount > BigInt(token.available) - BigInt(token.fee)) {
       setErrorText("Insufficient available balance! Please enter an amount less than or equal to your available balance.");
