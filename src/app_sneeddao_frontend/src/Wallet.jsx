@@ -777,8 +777,8 @@ function Wallet() {
         }
 
         // Refresh balances for both tokens
-        await fetchBalancesAndLocks(GLDT_CANISTER_ID);
-        await fetchBalancesAndLocks(SGLDT_CANISTER_ID);
+        await fetchBalancesAndLocks(Principal.fromText(GLDT_CANISTER_ID));
+        await fetchBalancesAndLocks(Principal.fromText(SGLDT_CANISTER_ID));
         console.log('Wrap operation completed');
     };
 
@@ -812,8 +812,8 @@ function Wallet() {
         }
 
         // Refresh balances for both tokens
-        await fetchBalancesAndLocks(GLDT_CANISTER_ID);
-        await fetchBalancesAndLocks(SGLDT_CANISTER_ID);
+        await fetchBalancesAndLocks(Principal.fromText(GLDT_CANISTER_ID));
+        await fetchBalancesAndLocks(Principal.fromText(SGLDT_CANISTER_ID));
         console.log('Unwrap operation completed');
     };
 
@@ -865,7 +865,7 @@ function Wallet() {
                 }));
 
                 // Refresh the token balance
-                await fetchBalancesAndLocks(token.ledger_canister_id.toText());
+                await fetchBalancesAndLocks(token.ledger_canister_id);
                 console.log('=== Backend withdrawal completed ===');
                 
             } catch (error) {
