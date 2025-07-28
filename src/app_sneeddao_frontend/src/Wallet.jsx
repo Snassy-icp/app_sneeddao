@@ -818,7 +818,7 @@ function Wallet() {
     };
 
     const handleWithdrawFromBackend = async (token) => {
-        console.log('=== Starting backend withdrawal ===');
+        console.log('=== Backend withdrawal button clicked ===');
         console.log('Token:', token.symbol, 'Backend balance:', token.available_backend.toString());
         
         if (token.available_backend <= 0n) {
@@ -826,35 +826,58 @@ function Wallet() {
             return;
         }
 
-        try {
-            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { 
-                agentOptions: { identity } 
-            });
-
-            // Transfer all available backend balance to user's frontend wallet
-            const result = await sneedLockActor.transfer_tokens(
-                identity.getPrincipal(),
-                [],
-                token.ledger_canister_id,
-                token.available_backend
-            );
-
-            console.log('Backend withdrawal result:', JSON.stringify(result, (key, value) => {
-                if (typeof value === 'bigint') {
-                    return value.toString();
-                }
-                return value;
-            }));
-
-            // Refresh the token balance
-            await fetchBalancesAndLocks(token.ledger_canister_id.toText());
-            console.log('=== Backend withdrawal completed ===');
-            
-        } catch (error) {
-            console.error('=== Backend withdrawal error ===');
-            console.error('Error details:', error);
-            throw error;
+        // Calculate amount to withdraw (backend balance minus 1 tx fee)
+        const withdrawAmount = token.available_backend - BigInt(token.fee);
+        
+        if (withdrawAmount <= 0n) {
+            console.log('Backend balance too small to cover transaction fee');
+            return;
         }
+
+        console.log('Withdrawal calculation:', {
+            backendBalance: token.available_backend.toString(),
+            txFee: token.fee.toString(),
+            withdrawAmount: withdrawAmount.toString()
+        });
+
+        // Show confirmation dialog
+        setConfirmAction(() => async () => {
+            try {
+                console.log('=== Starting confirmed backend withdrawal ===');
+                
+                const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { 
+                    agentOptions: { identity } 
+                });
+
+                // Transfer (backend_balance - 1_tx_fee) to user's frontend wallet
+                const result = await sneedLockActor.transfer_tokens(
+                    identity.getPrincipal(),
+                    [],
+                    token.ledger_canister_id,
+                    withdrawAmount
+                );
+
+                console.log('Backend withdrawal result:', JSON.stringify(result, (key, value) => {
+                    if (typeof value === 'bigint') {
+                        return value.toString();
+                    }
+                    return value;
+                }));
+
+                // Refresh the token balance
+                await fetchBalancesAndLocks(token.ledger_canister_id.toText());
+                console.log('=== Backend withdrawal completed ===');
+                
+            } catch (error) {
+                console.error('=== Backend withdrawal error ===');
+                console.error('Error details:', error);
+                throw error;
+            }
+        });
+
+        const amountFormatted = formatAmount(withdrawAmount, token.decimals);
+        setConfirmMessage(`You are about to withdraw ${amountFormatted} ${token.symbol} from your backend wallet to your frontend wallet. This will cost ${formatAmount(token.fee, token.decimals)} ${token.symbol} in transaction fees.`);
+        setShowConfirmModal(true);
     };
 
     const handleSendLiquidityPosition = async (liquidityPosition, recipient) => {
