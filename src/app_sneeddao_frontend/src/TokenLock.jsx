@@ -93,7 +93,7 @@ function TokenLock() {
             const conversion_rate = conversion_rates[symbol] || 0;
 
             setToken({
-                ledger_canister_id: ledgerCanisterId,
+                ledger_canister_id: Principal.fromText(ledgerCanisterId),
                 symbol,
                 decimals,
                 logo: logo || "icp_symbol.svg",
