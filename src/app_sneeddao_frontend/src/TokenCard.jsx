@@ -246,7 +246,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             
             {/* Wrap/Unwrap buttons at bottom of card */}
             {(() => {
-                const ledgerIdText = token.ledger_canister_id.toText();
+                const ledgerIdText = token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
                 const isGLDT = ledgerIdText === GLDT_CANISTER_ID;
                 const isSGLDT = ledgerIdText === SGLDT_CANISTER_ID;
                 

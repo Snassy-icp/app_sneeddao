@@ -180,10 +180,10 @@ function Dashboard() {
                                             </div>
                                             <div style={{ color: '#888' }}>
                                                 <p style={{ margin: '5px 0' }}>
-                                                    <strong>Token:</strong> {tokenSymbols[lock[0].toText()] || lock[0].toText()}
+                                                    <strong>Token:</strong> {tokenSymbols[lock[0]?.toText?.()] || lock[0]?.toText?.() || lock[0]}
                                                 </p>
                                                 <p style={{ margin: '5px 0' }}>
-                                                    <strong>Amount:</strong> {formatAmount(lock[1], 8)} {tokenSymbols[lock[0].toText()]}
+                                                    <strong>Amount:</strong> {formatAmount(lock[1], 8)} {tokenSymbols[lock[0]?.toText?.()]}
                                                 </p>
                                                 <p style={{ margin: '5px 0' }}>
                                                     <strong>Unlock Date:</strong> {new Date(Number(lock[2]) / 1000000).toLocaleString()}

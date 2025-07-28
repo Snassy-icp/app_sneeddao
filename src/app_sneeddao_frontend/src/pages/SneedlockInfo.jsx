@@ -399,13 +399,13 @@ function SneedlockInfo() {
             for (const lock of allTokenLocks) {
                 const tokenId = lock[1];
                 const amount = BigInt(lock[2].amount);
-                const tokenKey = tokenId.toText();
+                const tokenKey = tokenId?.toText?.() || tokenId;
                 const lockDetails = {
                     id: lock[0],  // Lock ID (principal)
                     lockId: lock[2].lock_id,  // Numerical lock ID
                     amount: amount,
                     expiry: lock[2].expiry,
-                    owner: lock[0].toText()  // Use the actual owner principal
+                    owner: lock[0]?.toText?.() || lock[0]  // Use the actual owner principal
                 };
 
                 if (!aggregatedData[tokenKey]) {

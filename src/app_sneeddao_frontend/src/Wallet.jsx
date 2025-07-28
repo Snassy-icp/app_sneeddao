@@ -253,7 +253,7 @@ function Wallet() {
             if (single_refresh_ledger_canister_id) {
                 const updatedToken = await fetchTokenDetails(single_refresh_ledger_canister_id, summed_locks);
                 setTokens(prevTokens => prevTokens.map(token => 
-                    token.ledger_canister_id.toText() === single_refresh_ledger_canister_id.toText() ? updatedToken : token
+                    token.ledger_canister_id?.toText?.() === single_refresh_ledger_canister_id?.toText?.() ? updatedToken : token
                 ));
                 singleUpdatedToken = [updatedToken];
             } else {
@@ -456,7 +456,7 @@ function Wallet() {
                 const tokenLocks = [];
     
                 for (const lock of locks_from_backend) {
-                    if (lock[1].toText() == token.ledger_canister_id.toText()) {
+                    if (lock[1]?.toText?.() == token.ledger_canister_id?.toText?.()) {
                         const readableDateFromHugeInt = new Date(Number(lock[3] / (10n ** 6n)));
                         tokenLocks.push({
                             lock_id: lock[0],
