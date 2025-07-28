@@ -41,6 +41,17 @@
         }
       }
     },
+    "sgldt": {
+      "type": "custom",
+      "candid": "src/external/sgldt/sgldt.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "i2s4q-syaaa-aaaan-qz4sq-cai"
+        }
+      }
+    },
     "swaprunner_backend": {
       "type": "custom",
       "candid": "src/external/swaprunner_backend/swaprunner_backend.did",
