@@ -16,8 +16,18 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
   const [confirmAction, setConfirmAction] = useState(null);
   const [confirmMessage, setConfirmMessage] = useState('');
 
-  const isWrapMode = token?.ledger_canister_id === GLDT_CANISTER_ID;
-  const isUnwrapMode = token?.ledger_canister_id === SGLDT_CANISTER_ID;
+  const isWrapMode = token?.ledger_canister_id?.toText() === GLDT_CANISTER_ID;
+  const isUnwrapMode = token?.ledger_canister_id?.toText() === SGLDT_CANISTER_ID;
+  
+  console.log('WrapUnwrapModal mode detection:', {
+    token_symbol: token?.symbol,
+    ledger_id: token?.ledger_canister_id?.toText(),
+    GLDT_CANISTER_ID,
+    SGLDT_CANISTER_ID,
+    isWrapMode,
+    isUnwrapMode,
+    gldtToken: gldtToken ? `${gldtToken.symbol} (${gldtToken.ledger_canister_id?.toText()})` : 'not found'
+  });
 
   useEffect(() => {
     if (show) {
@@ -39,22 +49,32 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
   const calculateExpectedResult = () => {
     if (!amount || !gldtToken) return '';
     
-    const bigIntAmount = BigInt(amount * (10 ** token.decimals));
-    
-    if (isWrapMode) {
-      // Wrapping: costs 2 GLDT tx fees total, gets back (amount - 2 tx fees) sGLDT
-      const gldtFee = gldtToken.fee;
-      const totalCost = 2n * gldtFee; // 2 GLDT tx fees
-      const expectedSGLDT = bigIntAmount - totalCost;
-      return `Expected result: ${formatAmount(expectedSGLDT > 0n ? expectedSGLDT : 0n, token.decimals)} sGLDT (costs ${formatAmount(totalCost, gldtToken.decimals)} GLDT in fees)`;
-    } else if (isUnwrapMode) {
-      // Unwrapping: costs 0.1 GLDT tx fee + 0.2 GLDT unwrapping fee = 0.3 GLDT total
-      const gldtFee = gldtToken.fee;
-      const txFee = gldtFee; // 1 GLDT tx fee
-      const unwrapFee = 2n * gldtFee; // 2 GLDT unwrapping fee
-      const totalCost = txFee + unwrapFee; // 3 GLDT total
-      const expectedGLDT = bigIntAmount - totalCost;
-      return `Expected result: ${formatAmount(expectedGLDT > 0n ? expectedGLDT : 0n, gldtToken.decimals)} GLDT (costs ${formatAmount(totalCost, gldtToken.decimals)} GLDT in fees)`;
+    try {
+      // Convert to BigInt safely - handle decimal inputs by multiplying first then flooring
+      const amountFloat = parseFloat(amount);
+      if (isNaN(amountFloat)) return '';
+      
+      const scaledAmount = amountFloat * (10 ** token.decimals);
+      const bigIntAmount = BigInt(Math.floor(scaledAmount));
+      
+      if (isWrapMode) {
+        // Wrapping: costs 2 GLDT tx fees total, gets back (amount - 2 tx fees) sGLDT
+        const gldtFee = gldtToken.fee;
+        const totalCost = 2n * gldtFee; // 2 GLDT tx fees
+        const expectedSGLDT = bigIntAmount - totalCost;
+        return `Expected result: ${formatAmount(expectedSGLDT > 0n ? expectedSGLDT : 0n, token.decimals)} sGLDT (costs ${formatAmount(totalCost, gldtToken.decimals)} GLDT in fees)`;
+      } else if (isUnwrapMode) {
+        // Unwrapping: costs 0.1 GLDT tx fee + 0.2 GLDT unwrapping fee = 0.3 GLDT total
+        const gldtFee = gldtToken.fee;
+        const txFee = gldtFee; // 1 GLDT tx fee
+        const unwrapFee = 2n * gldtFee; // 2 GLDT unwrapping fee
+        const totalCost = txFee + unwrapFee; // 3 GLDT total
+        const expectedGLDT = bigIntAmount - totalCost;
+        return `Expected result: ${formatAmount(expectedGLDT > 0n ? expectedGLDT : 0n, gldtToken.decimals)} GLDT (costs ${formatAmount(totalCost, gldtToken.decimals)} GLDT in fees)`;
+      }
+    } catch (error) {
+      console.error('Error calculating expected result:', error);
+      return 'Error calculating expected result';
     }
     
     return '';
@@ -68,9 +88,18 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
       return;
     }
 
-    const bigIntAmount = BigInt(amount * (10 ** token.decimals));
-    if (bigIntAmount <= 0n) {
+    // Convert to BigInt safely - handle decimal inputs
+    const amountFloat = parseFloat(amount);
+    if (isNaN(amountFloat) || amountFloat <= 0) {
       setErrorText("Invalid amount! Please enter a positive amount.");
+      return;
+    }
+    
+    const scaledAmount = amountFloat * (10 ** token.decimals);
+    const bigIntAmount = BigInt(Math.floor(scaledAmount));
+
+    if (!gldtToken) {
+      setErrorText("GLDT token not found. Please add GLDT to your wallet first.");
       return;
     }
 
@@ -91,6 +120,13 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
       // Validate unwrap amount
       if (bigIntAmount > token.available) {
         setErrorText("Insufficient available balance!");
+        return;
+      }
+      // Check if amount is large enough to cover fees (for unwrap, need to have enough to pay the fees)
+      const gldtFee = gldtToken.fee;
+      const totalCost = 3n * gldtFee; // 1 tx fee + 2 unwrapping fee
+      if (bigIntAmount <= totalCost) {
+        setErrorText(`Amount too small! Must be larger than ${formatAmount(totalCost, gldtToken.decimals)} GLDT equivalent to cover transaction fees.`);
         return;
       }
     }

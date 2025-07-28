@@ -595,6 +595,8 @@ function Wallet() {
     };
 
     const handleWrap = async (token, amount) => {
+        console.log('Starting wrap operation:', { token: token.symbol, amount });
+        
         const decimals = token.decimals;
         const bigIntAmount = BigInt(amount * (10 ** decimals));
         
@@ -604,6 +606,8 @@ function Wallet() {
         });
         
         const approveAmount = bigIntAmount - token.fee; // amount - 1 GLDT tx fee
+        console.log('Approving amount:', approveAmount.toString());
+        
         const approveResult = await gldtLedgerActor.icrc2_approve({
             spender: { owner: Principal.fromText(SGLDT_CANISTER_ID), subaccount: [] },
             amount: approveAmount,
@@ -618,6 +622,7 @@ function Wallet() {
         if ('Err' in approveResult) {
             throw new Error(`Approve failed: ${JSON.stringify(approveResult.Err)}`);
         }
+        console.log('Approve successful');
 
         // Step 2: Call deposit on sGLDT canister (amount - 2 tx fees)
         const sgldtActor = createSgldtActor(SGLDT_CANISTER_ID, {
@@ -625,18 +630,31 @@ function Wallet() {
         });
 
         const depositAmount = bigIntAmount - (2n * token.fee); // amount - 2 GLDT tx fees
+        console.log('Depositing amount:', depositAmount.toString());
+        
         const depositResult = await sgldtActor.deposit([], depositAmount);
         
         if ('err' in depositResult) {
             throw new Error(`Deposit failed: ${depositResult.err}`);
         }
+        console.log('Deposit successful');
+
+        // Auto-register sGLDT token if not already registered
+        const sgldtExists = tokens.find(t => t.ledger_canister_id?.toText() === SGLDT_CANISTER_ID);
+        if (!sgldtExists) {
+            console.log('Auto-registering sGLDT token');
+            await handleAddLedgerCanister(SGLDT_CANISTER_ID);
+        }
 
         // Refresh balances for both tokens
-        /*await*/ fetchBalancesAndLocks(GLDT_CANISTER_ID);
-        /*await*/ fetchBalancesAndLocks(SGLDT_CANISTER_ID);
+        await fetchBalancesAndLocks(GLDT_CANISTER_ID);
+        await fetchBalancesAndLocks(SGLDT_CANISTER_ID);
+        console.log('Wrap operation completed');
     };
 
     const handleUnwrap = async (token, amount) => {
+        console.log('Starting unwrap operation:', { token: token.symbol, amount });
+        
         const decimals = token.decimals;
         const bigIntAmount = BigInt(amount * (10 ** decimals));
         
@@ -645,15 +663,25 @@ function Wallet() {
             agentOptions: { identity }
         });
 
+        console.log('Withdrawing amount:', bigIntAmount.toString());
         const withdrawResult = await sgldtActor.withdraw([], bigIntAmount);
         
         if ('err' in withdrawResult) {
             throw new Error(`Withdraw failed: ${withdrawResult.err}`);
         }
+        console.log('Withdraw successful');
+
+        // Auto-register GLDT token if not already registered
+        const gldtExists = tokens.find(t => t.ledger_canister_id?.toText() === GLDT_CANISTER_ID);
+        if (!gldtExists) {
+            console.log('Auto-registering GLDT token');
+            await handleAddLedgerCanister(GLDT_CANISTER_ID);
+        }
 
         // Refresh balances for both tokens
-        /*await*/ fetchBalancesAndLocks(GLDT_CANISTER_ID);
-        /*await*/ fetchBalancesAndLocks(SGLDT_CANISTER_ID);
+        await fetchBalancesAndLocks(GLDT_CANISTER_ID);
+        await fetchBalancesAndLocks(SGLDT_CANISTER_ID);
+        console.log('Unwrap operation completed');
     };
 
     const handleSendLiquidityPosition = async (liquidityPosition, recipient) => {
@@ -1092,7 +1120,7 @@ function Wallet() {
                     onWrap={handleWrap}
                     onUnwrap={handleUnwrap}
                     token={selectedToken}
-                    gldtToken={tokens.find(t => t.ledger_canister_id === GLDT_CANISTER_ID)}
+                    gldtToken={tokens.find(t => t.ledger_canister_id?.toText() === GLDT_CANISTER_ID)}
                 />
                 <LockModal
                     show={showLockModal}
