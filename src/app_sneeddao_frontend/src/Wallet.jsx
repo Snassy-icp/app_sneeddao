@@ -96,19 +96,31 @@ function Wallet() {
             const symbol = await ledgerActor.icrc1_symbol();
             const decimals = await ledgerActor.icrc1_decimals();
             const fee = await ledgerActor.icrc1_fee();
+            
+            console.log(`=== fetchTokenDetails for ${symbol} ===`);
+            console.log('User principal:', identity.getPrincipal().toText());
+            console.log('SneedLock canister:', sneedLockCanisterId);
+            
             const balance = await ledgerActor.icrc1_balance_of({ owner: identity.getPrincipal(), subaccount: [] });
+            console.log('Frontend balance (raw):', balance.toString());
+            
             const tokenConversionRates = await get_token_conversion_rates();
             
             // ICP does not produce a logo in metadata.
             if (symbol.toLowerCase() == "icp" && logo == "") { logo = "icp_symbol.svg"; }
 
             const subaccount = principalToSubAccount(identity.getPrincipal()); 
+            console.log('Subaccount bytes:', Array.from(subaccount));
+            console.log('Subaccount hex:', Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join(''));
+            
             const balance_backend = await ledgerActor.icrc1_balance_of({ owner: Principal.fromText(sneedLockCanisterId), subaccount: [subaccount] });
+            console.log('Backend balance (raw):', balance_backend.toString());
 
             var locked = BigInt(0);
             if (summed_locks[icrc1_ledger]) {
                 locked = summed_locks[icrc1_ledger];
             }
+            console.log('Locked amount (raw):', locked.toString());
 
             var token = {
                 ledger_canister_id: icrc1_ledger,
@@ -122,8 +134,14 @@ function Wallet() {
                 conversion_rate: tokenConversionRates[symbol] || 0
             };
 
+            const avail_backend = get_available_backend(token);
             token.available = get_available(token);
-            token.available_backend = get_available_backend(token);
+            token.available_backend = avail_backend;
+            
+            console.log('Calculated available backend:', avail_backend.toString());
+            console.log('Calculated total available:', token.available.toString());
+            console.log('Manual calculation check:', (BigInt(balance) + avail_backend).toString());
+            console.log(`=== End fetchTokenDetails for ${symbol} ===`);
 
             return token;
         } catch (e) {
@@ -491,24 +509,75 @@ function Wallet() {
     }, [tokens, liquidityPositions, rewardDetailsLoading]);
 
     const calc_send_amounts = (token, amount) => {
+        console.log('=== calc_send_amounts START ===');
+        
         var send_from_frontend = BigInt(0);
         var send_from_backend = BigInt(0);
         const avail_backend = get_available_backend(token);
         const avail_tot = BigInt(get_available(token));
         const full_amount = amount + BigInt(token.fee);
         const fuller_amount = full_amount + BigInt(token.fee);
+        
+        console.log('calc_send_amounts values:', {
+            amount: amount.toString(),
+            tokenFee: token.fee.toString(),
+            tokenBalance: token.balance.toString(),
+            tokenAvailable: token.available.toString(),
+            avail_backend: avail_backend.toString(),
+            avail_tot: avail_tot.toString(),
+            full_amount: full_amount.toString(),
+            fuller_amount: fuller_amount.toString()
+        });
+        
         if (full_amount <= avail_tot) {
+            console.log('Condition 1: full_amount <= avail_tot → TRUE');
 
             if (full_amount <= avail_backend) {
+                console.log('Condition 2a: full_amount <= avail_backend → TRUE, sending entirely from backend');
                 send_from_backend = amount;
-            } else if (full_amount <= token.balance) {
+            } else if (amount <= token.balance) {
+                console.log('Condition 2b: amount <= token.balance → TRUE, sending entirely from frontend');
                 send_from_frontend = amount;
-            } else if (fuller_amount <= avail_tot) {
-                send_from_backend = avail_backend - BigInt(token.fee);
-                send_from_frontend = amount - send_from_backend;
+            } else {
+                console.log('Condition 2c: Need to split between frontend and backend');
+                // Split send: frontend sends its full balance, backend sends remainder
+                // But backend needs to account for its own transaction fee
+                const backendAmountAfterFee = avail_backend - BigInt(token.fee);
+                const maxFromFrontend = BigInt(token.balance);
+                
+                if (amount <= maxFromFrontend + backendAmountAfterFee) {
+                    // Try to minimize backend usage (frontend doesn't cost extra fee)
+                    if (amount <= maxFromFrontend) {
+                        // Can send entirely from frontend
+                        send_from_frontend = amount;
+                        console.log('Actually can send entirely from frontend after recalculation');
+                    } else {
+                        // Need to split: send max from frontend, rest from backend
+                        send_from_frontend = maxFromFrontend;
+                        send_from_backend = amount - maxFromFrontend;
+                        
+                        console.log('Split send successful:', {
+                            send_from_frontend: send_from_frontend.toString(),
+                            send_from_backend: send_from_backend.toString(),
+                            backendAfterFee: backendAmountAfterFee.toString(),
+                            backendUsed: send_from_backend.toString()
+                        });
+                    }
+                } else {
+                    console.log('ERROR: Not enough total balance for split send');
+                    console.log('Amount needed:', amount.toString());
+                    console.log('Max available:', (maxFromFrontend + backendAmountAfterFee).toString());
+                }
             }
 
+        } else {
+            console.log('Condition 1: full_amount <= avail_tot → FALSE');
         }
+        
+        console.log('calc_send_amounts result:', {
+            send_from_frontend: send_from_frontend.toString(),
+            send_from_backend: send_from_backend.toString()
+        });
         
         return {
             send_from_frontend : send_from_frontend,
@@ -517,69 +586,111 @@ function Wallet() {
     };
 
     const handleSendToken = async (token, recipient, amount) => {
+        console.log('=== Wallet.handleSendToken START ===');
+        console.log('Parameters:', { 
+            tokenSymbol: token.symbol, 
+            recipient, 
+            amount,
+            tokenAvailable: token.available?.toString(),
+            tokenFee: token.fee?.toString()
+        });
 
-        const decimals = await token.decimals;
-        // Convert to BigInt safely - handle decimal inputs
-        const amountFloat = parseFloat(amount);
-        const scaledAmount = amountFloat * (10 ** decimals);
-        const bigintAmount = BigInt(Math.floor(scaledAmount));
-        const send_amounts = calc_send_amounts(token, bigintAmount);
-
-        if (send_amounts.send_from_backend + send_amounts.send_from_frontend <= BigInt(0)) {
-            return; // TODO error!
-        }
-
-        if (send_amounts.send_from_backend > 0) {
-
-            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
-        
-            const recipientPrincipal = Principal.fromText(recipient);
-            const result = await sneedLockActor.transfer_tokens(
-                recipientPrincipal,
-                [],
-                token.ledger_canister_id,
-                send_amounts.send_from_backend
-            );
-    
-            const resultJson = JSON.stringify(result, (key, value) => {
-                if (typeof value === 'bigint') {
-                    return value.toString();
-                }
-                return value;
-            });
-    
-        }
-
-        if (send_amounts.send_from_frontend > 0) {
-
-            const actor = createLedgerActor(token.ledger_canister_id, {
-                agentOptions: {
-                    identity,
-                },
-            });
-    
+        try {
             const decimals = await token.decimals;
-    
-            const recipientPrincipal = Principal.fromText(recipient);
-            const result = await actor.icrc1_transfer({
-                to: { owner: recipientPrincipal, subaccount: [] },
-                fee: [],
-                memo: [],
-                from_subaccount: [],
-                created_at_time: [],
-                amount: send_amounts.send_from_frontend
+            console.log('Token decimals:', decimals);
+            
+            // Convert to BigInt safely - handle decimal inputs
+            const amountFloat = parseFloat(amount);
+            const scaledAmount = amountFloat * (10 ** decimals);
+            const bigintAmount = BigInt(Math.floor(scaledAmount));
+            
+            console.log('Amount conversion:', {
+                amountFloat,
+                scaledAmount, 
+                bigintAmount: bigintAmount.toString()
             });
-    
-            const resultJson = JSON.stringify(result, (key, value) => {
-                if (typeof value === 'bigint') {
-                    return value.toString();
-                }
-                return value;
+            
+            const send_amounts = calc_send_amounts(token, bigintAmount);
+            console.log('Send amounts calculated:', {
+                send_from_backend: send_amounts.send_from_backend.toString(),
+                send_from_frontend: send_amounts.send_from_frontend.toString(),
+                total: (send_amounts.send_from_backend + send_amounts.send_from_frontend).toString()
             });
-    
-        }
 
-        /*await*/ fetchBalancesAndLocks(token.ledger_canister_id);
+            if (send_amounts.send_from_backend + send_amounts.send_from_frontend <= BigInt(0)) {
+                console.log('ERROR: Total send amount is zero or negative');
+                throw new Error('Invalid send amounts calculated');
+            }
+
+            if (send_amounts.send_from_backend > 0) {
+                console.log('Sending from backend:', send_amounts.send_from_backend.toString());
+
+                const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+            
+                const recipientPrincipal = Principal.fromText(recipient);
+                console.log('Backend transfer - recipient principal:', recipientPrincipal.toText());
+                
+                const result = await sneedLockActor.transfer_tokens(
+                    recipientPrincipal,
+                    [],
+                    token.ledger_canister_id,
+                    send_amounts.send_from_backend
+                );
+        
+                const resultJson = JSON.stringify(result, (key, value) => {
+                    if (typeof value === 'bigint') {
+                        return value.toString();
+                    }
+                    return value;
+                });
+                
+                console.log('Backend transfer result:', resultJson);
+            }
+
+            if (send_amounts.send_from_frontend > 0) {
+                console.log('Sending from frontend:', send_amounts.send_from_frontend.toString());
+
+                const actor = createLedgerActor(token.ledger_canister_id, {
+                    agentOptions: {
+                        identity,
+                    },
+                });
+        
+                const decimals = await token.decimals;
+        
+                const recipientPrincipal = Principal.fromText(recipient);
+                console.log('Frontend transfer - recipient principal:', recipientPrincipal.toText());
+                
+                const result = await actor.icrc1_transfer({
+                    to: { owner: recipientPrincipal, subaccount: [] },
+                    fee: [],
+                    memo: [],
+                    from_subaccount: [],
+                    created_at_time: [],
+                    amount: send_amounts.send_from_frontend
+                });
+        
+                const resultJson = JSON.stringify(result, (key, value) => {
+                    if (typeof value === 'bigint') {
+                        return value.toString();
+                    }
+                    return value;
+                });
+                
+                console.log('Frontend transfer result:', resultJson);
+            }
+
+            console.log('Refreshing token balances...');
+            await fetchBalancesAndLocks(token.ledger_canister_id);
+            console.log('=== Wallet.handleSendToken SUCCESS ===');
+            
+        } catch (error) {
+            console.error('=== Wallet.handleSendToken ERROR ===');
+            console.error('Error details:', error);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+            throw error; // Re-throw so the modal can handle it
+        }
     };
 
     const openSendModal = (token) => {
