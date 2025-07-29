@@ -38,11 +38,11 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
 
   const handleSetMax = () => {
     if (isWrapMode) {
-      // For wrap: max = entire GLDT balance
-      setAmount(formatAmount(token.available, token.decimals));
+      // For wrap: max = entire frontend GLDT balance only
+      setAmount(formatAmount(token.balance, token.decimals));
     } else if (isUnwrapMode) {
-      // For unwrap: max = full sGLDT balance (no tx fee for burning)
-      setAmount(formatAmount(token.available, token.decimals));
+      // For unwrap: max = full frontend sGLDT balance only (no tx fee for burning)
+      setAmount(formatAmount(token.balance, token.decimals));
     }
   };
 
@@ -121,9 +121,9 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
     }
 
     if (isWrapMode) {
-      // Validate wrap amount
-      if (bigIntAmount > token.available) {
-        setErrorText("Insufficient available balance!");
+      // Validate wrap amount against frontend balance only
+      if (bigIntAmount > token.balance) {
+        setErrorText("Insufficient frontend balance!");
         return;
       }
       // Check if amount is large enough to cover fees
@@ -134,9 +134,9 @@ function WrapUnwrapModal({ show, onClose, onWrap, onUnwrap, token, gldtToken }) 
         return;
       }
     } else if (isUnwrapMode) {
-      // Validate unwrap amount
-      if (bigIntAmount > token.available) {
-        setErrorText("Insufficient available balance!");
+      // Validate unwrap amount against frontend balance only
+      if (bigIntAmount > token.balance) {
+        setErrorText("Insufficient frontend balance!");
         return;
       }
       // Check if amount is large enough to cover fees (for unwrap, need to have enough to pay the fees)
