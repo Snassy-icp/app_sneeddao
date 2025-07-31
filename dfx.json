@@ -63,6 +63,17 @@
         }
       }
     },
+    "oc_escrow": {
+      "type": "custom",
+      "candid": "src/external/oc_escrow/oc_escrow.did",
+      "wasm": "none",
+      "build": "false",
+      "remote": {
+        "id": {
+          "ic": "s4yi7-yiaaa-aaaar-qacpq-cai"
+        }
+      }
+    },
     "sns_governance": {
       "type": "custom",
       "candid": "src/external/sns_governance/sns_governance.did",
