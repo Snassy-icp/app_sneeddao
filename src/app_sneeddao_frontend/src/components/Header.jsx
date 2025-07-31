@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog } from 'react-icons/fa';
+import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
@@ -28,6 +28,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/wallet'].includes(path)) return 'Wallet';
         if (['/me', '/rewards'].includes(path)) return 'Me';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
+        if (['/tools/main', '/tools/escrow'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         return 'DAO';
     });
@@ -159,6 +160,15 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             subMenu: [
                 { name: 'Locks', path: '/sneedlock' },
                 { name: 'Dashboard', path: '/sneedlock_info' }
+            ]
+        },
+        'Tools': {
+            icon: <FaTools size={18} />,
+            displayName: 'Sneed Tools',
+            defaultPath: '/tools/main',
+            subMenu: [
+                { name: 'Tools', path: '/tools/main' },
+                { name: 'Escrow', path: '/tools/escrow' }
             ]
         }
     };

@@ -47,6 +47,8 @@ import Neurons from './pages/Neurons';
 import Transaction from './pages/Transaction';
 import Transactions from './pages/Transactions';
 import Hub from './pages/Hub';
+import ToolsMain from './pages/ToolsMain';
+import ToolsEscrow from './pages/ToolsEscrow';
 
 // Component to set up global naming function
 function GlobalNamingSetup() {
@@ -107,6 +109,10 @@ function App() {
                     <Route path="/transaction" element={<Transaction />} />
                     <Route path="/transactions" element={<Transactions />} />
                     <Route path="/hub" element={<Hub />} />
+
+                    {/* Tools routes */}
+                    <Route path="/tools/main" element={<ToolsMain />} />
+                    <Route path="/tools/escrow" element={<ToolsEscrow />} />
 
                     {/* Admin routes */}
                     <Route path="/admin" element={<Admin />} />
