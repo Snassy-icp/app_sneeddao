@@ -39,4 +39,4 @@ export const createActor = (canisterId, options = {}) => {
   });
 };
 
-export const swaprunner_backend = canisterId ? createActor(canisterId) : undefined;
+export const oc_escrow = canisterId ? createActor(canisterId) : undefined;

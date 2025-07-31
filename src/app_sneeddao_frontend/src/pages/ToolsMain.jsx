@@ -80,13 +80,21 @@ function ToolsMain() {
                             Built with smart contracts to ensure both parties are protected.
                         </p>
                         
-                        <Link 
-                            to="/tools/escrow" 
-                            style={{...styles.button, ...styles.buttonDisabled}}
-                            onClick={(e) => e.preventDefault()}
-                        >
-                            Coming Soon
-                        </Link>
+                        <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap'}}>
+                            <Link 
+                                to="/tools/escrow/swap" 
+                                style={styles.button}
+                            >
+                                Lookup Swap
+                            </Link>
+                            <Link 
+                                to="/tools/escrow" 
+                                style={{...styles.button, ...styles.buttonDisabled}}
+                                onClick={(e) => e.preventDefault()}
+                            >
+                                Create Swap (Coming Soon)
+                            </Link>
+                        </div>
                     </div>
 
                     {/* Placeholder for future tools */}

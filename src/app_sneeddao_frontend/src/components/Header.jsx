@@ -28,7 +28,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/wallet'].includes(path)) return 'Wallet';
         if (['/me', '/rewards'].includes(path)) return 'Me';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
-        if (['/tools/main', '/tools/escrow'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
+        if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         return 'DAO';
     });
@@ -168,7 +168,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/tools/main',
             subMenu: [
                 { name: 'Tools', path: '/tools/main' },
-                { name: 'Escrow', path: '/tools/escrow' }
+                { name: 'Escrow', path: '/tools/escrow' },
+                { name: 'Lookup Swap', path: '/tools/escrow/swap' }
             ]
         }
     };

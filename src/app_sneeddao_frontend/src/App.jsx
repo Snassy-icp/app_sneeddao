@@ -49,6 +49,7 @@ import Transactions from './pages/Transactions';
 import Hub from './pages/Hub';
 import ToolsMain from './pages/ToolsMain';
 import ToolsEscrow from './pages/ToolsEscrow';
+import EscrowSwap from './pages/EscrowSwap';
 
 // Component to set up global naming function
 function GlobalNamingSetup() {
@@ -113,6 +114,7 @@ function App() {
                     {/* Tools routes */}
                     <Route path="/tools/main" element={<ToolsMain />} />
                     <Route path="/tools/escrow" element={<ToolsEscrow />} />
+                    <Route path="/tools/escrow/swap" element={<EscrowSwap />} />
 
                     {/* Admin routes */}
                     <Route path="/admin" element={<Admin />} />
