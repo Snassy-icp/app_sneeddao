@@ -234,9 +234,17 @@ function EscrowSwap() {
             };
 
             console.log('Looking up swap with args:', args);
-            const response = await escrowActor.lookup_swap(args);
             
-            console.log('Lookup response:', response);
+            // Add debugging to catch the exact error location
+            let response;
+            try {
+                response = await escrowActor.lookup_swap(args);
+                console.log('Lookup response:', response);
+            } catch (decodeError) {
+                console.error('Detailed decode error:', decodeError);
+                console.error('Error stack:', decodeError.stack);
+                throw decodeError;
+            }
 
             if (response.Success) {
                 setSwapData(response.Success);
