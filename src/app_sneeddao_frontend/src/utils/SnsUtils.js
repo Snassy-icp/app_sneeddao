@@ -280,6 +280,232 @@ export function getAllSnses() {
     return getCachedSnsData() || [];
 }
 
+// New function to fetch a single SNS data immediately
+export async function fetchSingleSnsData(rootCanisterId, identity) {
+    console.log(`Fetching single SNS data for: ${rootCanisterId}`); // Debug log
+    
+    // Check if this SNS is already in cache
+    const cachedData = getCachedSnsData();
+    const existingSnS = cachedData?.find(sns => sns.rootCanisterId === rootCanisterId);
+    if (existingSnS) {
+        console.log('Found SNS in cache:', existingSnS); // Debug log
+        return existingSnS;
+    }
+
+    try {
+        // Create an agent with proper host configuration
+        const host = process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943';
+        const agentConfig = {
+            host,
+            ...(identity && { identity })
+        };
+        const agent = new HttpAgent(agentConfig);
+
+        if (process.env.DFX_NETWORK !== 'ic') {
+            await agent.fetchRootKey().catch(err => 
+                console.warn('Root key fetch failed:', err)
+            );
+        }
+
+        // Get the SNS details from SNS-W first to get governance canister ID
+        const nnsSnsWActor = createNnsSnsWActor('qaa6y-5yaaa-aaaaa-aaafa-cai', { agent });
+        const response = await nnsSnsWActor.list_deployed_snses({});
+        const deployedSnses = response?.instances || [];
+        
+        // Find the SNS with matching root canister
+        const targetSns = deployedSnses.find(sns => {
+            const snsRootId = safeGetCanisterId(sns.root_canister_id);
+            return snsRootId === rootCanisterId;
+        });
+
+        if (!targetSns) {
+            throw new Error(`SNS with root canister ${rootCanisterId} not found`);
+        }
+
+        // Extract canister IDs
+        const governanceId = safeGetCanisterId(targetSns.governance_canister_id);
+        const ledgerId = safeGetCanisterId(targetSns.ledger_canister_id);
+        const swapId = safeGetCanisterId(targetSns.swap_canister_id);
+
+        if (!governanceId || !ledgerId) {
+            throw new Error('Missing required canister IDs for SNS');
+        }
+
+        // Get metadata from governance canister
+        const governanceActor = createSnsGovernanceActor(governanceId, { agent });
+        const metadataResponse = await governanceActor.get_metadata({});
+        
+        // Extract essential metadata
+        const name = metadataResponse?.name?.[0] || `SNS ${rootCanisterId.slice(0, 8)}...`;
+        
+        const snsData = {
+            rootCanisterId,
+            name,
+            canisters: {
+                governance: governanceId,
+                ledger: ledgerId,
+                root: rootCanisterId,
+                swap: swapId
+            }
+        };
+        
+        console.log('Successfully fetched single SNS:', snsData); // Debug log
+        return snsData;
+    } catch (error) {
+        console.error(`Error fetching single SNS data for ${rootCanisterId}:`, error);
+        throw error;
+    }
+}
+
+// Enhanced function to fetch all SNSes with optional background mode
+export async function fetchAndCacheSnsDataOptimized(identity, options = {}) {
+    const { backgroundMode = false, onProgress } = options;
+    
+    console.log(`Starting fetchAndCacheSnsDataOptimized (background: ${backgroundMode})...`); // Debug log
+    
+    // In background mode, we always fetch fresh data
+    // In foreground mode, check cache first
+    if (!backgroundMode) {
+        const cachedData = getCachedSnsData();
+        if (cachedData && cachedData.length > 0) {
+            console.log('Returning cached SNS data:', cachedData); // Debug log
+            return cachedData;
+        }
+    }
+
+    try {
+        console.log('Creating NNS SNS Wrapper actor...'); // Debug log
+        
+        const host = process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943';
+        const agentConfig = {
+            host,
+            ...(identity && { identity })
+        };
+        const agent = new HttpAgent(agentConfig);
+
+        if (process.env.DFX_NETWORK !== 'ic') {
+            await agent.fetchRootKey().catch(err => 
+                console.warn('Root key fetch failed:', err)
+            );
+        }
+
+        // Fetch deployed SNSes
+        const nnsSnsWActor = createNnsSnsWActor('qaa6y-5yaaa-aaaaa-aaafa-cai', { agent });
+        const response = await nnsSnsWActor.list_deployed_snses({});
+        const deployedSnses = response?.instances || [];
+        
+        if (!deployedSnses.length) {
+            console.log('No SNS instances found'); // Debug log
+            return [];
+        }
+
+        console.log(`Processing ${deployedSnses.length} SNS instances...`); // Debug log
+
+        // Process each SNS instance
+        const snsDataPromises = deployedSnses.map(async (sns, index) => {
+            try {
+                // Report progress if callback provided
+                if (onProgress) {
+                    onProgress(index + 1, deployedSnses.length);
+                }
+
+                const rootCanisterId = safeGetCanisterId(sns.root_canister_id);
+                const governanceId = safeGetCanisterId(sns.governance_canister_id);
+                const ledgerId = safeGetCanisterId(sns.ledger_canister_id);
+                const swapId = safeGetCanisterId(sns.swap_canister_id);
+
+                if (!rootCanisterId || !governanceId || !ledgerId) {
+                    console.error('Missing required canister IDs for SNS:', {
+                        rootCanisterId, governanceId, ledgerId, swapId
+                    });
+                    return null;
+                }
+
+                const governanceActor = createSnsGovernanceActor(governanceId, { agent });
+                const metadataResponse = await governanceActor.get_metadata({});
+                const name = metadataResponse?.name?.[0] || `SNS ${rootCanisterId.slice(0, 8)}...`;
+                
+                const snsData = {
+                    rootCanisterId,
+                    name,
+                    canisters: {
+                        governance: governanceId,
+                        ledger: ledgerId,
+                        root: rootCanisterId,
+                        swap: swapId
+                    }
+                };
+                
+                return snsData;
+            } catch (err) {
+                // Skip SNSes that aren't properly installed yet
+                if (err.message?.includes('no Wasm module')) {
+                    console.log(`Skipping uninstalled SNS ${safeGetCanisterId(sns.governance_canister_id)}`);
+                    return null;
+                }
+                console.error('Error processing SNS:', err);
+                return null;
+            }
+        });
+
+        const snsData = (await Promise.all(snsDataPromises)).filter(Boolean);
+        console.log('Final SNS data:', snsData); // Debug log
+        
+        // Cache the data only if we have valid results
+        if (snsData.length > 0) {
+            console.log('Caching SNS data...'); // Debug log
+            cacheSnsData(snsData);
+        } else {
+            console.log('No valid SNS data to cache'); // Debug log
+            safeStorage.removeItem(SNS_CACHE_KEY);
+        }
+        
+        return snsData;
+    } catch (error) {
+        console.error('Error fetching SNS data:', error);
+        if (!backgroundMode) {
+            // Only return cached data if it exists and is not empty
+            const cachedData = getCachedSnsData();
+            if (cachedData && cachedData.length > 0) {
+                return cachedData;
+            }
+        }
+        return [];
+    }
+}
+
+// Background task manager
+let backgroundFetchPromise = null;
+
+export function startBackgroundSnsFetch(identity, onComplete) {
+    // Prevent multiple simultaneous background fetches
+    if (backgroundFetchPromise) {
+        return backgroundFetchPromise;
+    }
+
+    console.log('Starting background SNS fetch...'); // Debug log
+    
+    backgroundFetchPromise = fetchAndCacheSnsDataOptimized(identity, { 
+        backgroundMode: true,
+        onProgress: (current, total) => {
+            console.log(`Background SNS fetch progress: ${current}/${total}`);
+        }
+    }).then(result => {
+        console.log('Background SNS fetch completed'); // Debug log
+        if (onComplete) {
+            onComplete(result);
+        }
+        return result;
+    }).catch(error => {
+        console.error('Background SNS fetch failed:', error);
+        return [];
+    }).finally(() => {
+        backgroundFetchPromise = null;
+    });
+
+    return backgroundFetchPromise;
+}
+
 export function clearSnsCache() {
     console.log('Clearing SNS cache...'); // Debug log
     safeStorage.removeItem(SNS_CACHE_KEY);

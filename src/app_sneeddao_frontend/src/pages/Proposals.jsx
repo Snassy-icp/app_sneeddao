@@ -5,7 +5,8 @@ import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import ReactMarkdown from 'react-markdown';
-import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
+import { getSnsById } from '../utils/SnsUtils';
+import { useOptimizedSnsLoading } from '../hooks/useOptimizedSnsLoading';
 import { formatProposalIdLink, formatNeuronIdLink, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useNaming } from '../NamingContext';
 
@@ -15,14 +16,20 @@ function Proposals() {
     const navigate = useNavigate();
     const location = useLocation();
     const [searchParams] = useSearchParams();
-    const [snsList, setSnsList] = useState([]);
     const [proposals, setProposals] = useState([]);
     const [filteredProposals, setFilteredProposals] = useState([]);
     const [proposerFilter, setProposerFilter] = useState('');
     const [topicFilter, setTopicFilter] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const [loadingSnses, setLoadingSnses] = useState(true);
+    
+    // Use optimized SNS loading
+    const { 
+        snsList, 
+        currentSns, 
+        loadingCurrent: loadingSnses, 
+        error: snsError 
+    } = useOptimizedSnsLoading();
     
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames } = useNaming();
@@ -130,25 +137,12 @@ function Proposals() {
         setFilteredProposals(filtered);
     }, [proposals, proposerFilter, topicFilter, selectedSnsRoot, neuronNames, neuronNicknames]);
 
-    // Fetch SNS data on component mount
+    // Handle SNS loading errors
     useEffect(() => {
-        async function loadSnsData() {
-            setLoadingSnses(true);
-            try {
-                const data = await fetchAndCacheSnsData(identity);
-                setSnsList(data);
-            } catch (err) {
-                console.error('Error loading SNS data:', err);
-                setError('Failed to load SNS list');
-            } finally {
-                setLoadingSnses(false);
-            }
+        if (snsError) {
+            setError(snsError);
         }
-
-        if (isAuthenticated) {
-            loadSnsData();
-        }
-    }, [isAuthenticated, identity]);
+    }, [snsError]);
 
     // Fetch proposals when SNS changes or pagination changes
     useEffect(() => {

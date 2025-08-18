@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
-import { fetchAndCacheSnsData, fetchSnsLogo } from '../utils/SnsUtils';
+import { fetchSnsLogo, startBackgroundSnsFetch, getAllSnses } from '../utils/SnsUtils';
 import { HttpAgent } from '@dfinity/agent';
 
 function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
@@ -76,29 +76,44 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
     const loadSnsData = async () => {
         console.log('SnsDropdown: Starting to load SNS data...'); // Debug log
         setLoadingSnses(true);
+        
         try {
-            console.log('SnsDropdown: Calling fetchAndCacheSnsData...'); // Debug log
-            const data = await fetchAndCacheSnsData();
-            console.log('SnsDropdown: Received SNS data:', data); // Debug log
-            setSnsList(data);
+            // First check if we have cached data
+            const cachedData = getAllSnses();
+            if (cachedData && cachedData.length > 0) {
+                console.log('SnsDropdown: Using cached SNS data:', cachedData); // Debug log
+                setSnsList(cachedData);
+                setLoadingSnses(false);
+                
+                // Start loading logos for visible SNSes
+                cachedData.forEach(sns => {
+                    if (sns.canisters.governance) {
+                        loadSnsLogo(sns.canisters.governance);
+                    }
+                });
+                return;
+            }
             
-            // Start loading logos for visible SNSes
-            data.forEach(sns => {
-                if (sns.canisters.governance) {
-                    loadSnsLogo(sns.canisters.governance);
-                }
+            // No cached data - start background fetch and show loading state
+            console.log('SnsDropdown: No cached data, starting background fetch...'); // Debug log
+            startBackgroundSnsFetch(identity, (data) => {
+                console.log('SnsDropdown: Background fetch completed:', data); // Debug log
+                setSnsList(data);
+                setLoadingSnses(false);
+                
+                // Start loading logos for visible SNSes
+                data.forEach(sns => {
+                    if (sns.canisters.governance) {
+                        loadSnsLogo(sns.canisters.governance);
+                    }
+                });
+            }).catch(err => {
+                console.error('SnsDropdown: Background fetch failed:', err);
+                setLoadingSnses(false);
             });
             
-            // If no SNS is selected in URL and global state is default, ensure URL reflects the selection
-            if (!searchParams.get('sns') && selectedSnsRoot !== SNEED_SNS_ROOT) {
-                setSearchParams(prev => {
-                    prev.set('sns', selectedSnsRoot);
-                    return prev;
-                });
-            }
         } catch (err) {
             console.error('SnsDropdown: Error loading SNS data:', err);
-        } finally {
             setLoadingSnses(false);
         }
     };

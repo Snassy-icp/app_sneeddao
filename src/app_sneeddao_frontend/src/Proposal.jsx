@@ -11,7 +11,8 @@ import HotkeyNeurons from './components/HotkeyNeurons';
 import Discussion from './components/Discussion';
 import ReactMarkdown from 'react-markdown';
 import './Wallet.css';
-import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
+import { getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
+import { useOptimizedSnsLoading } from './hooks/useOptimizedSnsLoading';
 import { formatNeuronIdLink } from './utils/NeuronUtils';
 import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
@@ -26,11 +27,17 @@ function Proposal() {
     const navigate = useNavigate();
     const [proposalIdInput, setProposalIdInput] = useState(searchParams.get('proposalid') || '');
     const [currentProposalId, setCurrentProposalId] = useState(searchParams.get('proposalid') || '');
-    const [snsList, setSnsList] = useState([]);
     const [proposalData, setProposalData] = useState(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const [loadingSnses, setLoadingSnses] = useState(true);
+    
+    // Use optimized SNS loading
+    const { 
+        snsList, 
+        currentSns, 
+        loadingCurrent: loadingSnses, 
+        error: snsError 
+    } = useOptimizedSnsLoading();
     const [votingHistory, setVotingHistory] = useState(null);
     const [isVotingHistoryExpanded, setIsVotingHistoryExpanded] = useState(false);
     // Add filter states
@@ -60,49 +67,12 @@ function Proposal() {
         }
     }, [isAuthenticated, identity, createForumActor]);
 
-    // Listen for URL parameter changes and sync with global state
+    // Handle SNS loading errors
     useEffect(() => {
-        const snsParam = searchParams.get('sns');
-        if (snsParam && snsParam !== selectedSnsRoot) {
-            updateSelectedSns(snsParam);
+        if (snsError) {
+            setError(snsError);
         }
-    }, [searchParams, selectedSnsRoot, updateSelectedSns]);
-
-    // Fetch SNS data on component mount
-    useEffect(() => {
-        async function loadSnsData() {
-            console.log('Starting loadSnsData in Proposal component...'); // Debug log
-            setLoadingSnses(true);
-            try {
-                console.log('Calling fetchAndCacheSnsData...'); // Debug log
-                const data = await fetchAndCacheSnsData(identity);
-                console.log('Received SNS data:', data); // Debug log
-                setSnsList(data);
-                
-                // If no SNS is selected in the URL, set it to Sneed
-                if (!searchParams.get('sns')) {
-                    console.log('Setting default SNS to Sneed:', SNEED_SNS_ROOT); // Debug log
-                    updateSelectedSns(SNEED_SNS_ROOT);
-                    setSearchParams(prev => {
-                        prev.set('sns', SNEED_SNS_ROOT);
-                        return prev;
-                    });
-                }
-            } catch (err) {
-                console.error('Error loading SNS data:', err);
-                setError('Failed to load SNS list');
-            } finally {
-                setLoadingSnses(false);
-            }
-        }
-
-        if (isAuthenticated) {
-            console.log('User is authenticated, loading SNS data...'); // Debug log
-            loadSnsData();
-        } else {
-            console.log('User is not authenticated'); // Debug log
-        }
-    }, [isAuthenticated, identity, SNEED_SNS_ROOT, updateSelectedSns]);
+    }, [snsError]);
 
     useEffect(() => {
         if (currentProposalId && selectedSnsRoot) {
