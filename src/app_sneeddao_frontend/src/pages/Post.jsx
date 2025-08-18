@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
 import { useAuth } from '../AuthContext';
@@ -59,10 +59,10 @@ const Post = () => {
         fetchPostDetails();
     }, [forumActor, postId]);
 
-    const handleError = (error) => {
+    const handleError = useCallback((error) => {
         console.error('Post page error:', error);
         setError(error.message || 'An error occurred');
-    };
+    }, []);
 
     if (!postId) {
         return (

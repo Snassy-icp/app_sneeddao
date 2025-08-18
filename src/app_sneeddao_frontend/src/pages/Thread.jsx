@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
 import { useAuth } from '../AuthContext';
@@ -23,9 +23,9 @@ const Thread = () => {
         return identity ? createForumActor(identity) : null;
     }, [identity, createForumActor]);
 
-    const handleError = (error) => {
+    const handleError = useCallback((error) => {
         console.error('Thread page error:', error);
-    };
+    }, []);
 
     if (!threadId) {
         return (
