@@ -51,6 +51,8 @@ import ToolsMain from './pages/ToolsMain';
 import ToolsEscrow from './pages/ToolsEscrow';
 import EscrowSwap from './pages/EscrowSwap';
 import Tips from './pages/Tips';
+import Thread from './pages/Thread';
+import Post from './pages/Post';
 
 // Component to set up global naming function
 function GlobalNamingSetup() {
@@ -106,6 +108,8 @@ function App() {
                     <Route path="/proposals" element={<Proposals />} />
                     <Route path="/rewards" element={<Rewards />} />
                     <Route path="/tips" element={<Tips />} />
+                    <Route path="/thread/:id" element={<Thread />} />
+                    <Route path="/post/:id" element={<Post />} />
                     <Route path="/disclaimer" element={<Disclaimer />} />
                     <Route path="/principal" element={<Principal />} />
                     <Route path="/neurons" element={<Neurons />} />

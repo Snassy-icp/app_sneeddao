@@ -1,0 +1,122 @@
+/* Post Page Styles */
+.post-page {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+    color: #ffffff;
+}
+
+.post-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.error-state,
+.loading-state {
+    text-align: center;
+    padding: 3rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.error-state h2 {
+    color: #ff6b6b;
+    margin-bottom: 1rem;
+}
+
+.loading-state .spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    border-left: 4px solid #ffd700;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Post-specific styling */
+.post-focus-info {
+    background: rgba(255, 215, 0, 0.1);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 10px;
+    padding: 1rem;
+    margin-top: 1rem;
+    color: #ffd700;
+    font-weight: 600;
+}
+
+.post-focus-info p {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Focused post highlighting */
+.focused-post {
+    position: relative;
+    border: 2px solid #ffd700 !important;
+    background: rgba(255, 215, 0, 0.1) !important;
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+    border-radius: 10px;
+    margin: 1rem 0;
+}
+
+.focused-post::before {
+    content: '📍';
+    position: absolute;
+    top: -10px;
+    left: 10px;
+    background: #ffd700;
+    color: #000;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.focused-post .post-header {
+    border-bottom: 1px solid rgba(255, 215, 0, 0.3);
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Ancestor posts styling */
+.post-item[data-is-ancestor="true"] {
+    opacity: 0.7;
+    border-left: 3px solid rgba(255, 215, 0, 0.5);
+    padding-left: 1rem;
+    margin-left: 0.5rem;
+}
+
+.post-item[data-is-ancestor="true"]::before {
+    content: '⬆️';
+    position: absolute;
+    left: -15px;
+    top: 10px;
+    font-size: 0.8rem;
+}
+
+/* Descendant posts styling */
+.post-item[data-is-descendant="true"] {
+    border-left: 3px solid rgba(100, 255, 100, 0.5);
+    padding-left: 1rem;
+    margin-left: 0.5rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .post-container {
+        padding: 1rem;
+    }
+    
+    .focused-post::before {
+        position: static;
+        display: inline-block;
+        margin-bottom: 0.5rem;
+    }
+}

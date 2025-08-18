@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { useNaming } from '../NamingContext';
@@ -14,6 +15,7 @@ import Header from '../components/Header';
 import './Tips.css';
 
 const Tips = () => {
+    const navigate = useNavigate();
     const { isAuthenticated, identity } = useAuth();
     const { createForumActor } = useForum();
     const { getTokenMetadata, fetchTokenMetadata } = useTokenMetadata();
@@ -192,8 +194,24 @@ const Tips = () => {
                     )}
                 </td>
                 <td className="tip-post">
-                    Post #{tip.post_id}
-                    {tip.thread_id && <div className="thread-info">Thread #{tip.thread_id}</div>}
+                    <div className="post-links">
+                        <button 
+                            className="post-link"
+                            onClick={() => navigate(`/post/${tip.post_id}`)}
+                            title="View this post"
+                        >
+                            📄 Post #{tip.post_id}
+                        </button>
+                        {tip.thread_id && (
+                            <button 
+                                className="thread-link"
+                                onClick={() => navigate(`/thread/${tip.thread_id}`)}
+                                title="View full thread"
+                            >
+                                🧵 Thread #{tip.thread_id}
+                            </button>
+                        )}
+                    </div>
                 </td>
                 <td className="tip-date">
                     {formatDate(tip.created_at)}

@@ -216,10 +216,48 @@
     font-weight: 500;
 }
 
-.thread-info {
+.post-links {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.post-link,
+.thread-link {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 5px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.post-link {
+    color: #9C27B0;
+}
+
+.post-link:hover {
+    background: rgba(156, 39, 176, 0.1);
+    color: #BA68C8;
+    transform: translateX(2px);
+}
+
+.thread-link {
+    color: #FF9800;
     font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.6);
-    margin-top: 0.25rem;
+}
+
+.thread-link:hover {
+    background: rgba(255, 152, 0, 0.1);
+    color: #FFB74D;
+    transform: translateX(2px);
 }
 
 .tip-date {
