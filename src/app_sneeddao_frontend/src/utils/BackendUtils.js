@@ -518,6 +518,16 @@ export const getTipStats = async (forumActor) => {
 };
 
 // Tip notification methods
+export const getRecentTipsReceived = async (forumActor, userPrincipal) => {
+    try {
+        const result = await forumActor.get_recent_tips_received(userPrincipal);
+        return result;
+    } catch (error) {
+        console.error('Error getting recent tips received:', error);
+        throw error;
+    }
+};
+
 export const getTipsReceivedSince = async (forumActor, userPrincipal, sinceTimestamp) => {
     try {
         const result = await forumActor.get_tips_received_since(userPrincipal, sinceTimestamp);

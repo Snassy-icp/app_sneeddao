@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import { useForum } from '../contexts/ForumContext';
 import { 
-    getTipsReceivedSince, 
-    getLastSeenTipTimestamp, 
+    getRecentTipsReceived, 
     markTipsSeenUpTo 
 } from '../utils/BackendUtils';
 
@@ -40,18 +39,19 @@ export function useTipNotifications() {
 
             const forumActor = createForumActor(identity);
             
-            // Get when user last viewed tips
-            const lastSeenTimestamp = await getLastSeenTipTimestamp(forumActor, identity.getPrincipal());
-            const sinceTimestamp = lastSeenTimestamp || 0; // 0 if never viewed
+            // Get recent tips (backend handles the timestamp internally)
+            const tips = await getRecentTipsReceived(forumActor, identity.getPrincipal());
             
-            // Get tips since then
-            const tips = await getTipsReceivedSince(forumActor, identity.getPrincipal(), sinceTimestamp);
+            console.log('Tip notifications debug:', {
+                userPrincipal: identity.getPrincipal().toString(),
+                newTipsCount: tips.length
+            });
             
             setNewTips(tips);
             setNewTipCount(tips.length);
             setLastChecked(Date.now());
             
-            console.log(`Tip notifications: Found ${tips.length} new tips since ${new Date(sinceTimestamp / 1_000_000)}`);
+            console.log(`Tip notifications: Found ${tips.length} new tips`);
             
         } catch (err) {
             console.error('Error checking for new tips:', err);
