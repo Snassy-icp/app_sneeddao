@@ -220,6 +220,8 @@ module {
         post_replies: Map.Map<Nat, Vector.Vector<Nat>>;
         post_tips: Map.Map<Nat, Vector.Vector<Nat>>; // post_id -> [tip_ids]
         thread_tips: Map.Map<Nat, Vector.Vector<Nat>>; // thread_id -> [tip_ids]
+        tips_given: Map.Map<Nat32, Vector.Vector<Nat>>; // from_principal_index -> [tip_ids]
+        tips_received: Map.Map<Nat32, Vector.Vector<Nat>>; // to_principal_index -> [tip_ids]
         
         // Proposal tracking (separate from core structures)
         proposal_topics: Map.Map<Nat, ProposalTopicMapping>; // forum_id -> mapping
@@ -439,24 +441,18 @@ module {
         h1 ^ h2
     };
 
-    // ICRC1 Account type for tipping
-    public type ICRC1Account = {
-        owner: Principal;
-        subaccount: ?Blob;
-    };
-
-    // Tip data structure
+    // Tip data structure (simplified to use principals only)
     public type Tip = {
         id: Nat;
-        from_account: ICRC1Account;
-        to_account: ICRC1Account;
+        from_principal: Nat32; // Principal index of the tipper (deduplicated)
+        to_principal: Nat32; // Principal index of the recipient (deduplicated)
         post_id: Nat;
         thread_id: Nat;
         token_ledger_principal: Principal;
         amount: Nat;
         transaction_block_index: ?Nat; // ICRC1 transaction block index for verification
         created_at: Int;
-        created_by: Nat32; // Principal index of the tipper
+        created_by: Nat32; // Same as from_principal
     };
 
     // Composite key type for tips (post_id, tip_id) for efficient post-based queries
@@ -464,7 +460,7 @@ module {
 
     // Input type for creating a tip
     public type CreateTipInput = {
-        to_account: ICRC1Account;
+        to_principal: Principal;
         post_id: Nat;
         token_ledger_principal: Principal;
         amount: Nat;
@@ -474,8 +470,8 @@ module {
     // Response type for tips with resolved data
     public type TipResponse = {
         id: Nat;
-        from_account: ICRC1Account;
-        to_account: ICRC1Account;
+        from_principal: Principal;
+        to_principal: Principal;
         post_id: Nat;
         thread_id: Nat;
         token_ledger_principal: Principal;
@@ -485,15 +481,7 @@ module {
         created_by: Principal;
     };
 
-    // Helper functions for ICRC1Account comparison
-    public func icrc1_account_equal(a: ICRC1Account, b: ICRC1Account) : Bool {
-        Principal.equal(a.owner, b.owner) and 
-        (switch (a.subaccount, b.subaccount) {
-            case (?sub_a, ?sub_b) { Blob.equal(sub_a, sub_b) };
-            case (null, null) { true };
-            case (_, _) { false };
-        })
-    };
+
 
     // Helper function for tip key comparison
     public func tip_key_equal(a: TipKey, b: TipKey) : Bool {

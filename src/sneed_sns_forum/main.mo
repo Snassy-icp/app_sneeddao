@@ -90,6 +90,8 @@ actor SneedSNSForum {
     stable let stable_post_replies = Map.new<Nat, Vector.Vector<Nat>>();
     stable let stable_post_tips = Map.new<Nat, Vector.Vector<Nat>>();
     stable let stable_thread_tips = Map.new<Nat, Vector.Vector<Nat>>();
+    stable let stable_tips_given = Map.new<Nat32, Vector.Vector<Nat>>();
+    stable let stable_tips_received = Map.new<Nat32, Vector.Vector<Nat>>();
     stable let stable_proposal_topics = Map.new<Nat, T.ProposalTopicMapping>();
     stable let stable_proposal_threads = Map.new<T.ProposalThreadKey, T.ProposalThreadMapping>();
     stable let stable_thread_proposals = Map.new<Nat, (Nat32, Nat)>();
@@ -115,6 +117,8 @@ actor SneedSNSForum {
         post_replies = stable_post_replies;
         post_tips = stable_post_tips;
         thread_tips = stable_thread_tips;
+        tips_given = stable_tips_given;
+        tips_received = stable_tips_received;
         proposal_topics = stable_proposal_topics;
         proposal_threads = stable_proposal_threads;
         thread_proposals = stable_thread_proposals;
@@ -258,14 +262,14 @@ actor SneedSNSForum {
 
     // Tip API endpoints
     public shared ({ caller }) func create_tip(
-        to_account: T.ICRC1Account,
+        to_principal: Principal,
         post_id: Nat,
         token_ledger_principal: Principal,
         amount: Nat,
         transaction_block_index: ?Nat
     ) : async T.Result<Nat, T.ForumError> {
         let input : T.CreateTipInput = {
-            to_account;
+            to_principal;
             post_id;
             token_ledger_principal;
             amount;
@@ -284,6 +288,14 @@ actor SneedSNSForum {
 
     public query func get_tips_by_thread(thread_id: Nat) : async [T.TipResponse] {
         Lib.get_tips_by_thread(state, thread_id)
+    };
+
+    public query func get_tips_given_by_user(user_principal: Principal) : async [T.TipResponse] {
+        Lib.get_tips_given_by_user(state, user_principal)
+    };
+
+    public query func get_tips_received_by_user(user_principal: Principal) : async [T.TipResponse] {
+        Lib.get_tips_received_by_user(state, user_principal)
     };
 
     public query func get_tip_stats() : async T.TipStats {

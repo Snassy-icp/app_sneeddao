@@ -31,7 +31,6 @@ module {
     public type ListDeployedSnsesResponse = T.ListDeployedSnsesResponse;
     public type NNSSnsWCanister = T.NNSSnsWCanister;
     public type Tip = T.Tip;
-    public type ICRC1Account = T.ICRC1Account;
     public type CreateTipInput = T.CreateTipInput;
     public type TipResponse = T.TipResponse;
     public type TipStats = T.TipStats;
@@ -392,6 +391,19 @@ module {
                 let vector = Vector.new<Nat>();
                 Vector.add(vector, value);
                 ignore Map.put(map, Map.nhash, key, vector);
+            };
+        };
+    };
+
+    private func add_to_index_32(map: Map.Map<Nat32, Vector.Vector<Nat>>, key: Nat32, value: Nat) {
+        switch (Map.get(map, Map.n32hash, key)) {
+            case (?vector) {
+                Vector.add(vector, value);
+            };
+            case null {
+                let vector = Vector.new<Nat>();
+                Vector.add(vector, value);
+                ignore Map.put(map, Map.n32hash, key, vector);
             };
         };
     };
@@ -1139,17 +1151,15 @@ module {
             case null return #err(#NotFound("Post not found"));
         };
 
-        // Note: The from_account is automatically set to the caller
-        // The frontend should have already performed the ICRC1 transfer before calling this
-
         let id = get_next_id(state);
         let now = Time.now();
         let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+        let recipient_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, input.to_principal);
 
         let tip : Tip = {
             id;
-            from_account = { owner = caller; subaccount = null }; // For now, no subaccounts
-            to_account = input.to_account;
+            from_principal = caller_index;
+            to_principal = recipient_index;
             post_id = input.post_id;
             thread_id = post.thread_id;
             token_ledger_principal = input.token_ledger_principal;
@@ -1162,6 +1172,8 @@ module {
         ignore Map.put(state.tips, Map.nhash, id, tip);
         add_to_index(state.post_tips, input.post_id, id);
         add_to_index(state.thread_tips, post.thread_id, id);
+        add_to_index_32(state.tips_given, caller_index, id);
+        add_to_index_32(state.tips_received, recipient_index, id);
 
         #ok(id)
     };
@@ -1169,6 +1181,14 @@ module {
     public func get_tip(state: ForumState, id: Nat) : ?TipResponse {
         switch (Map.get(state.tips, Map.nhash, id)) {
             case (?tip) {
+                let from_principal = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, tip.from_principal)) {
+                    case (?p) p;
+                    case null Principal.fromText("2vxsx-fae"); // Anonymous principal fallback
+                };
+                let to_principal = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, tip.to_principal)) {
+                    case (?p) p;
+                    case null Principal.fromText("2vxsx-fae"); // Anonymous principal fallback
+                };
                 let created_by_principal = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, tip.created_by)) {
                     case (?p) p;
                     case null Principal.fromText("2vxsx-fae"); // Anonymous principal fallback
@@ -1176,8 +1196,8 @@ module {
                 
                 ?{
                     id = tip.id;
-                    from_account = tip.from_account;
-                    to_account = tip.to_account;
+                    from_principal;
+                    to_principal;
                     post_id = tip.post_id;
                     thread_id = tip.thread_id;
                     token_ledger_principal = tip.token_ledger_principal;
@@ -1209,6 +1229,48 @@ module {
 
     public func get_tips_by_thread(state: ForumState, thread_id: Nat) : [TipResponse] {
         switch (Map.get(state.thread_tips, Map.nhash, thread_id)) {
+            case (?tip_ids) {
+                let tips = Buffer.Buffer<TipResponse>(Vector.size(tip_ids));
+                for (tip_id in Vector.vals(tip_ids)) {
+                    switch (get_tip(state, tip_id)) {
+                        case (?tip) tips.add(tip);
+                        case null {}; // Skip if tip not found
+                    };
+                };
+                Buffer.toArray(tips)
+            };
+            case null [];
+        }
+    };
+
+    public func get_tips_given_by_user(state: ForumState, user_principal: Principal) : [TipResponse] {
+        let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
+            case (?index) index;
+            case null return []; // User not found in dedup, so no tips given
+        };
+        
+        switch (Map.get(state.tips_given, Map.n32hash, user_index)) {
+            case (?tip_ids) {
+                let tips = Buffer.Buffer<TipResponse>(Vector.size(tip_ids));
+                for (tip_id in Vector.vals(tip_ids)) {
+                    switch (get_tip(state, tip_id)) {
+                        case (?tip) tips.add(tip);
+                        case null {}; // Skip if tip not found
+                    };
+                };
+                Buffer.toArray(tips)
+            };
+            case null [];
+        }
+    };
+
+    public func get_tips_received_by_user(state: ForumState, user_principal: Principal) : [TipResponse] {
+        let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
+            case (?index) index;
+            case null return []; // User not found in dedup, so no tips received
+        };
+        
+        switch (Map.get(state.tips_received, Map.n32hash, user_index)) {
             case (?tip_ids) {
                 let tips = Buffer.Buffer<TipResponse>(Vector.size(tip_ids));
                 for (tip_id in Vector.vals(tip_ids)) {
