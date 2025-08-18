@@ -86,8 +86,18 @@ const TipModal = ({
 
         // Check balance from our fetched balances
         const currentBalance = tokenBalances[selectedToken] || BigInt(0);
-        if (amountInSmallestUnit > currentBalance) {
-            setError('Insufficient balance');
+        
+        // We need to account for transaction fees - get fee from token data
+        const tokenFee = BigInt(token.fee || 0);
+        const totalNeeded = BigInt(amountInSmallestUnit) + tokenFee;
+        
+        if (totalNeeded > currentBalance) {
+            const shortfall = totalNeeded - currentBalance;
+            const shortfallFormatted = (Number(shortfall) / Math.pow(10, token.decimals)).toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: Math.min(token.decimals, 8)
+            });
+            setError(`Insufficient balance. You need ${shortfallFormatted} ${token.symbol} more (including transaction fees)`);
             return;
         }
 
@@ -241,6 +251,11 @@ const TipModal = ({
                                 marginTop: '4px'
                             }}>
                                 Available: {formatBalance(selectedTokenData.principal, selectedTokenData.decimals)} {selectedTokenData.symbol}
+                                <br />
+                                Transaction fee: {(Number(selectedTokenData.fee || 0) / Math.pow(10, selectedTokenData.decimals)).toLocaleString(undefined, {
+                                    minimumFractionDigits: 0,
+                                    maximumFractionDigits: Math.min(selectedTokenData.decimals, 8)
+                                })} {selectedTokenData.symbol}
                             </div>
                         )}
                     </div>

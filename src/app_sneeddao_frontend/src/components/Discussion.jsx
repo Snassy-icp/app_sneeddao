@@ -13,6 +13,7 @@ import TipModal from './TipModal';
 import TipDisplay from './TipDisplay';
 import { createTip, getTipsByPost } from '../utils/BackendUtils';
 import { useTokens } from '../hooks/useTokens';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 
 // Add CSS for spinner animation
 const spinnerStyles = `
@@ -225,7 +226,7 @@ function Discussion({
     });
 
     // Tokens hook for tipping
-    const { tokens: availableTokens, loading: tokensLoading } = useTokens(identity);
+    const { tokens: availableTokens, loading: tokensLoading, refreshTokenBalance } = useTokens(identity);
     
     // State for discussion
     const [discussionThread, setDiscussionThread] = useState(null); // Thread mapping
@@ -1494,22 +1495,47 @@ function Discussion({
 
         setTippingState(true);
         try {
-            // Step 1: Perform ICRC1 transfer
-            // For now, we'll simulate this - in production you'd need to:
-            // 1. Create an actor for the token ledger
-            // 2. Call icrc1_transfer with the recipient and amount
-            // 3. Get the transaction block index
-            
-            // Simulated ICRC1 transfer (replace with actual implementation)
-            console.log('Simulating ICRC1 transfer:', {
+            console.log('Starting ICRC1 tip transfer:', {
                 from: identity.getPrincipal().toString(),
                 to: recipientPrincipal.toString(),
-                amount,
+                amount: amount.toString(),
                 token: tokenPrincipal
             });
-            
-            // For demo purposes, we'll proceed without actual transfer
-            const mockTransactionBlockIndex = Math.floor(Math.random() * 1000000);
+
+            // Step 1: Perform actual ICRC1 transfer
+            const ledgerActor = createLedgerActor(tokenPrincipal, {
+                agentOptions: { identity }
+            });
+
+            // Get token fee for validation
+            const tokenFee = await ledgerActor.icrc1_fee();
+            console.log('Token fee:', tokenFee.toString());
+
+            // Perform the transfer
+            const transferResult = await ledgerActor.icrc1_transfer({
+                to: { 
+                    owner: recipientPrincipal, 
+                    subaccount: [] 
+                },
+                fee: [], // Let the ledger use default fee
+                memo: [], // Optional memo
+                from_subaccount: [], // Transfer from main account
+                created_at_time: [], // Let ledger set timestamp
+                amount: BigInt(amount)
+            });
+
+            console.log('ICRC1 transfer result:', transferResult);
+
+            // Check if transfer was successful
+            let transactionBlockIndex = null;
+            if ('Ok' in transferResult) {
+                transactionBlockIndex = Number(transferResult.Ok);
+                console.log('Transfer successful, block index:', transactionBlockIndex);
+            } else {
+                // Handle transfer error
+                const errorMsg = 'Err' in transferResult ? JSON.stringify(transferResult.Err) : 'Unknown transfer error';
+                throw new Error(`ICRC1 transfer failed: ${errorMsg}`);
+            }
 
             // Step 2: Register the tip in the forum backend
             const tipResult = await createTip(forumActor, {
@@ -1517,7 +1543,7 @@ function Discussion({
                 post_id: Number(postId),
                 token_ledger_principal: Principal.fromText(tokenPrincipal),
                 amount: Number(amount),
-                transaction_block_index: mockTransactionBlockIndex
+                transaction_block_index: transactionBlockIndex
             });
 
             if ('ok' in tipResult) {
@@ -1529,19 +1555,35 @@ function Discussion({
                     ...prev,
                     [postId.toString()]: tips
                 }));
+
+                // Refresh the token balance to show updated amount
+                await refreshTokenBalance(tokenPrincipal);
                 
                 closeTipModal();
                 
                 if (onError) {
-                    // Show success message
-                    onError(''); // Clear any existing errors
+                    // Clear any existing errors to show success
+                    onError('');
                 }
             } else {
                 throw new Error('Failed to register tip: ' + JSON.stringify(tipResult.err));
             }
         } catch (error) {
             console.error('Error sending tip:', error);
-            throw error; // Re-throw to be handled by the modal
+            
+            // Provide user-friendly error messages
+            let userMessage = error.message;
+            if (error.message.includes('InsufficientFunds')) {
+                userMessage = 'Insufficient funds for this transfer including transaction fees';
+            } else if (error.message.includes('BadFee')) {
+                userMessage = 'Invalid transaction fee. Please try again.';
+            } else if (error.message.includes('TooOld')) {
+                userMessage = 'Transaction expired. Please try again.';
+            } else if (error.message.includes('Duplicate')) {
+                userMessage = 'Duplicate transaction detected. Please wait and try again.';
+            }
+            
+            throw new Error(userMessage);
         } finally {
             setTippingState(false);
         }
