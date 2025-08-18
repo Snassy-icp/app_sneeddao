@@ -88,6 +88,20 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map() }) => {
         return 8; // Default fallback
     };
 
+    const getTokenLogo = (principal) => {
+        const principalStr = principal.toString();
+        
+        // First check provided tokenInfo
+        const info = tokenInfo.get(principalStr);
+        if (info?.logo) return info.logo;
+        
+        // Then check cached metadata
+        const metadata = getTokenMetadata(principal);
+        if (metadata?.logo) return metadata.logo;
+        
+        return null; // No logo available
+    };
+
     const handleMouseEnter = (tokenKey, event) => {
         setHoveredToken(tokenKey);
         setTooltipPosition({
@@ -128,6 +142,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map() }) => {
             {Object.entries(tipsByToken).map(([tokenKey, tokenData]) => {
                 const decimals = getTokenDecimals(tokenData.principal);
                 const symbol = getTokenSymbol(tokenData.principal);
+                const logo = getTokenLogo(tokenData.principal);
                 const isLoading = isLoadingMetadata(tokenData.principal);
                 
                 return (
@@ -151,7 +166,27 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map() }) => {
                             opacity: isLoading ? 0.7 : 1
                         }}
                     >
-                        <span>{isLoading ? '⏳' : '💎'}</span>
+                        {isLoading ? (
+                            <span>⏳</span>
+                        ) : logo ? (
+                            <img 
+                                src={logo} 
+                                alt={symbol}
+                                style={{
+                                    width: '16px',
+                                    height: '16px',
+                                    borderRadius: '50%',
+                                    objectFit: 'cover'
+                                }}
+                                onError={(e) => {
+                                    // Fallback to diamond if logo fails to load
+                                    e.target.style.display = 'none';
+                                    e.target.nextSibling.style.display = 'inline';
+                                }}
+                            />
+                        ) : null}
+                        {/* Fallback diamond - hidden by default if logo exists */}
+                        <span style={{ display: logo && !isLoading ? 'none' : 'inline' }}>💎</span>
                         <span>
                             {formatAmount(tokenData.totalAmount, decimals)} {symbol}
                         </span>
