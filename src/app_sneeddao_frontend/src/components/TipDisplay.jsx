@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Principal } from '@dfinity/principal';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
+import { formatPrincipal } from '../utils/PrincipalUtils';
 
-const TipDisplay = ({ tips = [], tokenInfo = new Map() }) => {
+const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map() }) => {
     const [hoveredToken, setHoveredToken] = useState(null);
     const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
     
@@ -257,12 +258,27 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map() }) => {
                                         <div style={{
                                             color: '#888',
                                             fontSize: '10px',
-                                            fontFamily: 'monospace',
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',
                                             whiteSpace: 'nowrap'
                                         }}>
-                                            From: {tip.from_principal.toString().slice(0, 12)}...
+                                            From: {(() => {
+                                                const principalStr = tip.from_principal.toString();
+                                                const displayInfo = principalDisplayInfo.get(principalStr);
+                                                const formatted = formatPrincipal(tip.from_principal, displayInfo);
+                                                
+                                                if (typeof formatted === 'string') {
+                                                    return formatted;
+                                                } else if (formatted?.name || formatted?.nickname) {
+                                                    // Show name/nickname with truncated ID
+                                                    const parts = [];
+                                                    if (formatted.name) parts.push(formatted.name);
+                                                    if (formatted.nickname) parts.push(`"${formatted.nickname}"`);
+                                                    return `${parts.join(' • ')} (${formatted.truncatedId})`;
+                                                } else {
+                                                    return principalStr.slice(0, 12) + '...';
+                                                }
+                                            })()}
                                         </div>
                                         <div style={{
                                             color: '#666',

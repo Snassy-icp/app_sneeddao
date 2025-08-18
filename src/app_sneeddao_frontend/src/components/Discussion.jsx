@@ -998,6 +998,7 @@ function Discussion({
                                         decimals: token.decimals,
                                         logo: token.logo
                                     }]))}
+                                    principalDisplayInfo={principalDisplayInfo}
                                 />
                                 
                                 {/* Action Buttons */}
@@ -1270,13 +1271,27 @@ function Discussion({
     // Effect to fetch principal display info
     useEffect(() => {
         const fetchPrincipalInfo = async () => {
-            if (!discussionPosts.length || !principalNames || !principalNicknames) return;
+            if (!principalNames || !principalNicknames) return;
 
             const uniquePrincipals = new Set();
+            
+            // Add principals from discussion posts
             discussionPosts.forEach(post => {
                 if (post.created_by) {
                     uniquePrincipals.add(post.created_by.toString());
                 }
+            });
+
+            // Add principals from tips
+            Object.values(postTips).forEach(tips => {
+                tips.forEach(tip => {
+                    if (tip.from_principal) {
+                        uniquePrincipals.add(tip.from_principal.toString());
+                    }
+                    if (tip.to_principal) {
+                        uniquePrincipals.add(tip.to_principal.toString());
+                    }
+                });
             });
 
             const displayInfoMap = new Map();
@@ -1297,7 +1312,7 @@ function Discussion({
         };
 
         fetchPrincipalInfo();
-    }, [discussionPosts, principalNames, principalNicknames]);
+    }, [discussionPosts, postTips, principalNames, principalNicknames]);
 
     // Voting functions
     const voteOnPost = async (postId, voteType) => {
