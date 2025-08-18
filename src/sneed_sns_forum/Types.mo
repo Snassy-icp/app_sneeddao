@@ -481,6 +481,13 @@ module {
         created_by: Principal;
     };
 
+    // Token summary for efficient wallet integration
+    public type TipTokenSummary = {
+        token_ledger_principal: Principal;
+        total_amount: Nat;
+        tip_count: Nat;
+    };
+
 
 
     // Helper function for tip key comparison

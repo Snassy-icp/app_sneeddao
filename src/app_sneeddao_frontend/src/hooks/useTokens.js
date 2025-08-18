@@ -3,8 +3,10 @@ import { Principal } from '@dfinity/principal';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
+import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import { getTokenLogo, get_token_conversion_rates } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
+import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
 
 // Custom hook for managing tokens data
 export const useTokens = (identity) => {
@@ -109,6 +111,30 @@ export const useTokens = (identity) => {
             } catch (rewardErr) {
                 console.warn('Could not fetch reward tokens:', rewardErr);
                 // Continue without reward tokens
+            }
+
+            // 3. Get tokens from received tips
+            try {
+                const forumActor = createForumActor(forumCanisterId, {
+                    agentOptions: {
+                        host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                        identity: identity,
+                    },
+                });
+                const tipTokenSummaries = await getTipTokensReceivedByUser(forumActor, identity.getPrincipal());
+                
+                // Extract unique token ledger principals from tip summaries
+                for (const summary of tipTokenSummaries) {
+                    const ledger = summary.token_ledger_principal;
+                    const ledgerId = ledger.toString();
+                    if (!knownLedgers.has(ledgerId)) {
+                        knownLedgers.add(ledgerId);
+                        allLedgers.push(ledger);
+                    }
+                }
+            } catch (tipErr) {
+                console.warn('Could not fetch tip tokens:', tipErr);
+                // Continue without tip tokens
             }
 
             // Fetch details for all tokens in parallel

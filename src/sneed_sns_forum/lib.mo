@@ -1285,6 +1285,62 @@ module {
         }
     };
 
+    // Efficient method for wallet integration - returns only token summaries
+    public func get_tip_tokens_received_by_user(state: ForumState, user_principal: Principal) : [T.TipTokenSummary] {
+        let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
+            case (?index) index;
+            case null return []; // User not found in dedup, so no tips received
+        };
+        
+        switch (Map.get(state.tips_received, Map.n32hash, user_index)) {
+            case (?tip_ids) {
+                // Track token totals and counts
+                let token_summaries = Map.new<Principal, Nat>();
+                let token_counts = Map.new<Principal, Nat>();
+                
+                for (tip_id in Vector.vals(tip_ids)) {
+                    switch (Map.get(state.tips, Map.nhash, tip_id)) {
+                        case (?tip) {
+                            let token_principal = tip.token_ledger_principal;
+                            
+                            // Update total amount
+                            let current_amount = switch (Map.get(token_summaries, Map.phash, token_principal)) {
+                                case (?amount) amount;
+                                case null 0;
+                            };
+                            ignore Map.put(token_summaries, Map.phash, token_principal, current_amount + tip.amount);
+                            
+                            // Update tip count
+                            let current_count = switch (Map.get(token_counts, Map.phash, token_principal)) {
+                                case (?count) count;
+                                case null 0;
+                            };
+                            ignore Map.put(token_counts, Map.phash, token_principal, current_count + 1);
+                        };
+                        case null {}; // Skip if tip not found
+                    };
+                };
+                
+                // Convert to array of TipTokenSummary
+                let summaries = Buffer.Buffer<T.TipTokenSummary>(Map.size(token_summaries));
+                for ((token_principal, total_amount) in Map.entries(token_summaries)) {
+                    let tip_count = switch (Map.get(token_counts, Map.phash, token_principal)) {
+                        case (?count) count;
+                        case null 0;
+                    };
+                    summaries.add({
+                        token_ledger_principal = token_principal;
+                        total_amount = total_amount;
+                        tip_count = tip_count;
+                    });
+                };
+                
+                Buffer.toArray(summaries)
+            };
+            case null [];
+        }
+    };
+
     public func get_tip_stats(state: ForumState) : TipStats {
         let total_tips = Map.size(state.tips);
         let token_amounts = Map.new<Principal, Nat>();

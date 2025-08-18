@@ -497,6 +497,16 @@ export const getTipsReceivedByUser = async (forumActor, userPrincipal) => {
     }
 };
 
+export const getTipTokensReceivedByUser = async (forumActor, userPrincipal) => {
+    try {
+        const result = await forumActor.get_tip_tokens_received_by_user(userPrincipal);
+        return result;
+    } catch (error) {
+        console.error('Error getting tip tokens received by user:', error);
+        throw error;
+    }
+};
+
 export const getTipStats = async (forumActor) => {
     try {
         const result = await forumActor.get_tip_stats();

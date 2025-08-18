@@ -28,8 +28,10 @@ import { get_available, get_available_backend, getTokenLogo, get_token_conversio
 import { getPositionTVL } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
+import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import Header from './components/Header';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
+import { getTipTokensReceivedByUser } from './utils/BackendUtils';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -219,6 +221,43 @@ function Wallet() {
         }
     }
 
+    async function fetchTipTokens(for_ledger_id) {
+        try {
+            // Create forum actor to get tips received by user
+            const forumActor = createForumActor(forumCanisterId, {
+                agentOptions: {
+                    host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                    identity: identity,
+                },
+            });
+            const tipTokenSummaries = await getTipTokensReceivedByUser(forumActor, identity.getPrincipal());
+            
+            var new_tip_ledgers = [];
+            
+            // Extract unique token ledger principals from tip summaries
+            for (const summary of tipTokenSummaries) {
+                const ledger_id = summary.token_ledger_principal.toText();
+                if (!known_icrc1_ledgers[ledger_id]) {
+                    known_icrc1_ledgers[ledger_id] = true;
+                    new_tip_ledgers.push(summary.token_ledger_principal);
+                }
+            }
+            
+            if (new_tip_ledgers.length > 0) {
+                const allUpdatedTokens = await Promise.all(new_tip_ledgers.map(async (icrc1_ledger) => {
+                    const updatedToken = await fetchTokenDetails(icrc1_ledger, summed_locks);
+                    setTokens(prevTokens => [...prevTokens, updatedToken]);
+                    return updatedToken;
+                }));
+
+                fetchLockDetails(allUpdatedTokens);
+            }
+        } catch (error) {
+            console.error('Error fetching tip tokens:', error);
+            // Don't throw error - tip tokens are optional, continue with other tokens
+        }
+    }
+
     // Fetch the token balances and locks from the backend and update the state
     async function fetchBalancesAndLocks(single_refresh_ledger_canister_id) {
         setShowTokensSpinner(true);
@@ -266,6 +305,11 @@ function Wallet() {
 
             fetchLockDetails(single_refresh_ledger_canister_id ? singleUpdatedToken : allUpdatedTokens);
             fetchRewardDetails(single_refresh_ledger_canister_id);
+            
+            // Only fetch tip tokens on full refresh (not single token refresh)
+            if (!single_refresh_ledger_canister_id) {
+                fetchTipTokens();
+            }
 
         } catch (error) {
             console.error('Error fetching balances:', error);

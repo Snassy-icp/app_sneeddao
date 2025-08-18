@@ -298,6 +298,11 @@ persistent actor SneedSNSForum {
         Lib.get_tips_received_by_user(state, user_principal)
     };
 
+    // Efficient method for wallet integration - returns only token summaries
+    public query func get_tip_tokens_received_by_user(user_principal: Principal) : async [T.TipTokenSummary] {
+        Lib.get_tip_tokens_received_by_user(state, user_principal)
+    };
+
     public query func get_tip_stats() : async T.TipStats {
         Lib.get_tip_stats(state)
     };
