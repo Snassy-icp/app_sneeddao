@@ -515,4 +515,35 @@ export const getTipStats = async (forumActor) => {
         console.error('Error getting tip stats:', error);
         throw error;
     }
+};
+
+// Tip notification methods
+export const getTipsReceivedSince = async (forumActor, userPrincipal, sinceTimestamp) => {
+    try {
+        const result = await forumActor.get_tips_received_since(userPrincipal, sinceTimestamp);
+        return result;
+    } catch (error) {
+        console.error('Error getting tips received since timestamp:', error);
+        throw error;
+    }
+};
+
+export const markTipsSeenUpTo = async (forumActor, timestamp) => {
+    try {
+        const result = await forumActor.mark_tips_seen_up_to(timestamp);
+        return result;
+    } catch (error) {
+        console.error('Error marking tips as seen:', error);
+        throw error;
+    }
+};
+
+export const getLastSeenTipTimestamp = async (forumActor, userPrincipal) => {
+    try {
+        const result = await forumActor.get_last_seen_tip_timestamp(userPrincipal);
+        return result;
+    } catch (error) {
+        console.error('Error getting last seen tip timestamp:', error);
+        throw error;
+    }
 }; 

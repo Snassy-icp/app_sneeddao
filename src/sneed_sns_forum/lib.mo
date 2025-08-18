@@ -1341,6 +1341,56 @@ module {
         }
     };
 
+    // Get tips received by user since a specific timestamp (for notifications)
+    public func get_tips_received_since(state: ForumState, user_principal: Principal, since_timestamp: Int) : [TipResponse] {
+        let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
+            case (?index) index;
+            case null return []; // User not found in dedup, so no tips received
+        };
+        
+        switch (Map.get(state.tips_received, Map.n32hash, user_index)) {
+            case (?tip_ids) {
+                let new_tips = Buffer.Buffer<TipResponse>(0);
+                
+                for (tip_id in Vector.vals(tip_ids)) {
+                    switch (get_tip(state, tip_id)) {
+                        case (?tip_response) {
+                            // Only include tips created after the since_timestamp
+                            if (tip_response.created_at > since_timestamp) {
+                                new_tips.add(tip_response);
+                            }
+                        };
+                        case null {}; // Skip if tip not found
+                    };
+                };
+                
+                Buffer.toArray(new_tips)
+            };
+            case null [];
+        }
+    };
+
+    // Mark tips as seen up to a specific timestamp (update method)
+    public func mark_tips_seen_up_to(state: ForumState, user_principal: Principal, timestamp: Int) : () {
+        let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
+            case (?index) index;
+            case null return; // User not found in dedup, nothing to update
+        };
+        
+        // Update the user's last seen timestamp
+        ignore Map.put(state.user_last_seen_tips, Map.n32hash, user_index, timestamp);
+    };
+
+    // Get the last seen tip timestamp for a user (helper method)
+    public func get_last_seen_tip_timestamp(state: ForumState, user_principal: Principal) : ?Int {
+        let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
+            case (?index) index;
+            case null return null; // User not found in dedup
+        };
+        
+        Map.get(state.user_last_seen_tips, Map.n32hash, user_index)
+    };
+
     public func get_tip_stats(state: ForumState) : TipStats {
         let total_tips = Map.size(state.tips);
         let token_amounts = Map.new<Principal, Nat>();

@@ -222,6 +222,7 @@ module {
         thread_tips: Map.Map<Nat, Vector.Vector<Nat>>; // thread_id -> [tip_ids]
         tips_given: Map.Map<Nat32, Vector.Vector<Nat>>; // from_principal_index -> [tip_ids]
         tips_received: Map.Map<Nat32, Vector.Vector<Nat>>; // to_principal_index -> [tip_ids]
+        user_last_seen_tips: Map.Map<Nat32, Int>; // user_index -> last_seen_timestamp
         
         // Proposal tracking (separate from core structures)
         proposal_topics: Map.Map<Nat, ProposalTopicMapping>; // forum_id -> mapping
