@@ -8,7 +8,14 @@ import Nat "mo:base/Nat";
 import T "Types";
 import Lib "lib";
 
-actor SneedSNSForum {
+(with migration = 
+  func (old : { stable_tips : Map.Map<Nat, T.Tip> }) : {} {
+    // Drop old tip data due to structure change (ICRC1Account -> Principal)
+    // The old stable_tips had ICRC1Account structure, we're dropping it
+    {}
+  }
+)
+persistent actor SneedSNSForum {
     // NNS SNS-W canister interface for getting deployed SNS instances
     type DeployedSns = {
         root_canister_id : ?Principal;
