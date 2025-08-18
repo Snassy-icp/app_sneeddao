@@ -441,20 +441,6 @@ module {
         h1 ^ h2
     };
 
-    // Old tip structure with ICRC1Account (for migration only)
-    public type Old_Tip = {
-        id: Nat;
-        from_account: { owner: Principal; subaccount: ?Blob };
-        to_account: { owner: Principal; subaccount: ?Blob };
-        post_id: Nat;
-        thread_id: Nat;
-        token_ledger_principal: Principal;
-        amount: Nat;
-        transaction_block_index: ?Nat;
-        created_at: Int;
-        created_by: Nat32;
-    };
-
     // Tip data structure (simplified to use principals only)
     public type Tip = {
         id: Nat;
