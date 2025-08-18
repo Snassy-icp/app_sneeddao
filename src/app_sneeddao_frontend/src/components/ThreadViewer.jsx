@@ -10,12 +10,92 @@ import { formatPrincipal, getPrincipalDisplayInfoFromContext } from '../utils/Pr
 import { Principal } from '@dfinity/principal';
 import { 
     getTipsByPost, 
-    createTip, 
-    createLedgerActor 
+    createTip
 } from '../utils/BackendUtils';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import TipModal from './TipModal';
 import TipDisplay from './TipDisplay';
 import './ThreadViewer.css';
+
+// ReplyForm component
+const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, principalDisplayInfo, textLimits }) => {
+    const [replyText, setReplyText] = useState('');
+    
+    // Get display name for the user being replied to
+    const displayInfo = principalDisplayInfo?.get(createdBy?.toString());
+    const displayName = displayInfo?.name || displayInfo?.nickname || createdBy.toString().slice(0, 8) + '...';
+    
+    // Character limit validation
+    const maxLength = textLimits?.max_comment_length || 5000;
+    const isOverLimit = replyText.length > maxLength;
+    const remainingChars = maxLength - replyText.length;
+    
+    return (
+        <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
+            <textarea
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                placeholder={`Reply to ${displayName}`}
+                style={{
+                    width: '100%',
+                    minHeight: '80px',
+                    backgroundColor: '#2a2a2a',
+                    border: `1px solid ${isOverLimit ? '#e74c3c' : '#4a4a4a'}`,
+                    borderRadius: '4px',
+                    color: '#ffffff',
+                    padding: '10px',
+                    fontSize: '14px',
+                    resize: 'vertical',
+                    fontFamily: 'inherit'
+                }}
+            />
+            
+            <div style={{ 
+                marginTop: '8px', 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                alignItems: 'center'
+            }}>
+                <div style={{ 
+                    fontSize: '12px', 
+                    color: isOverLimit ? '#e74c3c' : '#888'
+                }}>
+                    {remainingChars} characters remaining
+                </div>
+                
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                        onClick={() => onSubmit(postId, replyText)}
+                        disabled={!replyText.trim() || submittingComment || isOverLimit}
+                        style={{
+                            padding: '8px 16px',
+                            backgroundColor: (replyText.trim() && !submittingComment && !isOverLimit) ? '#3498db' : '#666',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: (replyText.trim() && !submittingComment && !isOverLimit) ? 'pointer' : 'not-allowed'
+                        }}
+                    >
+                        {submittingComment ? 'Submitting...' : 'Submit Reply'}
+                    </button>
+                    <button
+                        onClick={onCancel}
+                        style={{
+                            padding: '8px 16px',
+                            backgroundColor: '#666',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 /**
  * Reusable ThreadViewer component that can display:
@@ -38,6 +118,12 @@ function ThreadViewer({
     const { principalNames, principalNicknames } = useNaming();
     const { identity } = useAuth();
     const { getHotkeyNeurons, getAllNeurons, loading: neuronsLoading, neuronsData } = useNeurons();
+    
+    // Get neurons and calculate voting power
+    const allNeurons = getAllNeurons();
+    const totalVotingPower = allNeurons.reduce((total, neuron) => {
+        return total + Number(neuron.cached_neuron_stake_e8s || 0);
+    }, 0);
     
     // Text limits hook
     const { textLimits, loading: textLimitsLoading } = useTextLimits(forumActor);
@@ -107,17 +193,14 @@ function ThreadViewer({
             const posts = await forumActor.get_posts_by_thread(Number(threadId));
             console.log('Posts result:', posts);
             
-            let processedPosts = posts || [];
-            
-            // Apply post filter if provided
-            if (postFilter) {
-                processedPosts = processedPosts.filter(postFilter);
+            if (posts && posts.length > 0) {
+                setDiscussionPosts(posts);
+                
+                // Fetch tips for all posts
+                await fetchTipsForPosts(posts);
+            } else {
+                setDiscussionPosts([]);
             }
-            
-            setDiscussionPosts(processedPosts);
-            
-            // Fetch tips for all posts
-            await fetchTipsForPosts(processedPosts);
             
         } catch (err) {
             console.error('Error fetching thread data:', err);
@@ -132,29 +215,173 @@ function ThreadViewer({
     // Fetch tips for posts
     const fetchTipsForPosts = async (posts) => {
         if (!forumActor || !posts || posts.length === 0) return;
-        
+
         try {
-            const tipPromises = posts.map(async (post) => {
-                try {
-                    const tips = await getTipsByPost(forumActor, Number(post.id));
-                    return { postId: Number(post.id), tips };
-                } catch (error) {
-                    console.error(`Error fetching tips for post ${post.id}:`, error);
-                    return { postId: Number(post.id), tips: [] };
+            const tipsPromises = posts.map(async (post) => {
+                const tips = await getTipsByPost(forumActor, Number(post.id));
+                return { postId: Number(post.id), tips };
+            });
+
+            const tipsResults = await Promise.all(tipsPromises);
+            const newPostTips = {};
+
+            tipsResults.forEach(({ postId, tips }) => {
+                if (tips && tips.length > 0) {
+                    newPostTips[postId] = tips;
                 }
             });
-            
-            const tipResults = await Promise.all(tipPromises);
-            const newPostTips = {};
-            tipResults.forEach(({ postId, tips }) => {
-                newPostTips[postId] = tips;
-            });
-            
+
             setPostTips(newPostTips);
         } catch (error) {
             console.error('Error fetching tips for posts:', error);
         }
     };
+
+    // Handler functions
+    const handleVote = useCallback(async (postId, voteType) => {
+        if (!forumActor || !allNeurons || allNeurons.length === 0) return;
+
+        const postIdStr = postId.toString();
+        setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
+
+        try {
+            const result = await forumActor.vote_on_post(Number(postId), voteType);
+            if ('ok' in result) {
+                setVotingStates(prev => new Map(prev.set(postIdStr, 'success')));
+                setUserVotes(prev => new Map(prev.set(postIdStr, { vote_type: voteType, voting_power: totalVotingPower })));
+                
+                // Refresh thread data to get updated scores
+                await fetchThreadData();
+                
+                // Clear voting state after a delay
+                setTimeout(() => {
+                    setVotingStates(prev => {
+                        const newState = new Map(prev);
+                        newState.delete(postIdStr);
+                        return newState;
+                    });
+                }, 2000);
+            } else {
+                console.error('Vote failed:', result.err);
+                setVotingStates(prev => new Map(prev.set(postIdStr, 'error')));
+            }
+        } catch (error) {
+            console.error('Error voting on post:', error);
+            setVotingStates(prev => new Map(prev.set(postIdStr, 'error')));
+        }
+    }, [forumActor, allNeurons, totalVotingPower, fetchThreadData]);
+
+    const submitReply = useCallback(async (parentPostId, replyText) => {
+        if (!replyText.trim() || !forumActor || !threadId) return;
+        
+        setSubmittingComment(true);
+        try {
+            const result = await forumActor.create_post(
+                Number(threadId),
+                [Number(parentPostId)],
+                [], // Empty title for replies
+                replyText
+            );
+            
+            if ('ok' in result) {
+                console.log('Reply created successfully, post ID:', result.ok);
+                
+                // Clear form immediately
+                setReplyingTo(null);
+                
+                // Refresh thread data to show the new post
+                await fetchThreadData();
+            } else {
+                console.error('Failed to create reply:', result.err);
+                if (onError) onError('Failed to create reply: ' + result.err);
+            }
+        } catch (error) {
+            console.error('Error creating reply:', error);
+            if (onError) onError('Failed to create reply: ' + error.message);
+        } finally {
+            setSubmittingComment(false);
+        }
+    }, [forumActor, threadId, onError, fetchThreadData]);
+
+    const openTipModal = useCallback((post) => {
+        setSelectedPostForTip(post);
+        setTipModalOpen(true);
+    }, []);
+
+    const closeTipModal = useCallback(() => {
+        setTipModalOpen(false);
+        setSelectedPostForTip(null);
+        setTippingState('idle');
+    }, []);
+
+    const handleTip = useCallback(async (tokenLedgerPrincipal, amount, recipientPrincipal) => {
+        if (!forumActor || !selectedPostForTip) return;
+
+        try {
+            setTippingState('transferring');
+
+            // Create ledger actor for the selected token
+            const ledgerActor = createLedgerActor(tokenLedgerPrincipal, identity);
+
+            // Perform the icrc1_transfer
+            const transferResult = await ledgerActor.icrc1_transfer({
+                to: {
+                    owner: recipientPrincipal,
+                    subaccount: []
+                },
+                fee: [],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+                amount: amount
+            });
+
+            if ('Err' in transferResult) {
+                console.error('Transfer failed:', transferResult.Err);
+                setTippingState('error');
+                return;
+            }
+
+            console.log('Transfer successful, block index:', transferResult.Ok);
+            setTippingState('registering');
+
+            // Register the tip in the backend
+            const tipResult = await createTip(
+                forumActor,
+                recipientPrincipal,
+                amount,
+                tokenLedgerPrincipal,
+                Number(selectedPostForTip.id),
+                selectedPostForTip.thread_id ? Number(selectedPostForTip.thread_id) : null
+            );
+
+            if ('ok' in tipResult) {
+                console.log('Tip registered successfully:', tipResult.ok);
+                setTippingState('success');
+                
+                // Refresh tips for this post
+                await fetchTipsForPosts([selectedPostForTip]);
+                
+                // Refresh token balance
+                if (refreshTokenBalance) {
+                    refreshTokenBalance(tokenLedgerPrincipal.toString());
+                }
+                
+                // Close modal after a short delay
+                setTimeout(() => {
+                    closeTipModal();
+                }, 1500);
+            } else {
+                console.error('Failed to register tip:', tipResult.err);
+                setTippingState('error');
+            }
+        } catch (error) {
+            console.error('Error in tip process:', error);
+            setTippingState('error');
+        }
+    }, [forumActor, selectedPostForTip, identity, refreshTokenBalance, closeTipModal]);
+
+
 
     // Effect to fetch data when threadId changes
     useEffect(() => {
@@ -462,6 +689,114 @@ function ThreadViewer({
                             principalDisplayInfo={principalDisplayInfo}
                         />
                     )}
+
+                    {/* Action Buttons - Only show for authenticated users */}
+                    {isAuthenticated && (
+                        <div style={{
+                            display: 'flex',
+                            gap: '8px',
+                            marginTop: '10px',
+                            paddingTop: '10px',
+                            borderTop: '1px solid #333'
+                        }}>
+                            {/* Reply Button */}
+                            <button
+                                onClick={() => {
+                                    const isReplying = replyingTo === Number(post.id);
+                                    if (isReplying) {
+                                        setReplyingTo(null);
+                                    } else {
+                                        setReplyingTo(Number(post.id));
+                                    }
+                                }}
+                                style={{
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    color: '#6b8eb8',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}
+                            >
+                                💬 {replyingTo === Number(post.id) ? 'Cancel Reply' : 'Reply'}
+                            </button>
+
+                            {/* Vote Buttons */}
+                            <button
+                                onClick={() => handleVote(post.id, 'up')}
+                                disabled={votingStates.get(post.id.toString()) === 'voting'}
+                                style={{
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    color: userVotes.get(post.id.toString())?.vote_type === 'up' ? '#2ecc71' : '#6b8eb8',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}
+                            >
+                                👍 {post.score_up || 0}
+                            </button>
+
+                            <button
+                                onClick={() => handleVote(post.id, 'down')}
+                                disabled={votingStates.get(post.id.toString()) === 'voting'}
+                                style={{
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    color: userVotes.get(post.id.toString())?.vote_type === 'down' ? '#e74c3c' : '#6b8eb8',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}
+                            >
+                                👎 {post.score_down || 0}
+                            </button>
+
+                            {/* Tip Button */}
+                            <button
+                                onClick={() => openTipModal(post)}
+                                style={{
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    color: '#f39c12',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}
+                            >
+                                💰 Tip
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Reply Form */}
+                    {replyingTo === Number(post.id) && (
+                        <ReplyForm 
+                            postId={Number(post.id)}
+                            onSubmit={submitReply}
+                            onCancel={() => setReplyingTo(null)}
+                            submittingComment={submittingComment}
+                            createdBy={post.created_by}
+                            principalDisplayInfo={principalDisplayInfo}
+                            textLimits={textLimits}
+                        />
+                    )}
                 </div>
                 
                 {/* Replies in tree mode */}
@@ -482,11 +817,7 @@ function ThreadViewer({
         );
     }
 
-    // Placeholder for tip handling - would need full implementation
-    async function handleTip(tokenPrincipal, amount, recipientPrincipal) {
-        // Implementation would be similar to Discussion.jsx
-        setTippingState('success');
-    }
+
 }
 
 export default ThreadViewer;
