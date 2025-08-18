@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { Principal } from '@dfinity/principal';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { getTokenLogo, get_token_conversion_rates } from '../utils/TokenUtils';
+import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 
 // Custom hook for managing tokens data
 export const useTokens = (identity) => {
@@ -67,14 +69,50 @@ export const useTokens = (identity) => {
         setError(null);
 
         try {
-            // Get registered ledger canister IDs from backend
             const backendActor = createBackendActor(backendCanisterId, { 
                 agentOptions: { identity } 
             });
+
+            // Track known ledgers to avoid duplicates (like wallet does)
+            const knownLedgers = new Set();
+            const allLedgers = [];
+
+            // 1. Get registered ledger canister IDs from backend
             const registeredLedgers = await backendActor.get_ledger_canister_ids();
+            registeredLedgers.forEach(ledger => {
+                const ledgerId = ledger.toString();
+                if (!knownLedgers.has(ledgerId)) {
+                    knownLedgers.add(ledgerId);
+                    allLedgers.push(ledger);
+                }
+            });
+
+            // 2. Get reward tokens from RLL (like wallet does)
+            try {
+                const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
+                
+                // Get neurons using the same method as wallet
+                const sneedGovernanceCanisterId = 'fi3zi-fyaaa-aaaaq-aachq-cai';
+                const neurons = await fetchUserNeuronsForSns(identity, sneedGovernanceCanisterId);
+                
+                // Get reward balances which includes token ledger IDs
+                const rewardBalances = await rllActor.balances_of_hotkey_neurons(neurons);
+                
+                rewardBalances.forEach(balance => {
+                    const ledger = balance[0]; // Principal
+                    const ledgerId = ledger.toString();
+                    if (!knownLedgers.has(ledgerId)) {
+                        knownLedgers.add(ledgerId);
+                        allLedgers.push(ledger);
+                    }
+                });
+            } catch (rewardErr) {
+                console.warn('Could not fetch reward tokens:', rewardErr);
+                // Continue without reward tokens
+            }
 
             // Fetch details for all tokens in parallel
-            const tokenPromises = registeredLedgers.map(ledger => 
+            const tokenPromises = allLedgers.map(ledger => 
                 fetchTokenDetails(ledger)
             );
             

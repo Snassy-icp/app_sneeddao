@@ -1,9 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Principal } from '@dfinity/principal';
+import { useTokenMetadata } from '../hooks/useTokenMetadata';
 
 const TipDisplay = ({ tips = [], tokenInfo = new Map() }) => {
     const [hoveredToken, setHoveredToken] = useState(null);
     const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+    
+    // Use the token metadata hook
+    const { fetchTokenMetadata, getTokenMetadata, isLoadingMetadata } = useTokenMetadata();
+
+    // Fetch metadata for all unique tokens when tips change
+    useEffect(() => {
+        if (!tips || tips.length === 0) return;
+
+        const uniqueTokens = [...new Set(tips.map(tip => tip.token_ledger_principal))];
+        
+        uniqueTokens.forEach(tokenPrincipal => {
+            // Only fetch if we don't have metadata and it's not provided in tokenInfo
+            const tokenKey = tokenPrincipal.toString();
+            if (!tokenInfo.has(tokenKey) && !getTokenMetadata(tokenPrincipal)) {
+                fetchTokenMetadata(tokenPrincipal);
+            }
+        });
+    }, [tips, tokenInfo, fetchTokenMetadata, getTokenMetadata]);
 
     if (!tips || tips.length === 0) {
         return null;
@@ -37,13 +56,36 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map() }) => {
     };
 
     const getTokenSymbol = (principal) => {
-        const info = tokenInfo.get(principal.toString());
-        return info?.symbol || principal.toString().slice(0, 8) + '...';
+        const principalStr = principal.toString();
+        
+        // First check provided tokenInfo
+        const info = tokenInfo.get(principalStr);
+        if (info?.symbol) return info.symbol;
+        
+        // Then check cached metadata
+        const metadata = getTokenMetadata(principal);
+        if (metadata?.symbol) return metadata.symbol;
+        
+        // Show loading or fallback
+        if (isLoadingMetadata(principal)) {
+            return '...';
+        }
+        
+        return principalStr.slice(0, 8) + '...';
     };
 
     const getTokenDecimals = (principal) => {
-        const info = tokenInfo.get(principal.toString());
-        return info?.decimals || 8;
+        const principalStr = principal.toString();
+        
+        // First check provided tokenInfo
+        const info = tokenInfo.get(principalStr);
+        if (info?.decimals !== undefined) return info.decimals;
+        
+        // Then check cached metadata
+        const metadata = getTokenMetadata(principal);
+        if (metadata?.decimals !== undefined) return metadata.decimals;
+        
+        return 8; // Default fallback
     };
 
     const handleMouseEnter = (tokenKey, event) => {
@@ -86,6 +128,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map() }) => {
             {Object.entries(tipsByToken).map(([tokenKey, tokenData]) => {
                 const decimals = getTokenDecimals(tokenData.principal);
                 const symbol = getTokenSymbol(tokenData.principal);
+                const isLoading = isLoadingMetadata(tokenData.principal);
                 
                 return (
                     <div
@@ -95,25 +138,26 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map() }) => {
                         onMouseMove={handleMouseMove}
                         style={{
                             backgroundColor: '#1a1a1a',
-                            border: '1px solid #f39c12',
+                            border: `1px solid ${isLoading ? '#666' : '#f39c12'}`,
                             borderRadius: '12px',
                             padding: '4px 8px',
                             fontSize: '12px',
-                            color: '#f39c12',
+                            color: isLoading ? '#888' : '#f39c12',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
-                            fontWeight: '500'
+                            fontWeight: '500',
+                            opacity: isLoading ? 0.7 : 1
                         }}
                     >
-                        <span>💎</span>
+                        <span>{isLoading ? '⏳' : '💎'}</span>
                         <span>
                             {formatAmount(tokenData.totalAmount, decimals)} {symbol}
                         </span>
                         <span style={{ 
-                            backgroundColor: '#f39c12',
-                            color: '#000',
+                            backgroundColor: isLoading ? '#666' : '#f39c12',
+                            color: isLoading ? '#ccc' : '#000',
                             borderRadius: '6px',
                             padding: '1px 4px',
                             fontSize: '10px',
