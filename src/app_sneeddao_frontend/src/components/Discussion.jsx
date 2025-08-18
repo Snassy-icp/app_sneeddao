@@ -12,6 +12,7 @@ import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUti
 import TipModal from './TipModal';
 import TipDisplay from './TipDisplay';
 import { createTip, getTipsByPost } from '../utils/BackendUtils';
+import { useTokens } from '../hooks/useTokens';
 
 // Add CSS for spinner animation
 const spinnerStyles = `
@@ -222,6 +223,9 @@ function Discussion({
         isAuthenticated,
         redirectPath: null // Don't redirect, just check status
     });
+
+    // Tokens hook for tipping
+    const { tokens: availableTokens, loading: tokensLoading } = useTokens(identity);
     
     // State for discussion
     const [discussionThread, setDiscussionThread] = useState(null); // Thread mapping
@@ -262,16 +266,6 @@ function Discussion({
     const [selectedPostForTip, setSelectedPostForTip] = useState(null);
     const [tippingState, setTippingState] = useState(false);
     const [postTips, setPostTips] = useState({}); // postId -> [tips]
-    const [availableTokens, setAvailableTokens] = useState([
-        // For now, hardcode some common tokens - in production you'd fetch these
-        {
-            principal: 'rdmx6-jaaaa-aaaah-qcaiq-cai', // ICP
-            symbol: 'ICP',
-            decimals: 8,
-            balance: null // Will be fetched when needed
-        }
-        // Add more tokens as needed
-    ]);
 
     // Get neurons from global context
     const hotkeyNeurons = getHotkeyNeurons() || [];
@@ -998,7 +992,11 @@ function Discussion({
                                 {/* Tip Display */}
                                 <TipDisplay 
                                     tips={postTips[post.id.toString()] || []}
-                                    tokenInfo={new Map(availableTokens.map(token => [token.principal, token]))}
+                                    tokenInfo={new Map(availableTokens.map(token => [token.principal, {
+                                        symbol: token.symbol,
+                                        decimals: token.decimals,
+                                        logo: token.logo
+                                    }]))}
                                 />
                                 
                                 {/* Action Buttons */}
@@ -1882,6 +1880,7 @@ function Discussion({
                 isSubmitting={tippingState}
                 availableTokens={availableTokens}
                 userPrincipal={identity?.getPrincipal()}
+                identity={identity}
             />
         </div>
     );

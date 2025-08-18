@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Principal } from '@dfinity/principal';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 
 const TipModal = ({ 
     isOpen, 
@@ -8,20 +9,55 @@ const TipModal = ({
     post, 
     isSubmitting,
     availableTokens = [], // Array of {principal, symbol, decimals, balance}
-    userPrincipal
+    userPrincipal,
+    identity
 }) => {
     const [selectedToken, setSelectedToken] = useState('');
     const [amount, setAmount] = useState('');
     const [error, setError] = useState('');
+    const [tokenBalances, setTokenBalances] = useState({});
+    const [loadingBalances, setLoadingBalances] = useState({});
 
-    // Reset form when modal opens
+    // Fetch balance for a specific token
+    const fetchTokenBalance = async (tokenPrincipal) => {
+        if (!identity || !tokenPrincipal) return;
+
+        setLoadingBalances(prev => ({ ...prev, [tokenPrincipal]: true }));
+        
+        try {
+            const ledgerActor = createLedgerActor(tokenPrincipal, {
+                agentOptions: { identity }
+            });
+            
+            const balance = await ledgerActor.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: []
+            });
+            
+            setTokenBalances(prev => ({ ...prev, [tokenPrincipal]: balance }));
+        } catch (err) {
+            console.error(`Error fetching balance for token ${tokenPrincipal}:`, err);
+            setTokenBalances(prev => ({ ...prev, [tokenPrincipal]: BigInt(0) }));
+        } finally {
+            setLoadingBalances(prev => ({ ...prev, [tokenPrincipal]: false }));
+        }
+    };
+
+    // Reset form when modal opens and fetch balances
     useEffect(() => {
         if (isOpen) {
             setSelectedToken(availableTokens.length > 0 ? availableTokens[0].principal : '');
             setAmount('');
             setError('');
+            setTokenBalances({});
+            setLoadingBalances({});
+            
+            // Fetch balances for all available tokens
+            availableTokens.forEach(token => {
+                fetchTokenBalance(token.principal);
+            });
         }
-    }, [isOpen, availableTokens]);
+    }, [isOpen, availableTokens, identity]);
 
     if (!isOpen) return null;
 
@@ -48,7 +84,9 @@ const TipModal = ({
         // Convert amount to smallest unit (e.g., e8s for ICP)
         const amountInSmallestUnit = Math.floor(parseFloat(amount) * Math.pow(10, token.decimals));
 
-        if (token.balance && amountInSmallestUnit > token.balance) {
+        // Check balance from our fetched balances
+        const currentBalance = tokenBalances[selectedToken] || BigInt(0);
+        if (amountInSmallestUnit > currentBalance) {
             setError('Insufficient balance');
             return;
         }
@@ -65,11 +103,15 @@ const TipModal = ({
         }
     };
 
-    const formatBalance = (balance, decimals) => {
+    const formatBalance = (tokenPrincipal, decimals) => {
+        if (loadingBalances[tokenPrincipal]) return 'Loading...';
+        
+        const balance = tokenBalances[tokenPrincipal];
         if (balance === undefined || balance === null) return 'Loading...';
-        const formatted = (balance / Math.pow(10, decimals)).toLocaleString(undefined, {
+        
+        const formatted = (Number(balance) / Math.pow(10, decimals)).toLocaleString(undefined, {
             minimumFractionDigits: 0,
-            maximumFractionDigits: decimals
+            maximumFractionDigits: Math.min(decimals, 8) // Cap at 8 decimal places for display
         });
         return formatted;
     };
@@ -157,7 +199,7 @@ const TipModal = ({
                             <option value="">Select a token</option>
                             {availableTokens.map(token => (
                                 <option key={token.principal} value={token.principal}>
-                                    {token.symbol} - Balance: {formatBalance(token.balance, token.decimals)}
+                                    {token.symbol} - Balance: {formatBalance(token.principal, token.decimals)}
                                 </option>
                             ))}
                         </select>
@@ -198,7 +240,7 @@ const TipModal = ({
                                 color: '#888',
                                 marginTop: '4px'
                             }}>
-                                Available: {formatBalance(selectedTokenData.balance, selectedTokenData.decimals)} {selectedTokenData.symbol}
+                                Available: {formatBalance(selectedTokenData.principal, selectedTokenData.decimals)} {selectedTokenData.symbol}
                             </div>
                         )}
                     </div>
