@@ -2,8 +2,8 @@ import Principal "mo:base/Principal";
 import Blob "mo:base/Blob";
 import Map "mo:map/Map";
 import Dedup "mo:dedup";
-import Array "mo:base/Array";
-import Buffer "mo:base/Buffer";
+import _Array "mo:base/Array";
+import _Buffer "mo:base/Buffer";
 import Nat32 "mo:base/Nat32";
 import Vector "mo:vector";
 
@@ -203,6 +203,7 @@ module {
         threads: Map.Map<Nat, Thread>;
         posts: Map.Map<Nat, Post>;
         votes: Map.Map<VoteKey, Vote>;
+        tips: Map.Map<Nat, Tip>;
         
         // Admin management
         admins: Vector.Vector<AdminInfo>;
@@ -217,6 +218,8 @@ module {
         topic_threads: Map.Map<Nat, Vector.Vector<Nat>>;
         thread_posts: Map.Map<Nat, Vector.Vector<Nat>>;
         post_replies: Map.Map<Nat, Vector.Vector<Nat>>;
+        post_tips: Map.Map<Nat, Vector.Vector<Nat>>; // post_id -> [tip_ids]
+        thread_tips: Map.Map<Nat, Vector.Vector<Nat>>; // thread_id -> [tip_ids]
         
         // Proposal tracking (separate from core structures)
         proposal_topics: Map.Map<Nat, ProposalTopicMapping>; // forum_id -> mapping
@@ -356,6 +359,12 @@ module {
         total_votes: Nat;
     };
 
+    // Tip statistics type (separate to avoid stable structure changes)
+    public type TipStats = {
+        total_tips: Nat;
+        total_tip_amount_by_token: [(Principal, Nat)]; // token_ledger_principal -> total_amount
+    };
+
     // SNS Governance integration types
     public type SNSNeuron = {
         id: ?NeuronId;
@@ -425,10 +434,76 @@ module {
     };
 
     public func vote_key_hash(key: VoteKey) : Nat32 {
-        let h1 : Nat32 = switch (key.0 % (2**32 - 1)) {
-            case (n) { Nat32.fromNat(n) };
-        };
+        let h1 : Nat32 = Nat32.fromNat(key.0 % 4294967295); // 2^32 - 1
         let h2 = key.1;
+        h1 ^ h2
+    };
+
+    // ICRC1 Account type for tipping
+    public type ICRC1Account = {
+        owner: Principal;
+        subaccount: ?Blob;
+    };
+
+    // Tip data structure
+    public type Tip = {
+        id: Nat;
+        from_account: ICRC1Account;
+        to_account: ICRC1Account;
+        post_id: Nat;
+        thread_id: Nat;
+        token_ledger_principal: Principal;
+        amount: Nat;
+        transaction_block_index: ?Nat; // ICRC1 transaction block index for verification
+        created_at: Int;
+        created_by: Nat32; // Principal index of the tipper
+    };
+
+    // Composite key type for tips (post_id, tip_id) for efficient post-based queries
+    public type TipKey = (Nat, Nat);
+
+    // Input type for creating a tip
+    public type CreateTipInput = {
+        to_account: ICRC1Account;
+        post_id: Nat;
+        token_ledger_principal: Principal;
+        amount: Nat;
+        transaction_block_index: ?Nat;
+    };
+
+    // Response type for tips with resolved data
+    public type TipResponse = {
+        id: Nat;
+        from_account: ICRC1Account;
+        to_account: ICRC1Account;
+        post_id: Nat;
+        thread_id: Nat;
+        token_ledger_principal: Principal;
+        amount: Nat;
+        transaction_block_index: ?Nat;
+        created_at: Int;
+        created_by: Principal;
+    };
+
+    // Helper functions for ICRC1Account comparison
+    public func icrc1_account_equal(a: ICRC1Account, b: ICRC1Account) : Bool {
+        Principal.equal(a.owner, b.owner) and 
+        (switch (a.subaccount, b.subaccount) {
+            case (?sub_a, ?sub_b) { Blob.equal(sub_a, sub_b) };
+            case (null, null) { true };
+            case (_, _) { false };
+        })
+    };
+
+    // Helper function for tip key comparison
+    public func tip_key_equal(a: TipKey, b: TipKey) : Bool {
+        a.0 == b.0 and a.1 == b.1
+    };
+
+    // Helper function for tip key hash
+    public func tip_key_hash(key: TipKey) : Nat32 {
+        let h1 : Nat32 = Nat32.fromNat(key.0 % 4294967295); // 2^32 - 1
+        let h2 : Nat32 = Nat32.fromNat(key.1 % 4294967295); // 2^32 - 1
         h1 ^ h2
     };
 }

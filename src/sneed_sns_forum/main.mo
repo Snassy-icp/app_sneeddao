@@ -67,7 +67,7 @@ actor SneedSNSForum {
 
 
     // Non-stable cache for SNS instances (will be refreshed on canister upgrade)
-    private var sns_cache : SnsCache = {
+    private transient var sns_cache : SnsCache = {
         instances = [];
         last_updated = 0;
     };
@@ -79,6 +79,7 @@ actor SneedSNSForum {
     stable let stable_threads = Map.new<Nat, T.Thread>();
     stable let stable_posts = Map.new<Nat, T.Post>();
     stable let stable_votes = Map.new<T.VoteKey, T.Vote>();
+    stable let stable_tips = Map.new<Nat, T.Tip>();
     stable let stable_admins = Vector.new<T.AdminInfo>();
     stable var stable_principal_dedup : Dedup.DedupState = Dedup.empty();
     stable var stable_neuron_dedup : Dedup.DedupState = Dedup.empty();
@@ -87,13 +88,15 @@ actor SneedSNSForum {
     stable let stable_topic_threads = Map.new<Nat, Vector.Vector<Nat>>();
     stable let stable_thread_posts = Map.new<Nat, Vector.Vector<Nat>>();
     stable let stable_post_replies = Map.new<Nat, Vector.Vector<Nat>>();
+    stable let stable_post_tips = Map.new<Nat, Vector.Vector<Nat>>();
+    stable let stable_thread_tips = Map.new<Nat, Vector.Vector<Nat>>();
     stable let stable_proposal_topics = Map.new<Nat, T.ProposalTopicMapping>();
     stable let stable_proposal_threads = Map.new<T.ProposalThreadKey, T.ProposalThreadMapping>();
     stable let stable_thread_proposals = Map.new<Nat, (Nat32, Nat)>();
     stable var stable_text_limits : T.TextLimits = Lib.get_default_text_limits();
 
     // Runtime state that directly references stable storage
-    private var state : T.ForumState = {
+    private transient var state : T.ForumState = {
         var next_id = stable_next_id;
         var text_limits = stable_text_limits;
         forums = stable_forums;
@@ -101,6 +104,7 @@ actor SneedSNSForum {
         threads = stable_threads;
         posts = stable_posts;
         votes = stable_votes;
+        tips = stable_tips;
         admins = stable_admins;
         principal_dedup_state = stable_principal_dedup;
         neuron_dedup_state = stable_neuron_dedup;
@@ -109,6 +113,8 @@ actor SneedSNSForum {
         topic_threads = stable_topic_threads;
         thread_posts = stable_thread_posts;
         post_replies = stable_post_replies;
+        post_tips = stable_post_tips;
+        thread_tips = stable_thread_tips;
         proposal_topics = stable_proposal_topics;
         proposal_threads = stable_proposal_threads;
         thread_proposals = stable_thread_proposals;
@@ -250,6 +256,39 @@ actor SneedSNSForum {
         Lib.get_post_votes(state, post_id)
     };
 
+    // Tip API endpoints
+    public shared ({ caller }) func create_tip(
+        to_account: T.ICRC1Account,
+        post_id: Nat,
+        token_ledger_principal: Principal,
+        amount: Nat,
+        transaction_block_index: ?Nat
+    ) : async T.Result<Nat, T.ForumError> {
+        let input : T.CreateTipInput = {
+            to_account;
+            post_id;
+            token_ledger_principal;
+            amount;
+            transaction_block_index;
+        };
+        Lib.create_tip(state, caller, input)
+    };
+
+    public query func get_tip(id: Nat) : async ?T.TipResponse {
+        Lib.get_tip(state, id)
+    };
+
+    public query func get_tips_by_post(post_id: Nat) : async [T.TipResponse] {
+        Lib.get_tips_by_post(state, post_id)
+    };
+
+    public query func get_tips_by_thread(thread_id: Nat) : async [T.TipResponse] {
+        Lib.get_tips_by_thread(state, thread_id)
+    };
+
+    public query func get_tip_stats() : async T.TipStats {
+        Lib.get_tip_stats(state)
+    };
 
     // Admin/utility endpoints
     public query func get_stats() : async T.ForumStats {
