@@ -438,4 +438,71 @@ export const updateTextLimits = async (forumActor, textLimitsInput) => {
         console.error('Error updating text limits:', error);
         throw error;
     }
+};
+
+// Tip-related functions for forum
+export const createTip = async (forumActor, tipInput) => {
+    try {
+        const result = await forumActor.create_tip(
+            tipInput.to_principal,
+            tipInput.post_id,
+            tipInput.token_ledger_principal,
+            tipInput.amount,
+            tipInput.transaction_block_index ? [tipInput.transaction_block_index] : []
+        );
+        return result;
+    } catch (error) {
+        console.error('Error creating tip:', error);
+        throw error;
+    }
+};
+
+export const getTipsByPost = async (forumActor, postId) => {
+    try {
+        const result = await forumActor.get_tips_by_post(postId);
+        return result;
+    } catch (error) {
+        console.error('Error getting tips by post:', error);
+        throw error;
+    }
+};
+
+export const getTipsByThread = async (forumActor, threadId) => {
+    try {
+        const result = await forumActor.get_tips_by_thread(threadId);
+        return result;
+    } catch (error) {
+        console.error('Error getting tips by thread:', error);
+        throw error;
+    }
+};
+
+export const getTipsGivenByUser = async (forumActor, userPrincipal) => {
+    try {
+        const result = await forumActor.get_tips_given_by_user(userPrincipal);
+        return result;
+    } catch (error) {
+        console.error('Error getting tips given by user:', error);
+        throw error;
+    }
+};
+
+export const getTipsReceivedByUser = async (forumActor, userPrincipal) => {
+    try {
+        const result = await forumActor.get_tips_received_by_user(userPrincipal);
+        return result;
+    } catch (error) {
+        console.error('Error getting tips received by user:', error);
+        throw error;
+    }
+};
+
+export const getTipStats = async (forumActor) => {
+    try {
+        const result = await forumActor.get_tip_stats();
+        return result;
+    } catch (error) {
+        console.error('Error getting tip stats:', error);
+        throw error;
+    }
 }; 

@@ -9,6 +9,9 @@ import { useAuth } from '../AuthContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
 import { useTextLimits } from '../hooks/useTextLimits';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
+import TipModal from './TipModal';
+import TipDisplay from './TipDisplay';
+import { createTip, getTipsByPost } from '../utils/BackendUtils';
 
 // Add CSS for spinner animation
 const spinnerStyles = `
@@ -254,6 +257,22 @@ function Discussion({
     const [userVotes, setUserVotes] = useState({}); // postId -> { vote_type, voting_power }
     const [retractingStates, setRetractingStates] = useState({});
 
+    // State for tipping
+    const [tipModalOpen, setTipModalOpen] = useState(false);
+    const [selectedPostForTip, setSelectedPostForTip] = useState(null);
+    const [tippingState, setTippingState] = useState(false);
+    const [postTips, setPostTips] = useState({}); // postId -> [tips]
+    const [availableTokens, setAvailableTokens] = useState([
+        // For now, hardcode some common tokens - in production you'd fetch these
+        {
+            principal: 'rdmx6-jaaaa-aaaah-qcaiq-cai', // ICP
+            symbol: 'ICP',
+            decimals: 8,
+            balance: null // Will be fetched when needed
+        }
+        // Add more tokens as needed
+    ]);
+
     // Get neurons from global context
     const hotkeyNeurons = getHotkeyNeurons() || [];
     const allNeurons = getAllNeurons() || [];
@@ -382,9 +401,40 @@ function Discussion({
             }
             
             setDiscussionPosts(posts || []);
+            
+            // Fetch tips for all posts
+            await fetchTipsForPosts(posts || []);
         } catch (err) {
             console.error('Error fetching discussion posts:', err);
             setDiscussionPosts([]);
+        }
+    };
+
+    // Fetch tips for posts
+    const fetchTipsForPosts = async (posts) => {
+        if (!forumActor || !posts.length) return;
+        
+        try {
+            const tipPromises = posts.map(async (post) => {
+                try {
+                    const tips = await getTipsByPost(forumActor, Number(post.id));
+                    return { postId: post.id.toString(), tips };
+                } catch (err) {
+                    console.error(`Error fetching tips for post ${post.id}:`, err);
+                    return { postId: post.id.toString(), tips: [] };
+                }
+            });
+            
+            const tipsResults = await Promise.all(tipPromises);
+            const newPostTips = {};
+            
+            tipsResults.forEach(({ postId, tips }) => {
+                newPostTips[postId] = tips;
+            });
+            
+            setPostTips(newPostTips);
+        } catch (err) {
+            console.error('Error fetching tips for posts:', err);
         }
     };
 
@@ -944,6 +994,12 @@ function Discussion({
                                 <div style={{ color: '#ffffff', lineHeight: '1.6', marginBottom: '10px' }}>
                                     <ReactMarkdown>{post.body}</ReactMarkdown>
                                 </div>
+
+                                {/* Tip Display */}
+                                <TipDisplay 
+                                    tips={postTips[post.id.toString()] || []}
+                                    tokenInfo={new Map(availableTokens.map(token => [token.principal, token]))}
+                                />
                                 
                                 {/* Action Buttons */}
                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1127,6 +1183,27 @@ function Discussion({
                                                 </button>
                                             )}
 
+                                            {/* Tip Button - show for authenticated users (but not for own posts) */}
+                                            {isAuthenticated && identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
+                                                <button
+                                                    onClick={() => openTipModal(post)}
+                                                    style={{
+                                                        backgroundColor: 'transparent',
+                                                        border: 'none',
+                                                        color: '#f39c12',
+                                                        borderRadius: '4px',
+                                                        padding: '4px 8px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '12px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}
+                                                >
+                                                    💰 Tip
+                                                </button>
+                                            )}
+
                                             {/* Voting Status */}
                                             {votingStates[post.id.toString()] === 'success' && (
                                                 <span style={{ color: '#6b8e6b', fontSize: '12px' }}>✓ Voted</span>
@@ -1182,7 +1259,7 @@ function Discussion({
                 )}
             </div>
         );
-    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo, allNeurons, votingStates, userVotes, submittingComment, editingPost, submittingEdit, isAdmin, identity, textLimits]);
+    }, [collapsedPosts, replyingTo, discussionPosts, principalDisplayInfo, allNeurons, votingStates, userVotes, submittingComment, editingPost, submittingEdit, isAdmin, identity, textLimits, postTips, availableTokens]);
 
     // Effect to fetch discussion when props change
     useEffect(() => {
@@ -1398,6 +1475,77 @@ function Discussion({
         } catch (err) {
             console.error('Error deleting post:', err);
             if (onError) onError('Failed to delete post: ' + err.message);
+        }
+    };
+
+    // Tip handling functions
+    const openTipModal = (post) => {
+        setSelectedPostForTip(post);
+        setTipModalOpen(true);
+    };
+
+    const closeTipModal = () => {
+        setTipModalOpen(false);
+        setSelectedPostForTip(null);
+    };
+
+    const handleTip = async ({ tokenPrincipal, amount, recipientPrincipal, postId }) => {
+        if (!identity || !forumActor) {
+            throw new Error('Please connect your wallet to send tips');
+        }
+
+        setTippingState(true);
+        try {
+            // Step 1: Perform ICRC1 transfer
+            // For now, we'll simulate this - in production you'd need to:
+            // 1. Create an actor for the token ledger
+            // 2. Call icrc1_transfer with the recipient and amount
+            // 3. Get the transaction block index
+            
+            // Simulated ICRC1 transfer (replace with actual implementation)
+            console.log('Simulating ICRC1 transfer:', {
+                from: identity.getPrincipal().toString(),
+                to: recipientPrincipal.toString(),
+                amount,
+                token: tokenPrincipal
+            });
+            
+            // For demo purposes, we'll proceed without actual transfer
+            const mockTransactionBlockIndex = Math.floor(Math.random() * 1000000);
+
+            // Step 2: Register the tip in the forum backend
+            const tipResult = await createTip(forumActor, {
+                to_principal: recipientPrincipal,
+                post_id: Number(postId),
+                token_ledger_principal: Principal.fromText(tokenPrincipal),
+                amount: Number(amount),
+                transaction_block_index: mockTransactionBlockIndex
+            });
+
+            if ('ok' in tipResult) {
+                console.log('Tip registered successfully:', tipResult.ok);
+                
+                // Refresh tips for this post
+                const tips = await getTipsByPost(forumActor, Number(postId));
+                setPostTips(prev => ({
+                    ...prev,
+                    [postId.toString()]: tips
+                }));
+                
+                closeTipModal();
+                
+                if (onError) {
+                    // Show success message
+                    onError(''); // Clear any existing errors
+                }
+            } else {
+                throw new Error('Failed to register tip: ' + JSON.stringify(tipResult.err));
+            }
+        } catch (error) {
+            console.error('Error sending tip:', error);
+            throw error; // Re-throw to be handled by the modal
+        } finally {
+            setTippingState(false);
         }
     };
 
@@ -1724,6 +1872,17 @@ function Discussion({
                     )}
                 </div>
             )}
+
+            {/* Tip Modal */}
+            <TipModal
+                isOpen={tipModalOpen}
+                onClose={closeTipModal}
+                onTip={handleTip}
+                post={selectedPostForTip}
+                isSubmitting={tippingState}
+                availableTokens={availableTokens}
+                userPrincipal={identity?.getPrincipal()}
+            />
         </div>
     );
 }
