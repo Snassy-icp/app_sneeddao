@@ -1,14 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import Ticker from './Ticker';
 import './Layout.css';
 import { Actor } from '@dfinity/agent';
 import { createActor as createSneedLedgerActor } from '../../../external/icrc1_ledger';
 import { get_token_conversion_rates } from '../utils/TokenUtils';
 import { Principal } from '@dfinity/principal';
+import { useAuth } from '../AuthContext';
+import { useTipNotifications } from '../hooks/useTipNotifications';
 
 const Layout = ({ children }) => {
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const { newTipCount, markAsViewed } = useTipNotifications();
   const [tickerText, setTickerText] = useState('Loading...');
+
+  const handleTipClick = () => {
+    // Mark tips as viewed when user clicks the notification
+    markAsViewed();
+    navigate('/tips');
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -42,13 +53,22 @@ const Layout = ({ children }) => {
         const formatUSD = (value) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         const formatICP = (value) => value.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 
-        const text = [
+        const priceInfo = [
           `ICP/USD: ${formatUSD(icpPrice)}`,
           `SNEED/ICP: ${formatICP(sneedPriceICP)} ICP`,
           `SNEED/USD: ${formatUSD(sneedPriceUSD)}`,
           `SNEED FDV: ${formatICP(sneedMarketCapICP)} ICP (${formatUSD(sneedMarketCapUSD)})`
-        ].join('  •  ');
+        ];
 
+        // Add tip notification if user is authenticated and has new tips
+        if (isAuthenticated && newTipCount > 0) {
+          const tipMessage = newTipCount === 1 
+            ? `💰 You have 1 new tip! Click here to view` 
+            : `💰 You have ${newTipCount} new tips! Click here to view`;
+          priceInfo.unshift(tipMessage); // Add at the beginning for prominence
+        }
+
+        const text = priceInfo.join('  •  ');
         console.log('Setting ticker text:', text);
         setTickerText(text);
       } catch (error) {
@@ -61,11 +81,11 @@ const Layout = ({ children }) => {
     // Refresh every minute
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthenticated, newTipCount]); // Re-run when tip count changes
   
   return (
     <div className="app-layout">
-      <Ticker text={tickerText} />
+      <Ticker text={tickerText} onTipClick={handleTipClick} />
       <div className="app-content">
         {children}
       </div>
