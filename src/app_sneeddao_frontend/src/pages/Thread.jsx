@@ -1,5 +1,5 @@
-import React from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import React, { useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
@@ -8,8 +8,8 @@ import Header from '../components/Header';
 import './Thread.css';
 
 const Thread = () => {
-    const { id } = useParams(); // Get thread ID from URL
     const [searchParams] = useSearchParams();
+    const threadId = searchParams.get('threadid'); // Get thread ID from query params
     const { createForumActor } = useForum();
     const { isAuthenticated, identity } = useAuth();
     const { selectedSnsRoot } = useSns();
@@ -18,20 +18,23 @@ const Thread = () => {
     const snsParam = searchParams.get('sns');
     const currentSnsRoot = snsParam || selectedSnsRoot;
 
-    const forumActor = createForumActor(identity);
+    // Memoize forumActor to prevent unnecessary re-renders
+    const forumActor = useMemo(() => {
+        return identity ? createForumActor(identity) : null;
+    }, [identity, createForumActor]);
 
     const handleError = (error) => {
         console.error('Thread page error:', error);
     };
 
-    if (!id) {
+    if (!threadId) {
         return (
             <div className="thread-page">
                 <Header showSnsDropdown={true} />
                 <div className="thread-container">
                     <div className="error-state">
                         <h2>Thread Not Found</h2>
-                        <p>No thread ID provided in the URL.</p>
+                        <p>No thread ID provided in the URL. Please use ?threadid=123 format.</p>
                     </div>
                 </div>
             </div>
@@ -45,7 +48,7 @@ const Thread = () => {
                 <ThreadViewer
                     forumActor={forumActor}
                     mode="thread"
-                    threadId={Number(id)}
+                    threadId={Number(threadId)}
                     selectedSnsRoot={currentSnsRoot}
                     isAuthenticated={isAuthenticated}
                     onError={handleError}

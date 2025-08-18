@@ -197,7 +197,7 @@ const Tips = () => {
                     <div className="post-links">
                         <button 
                             className="post-link"
-                            onClick={() => navigate(`/post/${tip.post_id}`)}
+                            onClick={() => navigate(`/post?postid=${tip.post_id}`)}
                             title="View this post"
                         >
                             📄 Post #{tip.post_id}
@@ -205,7 +205,7 @@ const Tips = () => {
                         {tip.thread_id && (
                             <button 
                                 className="thread-link"
-                                onClick={() => navigate(`/thread/${tip.thread_id}`)}
+                                onClick={() => navigate(`/thread?threadid=${tip.thread_id}`)}
                                 title="View full thread"
                             >
                                 🧵 Thread #{tip.thread_id}

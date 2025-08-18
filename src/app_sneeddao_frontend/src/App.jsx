@@ -108,8 +108,8 @@ function App() {
                     <Route path="/proposals" element={<Proposals />} />
                     <Route path="/rewards" element={<Rewards />} />
                     <Route path="/tips" element={<Tips />} />
-                    <Route path="/thread/:id" element={<Thread />} />
-                    <Route path="/post/:id" element={<Post />} />
+                    <Route path="/thread" element={<Thread />} />
+                    <Route path="/post" element={<Post />} />
                     <Route path="/disclaimer" element={<Disclaimer />} />
                     <Route path="/principal" element={<Principal />} />
                     <Route path="/neurons" element={<Neurons />} />

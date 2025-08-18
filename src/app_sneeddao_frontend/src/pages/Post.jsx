@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
@@ -8,8 +8,8 @@ import Header from '../components/Header';
 import './Post.css';
 
 const Post = () => {
-    const { id } = useParams(); // Get post ID from URL
     const [searchParams] = useSearchParams();
+    const postId = searchParams.get('postid'); // Get post ID from query params
     const { createForumActor } = useForum();
     const { isAuthenticated, identity } = useAuth();
     const { selectedSnsRoot } = useSns();
@@ -23,19 +23,22 @@ const Post = () => {
     const snsParam = searchParams.get('sns');
     const currentSnsRoot = snsParam || selectedSnsRoot;
 
-    const forumActor = createForumActor(identity);
+    // Memoize forumActor to prevent unnecessary re-renders
+    const forumActor = useMemo(() => {
+        return identity ? createForumActor(identity) : null;
+    }, [identity, createForumActor]);
 
     // Fetch post details to get the thread ID
     useEffect(() => {
         const fetchPostDetails = async () => {
-            if (!forumActor || !id) return;
+            if (!forumActor || !postId) return;
 
             try {
                 setLoading(true);
                 setError(null);
 
-                console.log('Fetching post details for post ID:', id);
-                const postResponse = await forumActor.get_post(Number(id));
+                console.log('Fetching post details for post ID:', postId);
+                const postResponse = await forumActor.get_post(Number(postId));
                 
                 if (postResponse && postResponse.length > 0) {
                     const post = postResponse[0];
@@ -54,21 +57,21 @@ const Post = () => {
         };
 
         fetchPostDetails();
-    }, [forumActor, id]);
+    }, [forumActor, postId]);
 
     const handleError = (error) => {
         console.error('Post page error:', error);
         setError(error.message || 'An error occurred');
     };
 
-    if (!id) {
+    if (!postId) {
         return (
             <div className="post-page">
                 <Header showSnsDropdown={true} />
                 <div className="post-container">
                     <div className="error-state">
                         <h2>Post Not Found</h2>
-                        <p>No post ID provided in the URL.</p>
+                        <p>No post ID provided in the URL. Please use ?postid=123 format.</p>
                     </div>
                 </div>
             </div>
@@ -103,18 +106,24 @@ const Post = () => {
         );
     }
 
+    // Only render ThreadViewer when we have successfully loaded the threadId
     if (!threadId) {
-        return (
-            <div className="post-page">
-                <Header showSnsDropdown={true} />
-                <div className="post-container">
-                    <div className="error-state">
-                        <h2>Post Not Found</h2>
-                        <p>Could not find the requested post.</p>
+        // If we're not loading and have no error, but still no threadId, then post wasn't found
+        if (!loading && !error) {
+            return (
+                <div className="post-page">
+                    <Header showSnsDropdown={true} />
+                    <div className="post-container">
+                        <div className="error-state">
+                            <h2>Post Not Found</h2>
+                            <p>Could not find the requested post or determine its thread.</p>
+                        </div>
                     </div>
                 </div>
-            </div>
-        );
+            );
+        }
+        // Otherwise, we're still loading or there's an error (handled above)
+        return null;
     }
 
     return (
@@ -125,12 +134,12 @@ const Post = () => {
                     forumActor={forumActor}
                     mode="post"
                     threadId={threadId}
-                    focusedPostId={Number(id)}
+                    focusedPostId={Number(postId)}
                     selectedSnsRoot={currentSnsRoot}
                     isAuthenticated={isAuthenticated}
                     onError={handleError}
                     showCreatePost={true}
-                    title={postDetails?.title ? `Post: ${postDetails.title}` : `Post #${id}`}
+                    title={postDetails?.title ? `Post: ${postDetails.title}` : `Post #${postId}`}
                 />
             </div>
         </div>

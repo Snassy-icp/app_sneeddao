@@ -433,7 +433,22 @@ function ThreadViewer({
                         <span className="post-id">#{post.id.toString()}</span>
                         {post.title && <h4>{post.title}</h4>}
                         <span className="post-author">
-                            {formatPrincipal(post.created_by, principalDisplayInfo.get(post.created_by?.toString()))}
+                            {(() => {
+                                const displayInfo = principalDisplayInfo.get(post.created_by?.toString());
+                                const formatted = formatPrincipal(post.created_by, displayInfo);
+                                
+                                if (typeof formatted === 'string') {
+                                    return formatted;
+                                } else if (formatted?.name || formatted?.nickname) {
+                                    // Show name/nickname with truncated ID
+                                    const parts = [];
+                                    if (formatted.name) parts.push(formatted.name);
+                                    if (formatted.nickname) parts.push(`"${formatted.nickname}"`);
+                                    return `${parts.join(' • ')} (${formatted.truncatedId})`;
+                                } else {
+                                    return post.created_by?.toString().slice(0, 12) + '...';
+                                }
+                            })()}
                         </span>
                     </div>
                     <div className="post-body">
