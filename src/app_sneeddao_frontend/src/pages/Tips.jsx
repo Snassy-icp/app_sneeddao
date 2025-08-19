@@ -124,9 +124,7 @@ const Tips = () => {
                 return;
             }
 
-            try {
-                console.log('🔥🔥🔥 STARTING ONE-TIME TIMESTAMP PROCESSING 🔥🔥🔥');
-                
+            try {                
                 const forumActor = createForumActor(identity);
                 const userPrincipal = identity.getPrincipal();
 
@@ -135,25 +133,18 @@ const Tips = () => {
                 const currentOldTimestamp = oldTimestampResult || 0;
                 setCapturedOldTimestamp(currentOldTimestamp);
                 
-                console.log(`🔥🔥🔥 CAPTURED OLD TIMESTAMP: ${currentOldTimestamp}`);
-                console.log(`🔥🔥🔥 CAPTURED DATE: ${new Date(Number(currentOldTimestamp) / 1_000_000).toISOString()}`);
-
                 // Step 2: Check if we have new tips
                 const newTipsCount = await getRecentTipsCount(forumActor, userPrincipal);
-                console.log(`🔥🔥🔥 NEW TIPS COUNT: ${newTipsCount}`);
 
                 // Step 3: Update backend timestamp ONCE if we have new tips
                 if (Number(newTipsCount) > 0) {
                     const currentTimestamp = Date.now() * 1_000_000;
                     await markTipsSeenUpTo(forumActor, currentTimestamp);
-                    console.log(`🔥🔥🔥 UPDATED BACKEND TIMESTAMP ONCE: ${currentTimestamp}`);
                 } else {
-                    console.log('🔥🔥🔥 NO NEW TIPS - NO BACKEND UPDATE');
                 }
 
                 // Mark as processed to prevent re-execution
                 setTimestampProcessed(true);
-                console.log('🔥🔥🔥 TIMESTAMP PROCESSING COMPLETE - WILL NOT RUN AGAIN 🔥🔥🔥');
 
             } catch (error) {
                 console.error('Error in timestamp processing:', error);
@@ -175,7 +166,6 @@ const Tips = () => {
     // Helper function to check if a tip is new (for highlighting)
     const isTipNew = (tipTimestamp) => {
         const isNew = Number(tipTimestamp) > capturedOldTimestamp;
-        console.log(`🔥 TIP NEW CHECK: tipTimestamp=${tipTimestamp}, capturedOldTimestamp=${capturedOldTimestamp}, isNew=${isNew}`);
         return isNew;
     };
 
@@ -227,8 +217,6 @@ const Tips = () => {
         
         // Check if this tip is new (only highlight received tips)
         const isNew = isReceived && isTipNew(tip.created_at);
-        
-        console.log(`🔥🔥🔥 RENDERING TIP ${tip.id}: isReceived=${isReceived}, isNew=${isNew}, className=${isNew ? 'tip-new' : 'normal'}`);
 
         return (
             <tr key={tip.id} className={`tip-row ${isNew ? 'tip-new' : ''}`}>
