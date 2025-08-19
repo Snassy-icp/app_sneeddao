@@ -361,57 +361,112 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 </div>
 
                 {/* SNS Dropdown and Login moved to top row */}
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                    {showSnsDropdown ? (
-                        <SnsDropdown onSnsChange={onSnsChange} />
-                    ) : (
-                        <img
-                            src={"sneed_logo.png"}
-                            alt={"Sneed Logo"}
-                            style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '50%',
-                                objectFit: 'cover',
-                                marginRight: '16px'
-                            }}
-                        />
-                    )}
-                    {isAuthenticated ? (
-                        <PrincipalBox 
-                            principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
-                            onLogout={logout}
-                        />
-                    ) : (
-                        <button
-                            onClick={login}
-                            style={{
-                                padding: '8px 16px',
-                                backgroundColor: '#6B46C1',
-                                color: '#fff',
-                                border: 'none',
-                                borderRadius: '4px',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            Login
-                        </button>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                        {showSnsDropdown ? (
+                            <SnsDropdown onSnsChange={onSnsChange} />
+                        ) : (
+                            <img
+                                src={"sneed_logo.png"}
+                                alt={"Sneed Logo"}
+                                style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
+                                    marginRight: '16px'
+                                }}
+                            />
+                        )}
+                        {isAuthenticated ? (
+                            <PrincipalBox 
+                                principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
+                                onLogout={logout}
+                            />
+                        ) : (
+                            <button
+                                onClick={login}
+                                style={{
+                                    padding: '8px 16px',
+                                    backgroundColor: '#6B46C1',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Login
+                            </button>
+                        )}
+                    </div>
+                    
+                    {/* Notification Icons - Always shown when authenticated */}
+                    {isAuthenticated && (newReplyCount > 0 || newTipCount > 0) && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px'
+                        }}>
+                            {/* Reply Notifications */}
+                            {newReplyCount > 0 && (
+                                <div 
+                                    onClick={() => navigate('/posts')}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        padding: '4px 8px',
+                                        backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                                        border: '1px solid #FFD700',
+                                        borderRadius: '12px',
+                                        cursor: 'pointer',
+                                        fontSize: '11px',
+                                        color: '#FFD700'
+                                    }}
+                                    title={`You have ${newReplyCount} new ${newReplyCount === 1 ? 'reply' : 'replies'}`}
+                                >
+                                    💬 {newReplyCount}
+                                </div>
+                            )}
+                            
+                            {/* Tip Notifications */}
+                            {newTipCount > 0 && (
+                                <div 
+                                    onClick={() => navigate('/tips')}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        padding: '4px 8px',
+                                        backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                                        border: '1px solid #FFD700',
+                                        borderRadius: '12px',
+                                        cursor: 'pointer',
+                                        fontSize: '11px',
+                                        color: '#FFD700'
+                                    }}
+                                    title={`You have ${newTipCount} new ${newTipCount === 1 ? 'tip' : 'tips'}`}
+                                >
+                                    💰 {newTipCount}
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>
 
-            {/* Bottom Row: VP Display and Notification Icons */}
+            {/* Bottom Row: VP Display */}
             {showSnsDropdown && isAuthenticated && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
-                    justifyContent: 'space-between',
+                    justifyContent: 'flex-start',
                     width: '100%',
                     paddingTop: '8px',
                     borderTop: '1px solid rgba(255,255,255,0.1)',
                     marginTop: '8px'
                 }}>
-                    {/* VP Display on the left */}
+                    {/* VP Display */}
                     <div style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -506,57 +561,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     );
                                 })()}
                             </>
-                        )}
-                    </div>
-
-                    {/* Notification Icons on the right */}
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px'
-                    }}>
-                        {/* Reply Notifications */}
-                        {newReplyCount > 0 && (
-                            <div 
-                                onClick={() => navigate('/posts')}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '4px 8px',
-                                    backgroundColor: 'rgba(255, 215, 0, 0.1)',
-                                    border: '1px solid #FFD700',
-                                    borderRadius: '12px',
-                                    cursor: 'pointer',
-                                    fontSize: '11px',
-                                    color: '#FFD700'
-                                }}
-                                title={`You have ${newReplyCount} new ${newReplyCount === 1 ? 'reply' : 'replies'}`}
-                            >
-                                💬 {newReplyCount}
-                            </div>
-                        )}
-                        
-                        {/* Tip Notifications */}
-                        {newTipCount > 0 && (
-                            <div 
-                                onClick={() => navigate('/tips')}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    padding: '4px 8px',
-                                    backgroundColor: 'rgba(255, 215, 0, 0.1)',
-                                    border: '1px solid #FFD700',
-                                    borderRadius: '12px',
-                                    cursor: 'pointer',
-                                    fontSize: '11px',
-                                    color: '#FFD700'
-                                }}
-                                title={`You have ${newTipCount} new ${newTipCount === 1 ? 'tip' : 'tips'}`}
-                            >
-                                💰 {newTipCount}
-                            </div>
                         )}
                     </div>
                 </div>
