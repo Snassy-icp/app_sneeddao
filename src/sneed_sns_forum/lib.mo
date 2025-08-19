@@ -8,6 +8,8 @@ import Iter "mo:base/Iter";
 import Text "mo:base/Text";
 import Blob "mo:base/Blob";
 import Nat "mo:base/Nat";
+import Array "mo:base/Array";
+import Order "mo:base/Order";
 import Vector "mo:vector";
 import SnsUtil "../SnsUtil";
 
@@ -1470,6 +1472,80 @@ module {
             total_tips;
             total_tip_amount_by_token = Iter.toArray(Map.entries(token_amounts));
         }
+    };
+
+    // Post query functions by user
+    public func get_posts_by_user(state: ForumState, user_principal: Principal) : [T.PostResponse] {
+        let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
+            case (?index) index;
+            case null return []; // User not found in dedup, so no posts
+        };
+        
+        let posts = Buffer.Buffer<T.PostResponse>(0);
+        for ((post_id, post) in Map.entries(state.posts)) {
+            if (post.created_by == user_index and not post.deleted) {
+                switch (get_post(state, post_id)) {
+                    case (?post_response) posts.add(post_response);
+                    case null {}; // Skip if post not found
+                };
+            };
+        };
+        
+        // Sort by creation time (newest first)
+        let sorted_posts = Array.sort(Buffer.toArray(posts), func(a: T.PostResponse, b: T.PostResponse) : Order.Order {
+            if (a.created_at > b.created_at) #less
+            else if (a.created_at < b.created_at) #greater
+            else #equal
+        });
+        
+        sorted_posts
+    };
+
+    public func get_replies_to_user(state: ForumState, user_principal: Principal) : [T.PostResponse] {
+        let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
+            case (?index) index;
+            case null return []; // User not found in dedup, so no replies
+        };
+        
+        let replies = Buffer.Buffer<T.PostResponse>(0);
+        
+        // First, find all posts created by the user
+        let user_post_ids = Buffer.Buffer<Nat>(0);
+        for ((post_id, post) in Map.entries(state.posts)) {
+            if (post.created_by == user_index and not post.deleted) {
+                user_post_ids.add(post_id);
+            };
+        };
+        
+        // Then find all posts that reply to the user's posts
+        for ((reply_id, reply_post) in Map.entries(state.posts)) {
+            if (not reply_post.deleted) {
+                switch (reply_post.reply_to_post_id) {
+                    case (?parent_post_id) {
+                        // Check if this reply is to one of the user's posts
+                        let user_post_array = Buffer.toArray(user_post_ids);
+                        for (user_post_id in user_post_array.vals()) {
+                            if (parent_post_id == user_post_id) {
+                                switch (get_post(state, reply_id)) {
+                                    case (?reply_response) replies.add(reply_response);
+                                    case null {}; // Skip if post not found
+                                };
+                            };
+                        };
+                    };
+                    case null {}; // Not a reply, skip
+                };
+            };
+        };
+        
+        // Sort by creation time (newest first)
+        let sorted_replies = Array.sort(Buffer.toArray(replies), func(a: T.PostResponse, b: T.PostResponse) : Order.Order {
+            if (a.created_at > b.created_at) #less
+            else if (a.created_at < b.created_at) #greater
+            else #equal
+        });
+        
+        sorted_replies
     };
 
     // Soft delete operations

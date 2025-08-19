@@ -330,6 +330,15 @@ persistent actor SneedSNSForum {
         Lib.get_tip_stats(state)
     };
 
+    // Post query endpoints by user
+    public query func get_posts_by_user(user_principal: Principal) : async [T.PostResponse] {
+        Lib.get_posts_by_user(state, user_principal)
+    };
+
+    public query func get_replies_to_user(user_principal: Principal) : async [T.PostResponse] {
+        Lib.get_replies_to_user(state, user_principal)
+    };
+
     // Admin/utility endpoints
     public query func get_stats() : async T.ForumStats {
         {
