@@ -29,9 +29,14 @@ const styles = {
     },
     topicsGrid: {
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-        gap: '20px',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+        gap: '25px',
         marginTop: '30px'
+    },
+    topicSection: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px'
     },
     topicCard: {
         backgroundColor: '#2a2a2a',
@@ -82,6 +87,45 @@ const styles = {
         marginBottom: '20px',
         textAlign: 'center'
     },
+    childTopics: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        marginLeft: '15px'
+    },
+    childTopicCard: {
+        backgroundColor: '#1a1a1a',
+        borderRadius: '6px',
+        padding: '12px 15px',
+        border: '1px solid #2a2a2a',
+        transition: 'all 0.2s ease',
+        cursor: 'pointer',
+        textDecoration: 'none',
+        color: 'inherit',
+        borderLeft: '3px solid #3498db'
+    },
+    childTopicCardHover: {
+        borderColor: '#3498db',
+        backgroundColor: '#222',
+        transform: 'translateX(3px)'
+    },
+    childTopicTitle: {
+        color: '#ffffff',
+        fontSize: '1rem',
+        fontWeight: '500',
+        marginBottom: '5px',
+        margin: 0
+    },
+    childTopicDescription: {
+        color: '#aaa',
+        fontSize: '0.85rem',
+        lineHeight: '1.4',
+        margin: 0,
+        display: '-webkit-box',
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: 'vertical',
+        overflow: 'hidden'
+    },
     noTopics: {
         textAlign: 'center',
         color: '#888',
@@ -98,6 +142,7 @@ function Forum() {
     const { selectedSnsRoot } = useSns();
     const [forum, setForum] = useState(null);
     const [topics, setTopics] = useState([]);
+    const [topicHierarchy, setTopicHierarchy] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [hoveredCard, setHoveredCard] = useState(null);
@@ -147,16 +192,43 @@ function Forum() {
             console.log('Topics response:', topicsResponse);
             console.log('Topics response length:', topicsResponse?.length);
             
-            // Filter out deleted topics and only show root-level topics (no parent)
+            // Filter out deleted topics and organize into hierarchy
             // Note: parent_topic_id is a Motoko optional, so null = [], Some(value) = [value]
-            const rootTopics = topicsResponse.filter(topic => {
-                const isNotDeleted = !topic.deleted;
+            const activeTopics = topicsResponse.filter(topic => !topic.deleted);
+            console.log('Active topics:', activeTopics);
+            
+            // Separate root and child topics
+            const rootTopics = [];
+            const childTopicsMap = new Map();
+            
+            activeTopics.forEach(topic => {
                 const isRootLevel = !topic.parent_topic_id || topic.parent_topic_id.length === 0;
                 console.log(`Topic "${topic.title}": deleted=${topic.deleted}, parent_topic_id=`, topic.parent_topic_id, `isRootLevel=${isRootLevel}`);
-                return isNotDeleted && isRootLevel;
+                
+                if (isRootLevel) {
+                    rootTopics.push({ ...topic, children: [] });
+                } else {
+                    // It's a child topic
+                    const parentId = topic.parent_topic_id[0]; // Get parent ID from array
+                    const parentIdStr = parentId.toString(); // Convert BigInt to string for Map key
+                    
+                    if (!childTopicsMap.has(parentIdStr)) {
+                        childTopicsMap.set(parentIdStr, []);
+                    }
+                    childTopicsMap.get(parentIdStr).push(topic);
+                }
             });
-            console.log('Root topics after filtering:', rootTopics);
-            setTopics(rootTopics);
+            
+            // Add children to their parent topics
+            const hierarchyTopics = rootTopics.map(rootTopic => {
+                const rootIdStr = rootTopic.id.toString();
+                const children = childTopicsMap.get(rootIdStr) || [];
+                return { ...rootTopic, children };
+            });
+            
+            console.log('Hierarchical topics:', hierarchyTopics);
+            setTopics(rootTopics); // Keep for backward compatibility
+            setTopicHierarchy(hierarchyTopics);
 
         } catch (err) {
             console.error('Error fetching forum data:', err);
@@ -205,29 +277,57 @@ function Forum() {
                         </p>
                     </div>
 
-                    {/* Topics Grid */}
-                    {topics.length > 0 ? (
+                    {/* Topics Hierarchy */}
+                    {topicHierarchy.length > 0 ? (
                         <div style={styles.topicsGrid}>
-                            {topics.map((topic) => (
-                                <Link
-                                    key={topic.id}
-                                    to={`/topic/${topic.id}`}
-                                    style={{
-                                        ...styles.topicCard,
-                                        ...(hoveredCard === topic.id ? styles.topicCardHover : {})
-                                    }}
-                                    onMouseEnter={() => setHoveredCard(topic.id)}
-                                    onMouseLeave={() => setHoveredCard(null)}
-                                >
-                                    <h3 style={styles.topicTitle}>{topic.title}</h3>
-                                    <p style={styles.topicDescription}>
-                                        {topic.description || 'No description available'}
-                                    </p>
-                                    <div style={styles.topicMeta}>
-                                        <span>Created {formatDate(topic.created_at)}</span>
-                                        <span>→</span>
-                                    </div>
-                                </Link>
+                            {topicHierarchy.map((rootTopic) => (
+                                <div key={rootTopic.id} style={styles.topicSection}>
+                                    {/* Root Topic Card */}
+                                    <Link
+                                        to={`/topic/${rootTopic.id}`}
+                                        style={{
+                                            ...styles.topicCard,
+                                            ...(hoveredCard === rootTopic.id ? styles.topicCardHover : {})
+                                        }}
+                                        onMouseEnter={() => setHoveredCard(rootTopic.id)}
+                                        onMouseLeave={() => setHoveredCard(null)}
+                                    >
+                                        <h3 style={styles.topicTitle}>{rootTopic.title}</h3>
+                                        <p style={styles.topicDescription}>
+                                            {rootTopic.description || 'No description available'}
+                                        </p>
+                                        <div style={styles.topicMeta}>
+                                            <span>Created {formatDate(rootTopic.created_at)}</span>
+                                            {rootTopic.children.length > 0 && (
+                                                <span>{rootTopic.children.length} subtopic{rootTopic.children.length !== 1 ? 's' : ''}</span>
+                                            )}
+                                            <span>→</span>
+                                        </div>
+                                    </Link>
+                                    
+                                    {/* Child Topics */}
+                                    {rootTopic.children.length > 0 && (
+                                        <div style={styles.childTopics}>
+                                            {rootTopic.children.map((childTopic) => (
+                                                <Link
+                                                    key={childTopic.id}
+                                                    to={`/topic/${childTopic.id}`}
+                                                    style={{
+                                                        ...styles.childTopicCard,
+                                                        ...(hoveredCard === childTopic.id ? styles.childTopicCardHover : {})
+                                                    }}
+                                                    onMouseEnter={() => setHoveredCard(childTopic.id)}
+                                                    onMouseLeave={() => setHoveredCard(null)}
+                                                >
+                                                    <h4 style={styles.childTopicTitle}>{childTopic.title}</h4>
+                                                    <p style={styles.childTopicDescription}>
+                                                        {childTopic.description || 'No description available'}
+                                                    </p>
+                                                </Link>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             ))}
                         </div>
                     ) : (
