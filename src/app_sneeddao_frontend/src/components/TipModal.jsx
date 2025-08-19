@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Principal } from '@dfinity/principal';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { PrincipalDisplay } from '../utils/PrincipalUtils';
 
 // Add CSS animations
 const animationStyles = `
@@ -51,6 +52,7 @@ const TipModal = ({
     const [tokenBalances, setTokenBalances] = useState({});
     const [loadingBalances, setLoadingBalances] = useState({});
     const [tokenMetadata, setTokenMetadata] = useState({}); // Store metadata for each token
+    const [tokenLogo, setTokenLogo] = useState(null);
 
     // Fetch token metadata (fee, decimals, symbol)
     const fetchTokenMetadata = async (tokenPrincipal) => {
@@ -75,12 +77,18 @@ const TipModal = ({
                 decimals: Number(decimals)
             });
 
-            // Extract symbol from metadata
+            // Extract symbol and logo from metadata
             let symbol = 'Unknown';
+            let logo = null;
             if (metadata && Array.isArray(metadata)) {
                 const symbolEntry = metadata.find(([key]) => key === 'icrc1:symbol');
                 if (symbolEntry && symbolEntry[1] && symbolEntry[1].Text) {
                     symbol = symbolEntry[1].Text;
+                }
+                
+                const logoEntry = metadata.find(([key]) => key === 'icrc1:logo');
+                if (logoEntry && logoEntry[1] && logoEntry[1].Text) {
+                    logo = logoEntry[1].Text;
                 }
             }
             
@@ -89,9 +97,15 @@ const TipModal = ({
                 [tokenPrincipal]: {
                     symbol,
                     decimals: Number(decimals),
-                    fee: fee
+                    fee: fee,
+                    logo: logo
                 }
             }));
+
+            // Update logo state if this is the selected token
+            if (tokenPrincipal === selectedToken) {
+                setTokenLogo(logo);
+            }
         } catch (err) {
             console.error(`Error fetching metadata for token ${tokenPrincipal}:`, err);
             setTokenMetadata(prev => ({
@@ -148,7 +162,34 @@ const TipModal = ({
         }
     }, [isOpen, availableTokens, identity]);
 
+    // Update logo when selected token changes
+    useEffect(() => {
+        if (selectedToken && tokenMetadata[selectedToken]) {
+            setTokenLogo(tokenMetadata[selectedToken].logo);
+        } else {
+            setTokenLogo(null);
+        }
+    }, [selectedToken, tokenMetadata]);
+
     if (!isOpen) return null;
+
+    // Calculate max amount (balance - fee)
+    const getMaxAmount = () => {
+        if (!selectedToken || !tokenBalances[selectedToken] || !tokenMetadata[selectedToken]) {
+            return 0;
+        }
+        const balance = tokenBalances[selectedToken];
+        const fee = tokenMetadata[selectedToken].fee;
+        const decimals = tokenMetadata[selectedToken].decimals;
+        
+        const maxInSmallestUnit = balance > fee ? balance - fee : BigInt(0);
+        return Number(maxInSmallestUnit) / Math.pow(10, decimals);
+    };
+
+    const handleMaxClick = () => {
+        const maxAmount = getMaxAmount();
+        setAmount(maxAmount.toString());
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -279,9 +320,28 @@ const TipModal = ({
                         alignItems: 'center',
                         justifyContent: 'center',
                         margin: '0 auto 16px',
-                        boxShadow: '0 8px 16px rgba(255, 215, 0, 0.3)'
+                        boxShadow: '0 8px 16px rgba(255, 215, 0, 0.3)',
+                        overflow: 'hidden'
                     }}>
-                        <span style={{ fontSize: '24px' }}>💎</span>
+                        {tokenLogo ? (
+                            <img 
+                                src={tokenLogo} 
+                                alt="Token Logo"
+                                style={{ 
+                                    width: '40px', 
+                                    height: '40px',
+                                    objectFit: 'contain'
+                                }}
+                                onError={(e) => {
+                                    e.target.style.display = 'none';
+                                    e.target.nextSibling.style.display = 'block';
+                                }}
+                            />
+                        ) : null}
+                        <span style={{ 
+                            fontSize: '24px',
+                            display: tokenLogo ? 'none' : 'block'
+                        }}>💎</span>
                     </div>
                     <h3 style={{ 
                         color: '#ffffff', 
@@ -409,20 +469,28 @@ const TipModal = ({
                             background: 'rgba(255, 255, 255, 0.05)',
                             borderRadius: '12px',
                             border: '1px solid rgba(255, 255, 255, 0.1)',
-                            overflow: 'hidden'
+                            overflow: 'hidden',
+                            display: 'flex',
+                            alignItems: 'center'
                         }}>
                             <input
                                 type="number"
                                 value={amount}
-                                onChange={(e) => setAmount(e.target.value)}
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    const maxAmount = getMaxAmount();
+                                    if (parseFloat(value) <= maxAmount || value === '') {
+                                        setAmount(value);
+                                    }
+                                }}
                                 placeholder="0.00"
                                 step="any"
                                 min="0"
+                                max={getMaxAmount()}
                                 style={{
-                                    width: '100%',
+                                    flex: 1,
                                     backgroundColor: 'transparent',
                                     border: 'none',
-                                    borderRadius: '12px',
                                     color: '#ffffff',
                                     padding: '16px 20px',
                                     fontSize: '18px',
@@ -433,6 +501,33 @@ const TipModal = ({
                                 }}
                                 required
                             />
+                            <button
+                                type="button"
+                                onClick={handleMaxClick}
+                                style={{
+                                    backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                                    border: '1px solid rgba(255, 215, 0, 0.4)',
+                                    borderRadius: '8px',
+                                    color: '#ffd700',
+                                    padding: '8px 12px',
+                                    margin: '8px',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    letterSpacing: '0.5px'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.backgroundColor = 'rgba(255, 215, 0, 0.3)';
+                                    e.target.style.borderColor = 'rgba(255, 215, 0, 0.6)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.backgroundColor = 'rgba(255, 215, 0, 0.2)';
+                                    e.target.style.borderColor = 'rgba(255, 215, 0, 0.4)';
+                                }}
+                            >
+                                MAX
+                            </button>
                         </div>
                         {selectedToken && tokenMetadata[selectedToken] && (
                             <div style={{
@@ -504,42 +599,49 @@ const TipModal = ({
                             border: '1px solid rgba(255, 255, 255, 0.1)',
                             borderRadius: '12px',
                             padding: '16px 20px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px'
+                            maxWidth: '100%'
                         }}>
                             <div style={{
-                                width: '40px',
-                                height: '40px',
-                                borderRadius: '50%',
-                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                fontSize: '14px',
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                marginBottom: '8px'
+                            }}>
+                                Post Creator
+                            </div>
+                            <div style={{
                                 display: 'flex',
                                 alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '16px',
-                                fontWeight: 'bold',
-                                color: '#ffffff',
-                                flexShrink: 0
+                                gap: '12px'
                             }}>
-                                {post.created_by.toString().slice(0, 2).toUpperCase()}
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
                                     fontSize: '14px',
-                                    color: 'rgba(255, 255, 255, 0.7)',
-                                    marginBottom: '4px'
-                                }}>
-                                    Post Creator
-                                </div>
-                                <div style={{
-                                    fontSize: '13px',
+                                    fontWeight: 'bold',
                                     color: '#ffffff',
-                                    fontFamily: 'monospace',
-                                    wordBreak: 'break-all',
-                                    lineHeight: '1.3',
-                                    opacity: 0.8
+                                    flexShrink: 0
                                 }}>
-                                    {post.created_by.toString()}
+                                    {post.created_by.toString().slice(0, 2).toUpperCase()}
+                                </div>
+                                <div style={{ 
+                                    flex: 1, 
+                                    minWidth: 0,
+                                    fontSize: '15px',
+                                    fontWeight: '500'
+                                }}>
+                                    <PrincipalDisplay 
+                                        principal={post.created_by} 
+                                        maxLength={20}
+                                        style={{
+                                            color: '#ffffff',
+                                            fontSize: '15px'
+                                        }}
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -590,7 +692,11 @@ const TipModal = ({
                                 fontWeight: '500',
                                 transition: 'all 0.2s ease',
                                 backdropFilter: 'blur(10px)',
-                                opacity: isSubmitting ? 0.6 : 1
+                                opacity: isSubmitting ? 0.6 : 1,
+                                height: '56px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
                             }}
                             onMouseEnter={(e) => {
                                 if (!isSubmitting) {
@@ -628,7 +734,8 @@ const TipModal = ({
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '8px'
+                                gap: '8px',
+                                height: '56px'
                             }}
                             onMouseEnter={(e) => {
                                 if (!isSubmitting && selectedToken && amount) {
