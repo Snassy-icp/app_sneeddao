@@ -50,47 +50,13 @@ const Posts = () => {
             setMyPosts(myPostsData || []);
             setRepliesToMe(repliesToMeData || []);
 
-            // Collect all unique principals from posts for display info
-            const allPrincipals = new Set();
-            
-            // Add principals from my posts
-            myPostsData?.forEach(post => {
-                if (post.created_by) {
-                    allPrincipals.add(post.created_by.toString());
-                }
-            });
-
-            // Add principals from replies to me
-            repliesToMeData?.forEach(post => {
-                if (post.created_by) {
-                    allPrincipals.add(post.created_by.toString());
-                }
-            });
-
-            // Fetch display info for all principals
-            const principalArray = Array.from(allPrincipals);
-            await fetchAllNames(principalArray);
-            
-            // Build display info map
-            const displayInfo = new Map();
-            principalArray.forEach(principalStr => {
-                const info = getPrincipalDisplayInfoFromContext(
-                    principalStr, 
-                    principalNames, 
-                    principalNicknames
-                );
-                displayInfo.set(principalStr, info);
-            });
-            
-            setPrincipalDisplayInfo(displayInfo);
-
         } catch (err) {
             console.error('Error fetching posts data:', err);
             setError(err.message || 'Failed to load posts');
         } finally {
             setLoading(false);
         }
-    }, [isAuthenticated, identity, createForumActor, principalNames, principalNicknames, fetchAllNames]);
+    }, [isAuthenticated, identity, createForumActor]);
 
     useEffect(() => {
         if (isAuthenticated) {
@@ -99,6 +65,41 @@ const Posts = () => {
             navigate('/');
         }
     }, [isAuthenticated, fetchPostsData, navigate]);
+
+    // Separate effect to update principal display info when naming context changes
+    useEffect(() => {
+        if (!myPosts.length && !repliesToMe.length) return;
+
+        // Collect all unique principals from posts for display info
+        const allPrincipals = new Set();
+        
+        // Add principals from my posts
+        myPosts.forEach(post => {
+            if (post.created_by) {
+                allPrincipals.add(post.created_by.toString());
+            }
+        });
+
+        // Add principals from replies to me
+        repliesToMe.forEach(post => {
+            if (post.created_by) {
+                allPrincipals.add(post.created_by.toString());
+            }
+        });
+
+        // Build display info map
+        const displayInfo = new Map();
+        Array.from(allPrincipals).forEach(principalStr => {
+            const info = getPrincipalDisplayInfoFromContext(
+                principalStr, 
+                principalNames, 
+                principalNicknames
+            );
+            displayInfo.set(principalStr, info);
+        });
+        
+        setPrincipalDisplayInfo(displayInfo);
+    }, [myPosts, repliesToMe, principalNames, principalNicknames]);
 
     const formatDate = (timestamp) => {
         try {
@@ -116,8 +117,10 @@ const Posts = () => {
     };
 
     const formatScore = (score) => {
+        // Handle BigInt values by converting to Number first
+        const numericScore = typeof score === 'bigint' ? Number(score) : score;
         // Convert from e8s (divide by 10^8)
-        const scoreInTokens = score / 100000000;
+        const scoreInTokens = numericScore / 100000000;
         
         // Format with commas and only necessary decimal places
         if (scoreInTokens === 0) {
@@ -138,8 +141,13 @@ const Posts = () => {
     };
 
     const calculateNetScore = (post) => {
-        const upvotes = Number(post.upvote_score) || 0;
-        const downvotes = Number(post.downvote_score) || 0;
+        // Handle BigInt values by converting to Number
+        const upvotes = typeof post.upvote_score === 'bigint' 
+            ? Number(post.upvote_score) 
+            : (Number(post.upvote_score) || 0);
+        const downvotes = typeof post.downvote_score === 'bigint'
+            ? Number(post.downvote_score)
+            : (Number(post.downvote_score) || 0);
         return upvotes - downvotes;
     };
 

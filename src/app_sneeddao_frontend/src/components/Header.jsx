@@ -130,9 +130,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/me',
             subMenu: [
                 { name: 'Me', path: '/me' },
-                { name: 'My Rewards', path: '/rewards' },
                 { name: 'My Posts', path: '/posts' },
-                { name: 'My Tips', path: '/tips' }
+                { name: 'My Tips', path: '/tips' },
+                { name: 'My Rewards', path: '/rewards' }
             ]
         },
         'Hub': {
