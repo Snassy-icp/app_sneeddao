@@ -1684,8 +1684,8 @@ function ThreadViewer({
                                 </button>
                             )}
 
-                            {/* Edit Button - Only show for post owner */}
-                            {identity && post.created_by.toString() === identity.getPrincipal().toString() && (
+                            {/* Edit Button - Show for post owner or admin */}
+                            {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
                                 <button
                                     onClick={() => startEditPost(post)}
                                     style={{
@@ -1705,8 +1705,8 @@ function ThreadViewer({
                                 </button>
                             )}
 
-                            {/* Delete Button - Only show for post owner */}
-                            {identity && post.created_by.toString() === identity.getPrincipal().toString() && (
+                            {/* Delete Button - Show for post owner or admin */}
+                            {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
                                 <button
                                     onClick={() => handleDeletePost(post.id)}
                                     disabled={deletingPost === Number(post.id)}
