@@ -843,6 +843,9 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                 default: return '#95a5a6';
             }
         };
+
+        // Calculate correct transaction ID (same logic as table view)
+        const txId = !principalId ? startTxIndex + index : (tx.id || index);
         
         return (
             <div key={index} style={styles.transactionCard}>
@@ -856,9 +859,19 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                     >
                         {txType}
                     </div>
-                    <div style={{ color: '#888', fontSize: '12px' }}>
-                        #{tx.id || index}
-                    </div>
+                    <Link 
+                        to={`/transaction?sns=${snsRootCanisterId}&id=${txId}`}
+                        style={{
+                            color: '#3498db',
+                            textDecoration: 'none',
+                            fontSize: '12px',
+                            ':hover': {
+                                textDecoration: 'underline'
+                            }
+                        }}
+                    >
+                        #{txId}
+                    </Link>
                 </div>
                 
                 {fromPrincipal && (
