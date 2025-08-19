@@ -194,6 +194,12 @@ function ThreadViewer({
             console.log('Posts result:', posts);
             
             if (posts && posts.length > 0) {
+                console.log('Posts with scores:', posts.map(p => ({
+                    id: p.id,
+                    score_up: p.score_up,
+                    score_down: p.score_down,
+                    title: p.title
+                })));
                 setDiscussionPosts(posts);
                 
                 // Fetch tips for all posts
@@ -245,7 +251,9 @@ function ThreadViewer({
         setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
 
         try {
-            const result = await forumActor.vote_on_post(Number(postId), voteType);
+            // Convert vote type to match Discussion.jsx format
+            const voteType_backend = voteType === 'up' ? 'upvote' : 'downvote';
+            const result = await forumActor.vote_on_post(Number(postId), voteType_backend);
             if ('ok' in result) {
                 setVotingStates(prev => new Map(prev.set(postIdStr, 'success')));
                 setUserVotes(prev => new Map(prev.set(postIdStr, { vote_type: voteType, voting_power: totalVotingPower })));
@@ -478,6 +486,32 @@ function ThreadViewer({
         return buildPostTree(discussionPosts);
     }, [discussionPosts, mode, focusedPostId, buildPostTree]);
 
+    // Get posts for display based on view mode
+    const displayPosts = React.useMemo(() => {
+        const posts = getDisplayPosts();
+        
+        if (viewMode === 'flat') {
+            // For flat view, flatten all posts and sort by creation time
+            const flattenPosts = (posts) => {
+                let result = [];
+                posts.forEach(post => {
+                    result.push(post);
+                    if (post.replies && post.replies.length > 0) {
+                        result = result.concat(flattenPosts(post.replies));
+                    }
+                });
+                return result;
+            };
+            
+            return flattenPosts(posts).sort((a, b) => 
+                Number(a.created_at) - Number(b.created_at)
+            );
+        }
+        
+        // For tree view, return hierarchical structure
+        return posts;
+    }, [getDisplayPosts, viewMode]);
+
     // Effect to fetch principal display info
     useEffect(() => {
         const fetchPrincipalInfo = async () => {
@@ -562,8 +596,6 @@ function ThreadViewer({
             </div>
         );
     }
-
-    const displayPosts = getDisplayPosts();
 
     return (
         <div className="discussion-container">
@@ -657,6 +689,31 @@ function ThreadViewer({
                 {/* Post content - simplified for now */}
                 <div className="post-content">
                     <div className="post-header">
+                        {/* Collapse button for posts with replies */}
+                        {!isFlat && post.replies && post.replies.length > 0 && (
+                            <button
+                                onClick={() => {
+                                    const newCollapsed = new Set(collapsedPosts);
+                                    if (isCollapsed) {
+                                        newCollapsed.delete(Number(post.id));
+                                    } else {
+                                        newCollapsed.add(Number(post.id));
+                                    }
+                                    setCollapsedPosts(newCollapsed);
+                                }}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#888',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    marginRight: '8px'
+                                }}
+                                title={isCollapsed ? 'Expand replies' : 'Collapse replies'}
+                            >
+                                {isCollapsed ? '▶' : '▼'}
+                            </button>
+                        )}
                         <span className="post-id">#{post.id.toString()}</span>
                         {post.title && <h4>{post.title}</h4>}
                         <span className="post-author">
@@ -742,7 +799,7 @@ function ThreadViewer({
                                     gap: '4px'
                                 }}
                             >
-                                👍 {post.score_up || 0}
+                                👍 {Number(post.score_up) || 0}
                             </button>
 
                             <button
@@ -761,7 +818,7 @@ function ThreadViewer({
                                     gap: '4px'
                                 }}
                             >
-                                👎 {post.score_down || 0}
+                                👎 {Number(post.score_down) || 0}
                             </button>
 
                             {/* Tip Button */}
