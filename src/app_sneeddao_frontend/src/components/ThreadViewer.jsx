@@ -331,6 +331,78 @@ function ThreadViewer({
     const [threadContext, setThreadContext] = useState(null);
     const [snsRootCanisterId, setSnsRootCanisterId] = useState(null);
 
+    // Helper function to find a post by ID
+    const findPostById = (postsList, postId) => {
+        return postsList.find(p => Number(p.id) === Number(postId));
+    };
+
+    // Helper function to derive display title for presentation (from original Discussion.jsx)
+    const getDerivedTitle = (post, parentPost = null) => {
+        // If post has an explicit title, use it
+        if (post.title && post.title.length > 0) {
+            return post.title[0];
+        }
+        
+        // If it's a reply to a post, recursively find the first ancestor with a title
+        if (post.reply_to_post_id && post.reply_to_post_id.length > 0) {
+            // If we have a parent post, check if it has a title
+            if (parentPost) {
+                if (parentPost.title && parentPost.title.length > 0) {
+                    const parentTitle = parentPost.title[0];
+                    // Check if parent title already starts with "Re: "
+                    if (parentTitle.startsWith('Re: ')) {
+                        return parentTitle; // Don't add another "Re: "
+                    } else {
+                        return `Re: ${parentTitle}`;
+                    }
+                } else {
+                    // Parent has no title, so recursively check the parent's parent
+                    const grandparentPost = parentPost.reply_to_post_id && parentPost.reply_to_post_id.length > 0
+                        ? findPostById(discussionPosts, parentPost.reply_to_post_id[0])
+                        : null;
+                    
+                    if (grandparentPost) {
+                        // Recursively get the derived title from the grandparent
+                        const ancestorTitle = getDerivedTitle(parentPost, grandparentPost);
+                        // If the ancestor title already starts with "Re: ", use it as is
+                        if (ancestorTitle.startsWith('Re: ')) {
+                            return ancestorTitle;
+                        } else {
+                            return `Re: ${ancestorTitle}`;
+                        }
+                    } else {
+                        // No grandparent found, fall back to thread title
+                        if (threadData && threadData.title && threadData.title.length > 0) {
+                            return `Re: ${threadData.title[0]}`;
+                        } else {
+                            return `Re: Thread #${threadData?.id || threadId || 'Unknown'}`;
+                        }
+                    }
+                }
+            } else {
+                // No parent post provided, try to find it
+                const foundParent = findPostById(discussionPosts, post.reply_to_post_id[0]);
+                if (foundParent) {
+                    return getDerivedTitle(post, foundParent);
+                } else {
+                    // Parent not found, fall back to thread title
+                    if (threadData && threadData.title && threadData.title.length > 0) {
+                        return `Re: ${threadData.title[0]}`;
+                    } else {
+                        return `Re: Thread #${threadData?.id || threadId || 'Unknown'}`;
+                    }
+                }
+            }
+        }
+        
+        // If it's a top-level post in a thread, use thread title
+        if (threadData && threadData.title && threadData.title.length > 0) {
+            return threadData.title[0];
+        } else {
+            return `Thread #${threadData?.id || threadId || 'Unknown'}`;
+        }
+    };
+
     // Calculate total reachable voting power from SNS-specific neurons (for forum voting)
     const totalVotingPower = React.useMemo(() => {
         if (!allNeurons || allNeurons.length === 0 || !snsRootCanisterId) return 0;
@@ -1050,6 +1122,26 @@ function ThreadViewer({
                             displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
                             showCopyButton={false} 
                         /></span>
+                        <span>•</span>
+                        <span>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
+                        {viewMode === 'flat' && post.reply_to_post_id && post.reply_to_post_id.length > 0 && (() => {
+                            const parentPost = findPostById(discussionPosts, post.reply_to_post_id[0]);
+                            if (parentPost) {
+                                const parentParentPost = parentPost.reply_to_post_id && parentPost.reply_to_post_id.length > 0 
+                                    ? findPostById(discussionPosts, parentPost.reply_to_post_id[0])
+                                    : null;
+                                const parentDerivedTitle = getDerivedTitle(parentPost, parentParentPost);
+                                return (
+                                    <>
+                                        <span>•</span>
+                                        <span style={{ color: '#3498db' }}>
+                                            Reply to #{Number(post.reply_to_post_id[0])}: {parentDerivedTitle}
+                                        </span>
+                                    </>
+                                );
+                            }
+                            return null;
+                        })()}
                     </div>
                     {/* Post body - hide when editing */}
                     {editingPost !== Number(post.id) && (
