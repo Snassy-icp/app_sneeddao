@@ -398,37 +398,42 @@ function Proposals() {
                                     marginBottom: '15px'
                                 }}
                             >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                                    <div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
-                                            <h3 style={{ color: '#ffffff', margin: '0' }}>
-                                                {formatProposalIdLink(proposal.id[0].id.toString(), selectedSnsRoot)}
-                                            </h3>
-                                            <div style={{
-                                                padding: '4px 8px',
-                                                borderRadius: '4px',
-                                                backgroundColor: '#3a3a3a',
-                                                color: '#ffffff',
-                                                fontSize: '12px'
-                                            }}>
-                                                {getProposalStatus(proposal)}
-                                            </div>
+                                <div style={{ marginBottom: '15px' }}>
+                                    {/* Title and Status Row - Full Width */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px', flexWrap: 'wrap' }}>
+                                        <h3 style={{ color: '#ffffff', margin: '0' }}>
+                                            {formatProposalIdLink(proposal.id[0].id.toString(), selectedSnsRoot)}
+                                        </h3>
+                                        <div style={{
+                                            padding: '4px 8px',
+                                            borderRadius: '4px',
+                                            backgroundColor: '#3a3a3a',
+                                            color: '#ffffff',
+                                            fontSize: '12px'
+                                        }}>
+                                            {getProposalStatus(proposal)}
                                         </div>
-                                        <h4 style={{ color: '#ffffff', margin: '0 0 5px 0' }}>
-                                            <Link 
-                                                to={`/proposal?proposalid=${proposal.id[0].id.toString()}&sns=${selectedSnsRoot}`}
-                                                style={{
-                                                    color: '#ffffff',
-                                                    textDecoration: 'none',
-                                                    cursor: 'pointer'
-                                                }}
-                                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                                            >
-                                                {proposal.proposal[0]?.title || 'No title'}
-                                            </Link>
-                                        </h4>
-                                        <div style={{ color: '#888', fontSize: '14px', marginBottom: '5px' }}>
+                                    </div>
+                                    
+                                    {/* Proposal Title - Full Width */}
+                                    <h4 style={{ color: '#ffffff', margin: '0 0 8px 0', lineHeight: '1.3' }}>
+                                        <Link 
+                                            to={`/proposal?proposalid=${proposal.id[0].id.toString()}&sns=${selectedSnsRoot}`}
+                                            style={{
+                                                color: '#ffffff',
+                                                textDecoration: 'none',
+                                                cursor: 'pointer'
+                                            }}
+                                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                        >
+                                            {proposal.proposal[0]?.title || 'No title'}
+                                        </Link>
+                                    </h4>
+                                    
+                                    {/* Topic and Proposer - Full Width */}
+                                    <div style={{ marginBottom: '10px' }}>
+                                        <div style={{ color: '#888', fontSize: '14px', marginBottom: '4px' }}>
                                             Topic: {(() => {
                                                 const actionType = getProposalActionType(proposal);
                                                 const topicOption = topicOptions.find(opt => opt.value === actionType);
@@ -439,7 +444,14 @@ function Proposals() {
                                             Proposed by: {proposal.proposer?.[0]?.id ? formatNeuronIdLink(proposal.proposer[0].id, selectedSnsRoot) : 'Unknown'}
                                         </div>
                                     </div>
-                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                                    
+                                    {/* External Links - Responsive Row */}
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        gap: '8px', 
+                                        flexWrap: 'wrap',
+                                        alignItems: 'center'
+                                    }}>
                                         <a 
                                             href={`https://nns.ic0.app/proposal/?u=${selectedSnsRoot}&proposal=${proposal.id[0].id.toString()}`}
                                             target="_blank"

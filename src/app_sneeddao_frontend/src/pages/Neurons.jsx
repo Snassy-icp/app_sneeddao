@@ -910,7 +910,8 @@ function Neurons() {
                     marginBottom: '20px',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '20px'
+                    gap: '15px',
+                    flexWrap: 'wrap'
                 }}>
                     <div style={{ color: '#888', fontSize: '14px', fontWeight: 'bold' }}>Sort by:</div>
                     <div 
