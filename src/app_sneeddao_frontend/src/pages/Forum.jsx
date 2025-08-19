@@ -29,14 +29,9 @@ const styles = {
     },
     topicsGrid: {
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-        gap: '25px',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+        gap: '20px',
         marginTop: '30px'
-    },
-    topicSection: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px'
     },
     topicCard: {
         backgroundColor: '#2a2a2a',
@@ -87,44 +82,32 @@ const styles = {
         marginBottom: '20px',
         textAlign: 'center'
     },
-    childTopics: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px',
-        marginLeft: '15px'
-    },
-    childTopicCard: {
+    subtopicsList: {
+        marginBottom: '12px',
+        padding: '10px',
         backgroundColor: '#1a1a1a',
-        borderRadius: '6px',
-        padding: '12px 15px',
-        border: '1px solid #2a2a2a',
-        transition: 'all 0.2s ease',
+        borderRadius: '4px',
+        border: '1px solid #333'
+    },
+    subtopicsLabel: {
+        color: '#888',
+        fontSize: '0.9rem',
+        fontWeight: '500'
+    },
+    subtopicsText: {
+        color: '#ccc',
+        fontSize: '0.9rem',
+        lineHeight: '1.4'
+    },
+    subtopicLink: {
+        color: '#3498db',
         cursor: 'pointer',
         textDecoration: 'none',
-        color: 'inherit',
-        borderLeft: '3px solid #3498db'
-    },
-    childTopicCardHover: {
-        borderColor: '#3498db',
-        backgroundColor: '#222',
-        transform: 'translateX(3px)'
-    },
-    childTopicTitle: {
-        color: '#ffffff',
-        fontSize: '1rem',
-        fontWeight: '500',
-        marginBottom: '5px',
-        margin: 0
-    },
-    childTopicDescription: {
-        color: '#aaa',
-        fontSize: '0.85rem',
-        lineHeight: '1.4',
-        margin: 0,
-        display: '-webkit-box',
-        WebkitLineClamp: 2,
-        WebkitBoxOrient: 'vertical',
-        overflow: 'hidden'
+        transition: 'color 0.2s ease',
+        ':hover': {
+            color: '#5dade2',
+            textDecoration: 'underline'
+        }
     },
     noTopics: {
         textAlign: 'center',
@@ -277,57 +260,57 @@ function Forum() {
                         </p>
                     </div>
 
-                    {/* Topics Hierarchy */}
+                    {/* Topics Grid */}
                     {topicHierarchy.length > 0 ? (
                         <div style={styles.topicsGrid}>
                             {topicHierarchy.map((rootTopic) => (
-                                <div key={rootTopic.id} style={styles.topicSection}>
-                                    {/* Root Topic Card */}
-                                    <Link
-                                        to={`/topic/${rootTopic.id}`}
-                                        style={{
-                                            ...styles.topicCard,
-                                            ...(hoveredCard === rootTopic.id ? styles.topicCardHover : {})
-                                        }}
-                                        onMouseEnter={() => setHoveredCard(rootTopic.id)}
-                                        onMouseLeave={() => setHoveredCard(null)}
-                                    >
-                                        <h3 style={styles.topicTitle}>{rootTopic.title}</h3>
-                                        <p style={styles.topicDescription}>
-                                            {rootTopic.description || 'No description available'}
-                                        </p>
-                                        <div style={styles.topicMeta}>
-                                            <span>Created {formatDate(rootTopic.created_at)}</span>
-                                            {rootTopic.children.length > 0 && (
-                                                <span>{rootTopic.children.length} subtopic{rootTopic.children.length !== 1 ? 's' : ''}</span>
-                                            )}
-                                            <span>→</span>
-                                        </div>
-                                    </Link>
+                                <Link
+                                    key={rootTopic.id}
+                                    to={`/topic/${rootTopic.id}`}
+                                    style={{
+                                        ...styles.topicCard,
+                                        ...(hoveredCard === rootTopic.id ? styles.topicCardHover : {})
+                                    }}
+                                    onMouseEnter={() => setHoveredCard(rootTopic.id)}
+                                    onMouseLeave={() => setHoveredCard(null)}
+                                >
+                                    <h3 style={styles.topicTitle}>{rootTopic.title}</h3>
+                                    <p style={styles.topicDescription}>
+                                        {rootTopic.description || 'No description available'}
+                                    </p>
                                     
-                                    {/* Child Topics */}
+                                    {/* Subtopics List */}
                                     {rootTopic.children.length > 0 && (
-                                        <div style={styles.childTopics}>
-                                            {rootTopic.children.map((childTopic) => (
-                                                <Link
-                                                    key={childTopic.id}
-                                                    to={`/topic/${childTopic.id}`}
-                                                    style={{
-                                                        ...styles.childTopicCard,
-                                                        ...(hoveredCard === childTopic.id ? styles.childTopicCardHover : {})
-                                                    }}
-                                                    onMouseEnter={() => setHoveredCard(childTopic.id)}
-                                                    onMouseLeave={() => setHoveredCard(null)}
-                                                >
-                                                    <h4 style={styles.childTopicTitle}>{childTopic.title}</h4>
-                                                    <p style={styles.childTopicDescription}>
-                                                        {childTopic.description || 'No description available'}
-                                                    </p>
-                                                </Link>
-                                            ))}
+                                        <div style={styles.subtopicsList}>
+                                            <span style={styles.subtopicsLabel}>Subtopics: </span>
+                                            <span style={styles.subtopicsText}>
+                                                {rootTopic.children.map((child, index) => (
+                                                    <span key={child.id}>
+                                                        <span 
+                                                            style={styles.subtopicLink}
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                window.location.href = `/topic/${child.id}`;
+                                                            }}
+                                                        >
+                                                            {child.title}
+                                                        </span>
+                                                        {index < rootTopic.children.length - 1 && ', '}
+                                                    </span>
+                                                ))}
+                                            </span>
                                         </div>
                                     )}
-                                </div>
+                                    
+                                    <div style={styles.topicMeta}>
+                                        <span>Created {formatDate(rootTopic.created_at)}</span>
+                                        {rootTopic.children.length > 0 && (
+                                            <span>{rootTopic.children.length} subtopic{rootTopic.children.length !== 1 ? 's' : ''}</span>
+                                        )}
+                                        <span>→</span>
+                                    </div>
+                                </Link>
                             ))}
                         </div>
                     ) : (
