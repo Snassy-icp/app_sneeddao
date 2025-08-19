@@ -266,6 +266,7 @@ export default function Me() {
                     }
                     .principal-quick-links-container > div:last-child {
                         width: 100% !important;
+                        max-width: 300px !important;
                     }
                 }
             </style>
