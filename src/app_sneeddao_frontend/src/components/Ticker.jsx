@@ -7,19 +7,19 @@ const Ticker = ({ text = '', onTipClick, onReplyClick }) => {
   
   if (!text) return null;
 
-  const handleClick = (e) => {
-    // Check if clicked text contains tip notification
-    if (text.includes('💰 You have') && text.includes('new tip')) {
-      e.preventDefault();
+  const handleClick = (e, clickedPart) => {
+    e.preventDefault();
+    
+    // Check if clicked part contains tip notification
+    if (clickedPart.includes('💰 You have') && clickedPart.includes('new tip')) {
       if (onTipClick) {
         onTipClick();
       } else {
         navigate('/tips');
       }
     }
-    // Check if clicked text contains reply notification
-    else if (text.includes('💬 You have') && text.includes('new repl')) {
-      e.preventDefault();
+    // Check if clicked part contains reply notification
+    else if (clickedPart.includes('💬 You have') && clickedPart.includes('new repl')) {
       if (onReplyClick) {
         onReplyClick();
       } else {
@@ -41,7 +41,7 @@ const Ticker = ({ text = '', onTipClick, onReplyClick }) => {
           {index > 0 && <span className="ticker-separator">  •  </span>}
           <span 
             className={`ticker-part ${isNotification ? 'ticker-notification' : ''}`}
-            onClick={isNotification ? handleClick : undefined}
+            onClick={isNotification ? (e) => handleClick(e, part) : undefined}
             style={{
               cursor: isNotification ? 'pointer' : 'default',
               textDecoration: isNotification ? 'underline' : 'none'
