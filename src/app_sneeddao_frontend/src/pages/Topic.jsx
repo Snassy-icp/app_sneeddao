@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
+import { useTextLimits } from '../hooks/useTextLimits';
 
 const styles = {
     container: {
@@ -154,48 +155,82 @@ const styles = {
     createThreadSection: {
         backgroundColor: '#2a2a2a',
         borderRadius: '8px',
-        padding: '20px',
+        padding: '25px',
         border: '1px solid #3a3a3a',
-        marginTop: '30px'
+        marginTop: '30px',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
     },
     form: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '15px'
+        gap: '20px'
+    },
+    inputGroup: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px'
     },
     input: {
         backgroundColor: '#1a1a1a',
-        border: '1px solid #3a3a3a',
-        borderRadius: '4px',
-        padding: '12px',
+        border: '1px solid #4a4a4a',
+        borderRadius: '6px',
+        padding: '14px 16px',
         color: '#ffffff',
-        fontSize: '0.95rem'
+        fontSize: '1rem',
+        transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+        fontFamily: 'inherit'
+    },
+    inputFocus: {
+        borderColor: '#3498db',
+        boxShadow: '0 0 0 2px rgba(52, 152, 219, 0.2)',
+        outline: 'none'
+    },
+    inputError: {
+        borderColor: '#e74c3c',
+        boxShadow: '0 0 0 2px rgba(231, 76, 60, 0.2)'
     },
     textarea: {
         backgroundColor: '#1a1a1a',
-        border: '1px solid #3a3a3a',
-        borderRadius: '4px',
-        padding: '12px',
+        border: '1px solid #4a4a4a',
+        borderRadius: '6px',
+        padding: '14px 16px',
         color: '#ffffff',
-        fontSize: '0.95rem',
-        minHeight: '120px',
-        resize: 'vertical'
+        fontSize: '1rem',
+        minHeight: '140px',
+        resize: 'vertical',
+        transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+        fontFamily: 'inherit',
+        lineHeight: '1.5'
+    },
+    characterCounter: {
+        fontSize: '0.85rem',
+        textAlign: 'right',
+        marginTop: '4px'
     },
     submitButton: {
         backgroundColor: '#3498db',
         color: '#ffffff',
         border: 'none',
-        borderRadius: '4px',
-        padding: '12px 20px',
+        borderRadius: '6px',
+        padding: '14px 28px',
         cursor: 'pointer',
-        fontSize: '0.95rem',
-        fontWeight: '500',
-        alignSelf: 'flex-start'
+        fontSize: '1rem',
+        fontWeight: '600',
+        alignSelf: 'flex-start',
+        transition: 'all 0.2s ease',
+        boxShadow: '0 2px 4px rgba(52, 152, 219, 0.2)'
+    },
+    submitButtonHover: {
+        backgroundColor: '#2980b9',
+        transform: 'translateY(-1px)',
+        boxShadow: '0 4px 8px rgba(52, 152, 219, 0.3)'
     },
     submitButtonDisabled: {
         backgroundColor: '#555',
         cursor: 'not-allowed',
-        opacity: 0.6
+        opacity: 0.6,
+        transform: 'none',
+        boxShadow: 'none'
     },
     loading: {
         textAlign: 'center',
@@ -239,6 +274,17 @@ function Topic() {
     const [createThreadTitle, setCreateThreadTitle] = useState('');
     const [createThreadBody, setCreateThreadBody] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    
+    // Get forum actor for text limits
+    const forumActor = identity ? createActor(canisterId, {
+        agentOptions: {
+            host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+            identity: identity,
+        },
+    }) : null;
+    
+    // Get text limits
+    const { textLimits } = useTextLimits(forumActor);
 
     useEffect(() => {
         if (!topicId) {
@@ -526,28 +572,100 @@ function Topic() {
                     <div style={styles.createThreadSection}>
                         <h2 style={styles.sectionTitle}>Start a New Thread</h2>
                         <form style={styles.form} onSubmit={handleCreateThread}>
-                            <input
-                                type="text"
-                                placeholder="Thread title"
-                                value={createThreadTitle}
-                                onChange={(e) => setCreateThreadTitle(e.target.value)}
-                                style={styles.input}
-                                disabled={submitting}
-                            />
-                            <textarea
-                                placeholder="What would you like to discuss?"
-                                value={createThreadBody}
-                                onChange={(e) => setCreateThreadBody(e.target.value)}
-                                style={styles.textarea}
-                                disabled={submitting}
-                            />
+                            {/* Title Input */}
+                            <div style={styles.inputGroup}>
+                                <input
+                                    type="text"
+                                    placeholder="Thread title"
+                                    value={createThreadTitle}
+                                    onChange={(e) => setCreateThreadTitle(e.target.value)}
+                                    style={{
+                                        ...styles.input,
+                                        ...(textLimits && createThreadTitle.length > textLimits.thread_title_max_length ? styles.inputError : {})
+                                    }}
+                                    disabled={submitting}
+                                    onFocus={(e) => {
+                                        e.target.style.borderColor = '#3498db';
+                                        e.target.style.boxShadow = '0 0 0 2px rgba(52, 152, 219, 0.2)';
+                                    }}
+                                    onBlur={(e) => {
+                                        e.target.style.borderColor = textLimits && createThreadTitle.length > textLimits.thread_title_max_length ? '#e74c3c' : '#4a4a4a';
+                                        e.target.style.boxShadow = 'none';
+                                    }}
+                                />
+                                {textLimits && (
+                                    <div style={{
+                                        ...styles.characterCounter,
+                                        color: createThreadTitle.length > textLimits.thread_title_max_length ? '#e74c3c' : 
+                                               (textLimits.thread_title_max_length - createThreadTitle.length) < 20 ? '#f39c12' : '#888'
+                                    }}>
+                                        {createThreadTitle.length}/{textLimits.thread_title_max_length} characters
+                                        {createThreadTitle.length > textLimits.thread_title_max_length && 
+                                            <span style={{ marginLeft: '10px' }}>({createThreadTitle.length - textLimits.thread_title_max_length} over limit)</span>
+                                        }
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Body Textarea */}
+                            <div style={styles.inputGroup}>
+                                <textarea
+                                    placeholder="What would you like to discuss?"
+                                    value={createThreadBody}
+                                    onChange={(e) => setCreateThreadBody(e.target.value)}
+                                    style={{
+                                        ...styles.textarea,
+                                        ...(textLimits && createThreadBody.length > textLimits.thread_body_max_length ? styles.inputError : {})
+                                    }}
+                                    disabled={submitting}
+                                    onFocus={(e) => {
+                                        e.target.style.borderColor = '#3498db';
+                                        e.target.style.boxShadow = '0 0 0 2px rgba(52, 152, 219, 0.2)';
+                                    }}
+                                    onBlur={(e) => {
+                                        e.target.style.borderColor = textLimits && createThreadBody.length > textLimits.thread_body_max_length ? '#e74c3c' : '#4a4a4a';
+                                        e.target.style.boxShadow = 'none';
+                                    }}
+                                />
+                                {textLimits && (
+                                    <div style={{
+                                        ...styles.characterCounter,
+                                        color: createThreadBody.length > textLimits.thread_body_max_length ? '#e74c3c' : 
+                                               (textLimits.thread_body_max_length - createThreadBody.length) < 100 ? '#f39c12' : '#888'
+                                    }}>
+                                        {createThreadBody.length}/{textLimits.thread_body_max_length} characters
+                                        {createThreadBody.length > textLimits.thread_body_max_length && 
+                                            <span style={{ marginLeft: '10px' }}>({createThreadBody.length - textLimits.thread_body_max_length} over limit)</span>
+                                        }
+                                    </div>
+                                )}
+                            </div>
+
                             <button
                                 type="submit"
                                 style={{
                                     ...styles.submitButton,
-                                    ...(submitting || !createThreadTitle.trim() || !createThreadBody.trim() ? styles.submitButtonDisabled : {})
+                                    ...(submitting || !createThreadTitle.trim() || !createThreadBody.trim() || 
+                                        (textLimits && (createThreadTitle.length > textLimits.thread_title_max_length || 
+                                                       createThreadBody.length > textLimits.thread_body_max_length)) ? styles.submitButtonDisabled : {})
                                 }}
-                                disabled={submitting || !createThreadTitle.trim() || !createThreadBody.trim()}
+                                disabled={submitting || !createThreadTitle.trim() || !createThreadBody.trim() || 
+                                         (textLimits && (createThreadTitle.length > textLimits.thread_title_max_length || 
+                                                        createThreadBody.length > textLimits.thread_body_max_length))}
+                                onMouseEnter={(e) => {
+                                    if (!e.target.disabled) {
+                                        e.target.style.backgroundColor = '#2980b9';
+                                        e.target.style.transform = 'translateY(-1px)';
+                                        e.target.style.boxShadow = '0 4px 8px rgba(52, 152, 219, 0.3)';
+                                    }
+                                }}
+                                onMouseLeave={(e) => {
+                                    if (!e.target.disabled) {
+                                        e.target.style.backgroundColor = '#3498db';
+                                        e.target.style.transform = 'none';
+                                        e.target.style.boxShadow = '0 2px 4px rgba(52, 152, 219, 0.2)';
+                                    }
+                                }}
                             >
                                 {submitting ? 'Creating...' : 'Create Thread'}
                             </button>
