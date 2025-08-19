@@ -262,15 +262,16 @@ function Topic() {
                 },
             });
 
-            // Get topic details
+            // Get topic details - Motoko optionals are serialized as arrays
             const topicResponse = await forumActor.get_topic(parseInt(topicId));
             
-            if (!topicResponse) {
+            if (!topicResponse || topicResponse.length === 0) {
                 setError('Topic not found');
                 return;
             }
 
-            setTopic(topicResponse);
+            const topic = topicResponse[0];
+            setTopic(topic);
 
             // Get subtopics
             const subtopicsResponse = await forumActor.get_subtopics(parseInt(topicId));
@@ -279,8 +280,6 @@ function Topic() {
 
             // Get threads for this topic
             const threadsResponse = await forumActor.get_threads_by_topic(parseInt(topicId));
-            
-            console.log('Threads response:', threadsResponse);
             
             if (threadsResponse) {
                 // Filter out deleted threads

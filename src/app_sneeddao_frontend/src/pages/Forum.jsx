@@ -129,25 +129,17 @@ function Forum() {
             const snsRootPrincipal = Principal.fromText(selectedSnsRoot);
             const forumResponse = await forumActor.get_forum_by_sns_root(snsRootPrincipal);
             
-            console.log('Forum response:', forumResponse);
-            
-            if (!forumResponse) {
+            // Motoko optionals are serialized as arrays: [] for null, [value] for Some(value)
+            if (!forumResponse || forumResponse.length === 0) {
                 setError('This SNS does not have a forum yet. Forums are created automatically when needed.');
                 return;
             }
 
-            // Check if forum response has valid id
-            if (forumResponse.id === undefined || forumResponse.id === null) {
-                console.error('Forum response missing id:', forumResponse);
-                setError('Invalid forum data received');
-                return;
-            }
-
-            setForum(forumResponse);
+            const forum = forumResponse[0];
+            setForum(forum);
 
             // Get topics for this forum
-            console.log('Fetching topics for forum ID:', forumResponse.id);
-            const topicsResponse = await forumActor.get_topics_by_forum(forumResponse.id);
+            const topicsResponse = await forumActor.get_topics_by_forum(Number(forum.id));
             
             // Filter out deleted topics and only show root-level topics (no parent)
             const rootTopics = topicsResponse.filter(topic => !topic.deleted && !topic.parent_topic_id);
