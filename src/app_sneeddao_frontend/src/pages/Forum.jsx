@@ -89,11 +89,6 @@ const styles = {
         borderRadius: '4px',
         border: '1px solid #333'
     },
-    subtopicsLabel: {
-        color: '#888',
-        fontSize: '0.9rem',
-        fontWeight: '500'
-    },
     subtopicsText: {
         color: '#ccc',
         fontSize: '0.9rem',
@@ -282,7 +277,6 @@ function Forum() {
                                     {/* Subtopics List */}
                                     {rootTopic.children.length > 0 && (
                                         <div style={styles.subtopicsList}>
-                                            <span style={styles.subtopicsLabel}>Subtopics: </span>
                                             <span style={styles.subtopicsText}>
                                                 {rootTopic.children.map((child, index) => (
                                                     <span key={child.id}>
