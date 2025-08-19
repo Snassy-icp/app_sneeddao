@@ -139,7 +139,7 @@ const Post = () => {
                     isAuthenticated={isAuthenticated}
                     onError={handleError}
                     showCreatePost={true}
-                    title={postDetails?.title ? `Post: ${postDetails.title}` : `Post #${postId}`}
+
                 />
             </div>
         </div>
