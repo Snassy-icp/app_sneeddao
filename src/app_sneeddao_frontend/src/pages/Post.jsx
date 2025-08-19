@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
@@ -16,8 +16,10 @@ const Post = () => {
 
     const [threadId, setThreadId] = useState(null);
     const [postDetails, setPostDetails] = useState(null);
+    const [topicInfo, setTopicInfo] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [breadcrumbLoading, setBreadcrumbLoading] = useState(true);
 
     // Get SNS from URL params if provided
     const snsParam = searchParams.get('sns');
@@ -35,6 +37,7 @@ const Post = () => {
 
             try {
                 setLoading(true);
+                setBreadcrumbLoading(true);
                 setError(null);
 
                 console.log('Fetching post details for post ID:', postId);
@@ -45,6 +48,22 @@ const Post = () => {
                     console.log('Post details:', post);
                     setPostDetails(post);
                     setThreadId(Number(post.thread_id));
+
+                    // Fetch thread to get topic_id, then fetch topic info
+                    try {
+                        const threadResponse = await forumActor.get_thread(Number(post.thread_id));
+                        if (threadResponse && threadResponse.length > 0) {
+                            const thread = threadResponse[0];
+                            
+                            // Get topic information
+                            const topicResponse = await forumActor.get_topic(Number(thread.topic_id));
+                            if (topicResponse && topicResponse.length > 0) {
+                                setTopicInfo(topicResponse[0]);
+                            }
+                        }
+                    } catch (topicError) {
+                        console.error('Error fetching topic info for breadcrumb:', topicError);
+                    }
                 } else {
                     setError('Post not found');
                 }
@@ -53,6 +72,7 @@ const Post = () => {
                 setError(err.message || 'Failed to load post');
             } finally {
                 setLoading(false);
+                setBreadcrumbLoading(false);
             }
         };
 
@@ -130,6 +150,59 @@ const Post = () => {
         <div className="post-page">
             <Header showSnsDropdown={true} />
             <div className="post-container">
+                {/* Breadcrumb */}
+                {!breadcrumbLoading && topicInfo && (
+                    <div style={{
+                        marginBottom: '20px',
+                        fontSize: '0.9rem'
+                    }}>
+                        <Link 
+                            to="/forum" 
+                            style={{
+                                color: '#3498db',
+                                textDecoration: 'none'
+                            }}
+                        >
+                            Forum
+                        </Link>
+                        <span style={{
+                            color: '#888',
+                            margin: '0 8px'
+                        }}>›</span>
+                        <Link 
+                            to={`/topic/${topicInfo.id}`}
+                            style={{
+                                color: '#3498db',
+                                textDecoration: 'none'
+                            }}
+                        >
+                            {topicInfo.title}
+                        </Link>
+                        <span style={{
+                            color: '#888',
+                            margin: '0 8px'
+                        }}>›</span>
+                        <Link 
+                            to={`/thread?threadid=${threadId}`}
+                            style={{
+                                color: '#3498db',
+                                textDecoration: 'none'
+                            }}
+                        >
+                            Thread
+                        </Link>
+                        <span style={{
+                            color: '#888',
+                            margin: '0 8px'
+                        }}>›</span>
+                        <span style={{
+                            color: '#ccc'
+                        }}>
+                            Post
+                        </span>
+                    </div>
+                )}
+                
                 <ThreadViewer
                     forumActor={forumActor}
                     mode="post"
