@@ -559,12 +559,41 @@ function ThreadViewer({
                 // Auto-upvote if user has voting power
                 if (allNeurons && allNeurons.length > 0 && totalVotingPower > 0) {
                     try {
+                        // Set voting state to show spinner
+                        const postIdStr = postId.toString();
+                        setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
+                        
                         await forumActor.vote_on_post(Number(postId), { upvote: null });
+                        
+                        // Set success state and user vote
+                        setVotingStates(prev => new Map(prev.set(postIdStr, 'success')));
+                        setUserVotes(prev => new Map(prev.set(postIdStr, { vote_type: 'up', voting_power: totalVotingPower })));
+                        
                         // Refresh again to show the upvote
                         await fetchPosts();
+                        
+                        // Clear voting state after a delay
+                        setTimeout(() => {
+                            setVotingStates(prev => {
+                                const newState = new Map(prev);
+                                newState.delete(postIdStr);
+                                return newState;
+                            });
+                        }, 2000);
                     } catch (voteError) {
                         console.error('Error auto-upvoting new post:', voteError);
-                        // Don't fail the whole operation if auto-upvote fails
+                        // Set error state
+                        const postIdStr = postId.toString();
+                        setVotingStates(prev => new Map(prev.set(postIdStr, 'error')));
+                        
+                        // Clear error state after a delay
+                        setTimeout(() => {
+                            setVotingStates(prev => {
+                                const newState = new Map(prev);
+                                newState.delete(postIdStr);
+                                return newState;
+                            });
+                        }, 3000);
                     }
                 }
             } else {
@@ -671,12 +700,54 @@ function ThreadViewer({
             
             if ('ok' in result) {
                 console.log('Reply created successfully, post ID:', result.ok);
+                const postId = result.ok;
                 
                 // Clear form immediately
                 setReplyingTo(null);
                 
-                // Refresh thread data to show the new post
-                await fetchThreadData();
+                // Refresh posts to show the new reply
+                await fetchPosts();
+                
+                // Auto-upvote if user has voting power
+                if (allNeurons && allNeurons.length > 0 && totalVotingPower > 0) {
+                    try {
+                        // Set voting state to show spinner
+                        const postIdStr = postId.toString();
+                        setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
+                        
+                        await forumActor.vote_on_post(Number(postId), { upvote: null });
+                        
+                        // Set success state and user vote
+                        setVotingStates(prev => new Map(prev.set(postIdStr, 'success')));
+                        setUserVotes(prev => new Map(prev.set(postIdStr, { vote_type: 'up', voting_power: totalVotingPower })));
+                        
+                        // Refresh again to show the upvote
+                        await fetchPosts();
+                        
+                        // Clear voting state after a delay
+                        setTimeout(() => {
+                            setVotingStates(prev => {
+                                const newState = new Map(prev);
+                                newState.delete(postIdStr);
+                                return newState;
+                            });
+                        }, 2000);
+                    } catch (voteError) {
+                        console.error('Error auto-upvoting new reply:', voteError);
+                        // Set error state
+                        const postIdStr = postId.toString();
+                        setVotingStates(prev => new Map(prev.set(postIdStr, 'error')));
+                        
+                        // Clear error state after a delay
+                        setTimeout(() => {
+                            setVotingStates(prev => {
+                                const newState = new Map(prev);
+                                newState.delete(postIdStr);
+                                return newState;
+                            });
+                        }, 3000);
+                    }
+                }
             } else {
                 console.error('Failed to create reply:', result.err);
                 if (onError) onError('Failed to create reply: ' + result.err);
@@ -687,7 +758,7 @@ function ThreadViewer({
         } finally {
             setSubmittingComment(false);
         }
-    }, [forumActor, threadId, onError, fetchThreadData]);
+    }, [forumActor, threadId, onError, fetchPosts, allNeurons, totalVotingPower]);
 
     const openTipModal = useCallback((post) => {
         setSelectedPostForTip(post);
@@ -1115,13 +1186,26 @@ function ThreadViewer({
                                     width: '100%',
                                     backgroundColor: '#2a2a2a',
                                     color: '#ffffff',
-                                    border: '1px solid #444',
+                                    border: `1px solid ${textLimits && commentTitle.length > textLimits.max_title_length ? '#e74c3c' : '#444'}`,
                                     borderRadius: '4px',
                                     padding: '10px',
-                                    marginBottom: '10px',
+                                    marginBottom: '5px',
                                     fontSize: '14px'
                                 }}
                             />
+                            {textLimits && (
+                                <div style={{
+                                    fontSize: '12px',
+                                    color: commentTitle.length > textLimits.max_title_length ? '#e74c3c' : 
+                                           (textLimits.max_title_length - commentTitle.length) < 20 ? '#f39c12' : '#888',
+                                    marginBottom: '10px'
+                                }}>
+                                    Title: {commentTitle.length}/{textLimits.max_title_length} characters
+                                    {commentTitle.length > textLimits.max_title_length && 
+                                        <span style={{ marginLeft: '10px' }}>({commentTitle.length - textLimits.max_title_length} over limit)</span>
+                                    }
+                                </div>
+                            )}
                             <textarea
                                 value={commentText}
                                 onChange={(e) => setCommentText(e.target.value)}
@@ -1130,14 +1214,28 @@ function ThreadViewer({
                                     width: '100%',
                                     backgroundColor: '#2a2a2a',
                                     color: '#ffffff',
-                                    border: '1px solid #444',
+                                    border: `1px solid ${textLimits && commentText.length > textLimits.max_body_length ? '#e74c3c' : '#444'}`,
                                     borderRadius: '4px',
                                     padding: '10px',
                                     fontSize: '14px',
                                     minHeight: '100px',
-                                    resize: 'vertical'
+                                    resize: 'vertical',
+                                    marginBottom: '5px'
                                 }}
                             />
+                            {textLimits && (
+                                <div style={{
+                                    fontSize: '12px',
+                                    color: commentText.length > textLimits.max_body_length ? '#e74c3c' : 
+                                           (textLimits.max_body_length - commentText.length) < 100 ? '#f39c12' : '#888',
+                                    marginBottom: '10px'
+                                }}>
+                                    Body: {commentText.length}/{textLimits.max_body_length} characters
+                                    {commentText.length > textLimits.max_body_length && 
+                                        <span style={{ marginLeft: '10px' }}>({commentText.length - textLimits.max_body_length} over limit)</span>
+                                    }
+                                </div>
+                            )}
                             <div style={{ 
                                 display: 'flex', 
                                 gap: '10px', 
@@ -1164,14 +1262,20 @@ function ThreadViewer({
                                 </button>
                                 <button
                                     onClick={submitComment}
-                                    disabled={submittingComment || !commentText.trim()}
+                                    disabled={submittingComment || !commentText.trim() || 
+                                             (textLimits && (commentTitle.length > textLimits.max_title_length || 
+                                                            commentText.length > textLimits.max_body_length))}
                                     style={{
-                                        backgroundColor: submittingComment || !commentText.trim() ? '#666' : '#2ecc71',
+                                        backgroundColor: (submittingComment || !commentText.trim() || 
+                                                         (textLimits && (commentTitle.length > textLimits.max_title_length || 
+                                                                        commentText.length > textLimits.max_body_length))) ? '#666' : '#2ecc71',
                                         color: '#ffffff',
                                         border: 'none',
                                         borderRadius: '4px',
                                         padding: '8px 16px',
-                                        cursor: submittingComment || !commentText.trim() ? 'not-allowed' : 'pointer',
+                                        cursor: (submittingComment || !commentText.trim() || 
+                                                (textLimits && (commentTitle.length > textLimits.max_title_length || 
+                                                               commentText.length > textLimits.max_body_length))) ? 'not-allowed' : 'pointer',
                                         fontSize: '14px'
                                     }}
                                 >
