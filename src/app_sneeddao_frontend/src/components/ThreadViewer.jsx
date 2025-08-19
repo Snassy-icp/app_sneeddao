@@ -241,6 +241,29 @@ function ThreadViewer({
     // Tokens hook for tipping
     const { tokens: availableTokens, loading: tokensLoading, refreshTokenBalance } = useTokens(identity);
     
+    // Format vote scores like Discussion.jsx
+    const formatScore = (score) => {
+        // Convert from e8s (divide by 10^8)
+        const scoreInTokens = score / 100000000;
+        
+        // Format with commas and only necessary decimal places
+        if (scoreInTokens === 0) {
+            return '0';
+        } else if (Math.abs(scoreInTokens) >= 1) {
+            // For values >= 1, show up to 2 decimal places, removing trailing zeros
+            return scoreInTokens.toLocaleString('en-US', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            });
+        } else {
+            // For values < 1, show up to 8 decimal places, removing trailing zeros
+            return scoreInTokens.toLocaleString('en-US', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 8
+            });
+        }
+    };
+    
     // State for discussion
     const [threadDetails, setThreadDetails] = useState(null);
     const [discussionPosts, setDiscussionPosts] = useState([]);
@@ -365,8 +388,23 @@ function ThreadViewer({
                 setVotingStates(prev => new Map(prev.set(postIdStr, 'success')));
                 setUserVotes(prev => new Map(prev.set(postIdStr, { vote_type: voteType, voting_power: totalVotingPower })));
                 
-                // Refresh thread data to get updated scores
-                await fetchThreadData();
+                // Update post scores locally without full reload
+                setDiscussionPosts(prev => prev.map(post => {
+                    if (Number(post.id) === Number(postId)) {
+                        // Estimate the new scores based on voting power
+                        const votingPowerE8s = totalVotingPower * 100_000_000; // Convert to e8s
+                        return {
+                            ...post,
+                            upvote_score: voteType === 'up' 
+                                ? (Number(post.upvote_score) || 0) + votingPowerE8s
+                                : post.upvote_score,
+                            downvote_score: voteType === 'down' 
+                                ? (Number(post.downvote_score) || 0) + votingPowerE8s
+                                : post.downvote_score
+                        };
+                    }
+                    return post;
+                }));
                 
                 // Clear voting state after a delay
                 setTimeout(() => {
@@ -379,12 +417,30 @@ function ThreadViewer({
             } else {
                 console.error('Vote failed:', result.err);
                 setVotingStates(prev => new Map(prev.set(postIdStr, 'error')));
+                
+                // Clear error state after a delay
+                setTimeout(() => {
+                    setVotingStates(prev => {
+                        const newState = new Map(prev);
+                        newState.delete(postIdStr);
+                        return newState;
+                    });
+                }, 3000);
             }
         } catch (error) {
             console.error('Error voting on post:', error);
             setVotingStates(prev => new Map(prev.set(postIdStr, 'error')));
+            
+            // Clear error state after a delay
+            setTimeout(() => {
+                setVotingStates(prev => {
+                    const newState = new Map(prev);
+                    newState.delete(postIdStr);
+                    return newState;
+                });
+            }, 3000);
         }
-    }, [forumActor, allNeurons, totalVotingPower, fetchThreadData]);
+    }, [forumActor, allNeurons, totalVotingPower]);
 
     const submitReply = useCallback(async (parentPostId, replyText) => {
         if (!replyText.trim() || !forumActor || !threadId) return;
@@ -847,6 +903,7 @@ function ThreadViewer({
                         setSelectedPostForTip(null);
                         setTippingState('idle');
                     }}
+                    post={selectedPostForTip}
                     availableTokens={availableTokens}
                     onTip={handleTip}
                     isLoading={tippingState === 'transferring' || tippingState === 'registering'}
@@ -964,17 +1021,18 @@ function ThreadViewer({
                                 style={{
                                     backgroundColor: 'transparent',
                                     border: 'none',
-                                    color: userVotes.get(post.id.toString())?.vote_type === 'up' ? '#2ecc71' : '#6b8eb8',
+                                    color: userVotes.get(post.id.toString())?.vote_type === 'upvote' ? '#2ecc71' : '#6b8eb8',
                                     borderRadius: '4px',
                                     padding: '4px 8px',
-                                    cursor: 'pointer',
+                                    cursor: votingStates.get(post.id.toString()) === 'voting' ? 'not-allowed' : 'pointer',
                                     fontSize: '12px',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '4px'
+                                    gap: '4px',
+                                    opacity: votingStates.get(post.id.toString()) === 'voting' ? 0.6 : 1
                                 }}
                             >
-                                👍 {Number(post.upvote_score) || 0}
+                                {votingStates.get(post.id.toString()) === 'voting' ? '⏳' : '👍'} {formatScore(Number(post.upvote_score) || 0)}
                             </button>
 
                             <button
@@ -983,37 +1041,40 @@ function ThreadViewer({
                                 style={{
                                     backgroundColor: 'transparent',
                                     border: 'none',
-                                    color: userVotes.get(post.id.toString())?.vote_type === 'down' ? '#e74c3c' : '#6b8eb8',
+                                    color: userVotes.get(post.id.toString())?.vote_type === 'downvote' ? '#e74c3c' : '#6b8eb8',
                                     borderRadius: '4px',
                                     padding: '4px 8px',
-                                    cursor: 'pointer',
+                                    cursor: votingStates.get(post.id.toString()) === 'voting' ? 'not-allowed' : 'pointer',
                                     fontSize: '12px',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '4px'
+                                    gap: '4px',
+                                    opacity: votingStates.get(post.id.toString()) === 'voting' ? 0.6 : 1
                                 }}
                             >
-                                👎 {Number(post.downvote_score) || 0}
+                                {votingStates.get(post.id.toString()) === 'voting' ? '⏳' : '👎'} {formatScore(Number(post.downvote_score) || 0)}
                             </button>
 
-                            {/* Tip Button */}
-                            <button
-                                onClick={() => openTipModal(post)}
-                                style={{
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    color: '#f39c12',
-                                    borderRadius: '4px',
-                                    padding: '4px 8px',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}
-                            >
-                                💰 Tip
-                            </button>
+                            {/* Tip Button - Only show for posts by other users */}
+                            {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
+                                <button
+                                    onClick={() => openTipModal(post)}
+                                    style={{
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: '#f39c12',
+                                        borderRadius: '4px',
+                                        padding: '4px 8px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}
+                                >
+                                    💰 Tip
+                                </button>
+                            )}
 
                             {/* Edit Button - Only show for post owner */}
                             {identity && post.created_by.toString() === identity.getPrincipal().toString() && (
