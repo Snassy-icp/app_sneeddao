@@ -28,7 +28,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const [activeSection, setActiveSection] = useState(() => {
         const path = location.pathname;
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
-        if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
+        if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
         if (['/wallet'].includes(path)) return 'Wallet';
         if (['/me', '/rewards', '/tips', '/posts'].includes(path)) return 'Me';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
@@ -231,8 +231,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         const legacyMappings = {
             '/proposals': ['/proposal'],
             '/neurons': ['/neuron'],
-            '/transactions': ['/transaction']
+            '/transactions': ['/transaction'],
+            '/forum': ['/thread', '/post']
         };
+        
+        // Special handling for topic routes (dynamic paths)
+        if (itemPath === '/forum' && currentPath.startsWith('/topic/')) {
+            return true;
+        }
         
         return legacyMappings[itemPath]?.includes(currentPath) || false;
     };
