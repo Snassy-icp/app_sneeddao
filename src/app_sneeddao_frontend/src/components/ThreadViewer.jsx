@@ -196,8 +196,8 @@ function ThreadViewer({
             if (posts && posts.length > 0) {
                 console.log('Posts with scores:', posts.map(p => ({
                     id: p.id,
-                    score_up: p.score_up,
-                    score_down: p.score_down,
+                    upvote_score: p.upvote_score,
+                    downvote_score: p.downvote_score,
                     title: p.title
                 })));
                 setDiscussionPosts(posts);
@@ -251,9 +251,9 @@ function ThreadViewer({
         setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
 
         try {
-            // Convert vote type to match Discussion.jsx format
-            const voteType_backend = voteType === 'up' ? 'upvote' : 'downvote';
-            const result = await forumActor.vote_on_post(Number(postId), voteType_backend);
+            // Convert vote type to proper Candid variant format
+            const voteVariant = voteType === 'up' ? { upvote: null } : { downvote: null };
+            const result = await forumActor.vote_on_post(Number(postId), voteVariant);
             if ('ok' in result) {
                 setVotingStates(prev => new Map(prev.set(postIdStr, 'success')));
                 setUserVotes(prev => new Map(prev.set(postIdStr, { vote_type: voteType, voting_power: totalVotingPower })));
@@ -799,7 +799,7 @@ function ThreadViewer({
                                     gap: '4px'
                                 }}
                             >
-                                👍 {Number(post.score_up) || 0}
+                                👍 {Number(post.upvote_score) || 0}
                             </button>
 
                             <button
@@ -818,7 +818,7 @@ function ThreadViewer({
                                     gap: '4px'
                                 }}
                             >
-                                👎 {Number(post.score_down) || 0}
+                                👎 {Number(post.downvote_score) || 0}
                             </button>
 
                             {/* Tip Button */}
