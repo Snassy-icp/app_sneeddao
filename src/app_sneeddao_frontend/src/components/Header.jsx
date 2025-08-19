@@ -514,7 +514,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
-                    justifyContent: 'center',
+                    justifyContent: 'flex-end',
                     width: '100%',
                     paddingTop: '8px',
                     borderTop: '1px solid rgba(255,255,255,0.1)',
