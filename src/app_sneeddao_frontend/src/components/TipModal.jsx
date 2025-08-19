@@ -743,7 +743,8 @@ const TipModal = ({
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
-                        marginTop: '8px'
+                        marginTop: '8px',
+                        gap: '20px'
                     }}>
                         <button
                             type="button"
