@@ -71,16 +71,22 @@ const Tips = () => {
                 getTipsGivenByUser(forumActor, userPrincipal)
             ]);
 
-            console.log('Tips data:', { received, given });
-            if (received.length > 0) {
-                console.log('Sample tip structure:', received[0]);
+            // Sort tips newest first
+            const sortedReceived = received.sort((a, b) => Number(b.created_at) - Number(a.created_at));
+            const sortedGiven = given.sort((a, b) => Number(b.created_at) - Number(a.created_at));
+            
+            if (sortedReceived.length > 0) {
+                sortedReceived.forEach((tip, index) => {
+                    const tipDate = new Date(Number(tip.created_at) / 1_000_000);
+                    const isNew = Number(tip.created_at) > currentOldTimestamp;
+                });
             }
 
-            setTipsReceived(received);
-            setTipsGiven(given);
+            setTipsReceived(sortedReceived);
+            setTipsGiven(sortedGiven);
 
             // Collect all unique principals and tokens for metadata fetching
-            const allTips = [...received, ...given];
+            const allTips = [...sortedReceived, ...sortedGiven];
             const uniquePrincipals = new Set();
             const uniqueTokens = new Set();
 
@@ -140,7 +146,8 @@ const Tips = () => {
 
     // Helper function to check if a tip is new (for highlighting)
     const isTipNew = (tipTimestamp) => {
-        return tipTimestamp > oldTimestamp;
+        const isNew = Number(tipTimestamp) > oldTimestamp;
+        return isNew;
     };
 
     // Helper functions for token display
