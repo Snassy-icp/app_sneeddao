@@ -379,10 +379,10 @@ function ThreadViewer({
                         }
                     } else {
                         // No grandparent found, fall back to thread title
-                        if (threadData && threadData.title && threadData.title.length > 0) {
-                            return `Re: ${threadData.title[0]}`;
+                        if (threadDetails && threadDetails.title && threadDetails.title.length > 0) {
+                            return `Re: ${threadDetails.title[0]}`;
                         } else {
-                            return `Re: Thread #${threadData?.id || threadId || 'Unknown'}`;
+                            return `Re: Thread #${threadDetails?.id || threadId || 'Unknown'}`;
                         }
                     }
                 }
@@ -393,20 +393,20 @@ function ThreadViewer({
                     return getDerivedTitle(post, foundParent);
                 } else {
                     // Parent not found, fall back to thread title
-                    if (threadData && threadData.title && threadData.title.length > 0) {
-                        return `Re: ${threadData.title[0]}`;
+                    if (threadDetails && threadDetails.title && threadDetails.title.length > 0) {
+                        return `Re: ${threadDetails.title[0]}`;
                     } else {
-                        return `Re: Thread #${threadData?.id || threadId || 'Unknown'}`;
+                        return `Re: Thread #${threadDetails?.id || threadId || 'Unknown'}`;
                     }
                 }
             }
         }
         
         // If it's a top-level post in a thread, use thread title
-        if (threadData && threadData.title && threadData.title.length > 0) {
-            return threadData.title[0];
+        if (threadDetails && threadDetails.title && threadDetails.title.length > 0) {
+            return threadDetails.title[0];
         } else {
-            return `Thread #${threadData?.id || threadId || 'Unknown'}`;
+            return `Thread #${threadDetails?.id || threadId || 'Unknown'}`;
         }
     };
 
