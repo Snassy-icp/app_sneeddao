@@ -1170,7 +1170,18 @@ function ThreadViewer({
                             fontSize: '13px',
                             fontWeight: '500'
                         }}>
-                            Viewing Post #{focusedPostId} in context
+                            Viewing <a 
+                                href={`/post?postid=${focusedPostId}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none',
+                                    fontWeight: '500'
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                Post #{focusedPostId}
+                            </a> in context
                         </p>
                         <a 
                             href={`/thread?threadid=${threadId}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
@@ -1459,7 +1470,19 @@ function ThreadViewer({
                                 {isCollapsed ? '+' : '−'}
                             </button>
                         )}
-                        <span className="post-id">#{post.id.toString()}</span>
+                        <a 
+                            href={`/post?postid=${post.id}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
+                            className="post-id"
+                            style={{
+                                color: '#3498db',
+                                textDecoration: 'none',
+                                fontWeight: '500'
+                            }}
+                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                        >
+                            #{post.id.toString()}
+                        </a>
                         {post.title && <h4>{post.title}</h4>}
                         <span>By: <PrincipalDisplay 
                             principal={post.created_by} 
@@ -1479,7 +1502,18 @@ function ThreadViewer({
                                     <>
                                         <span>•</span>
                                         <span style={{ color: '#3498db' }}>
-                                            Reply to #{Number(post.reply_to_post_id[0])}: {parentDerivedTitle}
+                                            Reply to <a 
+                                                href={`/post?postid=${Number(post.reply_to_post_id[0])}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
+                                                style={{
+                                                    color: '#3498db',
+                                                    textDecoration: 'none',
+                                                    fontWeight: '500'
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                            >
+                                                #{Number(post.reply_to_post_id[0])}
+                                            </a>: {parentDerivedTitle}
                                         </span>
                                     </>
                                 );
