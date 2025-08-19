@@ -166,6 +166,7 @@ const Posts = () => {
     };
 
     const renderPost = (post, isReply = false) => {
+        console.log('Rendering post:', { id: post.id, type: typeof post.id, reply_to: post.reply_to_post_id });
         const netScore = calculateNetScore(post);
         const isNegative = netScore < 0;
         
@@ -201,7 +202,7 @@ const Posts = () => {
                             }}
                             onClick={(e) => e.stopPropagation()} // Prevent triggering the parent onClick
                         >
-                            #{post.id}
+                            #{Number(post.id)}
                         </a>
                         {isReply && (
                             <span className="reply-indicator">Reply from {getPrincipalDisplay(post.created_by)}</span>
@@ -236,7 +237,7 @@ const Posts = () => {
                             onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
                             onClick={(e) => e.stopPropagation()} // Prevent triggering the parent onClick
                         >
-                            post #{post.reply_to_post_id[0]}
+                            post #{Number(post.reply_to_post_id[0])}
                         </a></span>
                     </div>
                 )}
