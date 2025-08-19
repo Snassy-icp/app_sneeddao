@@ -334,7 +334,7 @@ function Topic() {
 
             const result = await forumActor.create_thread({
                 topic_id: parseInt(topicId),
-                title: createThreadTitle.trim(),
+                title: [createThreadTitle.trim()], // Motoko optional: Some(value) = [value]
                 body: createThreadBody.trim()
             });
 
