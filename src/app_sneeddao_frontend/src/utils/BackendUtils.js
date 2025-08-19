@@ -477,6 +477,26 @@ export const getTipsByThread = async (forumActor, threadId) => {
     }
 };
 
+export const getPostsByUser = async (forumActor, userPrincipal) => {
+    try {
+        const result = await forumActor.get_posts_by_user(userPrincipal);
+        return result;
+    } catch (error) {
+        console.error('Error getting posts by user:', error);
+        throw error;
+    }
+};
+
+export const getRepliesToUser = async (forumActor, userPrincipal) => {
+    try {
+        const result = await forumActor.get_replies_to_user(userPrincipal);
+        return result;
+    } catch (error) {
+        console.error('Error getting replies to user:', error);
+        throw error;
+    }
+};
+
 export const getTipsGivenByUser = async (forumActor, userPrincipal) => {
     try {
         const result = await forumActor.get_tips_given_by_user(userPrincipal);

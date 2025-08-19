@@ -51,6 +51,7 @@ import ToolsMain from './pages/ToolsMain';
 import ToolsEscrow from './pages/ToolsEscrow';
 import EscrowSwap from './pages/EscrowSwap';
 import Tips from './pages/Tips';
+import Posts from './pages/Posts';
 import Thread from './pages/Thread';
 import Post from './pages/Post';
 
@@ -108,6 +109,7 @@ function App() {
                     <Route path="/proposals" element={<Proposals />} />
                     <Route path="/rewards" element={<Rewards />} />
                     <Route path="/tips" element={<Tips />} />
+                    <Route path="/posts" element={<Posts />} />
                     <Route path="/thread" element={<Thread />} />
                     <Route path="/post" element={<Post />} />
                     <Route path="/disclaimer" element={<Disclaimer />} />
