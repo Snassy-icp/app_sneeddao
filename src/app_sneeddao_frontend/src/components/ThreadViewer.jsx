@@ -10,7 +10,11 @@ import { formatPrincipal, getPrincipalDisplayInfoFromContext } from '../utils/Pr
 import { Principal } from '@dfinity/principal';
 import { 
     getTipsByPost, 
-    createTip
+    createTip,
+    updatePost,
+    deletePost,
+    updateThread,
+    deleteThread
 } from '../utils/BackendUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import TipModal from './TipModal';
@@ -148,8 +152,7 @@ function ThreadViewer({
     const [commentTitle, setCommentTitle] = useState('');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     
-    // State for editing posts
-    const [editingPost, setEditingPost] = useState(null);
+    // State for editing posts (moved to Edit/Delete states section)
     const [submittingEdit, setSubmittingEdit] = useState(false);
     
     // State for view mode and interactions
@@ -170,6 +173,12 @@ function ThreadViewer({
     const [tipModalOpen, setTipModalOpen] = useState(false);
     const [selectedPostForTip, setSelectedPostForTip] = useState(null);
     const [tippingState, setTippingState] = useState('idle'); // 'idle', 'transferring', 'registering', 'success', 'error'
+
+    // Edit/Delete states
+    const [editingPost, setEditingPost] = useState(null); // postId being edited
+    const [editFormData, setEditFormData] = useState({ title: '', body: '' });
+    const [updatingPost, setUpdatingPost] = useState(false);
+    const [deletingPost, setDeletingPost] = useState(null); // postId being deleted
     const [postTips, setPostTips] = useState({});
 
     // Fetch thread details and posts
@@ -389,7 +398,76 @@ function ThreadViewer({
         }
     }, [forumActor, selectedPostForTip, identity, refreshTokenBalance, closeTipModal]);
 
+    // Edit handlers
+    const startEditPost = useCallback((post) => {
+        setEditingPost(Number(post.id));
+        setEditFormData({
+            title: post.title || '',
+            body: post.body || ''
+        });
+    }, []);
 
+    const cancelEditPost = useCallback(() => {
+        setEditingPost(null);
+        setEditFormData({ title: '', body: '' });
+    }, []);
+
+    const saveEditPost = useCallback(async () => {
+        if (!forumActor || !editingPost) return;
+
+        setUpdatingPost(true);
+        try {
+            const result = await updatePost(
+                forumActor,
+                editingPost,
+                editFormData.title.trim() || null,
+                editFormData.body.trim()
+            );
+
+            if ('ok' in result) {
+                console.log('Post updated successfully');
+                setEditingPost(null);
+                setEditFormData({ title: '', body: '' });
+                // Refresh thread data to show updated post
+                await fetchThreadData();
+            } else {
+                console.error('Failed to update post:', result.err);
+                alert('Failed to update post: ' + (result.err?.InvalidInput || result.err?.Unauthorized || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error updating post:', error);
+            alert('Error updating post: ' + error.message);
+        } finally {
+            setUpdatingPost(false);
+        }
+    }, [forumActor, editingPost, editFormData, fetchThreadData]);
+
+    // Delete handlers
+    const handleDeletePost = useCallback(async (postId) => {
+        if (!forumActor) return;
+
+        const confirmed = window.confirm('Are you sure you want to delete this post? This action cannot be undone.');
+        if (!confirmed) return;
+
+        setDeletingPost(Number(postId));
+        try {
+            const result = await deletePost(forumActor, postId);
+
+            if ('ok' in result) {
+                console.log('Post deleted successfully');
+                // Refresh thread data to remove deleted post
+                await fetchThreadData();
+            } else {
+                console.error('Failed to delete post:', result.err);
+                alert('Failed to delete post: ' + (result.err?.InvalidInput || result.err?.Unauthorized || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error deleting post:', error);
+            alert('Error deleting post: ' + error.message);
+        } finally {
+            setDeletingPost(null);
+        }
+    }, [forumActor, fetchThreadData]);
 
     // Effect to fetch data when threadId changes
     useEffect(() => {
@@ -735,9 +813,12 @@ function ThreadViewer({
                             })()}
                         </span>
                     </div>
-                    <div className="post-body">
-                        <p>{post.body}</p>
-                    </div>
+                    {/* Post body - hide when editing */}
+                    {editingPost !== Number(post.id) && (
+                        <div className="post-body">
+                            <p>{post.body}</p>
+                        </div>
+                    )}
                     
                     {/* Tips Display */}
                     {postTips[Number(post.id)] && postTips[Number(post.id)].length > 0 && (
@@ -839,6 +920,49 @@ function ThreadViewer({
                             >
                                 💰 Tip
                             </button>
+
+                            {/* Edit Button - Only show for post owner */}
+                            {identity && post.created_by.toString() === identity.getPrincipal().toString() && (
+                                <button
+                                    onClick={() => startEditPost(post)}
+                                    style={{
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: '#9b59b6',
+                                        borderRadius: '4px',
+                                        padding: '4px 8px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}
+                                >
+                                    ✏️ Edit
+                                </button>
+                            )}
+
+                            {/* Delete Button - Only show for post owner */}
+                            {identity && post.created_by.toString() === identity.getPrincipal().toString() && (
+                                <button
+                                    onClick={() => handleDeletePost(post.id)}
+                                    disabled={deletingPost === Number(post.id)}
+                                    style={{
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: deletingPost === Number(post.id) ? '#888' : '#e74c3c',
+                                        borderRadius: '4px',
+                                        padding: '4px 8px',
+                                        cursor: deletingPost === Number(post.id) ? 'not-allowed' : 'pointer',
+                                        fontSize: '12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}
+                                >
+                                    🗑️ {deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}
+                                </button>
+                            )}
                         </div>
                     )}
 
@@ -853,6 +977,104 @@ function ThreadViewer({
                             principalDisplayInfo={principalDisplayInfo}
                             textLimits={textLimits}
                         />
+                    )}
+
+                    {/* Edit Form */}
+                    {editingPost === Number(post.id) && (
+                        <div style={{
+                            marginTop: '15px',
+                            padding: '15px',
+                            border: '1px solid #444',
+                            borderRadius: '8px',
+                            backgroundColor: '#1a1a1a'
+                        }}>
+                            <h4 style={{ margin: '0 0 10px 0', color: '#9b59b6' }}>Edit Post</h4>
+                            
+                            {/* Title field - only show if post has title */}
+                            {post.title && (
+                                <div style={{ marginBottom: '10px' }}>
+                                    <label style={{ display: 'block', marginBottom: '5px', color: '#ccc' }}>
+                                        Title:
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editFormData.title}
+                                        onChange={(e) => setEditFormData(prev => ({ ...prev, title: e.target.value }))}
+                                        style={{
+                                            width: '100%',
+                                            padding: '8px',
+                                            backgroundColor: '#2a2a2a',
+                                            border: '1px solid #555',
+                                            borderRadius: '4px',
+                                            color: '#fff',
+                                            fontSize: '14px'
+                                        }}
+                                        placeholder="Post title"
+                                        maxLength={textLimits?.post_title_max_length || 200}
+                                    />
+                                </div>
+                            )}
+                            
+                            {/* Body field */}
+                            <div style={{ marginBottom: '15px' }}>
+                                <label style={{ display: 'block', marginBottom: '5px', color: '#ccc' }}>
+                                    Body:
+                                </label>
+                                <textarea
+                                    value={editFormData.body}
+                                    onChange={(e) => setEditFormData(prev => ({ ...prev, body: e.target.value }))}
+                                    style={{
+                                        width: '100%',
+                                        minHeight: '100px',
+                                        padding: '8px',
+                                        backgroundColor: '#2a2a2a',
+                                        border: '1px solid #555',
+                                        borderRadius: '4px',
+                                        color: '#fff',
+                                        fontSize: '14px',
+                                        resize: 'vertical'
+                                    }}
+                                    placeholder="Post body"
+                                    maxLength={textLimits?.post_body_max_length || 10000}
+                                />
+                            </div>
+                            
+                            {/* Action buttons */}
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                <button
+                                    onClick={saveEditPost}
+                                    disabled={updatingPost || !editFormData.body.trim()}
+                                    style={{
+                                        backgroundColor: '#9b59b6',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '8px 16px',
+                                        cursor: updatingPost || !editFormData.body.trim() ? 'not-allowed' : 'pointer',
+                                        fontSize: '14px',
+                                        opacity: updatingPost || !editFormData.body.trim() ? 0.6 : 1
+                                    }}
+                                >
+                                    {updatingPost ? '💾 Saving...' : '💾 Save'}
+                                </button>
+                                <button
+                                    onClick={cancelEditPost}
+                                    disabled={updatingPost}
+                                    style={{
+                                        backgroundColor: '#666',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '8px 16px',
+                                        cursor: updatingPost ? 'not-allowed' : 'pointer',
+                                        fontSize: '14px',
+                                        opacity: updatingPost ? 0.6 : 1
+                                    }}
+                                >
+                                    ❌ Cancel
+                                </button>
+                            </div>
+                        </div>
                     )}
                 </div>
                 

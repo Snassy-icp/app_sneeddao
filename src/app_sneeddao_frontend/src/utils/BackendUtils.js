@@ -556,4 +556,56 @@ export const getLastSeenTipTimestamp = async (forumActor, userPrincipal) => {
         console.error('Error getting last seen tip timestamp:', error);
         throw error;
     }
+};
+
+// Update a post
+export const updatePost = async (forumActor, postId, title, body) => {
+    try {
+        const result = await forumActor.update_post(
+            Number(postId),
+            title ? [title] : [], // opt text
+            body
+        );
+        return result;
+    } catch (error) {
+        console.error('Error updating post:', error);
+        throw error;
+    }
+};
+
+// Delete a post
+export const deletePost = async (forumActor, postId) => {
+    try {
+        const result = await forumActor.delete_post(Number(postId));
+        return result;
+    } catch (error) {
+        console.error('Error deleting post:', error);
+        throw error;
+    }
+};
+
+// Update a thread
+export const updateThread = async (forumActor, threadId, title, body) => {
+    try {
+        const result = await forumActor.update_thread(
+            Number(threadId),
+            title ? [title] : [], // opt text
+            body
+        );
+        return result;
+    } catch (error) {
+        console.error('Error updating thread:', error);
+        throw error;
+    }
+};
+
+// Delete a thread
+export const deleteThread = async (forumActor, threadId) => {
+    try {
+        const result = await forumActor.delete_thread(Number(threadId));
+        return result;
+    } catch (error) {
+        console.error('Error deleting thread:', error);
+        throw error;
+    }
 }; 
