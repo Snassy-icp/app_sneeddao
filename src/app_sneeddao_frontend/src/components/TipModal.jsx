@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { Principal } from '@dfinity/principal';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { NamingContext } from '../NamingContext';
 
 // Add CSS animations
@@ -47,7 +47,7 @@ const TipModal = ({
     userPrincipal,
     identity
 }) => {
-    const { principalToName } = useContext(NamingContext);
+    const { principalNames, principalNicknames } = useContext(NamingContext);
     const [selectedToken, setSelectedToken] = useState('');
     const [amount, setAmount] = useState('');
     const [error, setError] = useState('');
@@ -55,6 +55,7 @@ const TipModal = ({
     const [loadingBalances, setLoadingBalances] = useState({});
     const [tokenMetadata, setTokenMetadata] = useState({}); // Store metadata for each token
     const [tokenLogo, setTokenLogo] = useState(null);
+    const [recipientDisplayInfo, setRecipientDisplayInfo] = useState(null);
 
     // Fetch token metadata (fee, decimals, symbol)
     const fetchTokenMetadata = async (tokenPrincipal) => {
@@ -172,6 +173,18 @@ const TipModal = ({
             setTokenLogo(null);
         }
     }, [selectedToken, tokenMetadata]);
+
+    // Calculate recipient display info when post or naming context changes
+    useEffect(() => {
+        if (post?.created_by && principalNames && principalNicknames) {
+            const displayInfo = getPrincipalDisplayInfoFromContext(
+                post.created_by,
+                principalNames,
+                principalNicknames
+            );
+            setRecipientDisplayInfo(displayInfo);
+        }
+    }, [post?.created_by, principalNames, principalNicknames]);
 
     if (!isOpen) return null;
 
@@ -601,8 +614,7 @@ const TipModal = ({
                             background: 'rgba(255, 255, 255, 0.05)',
                             border: '1px solid rgba(255, 255, 255, 0.1)',
                             borderRadius: '12px',
-                            padding: '16px 20px',
-                            width: '100%'
+                            padding: '16px 20px'
                         }}>
                             <div style={{
                                 fontSize: '14px',
@@ -639,8 +651,8 @@ const TipModal = ({
                                 }}>
                                     <PrincipalDisplay 
                                         principal={post.created_by} 
-                                        principalToName={principalToName}
-                                        maxLength={20}
+                                        displayInfo={recipientDisplayInfo}
+                                        showCopyButton={false}
                                         style={{
                                             color: '#ffffff',
                                             fontSize: '15px'
@@ -678,7 +690,8 @@ const TipModal = ({
                     <div style={{
                         display: 'flex',
                         gap: '16px',
-                        marginTop: '8px'
+                        marginTop: '8px',
+                        alignItems: 'stretch'
                     }}>
                         <button
                             type="button"
@@ -690,7 +703,6 @@ const TipModal = ({
                                 border: '1px solid rgba(255, 255, 255, 0.2)',
                                 borderRadius: '12px',
                                 color: 'rgba(255, 255, 255, 0.8)',
-                                padding: '0',
                                 cursor: isSubmitting ? 'not-allowed' : 'pointer',
                                 fontSize: '15px',
                                 fontWeight: '500',
@@ -700,7 +712,8 @@ const TipModal = ({
                                 height: '56px',
                                 display: 'flex',
                                 alignItems: 'center',
-                                justifyContent: 'center'
+                                justifyContent: 'center',
+                                outline: 'none'
                             }}
                             onMouseEnter={(e) => {
                                 if (!isSubmitting) {
@@ -728,7 +741,6 @@ const TipModal = ({
                                 border: 'none',
                                 borderRadius: '12px',
                                 color: (isSubmitting || !selectedToken || !amount) ? 'rgba(255, 255, 255, 0.5)' : '#000000',
-                                padding: '0',
                                 cursor: (isSubmitting || !selectedToken || !amount) ? 'not-allowed' : 'pointer',
                                 fontSize: '15px',
                                 fontWeight: '600',
@@ -739,7 +751,8 @@ const TipModal = ({
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 gap: '8px',
-                                height: '56px'
+                                height: '56px',
+                                outline: 'none'
                             }}
                             onMouseEnter={(e) => {
                                 if (!isSubmitting && selectedToken && amount) {
