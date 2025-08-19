@@ -130,12 +130,13 @@
     border-color: rgba(255, 255, 255, 0.2);
 }
 
-/* Focused Post Styling */
+/* Focused Post Styling - Slick Blue Theme */
 .post-item.focused-post {
-    border: 2px solid #ffd700 !important;
-    background: rgba(255, 215, 0, 0.1) !important;
-    box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+    border: 2px solid #3c6382 !important;
+    background: linear-gradient(135deg, rgba(60, 99, 130, 0.08) 0%, rgba(47, 53, 66, 0.12) 100%) !important;
+    box-shadow: 0 4px 20px rgba(60, 99, 130, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1);
     position: relative;
+    backdrop-filter: blur(1px);
 }
 
 .post-item.focused-post::before {
