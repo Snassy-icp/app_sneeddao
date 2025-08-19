@@ -1159,7 +1159,10 @@ function ThreadViewer({
                         border: '1px solid #34495e',
                         borderRadius: '4px',
                         padding: '8px 12px',
-                        marginTop: '10px'
+                        marginTop: '10px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
                     }}>
                         <p style={{
                             margin: 0,
@@ -1169,6 +1172,23 @@ function ThreadViewer({
                         }}>
                             Viewing Post #{focusedPostId} in context
                         </p>
+                        <a 
+                            href={`/thread?threadid=${threadId}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
+                            style={{
+                                color: '#3498db',
+                                fontSize: '13px',
+                                textDecoration: 'none',
+                                fontWeight: '500',
+                                padding: '4px 8px',
+                                borderRadius: '3px',
+                                backgroundColor: '#34495e',
+                                transition: 'background-color 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = '#4a5f7a'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = '#34495e'}
+                        >
+                            View Full Thread →
+                        </a>
                     </div>
                 )}
             </div>
