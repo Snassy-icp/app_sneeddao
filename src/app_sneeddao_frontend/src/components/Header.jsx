@@ -8,6 +8,8 @@ import SnsDropdown from './SnsDropdown';
 import { useAdminCheck } from '../hooks/useAdminCheck';
 import { useNeurons } from '../contexts/NeuronsContext';
 import { useSns } from '../contexts/SnsContext';
+import { useTipNotifications } from '../hooks/useTipNotifications';
+import { useReplyNotifications } from '../hooks/useReplyNotifications';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { getSnsById } from '../utils/SnsUtils';
@@ -18,6 +20,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const { isAuthenticated, identity, login, logout } = useAuth();
     const { selectedSnsRoot } = useSns();
     const { getAllNeurons, getHotkeyNeurons, loading: neuronsLoading } = useNeurons();
+    const { newTipCount } = useTipNotifications();
+    const { newReplyCount } = useReplyNotifications();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const menuRef = useRef(null);
@@ -229,8 +233,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     };
 
     return (
-        <header className="site-header">
-            <div style={{ display: 'flex', alignItems: 'flex-start', flex: 1, gap: '15px' }}>
+        <header className="site-header" style={{ flexDirection: 'column' }}>
+            {/* Top Row: Logo, Menu, SNS Dropdown, Login */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', width: '100%', gap: '15px' }}>
                 <img
                     src={customLogo || "sneed_logo.png"}
                     alt={customLogo ? "Logo" : "Sneed Logo"}
@@ -354,28 +359,69 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         </div>
                     </div>
                 </div>
-                
-                {/* Neurons and Voting Power Display - Desktop (to the left of SNS dropdown) */}
-                {showSnsDropdown && isAuthenticated && (
+
+                {/* SNS Dropdown and Login moved to top row */}
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                    {showSnsDropdown ? (
+                        <SnsDropdown onSnsChange={onSnsChange} />
+                    ) : (
+                        <img
+                            src={"sneed_logo.png"}
+                            alt={"Sneed Logo"}
+                            style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                objectFit: 'cover',
+                                marginRight: '16px'
+                            }}
+                        />
+                    )}
+                    {isAuthenticated ? (
+                        <PrincipalBox 
+                            principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
+                            onLogout={logout}
+                        />
+                    ) : (
+                        <button
+                            onClick={login}
+                            style={{
+                                padding: '8px 16px',
+                                backgroundColor: '#6B46C1',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Login
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Bottom Row: VP Display and Notification Icons */}
+            {showSnsDropdown && isAuthenticated && (
+                <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    width: '100%',
+                    paddingTop: '8px',
+                    borderTop: '1px solid rgba(255,255,255,0.1)',
+                    marginTop: '8px'
+                }}>
+                    {/* VP Display on the left */}
                     <div style={{
                         display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'flex-end',
-                        marginRight: '15px',
+                        alignItems: 'center',
+                        gap: '20px',
                         fontSize: '12px',
-                        color: '#888',
-                        minWidth: '140px',
-                        '@media (max-width: 768px)': {
-                            display: 'none'
-                        }
-                    }}
-                    className="neurons-display-desktop">
-                        {/* Header to clarify this is about user's neurons */}
+                        color: '#888'
+                    }}>
                         <div style={{ 
                             fontSize: '10px', 
-                            color: '#666', 
-                            marginBottom: '4px',
-                            textAlign: 'right'
+                            color: '#666'
                         }}>
                             Your Neurons
                         </div>
@@ -462,8 +508,59 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             </>
                         )}
                     </div>
-                )}
-            </div>
+
+                    {/* Notification Icons on the right */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px'
+                    }}>
+                        {/* Reply Notifications */}
+                        {newReplyCount > 0 && (
+                            <div 
+                                onClick={() => navigate('/posts')}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '4px 8px',
+                                    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                                    border: '1px solid #FFD700',
+                                    borderRadius: '12px',
+                                    cursor: 'pointer',
+                                    fontSize: '11px',
+                                    color: '#FFD700'
+                                }}
+                                title={`You have ${newReplyCount} new ${newReplyCount === 1 ? 'reply' : 'replies'}`}
+                            >
+                                💬 {newReplyCount}
+                            </div>
+                        )}
+                        
+                        {/* Tip Notifications */}
+                        {newTipCount > 0 && (
+                            <div 
+                                onClick={() => navigate('/tips')}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '4px 8px',
+                                    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                                    border: '1px solid #FFD700',
+                                    borderRadius: '12px',
+                                    cursor: 'pointer',
+                                    fontSize: '11px',
+                                    color: '#FFD700'
+                                }}
+                                title={`You have ${newTipCount} new ${newTipCount === 1 ? 'tip' : 'tips'}`}
+                            >
+                                💰 {newTipCount}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
             
             {/* Mobile Neurons Display - Under logo/dropdown on narrow screens */}
             {showSnsDropdown && isAuthenticated && (
@@ -572,44 +669,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     )}
                 </div>
             )}
-            
-            <div className="header-right" style={{ display: 'flex', alignItems: 'center' }}>
-                {showSnsDropdown ? (
-                    <SnsDropdown onSnsChange={onSnsChange} />
-                ) : (
-                    <img
-                        src={"sneed_logo.png"}
-                        alt={"Sneed Logo"}
-                        style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '50%',
-                            objectFit: 'cover',
-                            marginRight: '16px'
-                        }}
-                    />
-                )}
-                {isAuthenticated ? (
-                    <PrincipalBox 
-                        principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
-                        onLogout={logout}
-                    />
-                ) : (
-                    <button
-                        onClick={login}
-                        style={{
-                            padding: '8px 16px',
-                            backgroundColor: '#6B46C1',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        Login
-                    </button>
-                )}
-            </div>
             {isMenuOpen && (
                 <div 
                     ref={menuRef}
