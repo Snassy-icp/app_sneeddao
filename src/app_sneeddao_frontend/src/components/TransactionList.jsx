@@ -189,6 +189,45 @@ const styles = {
     },
     collapsedIcon: {
         transform: 'rotate(-90deg)'
+    },
+    tableContainer: {
+        display: 'block'
+    },
+    cardsContainer: {
+        display: 'none'
+    },
+    transactionCard: {
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '15px',
+        marginBottom: '10px',
+        border: '1px solid #3a3a3a'
+    },
+    cardHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '10px'
+    },
+    cardType: {
+        padding: '4px 8px',
+        borderRadius: '4px',
+        fontSize: '12px',
+        fontWeight: 'bold',
+        textTransform: 'uppercase'
+    },
+    cardField: {
+        marginBottom: '8px'
+    },
+    cardLabel: {
+        color: '#888',
+        fontSize: '12px',
+        marginBottom: '2px'
+    },
+    cardValue: {
+        color: '#fff',
+        fontSize: '14px',
+        wordBreak: 'break-all'
     }
 };
 
@@ -201,6 +240,36 @@ const TransactionType = {
 };
 
 function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, onToggleCollapse }) {
+    // Add responsive CSS for table/cards switching
+    React.useEffect(() => {
+        const mediaQueryCSS = `
+            <style id="transaction-responsive-css">
+                @media (max-width: 768px) {
+                    .transaction-table-container { display: none !important; }
+                    .transaction-cards-container { display: block !important; }
+                }
+                @media (min-width: 769px) {
+                    .transaction-table-container { display: block !important; }
+                    .transaction-cards-container { display: none !important; }
+                }
+            </style>
+        `;
+        
+        // Remove existing style if it exists
+        const existingStyle = document.getElementById('transaction-responsive-css');
+        if (existingStyle) {
+            existingStyle.remove();
+        }
+        
+        // Add new style
+        document.head.insertAdjacentHTML('beforeend', mediaQueryCSS);
+        
+        // Cleanup on unmount
+        return () => {
+            const style = document.getElementById('transaction-responsive-css');
+            if (style) style.remove();
+        };
+    }, []);
     const { identity } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -726,6 +795,85 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         return <div style={styles.loadingSpinner}>Loading transactions...</div>;
     }
 
+    const renderTransactionCard = (tx, index) => {
+        const transaction = tx.transaction || tx;
+        const txType = transaction.kind;
+        const fromPrincipal = getFromPrincipal(tx);
+        const toPrincipal = getToPrincipal(tx);
+        const amount = getTransactionAmount(tx);
+        
+        const getTypeColor = (type) => {
+            switch (type?.toLowerCase()) {
+                case 'transfer': return '#3498db';
+                case 'mint': return '#2ecc71';
+                case 'burn': return '#e74c3c';
+                case 'approve': return '#f39c12';
+                default: return '#95a5a6';
+            }
+        };
+        
+        return (
+            <div key={index} style={styles.transactionCard}>
+                <div style={styles.cardHeader}>
+                    <div 
+                        style={{
+                            ...styles.cardType,
+                            backgroundColor: getTypeColor(txType),
+                            color: '#fff'
+                        }}
+                    >
+                        {txType}
+                    </div>
+                    <div style={{ color: '#888', fontSize: '12px' }}>
+                        #{tx.id || index}
+                    </div>
+                </div>
+                
+                {fromPrincipal && (
+                    <div style={styles.cardField}>
+                        <div style={styles.cardLabel}>From</div>
+                        <div style={styles.cardValue}>
+                            <PrincipalDisplay 
+                                principal={fromPrincipal}
+                                displayInfo={principalDisplayInfo.get(fromPrincipal?.toString?.() || '')}
+                                showCopyButton={false}
+                            />
+                        </div>
+                    </div>
+                )}
+                
+                {toPrincipal && (
+                    <div style={styles.cardField}>
+                        <div style={styles.cardLabel}>To</div>
+                        <div style={styles.cardValue}>
+                            <PrincipalDisplay 
+                                principal={toPrincipal}
+                                displayInfo={principalDisplayInfo.get(toPrincipal?.toString?.() || '')}
+                                showCopyButton={false}
+                            />
+                        </div>
+                    </div>
+                )}
+                
+                {amount !== null && amount !== undefined && (
+                    <div style={styles.cardField}>
+                        <div style={styles.cardLabel}>Amount</div>
+                        <div style={styles.cardValue}>
+                            {formatAmount(amount)}
+                        </div>
+                    </div>
+                )}
+                
+                <div style={styles.cardField}>
+                    <div style={styles.cardLabel}>Time</div>
+                    <div style={styles.cardValue}>
+                        {new Date(Number(transaction.timestamp / 1000000n)).toLocaleString()}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     if (error) {
         return <div style={styles.container}>Error: {error}</div>;
     }
@@ -860,7 +1008,9 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
 
             {!isCollapsed && (
                 <>
-                    <table style={styles.table}>
+                    {/* Table view for wide screens */}
+                    <div style={styles.tableContainer} className="transaction-table-container">
+                        <table style={styles.table}>
                         <thead>
                             <tr>
                                 <th 
@@ -984,7 +1134,13 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 );
                             })}
                         </tbody>
-                    </table>
+                        </table>
+                    </div>
+
+                    {/* Cards view for narrow screens */}
+                    <div style={styles.cardsContainer} className="transaction-cards-container">
+                        {displayedTransactions.map((tx, index) => renderTransactionCard(tx, index))}
+                    </div>
 
                     <div style={styles.pagination}>
                         <div style={styles.paginationControls}>
