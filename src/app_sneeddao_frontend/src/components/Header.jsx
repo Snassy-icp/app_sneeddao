@@ -26,7 +26,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
         if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal'].includes(path)) return 'Hub';
         if (['/wallet'].includes(path)) return 'Wallet';
-        if (['/me', '/rewards', '/tips'].includes(path)) return 'Me';
+        if (['/me', '/rewards', '/tips', '/posts'].includes(path)) return 'Me';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
@@ -64,7 +64,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Hub');
         } else if (['/wallet'].includes(path)) {
             setActiveSection('Wallet');
-        } else if (['/me', '/rewards'].includes(path)) {
+        } else if (['/me', '/rewards', '/tips', '/posts'].includes(path)) {
             setActiveSection('Me');
         } else if (['/sneedlock', '/sneedlock_info'].includes(path)) {
             setActiveSection('Locks');

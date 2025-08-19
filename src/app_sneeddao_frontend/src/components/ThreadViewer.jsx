@@ -1501,20 +1501,18 @@ function ThreadViewer({
                                 return (
                                     <>
                                         <span>•</span>
-                                        <span style={{ color: '#3498db' }}>
-                                            Reply to <a 
-                                                href={`/post?postid=${Number(post.reply_to_post_id[0])}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
-                                                style={{
-                                                    color: '#3498db',
-                                                    textDecoration: 'none',
-                                                    fontWeight: '500'
-                                                }}
-                                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                                            >
-                                                #{Number(post.reply_to_post_id[0])}
-                                            </a>: {parentDerivedTitle}
-                                        </span>
+                                        <a 
+                                            href={`/post?postid=${Number(post.reply_to_post_id[0])}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
+                                            style={{
+                                                color: '#3498db',
+                                                textDecoration: 'none',
+                                                fontWeight: '500'
+                                            }}
+                                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                        >
+                                            Reply to #{Number(post.reply_to_post_id[0])}: {parentDerivedTitle}
+                                        </a>
                                     </>
                                 );
                             }

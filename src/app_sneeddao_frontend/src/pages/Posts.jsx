@@ -59,12 +59,8 @@ const Posts = () => {
     }, [isAuthenticated, identity, createForumActor]);
 
     useEffect(() => {
-        if (isAuthenticated) {
-            fetchPostsData();
-        } else {
-            navigate('/');
-        }
-    }, [isAuthenticated, fetchPostsData, navigate]);
+        fetchPostsData();
+    }, [fetchPostsData]);
 
     // Separate effect to update principal display info when naming context changes
     useEffect(() => {
@@ -181,7 +177,32 @@ const Posts = () => {
             >
                 <div className="post-header">
                     <div className="post-meta">
-                        <span className="post-id">#{post.id}</span>
+                        <a 
+                            href={`/post?postid=${post.id}`}
+                            className="post-id-link"
+                            style={{
+                                color: '#3c6382 !important',
+                                textDecoration: 'none',
+                                fontWeight: '600',
+                                fontSize: '0.9rem',
+                                display: 'inline-block',
+                                padding: '2px 4px',
+                                borderRadius: '3px',
+                                backgroundColor: 'rgba(60, 99, 130, 0.1)',
+                                border: '1px solid rgba(60, 99, 130, 0.3)'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.textDecoration = 'underline';
+                                e.target.style.backgroundColor = 'rgba(60, 99, 130, 0.2)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.textDecoration = 'none';
+                                e.target.style.backgroundColor = 'rgba(60, 99, 130, 0.1)';
+                            }}
+                            onClick={(e) => e.stopPropagation()} // Prevent triggering the parent onClick
+                        >
+                            #{post.id}
+                        </a>
                         {isReply && (
                             <span className="reply-indicator">Reply from {getPrincipalDisplay(post.created_by)}</span>
                         )}
@@ -202,9 +223,21 @@ const Posts = () => {
                 <div className="post-body">
                     <p>{post.body}</p>
                 </div>
-                {post.reply_to_post_id && (
+                {post.reply_to_post_id && post.reply_to_post_id.length > 0 && (
                     <div className="reply-context">
-                        <span>In reply to post #{post.reply_to_post_id}</span>
+                        <span>In reply to <a 
+                            href={`/post?postid=${post.reply_to_post_id[0]}`}
+                            style={{
+                                color: '#3c6382',
+                                textDecoration: 'none',
+                                fontWeight: '500'
+                            }}
+                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            onClick={(e) => e.stopPropagation()} // Prevent triggering the parent onClick
+                        >
+                            post #{post.reply_to_post_id[0]}
+                        </a></span>
                     </div>
                 )}
             </div>

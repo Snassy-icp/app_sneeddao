@@ -13,11 +13,14 @@ function Login() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      // Preserve URL parameters when redirecting after login
-      const currentSearch = location.search;
-      navigate(`/wallet${currentSearch}`);
+      // Only redirect to wallet if we're on the root login page
+      // If user is trying to access a specific page, let that page handle authentication
+      if (location.pathname === '/') {
+        const currentSearch = location.search;
+        navigate(`/wallet${currentSearch}`);
+      }
     }
-  }, [isAuthenticated, navigate, location.search]);
+  }, [isAuthenticated, navigate, location.search, location.pathname]);
 
   async function handleLogin(event) {
     event.preventDefault();
