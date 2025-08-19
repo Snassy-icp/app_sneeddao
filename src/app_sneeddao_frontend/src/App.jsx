@@ -54,6 +54,8 @@ import Tips from './pages/Tips';
 import Posts from './pages/Posts';
 import Thread from './pages/Thread';
 import Post from './pages/Post';
+import Forum from './pages/Forum';
+import Topic from './pages/Topic';
 
 // Component to set up global naming function
 function GlobalNamingSetup() {
@@ -118,6 +120,10 @@ function App() {
                     <Route path="/transaction" element={<Transaction />} />
                     <Route path="/transactions" element={<Transactions />} />
                     <Route path="/hub" element={<Hub />} />
+
+                    {/* Forum routes */}
+                    <Route path="/forum" element={<Forum />} />
+                    <Route path="/topic/:topicId" element={<Topic />} />
 
                     {/* Tools routes */}
                     <Route path="/tools/main" element={<ToolsMain />} />

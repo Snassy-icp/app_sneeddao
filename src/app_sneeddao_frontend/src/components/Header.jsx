@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt } from 'react-icons/fa';
+import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaComments } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
@@ -32,6 +32,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/wallet'].includes(path)) return 'Wallet';
         if (['/me', '/rewards', '/tips', '/posts'].includes(path)) return 'Me';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
+        if (['/forum'].includes(path) || location.pathname.startsWith('/topic/')) return 'Forum';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         return 'DAO';
@@ -157,6 +158,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/wallet',
             subMenu: [
                 { name: 'Wallet', path: '/wallet' }
+            ]
+        },
+        'Forum': {
+            icon: <FaComments size={18} />,
+            displayName: 'Forum',
+            defaultPath: '/forum',
+            subMenu: [
+                { name: 'Forum', path: '/forum' }
             ]
         },
         'Locks': {
