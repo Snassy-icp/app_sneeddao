@@ -4,6 +4,7 @@ import { getAllNeuronNames, getAllNeuronNicknames, getAllPrincipalNames, getAllP
 import { uint8ArrayToHex } from './utils/NeuronUtils';
 
 const NamingContext = createContext();
+export { NamingContext };
 
 export function NamingProvider({ children }) {
     const { identity } = useAuth();

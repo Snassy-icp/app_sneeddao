@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { Principal } from '@dfinity/principal';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
+import { NamingContext } from '../NamingContext';
 
 // Add CSS animations
 const animationStyles = `
@@ -46,6 +47,7 @@ const TipModal = ({
     userPrincipal,
     identity
 }) => {
+    const { principalToName } = useContext(NamingContext);
     const [selectedToken, setSelectedToken] = useState('');
     const [amount, setAmount] = useState('');
     const [error, setError] = useState('');
@@ -297,7 +299,7 @@ const TipModal = ({
                 border: '1px solid rgba(255, 215, 0, 0.2)',
                 borderRadius: '20px',
                 padding: '32px',
-                maxWidth: '480px',
+                maxWidth: '420px',
                 width: '90%',
                 maxHeight: '90vh',
                 overflow: 'auto',
@@ -328,9 +330,10 @@ const TipModal = ({
                                 src={tokenLogo} 
                                 alt="Token Logo"
                                 style={{ 
-                                    width: '40px', 
-                                    height: '40px',
-                                    objectFit: 'contain'
+                                    width: '50px', 
+                                    height: '50px',
+                                    objectFit: 'cover',
+                                    borderRadius: '50%'
                                 }}
                                 onError={(e) => {
                                     e.target.style.display = 'none';
@@ -399,9 +402,9 @@ const TipModal = ({
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
                     {/* Token Selection */}
-                    <div>
+                    <div style={{ width: '100%' }}>
                         <label style={{
                             display: 'block',
                             color: 'rgba(255, 255, 255, 0.9)',
@@ -453,7 +456,7 @@ const TipModal = ({
                     </div>
 
                     {/* Amount Input */}
-                    <div>
+                    <div style={{ width: '100%' }}>
                         <label style={{
                             display: 'block',
                             color: 'rgba(255, 255, 255, 0.9)',
@@ -583,7 +586,7 @@ const TipModal = ({
                     </div>
 
                     {/* Recipient Info */}
-                    <div>
+                    <div style={{ width: '100%' }}>
                         <label style={{
                             display: 'block',
                             color: 'rgba(255, 255, 255, 0.9)',
@@ -599,7 +602,7 @@ const TipModal = ({
                             border: '1px solid rgba(255, 255, 255, 0.1)',
                             borderRadius: '12px',
                             padding: '16px 20px',
-                            maxWidth: '100%'
+                            width: '100%'
                         }}>
                             <div style={{
                                 fontSize: '14px',
@@ -636,6 +639,7 @@ const TipModal = ({
                                 }}>
                                     <PrincipalDisplay 
                                         principal={post.created_by} 
+                                        principalToName={principalToName}
                                         maxLength={20}
                                         style={{
                                             color: '#ffffff',
@@ -686,7 +690,7 @@ const TipModal = ({
                                 border: '1px solid rgba(255, 255, 255, 0.2)',
                                 borderRadius: '12px',
                                 color: 'rgba(255, 255, 255, 0.8)',
-                                padding: '16px 24px',
+                                padding: '0',
                                 cursor: isSubmitting ? 'not-allowed' : 'pointer',
                                 fontSize: '15px',
                                 fontWeight: '500',
@@ -724,7 +728,7 @@ const TipModal = ({
                                 border: 'none',
                                 borderRadius: '12px',
                                 color: (isSubmitting || !selectedToken || !amount) ? 'rgba(255, 255, 255, 0.5)' : '#000000',
-                                padding: '16px 24px',
+                                padding: '0',
                                 cursor: (isSubmitting || !selectedToken || !amount) ? 'not-allowed' : 'pointer',
                                 fontSize: '15px',
                                 fontWeight: '600',
