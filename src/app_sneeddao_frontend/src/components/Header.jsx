@@ -304,24 +304,31 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         }}
                     />
                 )}
-                {isAuthenticated ? (
-                    <PrincipalBox 
-                        principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
-                        onLogout={logout}
-                    />
+{isAuthenticated ? (
+                    <div style={{ position: 'relative' }}>
+                        <PrincipalBox 
+                            principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
+                            onLogout={logout}
+                            compact={true}
+                        />
+                    </div>
                 ) : (
                     <button
                         onClick={login}
                         style={{
-                            padding: '8px 16px',
-                            backgroundColor: '#6B46C1',
-                            color: '#fff',
+                            background: 'none',
                             border: 'none',
+                            color: '#fff',
+                            cursor: 'pointer',
+                            padding: '8px',
                             borderRadius: '4px',
-                            cursor: 'pointer'
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontSize: '18px'
                         }}
+                        title="Login"
                     >
-                        Login
+                        🔓
                     </button>
                 )}
 
