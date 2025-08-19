@@ -6,7 +6,7 @@ import { useAdminCheck } from '../hooks/useAdminCheck';
 import { useTextLimits } from '../hooks/useTextLimits';
 import { useTokens } from '../hooks/useTokens';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
-import { formatPrincipal, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import { 
     getTipsByPost, 
@@ -20,6 +20,105 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import TipModal from './TipModal';
 import TipDisplay from './TipDisplay';
 import './ThreadViewer.css';
+
+// Separate EditForm component to prevent PostComponent re-renders
+const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdit, textLimits }) => {
+    const [title, setTitle] = useState(initialTitle || '');
+    const [body, setBody] = useState(initialBody || '');
+    
+    // Character limit validation
+    const maxTitleLength = textLimits?.post_title_max_length || 200;
+    const maxBodyLength = textLimits?.post_body_max_length || 10000;
+    const isTitleOverLimit = title.length > maxTitleLength;
+    const isBodyOverLimit = body.length > maxBodyLength;
+    const isOverLimit = isTitleOverLimit || isBodyOverLimit;
+    
+    return (
+        <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
+            <h4 style={{ color: '#9b59b6', marginBottom: '10px' }}>Edit Post</h4>
+            <input
+                type="text"
+                placeholder="Post Title (optional)"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                style={{
+                    width: '100%',
+                    backgroundColor: '#2a2a2a',
+                    border: `1px solid ${isTitleOverLimit ? '#e74c3c' : '#4a4a4a'}`,
+                    borderRadius: '4px',
+                    color: '#ffffff',
+                    padding: '10px',
+                    fontSize: '14px',
+                    marginBottom: '5px'
+                }}
+            />
+            <div style={{ 
+                fontSize: '12px', 
+                color: isTitleOverLimit ? '#e74c3c' : (maxTitleLength - title.length) < 20 ? '#f39c12' : '#888',
+                marginBottom: '10px',
+                textAlign: 'right'
+            }}>
+                Title: {title.length}/{maxTitleLength} characters
+                {isTitleOverLimit && <span style={{ marginLeft: '10px' }}>({title.length - maxTitleLength} over limit)</span>}
+            </div>
+            <textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Post body"
+                style={{
+                    width: '100%',
+                    minHeight: '120px',
+                    backgroundColor: '#2a2a2a',
+                    border: `1px solid ${isBodyOverLimit ? '#e74c3c' : '#4a4a4a'}`,
+                    borderRadius: '4px',
+                    color: '#ffffff',
+                    padding: '10px',
+                    fontSize: '14px',
+                    resize: 'vertical',
+                    marginBottom: '5px'
+                }}
+            />
+            <div style={{ 
+                fontSize: '12px', 
+                color: isBodyOverLimit ? '#e74c3c' : (maxBodyLength - body.length) < 100 ? '#f39c12' : '#888',
+                marginBottom: '10px',
+                textAlign: 'right'
+            }}>
+                Body: {body.length}/{maxBodyLength} characters
+                {isBodyOverLimit && <span style={{ marginLeft: '10px' }}>({body.length - maxBodyLength} over limit)</span>}
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                    onClick={() => onSubmit(title, body)}
+                    disabled={!body.trim() || submittingEdit || isOverLimit}
+                    style={{
+                        padding: '8px 16px',
+                        backgroundColor: (body.trim() && !submittingEdit && !isOverLimit) ? '#9b59b6' : '#333',
+                        color: (body.trim() && !submittingEdit && !isOverLimit) ? 'white' : '#666',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: (body.trim() && !submittingEdit && !isOverLimit) ? 'pointer' : 'not-allowed'
+                    }}
+                >
+                    {submittingEdit ? 'Updating...' : 'Update Post'}
+                </button>
+                <button
+                    onClick={onCancel}
+                    style={{
+                        padding: '8px 16px',
+                        backgroundColor: '#666',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                    }}
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>
+    );
+};
 
 // ReplyForm component
 const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, principalDisplayInfo, textLimits }) => {
@@ -176,7 +275,6 @@ function ThreadViewer({
 
     // Edit/Delete states
     const [editingPost, setEditingPost] = useState(null); // postId being edited
-    const [editFormData, setEditFormData] = useState({ title: '', body: '' });
     const [updatingPost, setUpdatingPost] = useState(false);
     const [deletingPost, setDeletingPost] = useState(null); // postId being deleted
     const [postTips, setPostTips] = useState({});
@@ -401,18 +499,13 @@ function ThreadViewer({
     // Edit handlers
     const startEditPost = useCallback((post) => {
         setEditingPost(Number(post.id));
-        setEditFormData({
-            title: post.title || '',
-            body: post.body || ''
-        });
     }, []);
 
     const cancelEditPost = useCallback(() => {
         setEditingPost(null);
-        setEditFormData({ title: '', body: '' });
     }, []);
 
-    const saveEditPost = useCallback(async () => {
+    const submitEditPost = useCallback(async (title, body) => {
         if (!forumActor || !editingPost) return;
 
         setUpdatingPost(true);
@@ -420,16 +513,15 @@ function ThreadViewer({
             const result = await updatePost(
                 forumActor,
                 editingPost,
-                editFormData.title.trim() || null,
-                editFormData.body.trim()
+                title || null,
+                body
             );
 
             if ('ok' in result) {
                 console.log('Post updated successfully');
-                setEditingPost(null);
-                setEditFormData({ title: '', body: '' });
                 // Refresh thread data to show updated post
                 await fetchThreadData();
+                cancelEditPost();
             } else {
                 console.error('Failed to update post:', result.err);
                 alert('Failed to update post: ' + (result.err?.InvalidInput || result.err?.Unauthorized || 'Unknown error'));
@@ -440,7 +532,7 @@ function ThreadViewer({
         } finally {
             setUpdatingPost(false);
         }
-    }, [forumActor, editingPost, editFormData, fetchThreadData]);
+    }, [forumActor, editingPost, fetchThreadData, cancelEditPost]);
 
     // Delete handlers
     const handleDeletePost = useCallback(async (postId) => {
@@ -794,24 +886,11 @@ function ThreadViewer({
                         )}
                         <span className="post-id">#{post.id.toString()}</span>
                         {post.title && <h4>{post.title}</h4>}
-                        <span className="post-author">
-                            {(() => {
-                                const displayInfo = principalDisplayInfo.get(post.created_by?.toString());
-                                const formatted = formatPrincipal(post.created_by, displayInfo);
-                                
-                                if (typeof formatted === 'string') {
-                                    return formatted;
-                                } else if (formatted?.name || formatted?.nickname) {
-                                    // Show name/nickname with truncated ID
-                                    const parts = [];
-                                    if (formatted.name) parts.push(formatted.name);
-                                    if (formatted.nickname) parts.push(`"${formatted.nickname}"`);
-                                    return `${parts.join(' • ')} (${formatted.truncatedId})`;
-                                } else {
-                                    return post.created_by?.toString().slice(0, 12) + '...';
-                                }
-                            })()}
-                        </span>
+                        <span>By: <PrincipalDisplay 
+                            principal={post.created_by} 
+                            displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
+                            showCopyButton={false} 
+                        /></span>
                     </div>
                     {/* Post body - hide when editing */}
                     {editingPost !== Number(post.id) && (
@@ -981,100 +1060,14 @@ function ThreadViewer({
 
                     {/* Edit Form */}
                     {editingPost === Number(post.id) && (
-                        <div style={{
-                            marginTop: '15px',
-                            padding: '15px',
-                            border: '1px solid #444',
-                            borderRadius: '8px',
-                            backgroundColor: '#1a1a1a'
-                        }}>
-                            <h4 style={{ margin: '0 0 10px 0', color: '#9b59b6' }}>Edit Post</h4>
-                            
-                            {/* Title field - only show if post has title */}
-                            {post.title && (
-                                <div style={{ marginBottom: '10px' }}>
-                                    <label style={{ display: 'block', marginBottom: '5px', color: '#ccc' }}>
-                                        Title:
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={editFormData.title}
-                                        onChange={(e) => setEditFormData(prev => ({ ...prev, title: e.target.value }))}
-                                        style={{
-                                            width: '100%',
-                                            padding: '8px',
-                                            backgroundColor: '#2a2a2a',
-                                            border: '1px solid #555',
-                                            borderRadius: '4px',
-                                            color: '#fff',
-                                            fontSize: '14px'
-                                        }}
-                                        placeholder="Post title"
-                                        maxLength={textLimits?.post_title_max_length || 200}
-                                    />
-                                </div>
-                            )}
-                            
-                            {/* Body field */}
-                            <div style={{ marginBottom: '15px' }}>
-                                <label style={{ display: 'block', marginBottom: '5px', color: '#ccc' }}>
-                                    Body:
-                                </label>
-                                <textarea
-                                    value={editFormData.body}
-                                    onChange={(e) => setEditFormData(prev => ({ ...prev, body: e.target.value }))}
-                                    style={{
-                                        width: '100%',
-                                        minHeight: '100px',
-                                        padding: '8px',
-                                        backgroundColor: '#2a2a2a',
-                                        border: '1px solid #555',
-                                        borderRadius: '4px',
-                                        color: '#fff',
-                                        fontSize: '14px',
-                                        resize: 'vertical'
-                                    }}
-                                    placeholder="Post body"
-                                    maxLength={textLimits?.post_body_max_length || 10000}
-                                />
-                            </div>
-                            
-                            {/* Action buttons */}
-                            <div style={{ display: 'flex', gap: '10px' }}>
-                                <button
-                                    onClick={saveEditPost}
-                                    disabled={updatingPost || !editFormData.body.trim()}
-                                    style={{
-                                        backgroundColor: '#9b59b6',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '8px 16px',
-                                        cursor: updatingPost || !editFormData.body.trim() ? 'not-allowed' : 'pointer',
-                                        fontSize: '14px',
-                                        opacity: updatingPost || !editFormData.body.trim() ? 0.6 : 1
-                                    }}
-                                >
-                                    {updatingPost ? '💾 Saving...' : '💾 Save'}
-                                </button>
-                                <button
-                                    onClick={cancelEditPost}
-                                    disabled={updatingPost}
-                                    style={{
-                                        backgroundColor: '#666',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '8px 16px',
-                                        cursor: updatingPost ? 'not-allowed' : 'pointer',
-                                        fontSize: '14px',
-                                        opacity: updatingPost ? 0.6 : 1
-                                    }}
-                                >
-                                    ❌ Cancel
-                                </button>
-                            </div>
-                        </div>
+                        <EditForm 
+                            initialTitle={post.title || ''}
+                            initialBody={post.body || ''}
+                            onSubmit={submitEditPost}
+                            onCancel={cancelEditPost}
+                            submittingEdit={updatingPost}
+                            textLimits={textLimits}
+                        />
                     )}
                 </div>
                 
