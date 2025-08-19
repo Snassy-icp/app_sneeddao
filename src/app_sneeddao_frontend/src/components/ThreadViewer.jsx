@@ -510,10 +510,25 @@ function ThreadViewer({
 
         setUpdatingPost(true);
         try {
-            const result = await updatePost(
-                forumActor,
-                editingPost,
-                title || null,
+            // Debug logging to see what we're getting
+            console.log('submitEditPost called with:', { title, body, titleType: typeof title });
+            
+            // Handle the title exactly like Discussion.jsx does
+            // If title is an array (empty array = []), convert to empty string, then to null if empty
+            let processedTitle = title;
+            if (Array.isArray(title)) {
+                processedTitle = title.length > 0 ? title[0] : '';
+            }
+            
+            // Convert empty strings to [] (None), but keep non-empty strings as [string] (Some)
+            const finalTitle = (processedTitle && processedTitle.trim()) ? [processedTitle.trim()] : [];
+            
+            console.log('Processed title:', { processedTitle, finalTitle });
+            
+            // Call update_post directly like Discussion.jsx does - pass title as string or null
+            const result = await forumActor.update_post(
+                Number(editingPost),
+                finalTitle,
                 body
             );
 
