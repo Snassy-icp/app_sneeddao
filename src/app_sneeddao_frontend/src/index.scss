@@ -57,22 +57,4 @@ button[type="submit"] {
 }
 
 /* Responsive styles for neurons display */
-@media (max-width: 768px) {
-  .neurons-display-desktop {
-    display: none !important;
-  }
-  
-  .neurons-display-mobile {
-    display: block !important;
-  }
-}
 
-@media (min-width: 769px) {
-  .neurons-display-desktop {
-    display: flex !important;
-  }
-  
-  .neurons-display-mobile {
-    display: none !important;
-  }
-}
