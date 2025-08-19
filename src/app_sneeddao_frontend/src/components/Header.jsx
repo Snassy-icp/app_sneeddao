@@ -239,14 +239,12 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 <img
                     src={customLogo || "sneed_logo.png"}
                     alt={customLogo ? "Logo" : "Sneed Logo"}
-                    onClick={handleLogoClick}
                     style={{
                         width: '52px',
                         height: '52px',
                         borderRadius: customLogo ? '0' : '50%',
                         objectFit: 'cover',
-                        marginTop: '8px',
-                        cursor: 'pointer'
+                        marginTop: '8px'
                     }}
                 />
                 <div style={{ display: 'flex', flexDirection: 'column', flex: 1, marginLeft: '12px' }}>
@@ -255,41 +253,20 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         alignItems: 'center', 
                         marginBottom: '8px',
                     }}>
-                        <button
-                            onClick={toggleMenu}
-                            style={{
-                                background: 'none',
-                                border: 'none',
-                                color: '#fff',
-                                cursor: 'pointer',
-                                padding: '8px',
-                                paddingLeft: 0
-                            }}
-                        >
-                            {isMenuOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
-                        </button>
                         <div style={{ 
                             color: '#fff',
                             fontSize: '24px',
                             fontWeight: 'bold',
                             display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
-                            cursor: 'pointer'
-                        }}
-                        onClick={() => {
-                            setIsMenuOpen(true);
+                            alignItems: 'center'
                         }}>
-                            {/* Show admin icon and name if on admin page, even during loading */}
+                            {/* Show admin section name if on admin page, even during loading */}
                             {isOnAdminPage && adminLoading ? (
-                                <>
-                                    <FaCog size={18} />
-                                    Admin
-                                </>
+                                <>Admin</>
                             ) : (
                                 <>
-                                    {menuSections[activeSection]?.icon}
-                                    {menuSections[activeSection]?.displayName}
+                                    {/* Extract just the section name without "Sneed" prefix */}
+                                    {menuSections[activeSection]?.displayName?.replace('Sneed ', '')}
                                 </>
                             )}
                         </div>
@@ -573,7 +550,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     </div>
                 </div>
             )}
-
+            
             {isMenuOpen && (
                 <div 
                     ref={menuRef}
