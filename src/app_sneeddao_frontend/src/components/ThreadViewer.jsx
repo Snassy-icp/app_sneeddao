@@ -532,23 +532,8 @@ function ThreadViewer({
                 setVotingStates(prev => new Map(prev.set(postIdStr, 'success')));
                 setUserVotes(prev => new Map(prev.set(postIdStr, { vote_type: voteType, voting_power: totalVotingPower })));
                 
-                // Update post scores locally without full reload
-                setDiscussionPosts(prev => prev.map(post => {
-                    if (Number(post.id) === Number(postId)) {
-                        // Estimate the new scores based on voting power
-                        const votingPowerE8s = totalVotingPower * 100_000_000; // Convert to e8s
-                        return {
-                            ...post,
-                            upvote_score: voteType === 'up' 
-                                ? (Number(post.upvote_score) || 0) + votingPowerE8s
-                                : post.upvote_score,
-                            downvote_score: voteType === 'down' 
-                                ? (Number(post.downvote_score) || 0) + votingPowerE8s
-                                : post.downvote_score
-                        };
-                    }
-                    return post;
-                }));
+                // Refresh posts to get updated scores (same as original Discussion.jsx)
+                await fetchThreadData();
                 
                 // Clear voting state after a delay
                 setTimeout(() => {
