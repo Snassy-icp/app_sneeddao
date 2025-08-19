@@ -3,6 +3,7 @@ import { useAuth } from '../AuthContext';
 import { useForum } from '../contexts/ForumContext';
 import { 
     getRecentTipsReceived, 
+    getRecentTipsCount,
     markTipsSeenUpTo 
 } from '../utils/BackendUtils';
 
@@ -39,19 +40,20 @@ export function useTipNotifications() {
 
             const forumActor = createForumActor(identity);
             
-            // Get recent tips (backend handles the timestamp internally)
-            const tips = await getRecentTipsReceived(forumActor, identity.getPrincipal());
+            // Use optimized count method for ticker (much faster)
+            const tipCount = await getRecentTipsCount(forumActor, identity.getPrincipal());
             
             console.log('Tip notifications debug:', {
                 userPrincipal: identity.getPrincipal().toString(),
-                newTipsCount: tips.length
+                newTipsCount: tipCount
             });
             
-            setNewTips(tips);
-            setNewTipCount(tips.length);
+            // We don't need the full tips array for ticker, just the count
+            setNewTips([]); // Clear tips array since we're not fetching them
+            setNewTipCount(Number(tipCount));
             setLastChecked(Date.now());
             
-            console.log(`Tip notifications: Found ${tips.length} new tips`);
+            console.log(`Tip notifications: Found ${tipCount} new tips`);
             
         } catch (err) {
             console.error('Error checking for new tips:', err);

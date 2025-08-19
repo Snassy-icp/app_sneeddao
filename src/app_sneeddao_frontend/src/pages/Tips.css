@@ -150,6 +150,29 @@
     background: rgba(255, 255, 255, 0.05);
 }
 
+/* Highlighting for new tips */
+.tip-row.tip-new {
+    background: rgba(255, 215, 0, 0.08);
+    border-left: 3px solid #ffd700;
+    animation: newTipGlow 2s ease-in-out;
+}
+
+.tip-row.tip-new:hover {
+    background: rgba(255, 215, 0, 0.12);
+}
+
+@keyframes newTipGlow {
+    0% {
+        box-shadow: 0 0 5px rgba(255, 215, 0, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
+    }
+    100% {
+        box-shadow: 0 0 5px rgba(255, 215, 0, 0.3);
+    }
+}
+
 .tip-amount-container {
     display: flex;
     align-items: center;

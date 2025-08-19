@@ -548,6 +548,16 @@ export const getRecentTipsReceived = async (forumActor, userPrincipal) => {
     }
 };
 
+export const getRecentTipsCount = async (forumActor, userPrincipal) => {
+    try {
+        const result = await forumActor.get_recent_tips_count(userPrincipal);
+        return result;
+    } catch (error) {
+        console.error('Error getting recent tips count:', error);
+        throw error;
+    }
+};
+
 export const getTipsReceivedSince = async (forumActor, userPrincipal, sinceTimestamp) => {
     try {
         const result = await forumActor.get_tips_received_since(userPrincipal, sinceTimestamp);

@@ -1406,6 +1406,41 @@ module {
         }
     };
 
+    // Get count of tips received since the user's last seen timestamp (optimized for notifications)
+    public func get_recent_tips_count(state: ForumState, user_principal: Principal) : Nat {
+        let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
+            case (?index) index;
+            case null return 0; // User not found in dedup, so no tips received
+        };
+        
+        // Get user's last seen timestamp (0 if never seen)
+        let since_timestamp = switch (Map.get(state.user_last_seen_tips, Map.n32hash, user_index)) {
+            case (?timestamp) timestamp;
+            case null 0; // If never seen, count all tips (since 0)
+        };
+        
+        switch (Map.get(state.tips_received, Map.n32hash, user_index)) {
+            case (?tip_ids) {
+                var count = 0;
+                
+                for (tip_id in Vector.vals(tip_ids)) {
+                    switch (get_tip(state, tip_id)) {
+                        case (?tip_response) {
+                            // Only count tips created after the since_timestamp
+                            if (tip_response.created_at > since_timestamp) {
+                                count += 1;
+                            }
+                        };
+                        case null {}; // Skip if tip not found
+                    };
+                };
+                
+                count
+            };
+            case null 0;
+        }
+    };
+
     // Legacy method - keep for backward compatibility but rename parameter for clarity
     public func get_tips_received_since(state: ForumState, user_principal: Principal, since_timestamp: Int) : [TipResponse] {
         let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {

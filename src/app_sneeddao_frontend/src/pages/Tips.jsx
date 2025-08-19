@@ -7,7 +7,10 @@ import { useNaming } from '../NamingContext';
 import { useTipNotifications } from '../hooks/useTipNotifications';
 import { 
     getTipsReceivedByUser, 
-    getTipsGivenByUser 
+    getTipsGivenByUser,
+    getRecentTipsCount,
+    getLastSeenTipTimestamp,
+    markTipsSeenUpTo
 } from '../utils/BackendUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
@@ -29,6 +32,7 @@ const Tips = () => {
     const [error, setError] = useState(null);
     const [loadingMetadata, setLoadingMetadata] = useState(new Set());
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    const [oldTimestamp, setOldTimestamp] = useState(0); // For highlighting new tips
 
     // Fetch tips data
     const fetchTipsData = useCallback(async () => {
@@ -44,7 +48,24 @@ const Tips = () => {
             const forumActor = createForumActor(identity);
             const userPrincipal = identity.getPrincipal();
 
-            // Fetch both received and given tips
+            // Step 1: Get old timestamp BEFORE updating it
+            const oldTimestampResult = await getLastSeenTipTimestamp(forumActor, userPrincipal);
+            const currentOldTimestamp = oldTimestampResult || 0; // Default to 0 if never seen
+            setOldTimestamp(currentOldTimestamp);
+
+            // Step 2: Check if we have new tips
+            const newTipsCount = await getRecentTipsCount(forumActor, userPrincipal);
+            
+            // Step 3: Only update backend timestamp if we have new tips
+            if (Number(newTipsCount) > 0) {
+                const currentTimestamp = Date.now() * 1_000_000; // Convert to nanoseconds
+                await markTipsSeenUpTo(forumActor, currentTimestamp);
+                console.log(`Tips: Updated backend timestamp, had ${newTipsCount} new tips`);
+            } else {
+                console.log('Tips: No new tips, not updating backend timestamp');
+            }
+
+            // Step 4: Fetch both received and given tips
             const [received, given] = await Promise.all([
                 getTipsReceivedByUser(forumActor, userPrincipal),
                 getTipsGivenByUser(forumActor, userPrincipal)
@@ -117,6 +138,11 @@ const Tips = () => {
         fetchTipsData();
     }, [markAsViewed, fetchTipsData]);
 
+    // Helper function to check if a tip is new (for highlighting)
+    const isTipNew = (tipTimestamp) => {
+        return tipTimestamp > oldTimestamp;
+    };
+
     // Helper functions for token display
     const getTokenSymbol = (tokenId) => {
         const metadata = getTokenMetadata(tokenId);
@@ -162,9 +188,12 @@ const Tips = () => {
         const formattedPrincipal = formatPrincipal(otherPrincipal, displayInfo);
         const isLoadingToken = loadingMetadata.has(tokenId);
         const logo = getTokenLogo(tokenId);
+        
+        // Check if this tip is new (only highlight received tips)
+        const isNew = isReceived && isTipNew(tip.created_at);
 
         return (
-            <tr key={tip.id} className="tip-row">
+            <tr key={tip.id} className={`tip-row ${isNew ? 'tip-new' : ''}`}>
                 <td className="tip-amount">
                     <div className="tip-amount-container">
                         {isLoadingToken ? (

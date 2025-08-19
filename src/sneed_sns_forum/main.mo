@@ -314,6 +314,10 @@ persistent actor SneedSNSForum {
         Lib.get_recent_tips_received(state, user_principal)
     };
 
+    public query func get_recent_tips_count(user_principal: Principal) : async Nat {
+        Lib.get_recent_tips_count(state, user_principal)
+    };
+
     public query func get_tips_received_since(user_principal: Principal, since_timestamp: Int) : async [T.TipResponse] {
         Lib.get_tips_received_since(state, user_principal, since_timestamp)
     };
