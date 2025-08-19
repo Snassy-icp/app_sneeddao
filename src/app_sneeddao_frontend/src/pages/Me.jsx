@@ -256,6 +256,39 @@ export default function Me() {
         fetchNervousSystemParameters();
     }, [selectedSnsRoot, identity]);
 
+    // Add responsive CSS for principal and quick links layout
+    useEffect(() => {
+        const responsiveCSS = `
+            <style id="me-page-responsive-css">
+                @media (max-width: 768px) {
+                    .principal-quick-links-container {
+                        flex-direction: column !important;
+                    }
+                    .principal-quick-links-container > div:last-child {
+                        width: 100% !important;
+                    }
+                }
+            </style>
+        `;
+        
+        // Remove existing style if it exists
+        const existingStyle = document.getElementById('me-page-responsive-css');
+        if (existingStyle) {
+            existingStyle.remove();
+        }
+        
+        // Add new style
+        document.head.insertAdjacentHTML('beforeend', responsiveCSS);
+        
+        // Cleanup function to remove the style when component unmounts
+        return () => {
+            const styleElement = document.getElementById('me-page-responsive-css');
+            if (styleElement) {
+                styleElement.remove();
+            }
+        };
+    }, []);
+
     const handleSnsChange = (newSnsRoot) => {
         // The global context and URL sync is handled by SnsDropdown component
         // This callback is mainly for any page-specific logic
@@ -409,7 +442,7 @@ export default function Me() {
                     display: 'flex',
                     gap: '20px',
                     marginBottom: '30px'
-                }}>
+                }} className="principal-quick-links-container">
                     {/* Principal ID card */}
                     <div style={{ 
                         backgroundColor: '#2a2a2a',
@@ -606,6 +639,91 @@ export default function Me() {
                             flexDirection: 'column',
                             gap: '10px'
                         }}>
+                            {/* My Wallet */}
+                            <Link
+                                to="/wallet"
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    transition: 'background-color 0.2s',
+                                    fontSize: '14px',
+                                    width: '100%'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                <span>💼 My Wallet</span>
+                            </Link>
+
+                            {/* My Posts */}
+                            <Link
+                                to="/posts"
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    transition: 'background-color 0.2s',
+                                    fontSize: '14px',
+                                    width: '100%'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                <span>📝 My Posts</span>
+                            </Link>
+
+                            {/* My Tips */}
+                            <Link
+                                to="/tips"
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    transition: 'background-color 0.2s',
+                                    fontSize: '14px',
+                                    width: '100%'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                <span>💰 My Tips</span>
+                            </Link>
+
+                            {/* My Rewards */}
+                            <Link
+                                to="/rewards"
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    transition: 'background-color 0.2s',
+                                    fontSize: '14px',
+                                    width: '100%'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                <span>🎁 My Rewards</span>
+                            </Link>
+
+                            {/* My Locks */}
                             <Link
                                 to={`/sneedlock_info?owner=${identity?.getPrincipal().toString()}`}
                                 style={{
