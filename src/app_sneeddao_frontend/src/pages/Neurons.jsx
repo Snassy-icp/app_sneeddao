@@ -676,22 +676,67 @@ function Neurons() {
         <div className='page-container'>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             <main className="wallet-container">
-                <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center', 
-                    marginBottom: '20px',
-                    flexWrap: 'wrap',
-                    gap: '10px'
-                }}>
-                    <h1 style={{ color: '#ffffff' }}>Neurons</h1>
+                <div style={{ marginBottom: '20px' }}>
+                    <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        marginBottom: '15px',
+                        flexWrap: 'wrap',
+                        gap: '15px'
+                    }}>
+                        <h1 style={{ color: '#ffffff', margin: '0' }}>Neurons</h1>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <button
+                                onClick={handleRefresh}
+                                style={{
+                                    backgroundColor: '#3a3a3a',
+                                    color: '#fff',
+                                    border: '1px solid #4a4a4a',
+                                    borderRadius: '4px',
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}
+                                disabled={loading}
+                            >
+                                <span style={{ 
+                                    display: 'inline-block',
+                                    transform: loading ? 'rotate(360deg)' : 'none',
+                                    transition: 'transform 1s linear',
+                                    fontSize: '14px'
+                                }}>⟳</span>
+                                Refresh
+                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <label style={{ color: '#ffffff', fontSize: '14px' }}>Items per page:</label>
+                                <select
+                                    value={itemsPerPage}
+                                    onChange={handleItemsPerPageChange}
+                                    style={{
+                                        backgroundColor: '#3a3a3a',
+                                        color: '#fff',
+                                        border: '1px solid #4a4a4a',
+                                        borderRadius: '4px',
+                                        padding: '4px 8px'
+                                    }}
+                                >
+                                    <option value={10}>10</option>
+                                    <option value={20}>20</option>
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
                     <div style={{ 
                         display: 'flex', 
                         alignItems: 'center', 
-                        gap: '10px',
-                        flex: 1,
-                        maxWidth: '600px',
-                        marginLeft: '20px'
+                        gap: '15px',
+                        flexWrap: 'wrap',
+                        marginBottom: '15px'
                     }}>
                         <input
                             type="text"
@@ -704,7 +749,7 @@ function Neurons() {
                                 border: '1px solid #4a4a4a',
                                 borderRadius: '4px',
                                 padding: '8px 12px',
-                                flex: 1,
+                                flex: '1 1 250px',
                                 minWidth: '200px'
                             }}
                         />
@@ -725,91 +770,49 @@ function Neurons() {
                             <option value="dissolving">Dissolving</option>
                             <option value="dissolved">Dissolved</option>
                         </select>
-                        <div style={{ 
+                    </div>
+                    <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '15px',
+                        flexWrap: 'wrap'
+                    }}>
+                        <label style={{ 
                             display: 'flex', 
                             alignItems: 'center', 
-                            gap: '15px',
-                            marginLeft: '10px'
+                            gap: '6px',
+                            color: '#ffffff',
+                            fontSize: '14px',
+                            cursor: 'pointer'
                         }}>
-                            <label style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: '6px',
-                                color: '#ffffff',
-                                fontSize: '14px',
-                                cursor: 'pointer'
-                            }}>
-                                <input
-                                    type="checkbox"
-                                    checked={hideUnnamed}
-                                    onChange={(e) => setHideUnnamed(e.target.checked)}
-                                    style={{
-                                        accentColor: '#3498db'
-                                    }}
-                                />
-                                Hide Unnamed
-                            </label>
-                            <label style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: '6px',
-                                color: '#ffffff',
-                                fontSize: '14px',
-                                cursor: 'pointer'
-                            }}>
-                                <input
-                                    type="checkbox"
-                                    checked={hideUnverified}
-                                    onChange={(e) => setHideUnverified(e.target.checked)}
-                                    style={{
-                                        accentColor: '#3498db'
-                                    }}
-                                />
-                                Hide Unverified
-                            </label>
-                        </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <button
-                            onClick={handleRefresh}
-                            style={{
-                                backgroundColor: '#3a3a3a',
-                                color: '#fff',
-                                border: '1px solid #4a4a4a',
-                                borderRadius: '4px',
-                                padding: '8px 12px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px'
-                            }}
-                            disabled={loading}
-                        >
-                            <span style={{ 
-                                display: 'inline-block',
-                                transform: loading ? 'rotate(360deg)' : 'none',
-                                transition: 'transform 1s linear',
-                                fontSize: '14px'
-                            }}>⟳</span>
-                            Refresh
-                        </button>
-                        <label style={{ color: '#ffffff' }}>Items per page:</label>
-                        <select
-                            value={itemsPerPage}
-                            onChange={handleItemsPerPageChange}
-                            style={{
-                                backgroundColor: '#3a3a3a',
-                                color: '#fff',
-                                border: '1px solid #4a4a4a',
-                                borderRadius: '4px',
-                                padding: '4px 8px'
-                            }}
-                        >
-                            <option value={10}>10</option>
-                            <option value={20}>20</option>
-                            <option value={50}>50</option>
-                            <option value={100}>100</option>
-                        </select>
+                            <input
+                                type="checkbox"
+                                checked={hideUnnamed}
+                                onChange={(e) => setHideUnnamed(e.target.checked)}
+                                style={{
+                                    accentColor: '#3498db'
+                                }}
+                            />
+                            Hide Unnamed
+                        </label>
+                        <label style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '6px',
+                            color: '#ffffff',
+                            fontSize: '14px',
+                            cursor: 'pointer'
+                        }}>
+                            <input
+                                type="checkbox"
+                                checked={hideUnverified}
+                                onChange={(e) => setHideUnverified(e.target.checked)}
+                                style={{
+                                    accentColor: '#3498db'
+                                }}
+                            />
+                            Hide Unverified
+                        </label>
                     </div>
                 </div>
 

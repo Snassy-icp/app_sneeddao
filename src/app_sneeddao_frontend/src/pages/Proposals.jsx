@@ -271,15 +271,41 @@ function Proposals() {
         <div className='page-container'>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             <main className="wallet-container">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <h1 style={{ color: '#ffffff' }}>Proposals</h1>
+                <div style={{ marginBottom: '20px' }}>
+                    <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        marginBottom: '15px',
+                        flexWrap: 'wrap',
+                        gap: '15px'
+                    }}>
+                        <h1 style={{ color: '#ffffff', margin: '0' }}>Proposals</h1>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <label style={{ color: '#ffffff', fontSize: '14px' }}>Items per page:</label>
+                            <select
+                                value={itemsPerPage}
+                                onChange={handleItemsPerPageChange}
+                                style={{
+                                    backgroundColor: '#3a3a3a',
+                                    color: '#fff',
+                                    border: '1px solid #4a4a4a',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px'
+                                }}
+                            >
+                                <option value={10}>10</option>
+                                <option value={20}>20</option>
+                                <option value={50}>50</option>
+                                <option value={100}>100</option>
+                            </select>
+                        </div>
+                    </div>
                     <div style={{ 
                         display: 'flex', 
                         alignItems: 'center', 
                         gap: '15px',
-                        flex: 1,
-                        maxWidth: '600px',
-                        marginLeft: '20px'
+                        flexWrap: 'wrap'
                     }}>
                         <input
                             type="text"
@@ -292,7 +318,7 @@ function Proposals() {
                                 border: '1px solid #4a4a4a',
                                 borderRadius: '4px',
                                 padding: '8px 12px',
-                                flex: 1,
+                                flex: '1 1 250px',
                                 minWidth: '200px'
                             }}
                         />
@@ -313,25 +339,6 @@ function Proposals() {
                                     {option.label}
                                 </option>
                             ))}
-                        </select>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <label style={{ color: '#ffffff' }}>Items per page:</label>
-                        <select
-                            value={itemsPerPage}
-                            onChange={handleItemsPerPageChange}
-                            style={{
-                                backgroundColor: '#3a3a3a',
-                                color: '#fff',
-                                border: '1px solid #4a4a4a',
-                                borderRadius: '4px',
-                                padding: '4px 8px'
-                            }}
-                        >
-                            <option value={10}>10</option>
-                            <option value={20}>20</option>
-                            <option value={50}>50</option>
-                            <option value={100}>100</option>
                         </select>
                     </div>
                 </div>
