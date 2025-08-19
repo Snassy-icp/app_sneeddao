@@ -492,6 +492,35 @@ function ThreadViewer({
         }
     }, [forumActor, threadId, postFilter, onError]);
 
+    // Fetch only posts (for refreshing after votes, like Discussion.jsx)
+    const fetchPosts = useCallback(async () => {
+        if (!forumActor || !threadId) return;
+        
+        try {
+            console.log('Fetching posts for thread ID:', threadId);
+            const posts = await forumActor.get_posts_by_thread(Number(threadId));
+            console.log('Posts result:', posts);
+            
+            if (posts && posts.length > 0) {
+                console.log('Posts with scores:', posts.map(p => ({
+                    id: p.id,
+                    upvote_score: p.upvote_score,
+                    downvote_score: p.downvote_score,
+                    title: p.title
+                })));
+                setDiscussionPosts(posts);
+                
+                // Fetch tips for all posts
+                await fetchTipsForPosts(posts);
+            } else {
+                setDiscussionPosts([]);
+            }
+        } catch (err) {
+            console.error('Error fetching posts:', err);
+            setDiscussionPosts([]);
+        }
+    }, [forumActor, threadId]);
+
     // Fetch tips for posts
     const fetchTipsForPosts = async (posts) => {
         if (!forumActor || !posts || posts.length === 0) return;
@@ -533,7 +562,7 @@ function ThreadViewer({
                 setUserVotes(prev => new Map(prev.set(postIdStr, { vote_type: voteType, voting_power: totalVotingPower })));
                 
                 // Refresh posts to get updated scores (same as original Discussion.jsx)
-                await fetchThreadData();
+                await fetchPosts();
                 
                 // Clear voting state after a delay
                 setTimeout(() => {
