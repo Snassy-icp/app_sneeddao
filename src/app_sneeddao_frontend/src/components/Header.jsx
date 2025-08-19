@@ -294,70 +294,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             )}
                         </div>
                     </div>
-                    <div style={{ 
-                        display: 'flex',
-                        alignItems: 'center'
-                    }}>
-                        <div style={{ 
-                            display: 'flex', 
-                            gap: '20px', 
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                            rowGap: '10px'
-                        }}>
-                            {/* Show loading state if on admin page and waiting for admin check */}
-                            {isOnAdminPage && adminLoading ? (
-                                <div style={{
-                                    color: '#888',
-                                    fontSize: '16px',
-                                    fontStyle: 'italic'
-                                }}>
-                                    Loading...
-                                </div>
-                            ) : (
-                                menuSections[activeSection]?.subMenu?.map((item) => {
-                                    const isActive = isSubmenuItemActive(item.path);
-                                    return (
-                                        <Link
-                                            key={item.name}
-                                            to={item.path}
-                                            style={{
-                                                color: isActive ? '#3498db' : '#888',
-                                                textDecoration: 'none',
-                                                fontSize: '16px',
-                                                fontWeight: isActive ? 'bold' : 'normal',
-                                                position: 'relative',
-                                                paddingBottom: '4px'
-                                            }}
-                                        >
-                                            {item.name}
-                                            {isActive && (
-                                                <div style={{
-                                                    position: 'absolute',
-                                                    bottom: 0,
-                                                    left: 0,
-                                                    width: '100%',
-                                                    height: '2px',
-                                                    background: '#3498db',
-                                                    borderRadius: '2px'
-                                                }} />
-                                            )}
-                                        </Link>
-                                    );
-                                })
-                            )}
-                            {showTotalValue && (
-                                <div style={{ 
-                                    color: '#fff',
-                                    fontSize: '16px',
-                                    fontWeight: 'bold',
-                                    marginLeft: '20px'
-                                }}>
-                                    Total Value: ${showTotalValue}
-                                </div>
-                            )}
-                        </div>
-                    </div>
+
                 </div>
 
                 {/* SNS Dropdown and Login moved to top row */}
@@ -450,6 +387,77 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     💰 {newTipCount}
                                 </div>
                             )}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Submenu Row: Full-width navigation links */}
+            <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'flex-start',
+                width: '100%',
+                paddingTop: '8px',
+                borderTop: '1px solid rgba(255,255,255,0.1)',
+                marginTop: '8px'
+            }}>
+                <div style={{ 
+                    display: 'flex', 
+                    gap: '20px', 
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    rowGap: '10px'
+                }}>
+                    {/* Show loading state if on admin page and waiting for admin check */}
+                    {isOnAdminPage && adminLoading ? (
+                        <div style={{
+                            color: '#888',
+                            fontSize: '16px',
+                            fontStyle: 'italic'
+                        }}>
+                            Loading...
+                        </div>
+                    ) : (
+                        menuSections[activeSection]?.subMenu?.map((item) => {
+                            const isActive = isSubmenuItemActive(item.path);
+                            return (
+                                <Link
+                                    key={item.name}
+                                    to={item.path}
+                                    style={{
+                                        color: isActive ? '#3498db' : '#888',
+                                        textDecoration: 'none',
+                                        fontSize: '16px',
+                                        fontWeight: isActive ? 'bold' : 'normal',
+                                        position: 'relative',
+                                        paddingBottom: '4px'
+                                    }}
+                                >
+                                    {item.name}
+                                    {isActive && (
+                                        <div style={{
+                                            position: 'absolute',
+                                            bottom: 0,
+                                            left: 0,
+                                            width: '100%',
+                                            height: '2px',
+                                            background: '#3498db',
+                                            borderRadius: '2px'
+                                        }} />
+                                    )}
+                                </Link>
+                            );
+                        })
+                    )}
+                    {showTotalValue && (
+                        <div style={{ 
+                            color: '#fff',
+                            fontSize: '16px',
+                            fontWeight: 'bold',
+                            marginLeft: '20px'
+                        }}>
+                            Total Value: ${showTotalValue}
                         </div>
                     )}
                 </div>
