@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools } from 'react-icons/fa';
+import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
@@ -328,7 +328,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         }}
                         title="Login"
                     >
-                        🔓
+                        <FaSignInAlt size={16} />
                     </button>
                 )}
 
