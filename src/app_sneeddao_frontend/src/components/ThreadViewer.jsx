@@ -246,6 +246,13 @@ function ThreadViewer({
     const hotkeyNeurons = getHotkeyNeurons() || [];
     const allNeurons = getAllNeurons() || [];
     
+    // Calculate post score (upvotes - downvotes) like Discussion.jsx
+    const calculatePostScore = (post) => {
+        const upvotes = Number(post.upvote_score);
+        const downvotes = Number(post.downvote_score);
+        return upvotes - downvotes;
+    };
+
     // Format vote scores like Discussion.jsx
     const formatScore = (score) => {
         // Convert from e8s (divide by 10^8)
@@ -520,6 +527,56 @@ function ThreadViewer({
             setDiscussionPosts([]);
         }
     }, [forumActor, threadId]);
+
+    // Submit comment function (simplified from Discussion.jsx)
+    const submitComment = async () => {
+        if (!commentText.trim() || !forumActor || !threadId) return;
+        
+        setSubmittingComment(true);
+        try {
+            // Only use the title if it's explicitly provided
+            const shouldUseTitle = commentTitle && commentTitle.trim();
+            
+            const result = await forumActor.create_post(
+                Number(threadId),
+                [], // reply_to_post_id - empty for top-level posts
+                shouldUseTitle ? [commentTitle.trim()] : [], // title
+                commentText // body
+            );
+            
+            if ('ok' in result) {
+                console.log('Comment created successfully, post ID:', result.ok);
+                const postId = result.ok;
+                
+                // Clear form immediately
+                setCommentText('');
+                setCommentTitle('');
+                setShowCommentForm(false);
+                
+                // Refresh posts to show the new post
+                await fetchPosts();
+                
+                // Auto-upvote if user has voting power
+                if (allNeurons && allNeurons.length > 0 && totalVotingPower > 0) {
+                    try {
+                        await forumActor.vote_on_post(Number(postId), { upvote: null });
+                        // Refresh again to show the upvote
+                        await fetchPosts();
+                    } catch (voteError) {
+                        console.error('Error auto-upvoting new post:', voteError);
+                        // Don't fail the whole operation if auto-upvote fails
+                    }
+                }
+            } else {
+                throw new Error(JSON.stringify(result.err));
+            }
+        } catch (error) {
+            console.error('Error creating comment:', error);
+            if (onError) onError('Failed to create comment: ' + error.message);
+        } finally {
+            setSubmittingComment(false);
+        }
+    };
 
     // Fetch tips for posts
     const fetchTipsForPosts = async (posts) => {
@@ -1028,6 +1085,104 @@ function ThreadViewer({
                 )}
             </div>
 
+            {/* Create Comment Form */}
+            {isAuthenticated && showCreatePost && (
+                <div style={{ marginBottom: '20px' }}>
+                    {!showCommentForm ? (
+                        <button
+                            onClick={() => setShowCommentForm(true)}
+                            style={{
+                                backgroundColor: '#3498db',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '10px 20px',
+                                cursor: 'pointer',
+                                fontSize: '14px',
+                                width: '100%'
+                            }}
+                        >
+                            {discussionPosts.length === 0 ? 'Be the first to comment' : 'Add a comment'}
+                        </button>
+                    ) : (
+                        <div style={{ marginTop: '15px' }}>
+                            <input
+                                type="text"
+                                value={commentTitle}
+                                onChange={(e) => setCommentTitle(e.target.value)}
+                                placeholder="Title (optional)"
+                                style={{
+                                    width: '100%',
+                                    backgroundColor: '#2a2a2a',
+                                    color: '#ffffff',
+                                    border: '1px solid #444',
+                                    borderRadius: '4px',
+                                    padding: '10px',
+                                    marginBottom: '10px',
+                                    fontSize: '14px'
+                                }}
+                            />
+                            <textarea
+                                value={commentText}
+                                onChange={(e) => setCommentText(e.target.value)}
+                                placeholder="Write your comment here..."
+                                style={{
+                                    width: '100%',
+                                    backgroundColor: '#2a2a2a',
+                                    color: '#ffffff',
+                                    border: '1px solid #444',
+                                    borderRadius: '4px',
+                                    padding: '10px',
+                                    fontSize: '14px',
+                                    minHeight: '100px',
+                                    resize: 'vertical'
+                                }}
+                            />
+                            <div style={{ 
+                                display: 'flex', 
+                                gap: '10px', 
+                                marginTop: '10px',
+                                justifyContent: 'flex-end'
+                            }}>
+                                <button
+                                    onClick={() => {
+                                        setShowCommentForm(false);
+                                        setCommentText('');
+                                        setCommentTitle('');
+                                    }}
+                                    style={{
+                                        backgroundColor: '#666',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '8px 16px',
+                                        cursor: 'pointer',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={submitComment}
+                                    disabled={submittingComment || !commentText.trim()}
+                                    style={{
+                                        backgroundColor: submittingComment || !commentText.trim() ? '#666' : '#2ecc71',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '8px 16px',
+                                        cursor: submittingComment || !commentText.trim() ? 'not-allowed' : 'pointer',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    {submittingComment ? 'Posting...' : 'Post Comment'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* View Controls */}
             <div className="discussion-controls">
                 <div className="view-mode-controls">
@@ -1104,7 +1259,7 @@ function ThreadViewer({
     // For now, I'll create a simplified placeholder that references the full implementation
     function PostComponent({ post, depth, isFlat, focusedPostId }) {
         const isFocused = focusedPostId && Number(post.id) === Number(focusedPostId);
-        const score = formatScore(post);
+        const score = calculatePostScore(post);
         const isNegative = score < 0;
         const hasBeenManuallyToggled = collapsedPosts.has(Number(post.id));
         
