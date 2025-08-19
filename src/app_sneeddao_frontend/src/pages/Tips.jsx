@@ -50,6 +50,11 @@ const Tips = () => {
                 getTipsGivenByUser(forumActor, userPrincipal)
             ]);
 
+            console.log('Tips data:', { received, given });
+            if (received.length > 0) {
+                console.log('Sample tip structure:', received[0]);
+            }
+
             setTipsReceived(received);
             setTipsGiven(given);
 
@@ -200,7 +205,7 @@ const Tips = () => {
                             onClick={() => navigate(`/post?postid=${tip.post_id}`)}
                             title="View this post"
                         >
-                            📄 Post #{tip.post_id}
+                            📄 Post #{tip.post_id?.toString() || 'N/A'}
                         </button>
                         {tip.thread_id && (
                             <button 
@@ -208,7 +213,7 @@ const Tips = () => {
                                 onClick={() => navigate(`/thread?threadid=${tip.thread_id}`)}
                                 title="View full thread"
                             >
-                                🧵 Thread #{tip.thread_id}
+                                🧵 Thread #{tip.thread_id?.toString() || 'N/A'}
                             </button>
                         )}
                     </div>

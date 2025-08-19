@@ -663,6 +663,58 @@ const TipModal = ({
                         </div>
                     </div>
 
+                    {/* Post Preview */}
+                    <div style={{ width: '100%' }}>
+                        <label style={{
+                            display: 'block',
+                            color: 'rgba(255, 255, 255, 0.9)',
+                            fontSize: '15px',
+                            marginBottom: '12px',
+                            fontWeight: '500',
+                            letterSpacing: '0.5px'
+                        }}>
+                            Tipping for Post
+                        </label>
+                        <div style={{
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '12px',
+                            padding: '16px 20px'
+                        }}>
+                            <div style={{
+                                fontSize: '14px',
+                                color: '#ffd700',
+                                marginBottom: '8px',
+                                fontWeight: '600'
+                            }}>
+                                Post #{post.id.toString()}
+                            </div>
+                            {post.title && (
+                                <div style={{
+                                    fontSize: '15px',
+                                    color: '#ffffff',
+                                    fontWeight: '500',
+                                    marginBottom: '8px',
+                                    lineHeight: '1.3'
+                                }}>
+                                    {post.title}
+                                </div>
+                            )}
+                            <div style={{
+                                fontSize: '14px',
+                                color: 'rgba(255, 255, 255, 0.8)',
+                                lineHeight: '1.4',
+                                maxHeight: '60px',
+                                overflow: 'hidden',
+                                position: 'relative'
+                            }}>
+                                {post.body && post.body.length > 150 
+                                    ? `${post.body.substring(0, 150)}...` 
+                                    : post.body || 'No content'}
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Error Display */}
                     {error && (
                         <div style={{
@@ -689,16 +741,15 @@ const TipModal = ({
                     {/* Action Buttons */}
                     <div style={{
                         display: 'flex',
-                        gap: '16px',
-                        marginTop: '8px',
-                        alignItems: 'stretch'
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginTop: '8px'
                     }}>
                         <button
                             type="button"
                             onClick={onClose}
                             disabled={isSubmitting}
                             style={{
-                                flex: 1,
                                 backgroundColor: 'rgba(255, 255, 255, 0.1)',
                                 border: '1px solid rgba(255, 255, 255, 0.2)',
                                 borderRadius: '12px',
@@ -710,6 +761,7 @@ const TipModal = ({
                                 backdropFilter: 'blur(10px)',
                                 opacity: isSubmitting ? 0.6 : 1,
                                 height: '56px',
+                                minWidth: '120px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -734,7 +786,6 @@ const TipModal = ({
                             type="submit"
                             disabled={isSubmitting || !selectedToken || !amount}
                             style={{
-                                flex: 2,
                                 background: (isSubmitting || !selectedToken || !amount)
                                     ? 'rgba(255, 255, 255, 0.1)' 
                                     : 'linear-gradient(135deg, #ffd700, #ffaa00)',
@@ -752,6 +803,7 @@ const TipModal = ({
                                 justifyContent: 'center',
                                 gap: '8px',
                                 height: '56px',
+                                minWidth: '180px',
                                 outline: 'none'
                             }}
                             onMouseEnter={(e) => {
