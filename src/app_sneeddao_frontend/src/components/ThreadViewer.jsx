@@ -826,10 +826,7 @@ function ThreadViewer({
                     refreshTokenBalance(tokenPrincipal.toString());
                 }
                 
-                // Close modal after a short delay
-                setTimeout(() => {
-                    closeTipModal();
-                }, 1500);
+                // Don't auto-close modal - let user close it manually from the success screen
             } else {
                 console.error('Failed to register tip:', tipResult.err);
                 setTippingState('error');
@@ -1372,8 +1369,9 @@ function ThreadViewer({
                     post={selectedPostForTip}
                     availableTokens={availableTokens}
                     onTip={handleTip}
-                    isLoading={tippingState === 'transferring' || tippingState === 'registering'}
+                    isSubmitting={tippingState === 'transferring' || tippingState === 'registering'}
                     identity={identity}
+                    tippingState={tippingState}
                 />
             )}
         </div>

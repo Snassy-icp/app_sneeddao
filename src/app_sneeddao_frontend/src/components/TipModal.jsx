@@ -45,7 +45,8 @@ const TipModal = ({
     isSubmitting,
     availableTokens = [], // Array of {principal, symbol, decimals, balance}
     userPrincipal,
-    identity
+    identity,
+    tippingState = 'idle' // 'idle', 'transferring', 'registering', 'success', 'error'
 }) => {
     const { principalNames, principalNicknames } = useContext(NamingContext);
     const [selectedToken, setSelectedToken] = useState('');
@@ -292,34 +293,142 @@ const TipModal = ({
 
     const selectedTokenData = availableTokens.find(t => t.principal === selectedToken);
 
-    return (
-        <div style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            animation: 'fadeIn 0.2s ease-out'
-        }}>
-            <div style={{
-                background: 'linear-gradient(145deg, #1a1a1a 0%, #2a2a2a 100%)',
-                border: '1px solid rgba(255, 215, 0, 0.2)',
-                borderRadius: '20px',
-                padding: '32px',
-                maxWidth: '420px',
-                width: '90%',
-                maxHeight: '90vh',
-                overflow: 'auto',
-                boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
-                position: 'relative',
-                animation: 'slideIn 0.3s ease-out'
-            }}>
+    // Render different content based on tipping state
+    const renderContent = () => {
+        if (tippingState === 'success') {
+            return (
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>✨</div>
+                    <h3 style={{ 
+                        color: '#ffffff', 
+                        margin: '0 0 16px', 
+                        fontSize: '24px',
+                        fontWeight: '600'
+                    }}>
+                        Thank You!
+                    </h3>
+                    <p style={{
+                        color: 'rgba(255, 255, 255, 0.8)',
+                        margin: '0 0 24px',
+                        fontSize: '16px',
+                        lineHeight: '1.5'
+                    }}>
+                        Your appreciation has been sent successfully. The recipient will be notified of your thoughtful gesture.
+                    </p>
+                    <button
+                        onClick={onClose}
+                        style={{
+                            background: 'linear-gradient(135deg, #ffd700, #ffaa00)',
+                            border: 'none',
+                            borderRadius: '12px',
+                            color: '#000000',
+                            cursor: 'pointer',
+                            fontSize: '15px',
+                            fontWeight: '600',
+                            padding: '12px 24px',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        Close
+                    </button>
+                </div>
+            );
+        }
+
+        if (tippingState === 'transferring' || tippingState === 'registering') {
+            return (
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{
+                        width: '48px',
+                        height: '48px',
+                        border: '4px solid rgba(255, 215, 0, 0.3)',
+                        borderTop: '4px solid #ffd700',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite',
+                        margin: '0 auto 24px'
+                    }}></div>
+                    <h3 style={{ 
+                        color: '#ffffff', 
+                        margin: '0 0 16px', 
+                        fontSize: '24px',
+                        fontWeight: '600'
+                    }}>
+                        {tippingState === 'transferring' ? 'Sending Tip...' : 'Registering Tip...'}
+                    </h3>
+                    <p style={{
+                        color: 'rgba(255, 255, 255, 0.8)',
+                        margin: '0 0 16px',
+                        fontSize: '16px',
+                        lineHeight: '1.5'
+                    }}>
+                        {tippingState === 'transferring' 
+                            ? 'Processing your token transfer...' 
+                            : 'Recording your tip in the forum...'
+                        }
+                    </p>
+                    <div style={{
+                        backgroundColor: 'rgba(255, 165, 0, 0.1)',
+                        border: '1px solid rgba(255, 165, 0, 0.3)',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        marginTop: '16px'
+                    }}>
+                        <p style={{
+                            color: '#ffa500',
+                            margin: 0,
+                            fontSize: '14px',
+                            fontWeight: '500'
+                        }}>
+                            ⚠️ Please don't close your browser during this process
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+
+        if (tippingState === 'error') {
+            return (
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>❌</div>
+                    <h3 style={{ 
+                        color: '#ffffff', 
+                        margin: '0 0 16px', 
+                        fontSize: '24px',
+                        fontWeight: '600'
+                    }}>
+                        Something Went Wrong
+                    </h3>
+                    <p style={{
+                        color: 'rgba(255, 255, 255, 0.8)',
+                        margin: '0 0 24px',
+                        fontSize: '16px',
+                        lineHeight: '1.5'
+                    }}>
+                        We encountered an error while processing your tip. Please try again.
+                    </p>
+                    <button
+                        onClick={onClose}
+                        style={{
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '12px',
+                            color: '#ffffff',
+                            cursor: 'pointer',
+                            fontSize: '15px',
+                            fontWeight: '500',
+                            padding: '12px 24px',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        Close
+                    </button>
+                </div>
+            );
+        }
+
+        // Default form content for 'idle' state
+        return (
+            <>
                 {/* Elegant header with golden accent */}
                 <div style={{
                     textAlign: 'center',
@@ -841,6 +950,39 @@ const TipModal = ({
                         </button>
                     </div>
                 </form>
+            </>
+        );
+    };
+
+    return (
+        <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            animation: 'fadeIn 0.2s ease-out'
+        }}>
+            <div style={{
+                background: 'linear-gradient(145deg, #1a1a1a 0%, #2a2a2a 100%)',
+                border: '1px solid rgba(255, 215, 0, 0.2)',
+                borderRadius: '20px',
+                padding: '32px',
+                maxWidth: '420px',
+                width: '90%',
+                maxHeight: '90vh',
+                overflow: 'auto',
+                boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+                position: 'relative',
+                animation: 'slideIn 0.3s ease-out'
+            }}>
+                {renderContent()}
             </div>
         </div>
     );
