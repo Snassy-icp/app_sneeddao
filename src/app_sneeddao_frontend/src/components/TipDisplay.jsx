@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Principal } from '@dfinity/principal';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { formatPrincipal } from '../utils/PrincipalUtils';
@@ -123,7 +124,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         const tooltipHeight = 200; // Approximate tooltip height
         const margin = 15;
 
-        // Use clientX/clientY directly since position: fixed is relative to viewport
+        // Simple approach: use clientX/clientY directly for position: fixed
         let x = event.clientX + margin;
         let y = event.clientY - margin;
 
@@ -226,7 +227,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
             })}
 
             {/* Tooltip */}
-            {hoveredToken && (
+            {hoveredToken && createPortal(
                 <div
                     style={{
                         position: 'fixed',
@@ -321,7 +322,8 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                     }}>
                         Total: {formatAmount(tipsByToken[hoveredToken].totalAmount, getTokenDecimals(tipsByToken[hoveredToken].principal))} {getTokenSymbol(tipsByToken[hoveredToken].principal)}
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
