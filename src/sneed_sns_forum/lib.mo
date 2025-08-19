@@ -787,6 +787,33 @@ module {
         Buffer.toArray(threads)
     };
 
+    public func get_thread_context(state: ForumState, thread_id: Nat) : ?T.ThreadContextResponse {
+        // Get thread to get topic_id
+        switch (get_thread(state, thread_id)) {
+            case (?thread_response) {
+                // Get topic to get forum_id
+                switch (get_topic(state, thread_response.topic_id)) {
+                    case (?topic_response) {
+                        // Get forum to get sns_root_canister_id
+                        switch (get_forum(state, topic_response.forum_id)) {
+                            case (?forum_response) {
+                                ?{
+                                    thread_id = thread_id;
+                                    topic_id = thread_response.topic_id;
+                                    forum_id = topic_response.forum_id;
+                                    sns_root_canister_id = forum_response.sns_root_canister_id;
+                                }
+                            };
+                            case null null;
+                        };
+                    };
+                    case null null;
+                };
+            };
+            case null null;
+        }
+    };
+
     // Post operations
     public func create_post(
         state: ForumState,

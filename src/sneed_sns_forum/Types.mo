@@ -353,6 +353,13 @@ module {
         created_at: Int;
     };
 
+    public type ThreadContextResponse = {
+        thread_id: Nat;
+        topic_id: Nat;
+        forum_id: Nat;
+        sns_root_canister_id: ?Principal;
+    };
+
     // Statistics type for admin endpoints
     public type ForumStats = {
         total_forums: Nat;

@@ -214,6 +214,10 @@ persistent actor SneedSNSForum {
         Lib.get_threads_by_topic_filtered(state, topic_id, is_admin)
     };
 
+    public query func get_thread_context(thread_id: Nat) : async ?T.ThreadContextResponse {
+        Lib.get_thread_context(state, thread_id)
+    };
+
     // Post API endpoints
     public shared ({ caller }) func create_post(
         thread_id: Nat,

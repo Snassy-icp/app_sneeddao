@@ -608,4 +608,15 @@ export const deleteThread = async (forumActor, threadId) => {
         console.error('Error deleting thread:', error);
         throw error;
     }
+};
+
+// Get thread context (thread -> topic -> forum -> SNS)
+export const getThreadContext = async (forumActor, threadId) => {
+    try {
+        const result = await forumActor.get_thread_context(Number(threadId));
+        return result;
+    } catch (error) {
+        console.error('Error getting thread context:', error);
+        throw error;
+    }
 }; 

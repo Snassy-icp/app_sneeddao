@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useNaming } from '../NamingContext';
 import { useNeurons } from '../contexts/NeuronsContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
 import { useTextLimits } from '../hooks/useTextLimits';
+import { calculateVotingPower } from '../utils/VotingPowerUtils';
 import { useTokens } from '../hooks/useTokens';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
@@ -14,7 +16,8 @@ import {
     updatePost,
     deletePost,
     updateThread,
-    deleteThread
+    deleteThread,
+    getThreadContext
 } from '../utils/BackendUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import TipModal from './TipModal';
@@ -220,13 +223,6 @@ function ThreadViewer({
 }) {
     const { principalNames, principalNicknames } = useNaming();
     const { identity } = useAuth();
-    const { getHotkeyNeurons, getAllNeurons, loading: neuronsLoading, neuronsData } = useNeurons();
-    
-    // Get neurons and calculate voting power
-    const allNeurons = getAllNeurons();
-    const totalVotingPower = allNeurons.reduce((total, neuron) => {
-        return total + Number(neuron.cached_neuron_stake_e8s || 0);
-    }, 0);
     
     // Text limits hook
     const { textLimits, loading: textLimitsLoading } = useTextLimits(forumActor);
@@ -238,8 +234,17 @@ function ThreadViewer({
         redirectPath: null // Don't redirect, just check status
     });
 
+    // URL parameter management
+    const [searchParams, setSearchParams] = useSearchParams();
+    const navigate = useNavigate();
+
     // Tokens hook for tipping
     const { tokens: availableTokens, loading: tokensLoading, refreshTokenBalance } = useTokens(identity);
+    
+    // Get neurons from global context
+    const { getHotkeyNeurons, getAllNeurons, loading: neuronsLoading, neuronsData } = useNeurons();
+    const hotkeyNeurons = getHotkeyNeurons() || [];
+    const allNeurons = getAllNeurons() || [];
     
     // Format vote scores like Discussion.jsx
     const formatScore = (score) => {
@@ -258,6 +263,26 @@ function ThreadViewer({
         } else {
             // For values < 1, show up to 8 decimal places, removing trailing zeros
             return scoreInTokens.toLocaleString('en-US', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 8
+            });
+        }
+    };
+
+    // Format voting power for display like Discussion.jsx
+    const formatVotingPowerDisplay = (votingPower) => {
+        if (votingPower === 0) return '0';
+        
+        // Convert from e8s to display units
+        const displayValue = votingPower / 100_000_000;
+        
+        if (displayValue >= 1) {
+            return displayValue.toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            });
+        } else {
+            return displayValue.toLocaleString(undefined, {
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 8
             });
@@ -302,6 +327,39 @@ function ThreadViewer({
     const [deletingPost, setDeletingPost] = useState(null); // postId being deleted
     const [postTips, setPostTips] = useState({});
 
+    // SNS context state
+    const [threadContext, setThreadContext] = useState(null);
+    const [snsRootCanisterId, setSnsRootCanisterId] = useState(null);
+
+    // Calculate total reachable voting power from SNS-specific neurons (for forum voting)
+    const totalVotingPower = React.useMemo(() => {
+        if (!allNeurons || allNeurons.length === 0 || !snsRootCanisterId) return 0;
+        
+        // Filter neurons for the specific SNS
+        const snsNeurons = allNeurons.filter(neuron => {
+            try {
+                // Check if neuron belongs to this SNS by comparing root canister ID
+                const neuronSnsRoot = neuron.sns_root_canister_id;
+                return neuronSnsRoot && neuronSnsRoot.toString() === snsRootCanisterId.toString();
+            } catch (error) {
+                console.warn('Error checking neuron SNS:', neuron.id, error);
+                return false;
+            }
+        });
+
+        console.log(`Found ${snsNeurons.length} neurons for SNS ${snsRootCanisterId}`);
+        
+        return snsNeurons.reduce((total, neuron) => {
+            try {
+                const votingPower = calculateVotingPower(neuron);
+                return total + votingPower;
+            } catch (error) {
+                console.warn('Error calculating voting power for neuron:', neuron.id, error);
+                return total;
+            }
+        }, 0);
+    }, [allNeurons, snsRootCanisterId]);
+
     // Fetch thread details and posts
     const fetchThreadData = useCallback(async () => {
         if (!forumActor || !threadId) return;
@@ -309,6 +367,20 @@ function ThreadViewer({
         setLoadingDiscussion(true);
         try {
             console.log('Fetching thread data for thread ID:', threadId);
+            
+            // Fetch thread context (thread -> topic -> forum -> SNS)
+            const contextResult = await getThreadContext(forumActor, threadId);
+            console.log('Thread context result:', contextResult);
+            
+            if (contextResult && contextResult.length > 0) {
+                const context = contextResult[0];
+                setThreadContext(context);
+                setSnsRootCanisterId(context.sns_root_canister_id?.[0] || null);
+                console.log('SNS Root Canister ID:', context.sns_root_canister_id?.[0]);
+            } else {
+                setThreadContext(null);
+                setSnsRootCanisterId(null);
+            }
             
             // Fetch thread details
             const threadDetails = await forumActor.get_thread(Number(threadId));
@@ -517,14 +589,13 @@ function ThreadViewer({
             setTippingState('registering');
 
             // Register the tip in the backend
-            const tipResult = await createTip(
-                forumActor,
-                recipientPrincipal,
-                amount,
-                tokenLedgerPrincipal,
-                Number(selectedPostForTip.id),
-                selectedPostForTip.thread_id ? Number(selectedPostForTip.thread_id) : null
-            );
+            const tipResult = await createTip(forumActor, {
+                to_principal: recipientPrincipal,
+                post_id: Number(selectedPostForTip.id),
+                token_ledger_principal: tokenLedgerPrincipal,
+                amount: Number(amount), // Convert BigInt to Number to avoid serialization issues
+                transaction_block_index: transferResult.Ok
+            });
 
             if ('ok' in tipResult) {
                 console.log('Tip registered successfully:', tipResult.ok);
@@ -638,6 +709,19 @@ function ThreadViewer({
             fetchThreadData();
         }
     }, [fetchThreadData, threadId]);
+
+    // Effect to update URL parameter when SNS is detected
+    useEffect(() => {
+        if (snsRootCanisterId && threadContext) {
+            const currentSnsParam = searchParams.get('sns');
+            if (currentSnsParam !== snsRootCanisterId.toString()) {
+                console.log('Updating URL with SNS parameter:', snsRootCanisterId.toString());
+                const newParams = new URLSearchParams(searchParams);
+                newParams.set('sns', snsRootCanisterId.toString());
+                setSearchParams(newParams, { replace: true });
+            }
+        }
+    }, [snsRootCanisterId, threadContext, searchParams, setSearchParams]);
 
     // Build hierarchical tree structure for posts
     const buildPostTree = useCallback((posts) => {
@@ -1014,46 +1098,93 @@ function ThreadViewer({
                                 💬 {replyingTo === Number(post.id) ? 'Cancel Reply' : 'Reply'}
                             </button>
 
-                            {/* Vote Buttons */}
-                            <button
-                                onClick={() => handleVote(post.id, 'up')}
-                                disabled={votingStates.get(post.id.toString()) === 'voting'}
-                                style={{
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    color: userVotes.get(post.id.toString())?.vote_type === 'upvote' ? '#2ecc71' : '#6b8eb8',
-                                    borderRadius: '4px',
-                                    padding: '4px 8px',
-                                    cursor: votingStates.get(post.id.toString()) === 'voting' ? 'not-allowed' : 'pointer',
-                                    fontSize: '12px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    opacity: votingStates.get(post.id.toString()) === 'voting' ? 0.6 : 1
-                                }}
-                            >
-                                {votingStates.get(post.id.toString()) === 'voting' ? '⏳' : '👍'} {formatScore(Number(post.upvote_score) || 0)}
-                            </button>
+                            {/* Voting Section - Layout like Discussion.jsx */}
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '8px',
+                                marginTop: '5px' 
+                            }}>
+                                {/* Upvote Button - Shows voting power */}
+                                <button
+                                    onClick={() => handleVote(post.id, 'up')}
+                                    disabled={votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0}
+                                    style={{
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: userVotes.get(post.id.toString())?.vote_type === 'upvote' ? '#2ecc71' : '#6b8eb8',
+                                        borderRadius: '4px',
+                                        padding: '4px 8px',
+                                        cursor: (votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
+                                        fontSize: '12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '3px',
+                                        opacity: (votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0) ? 0.6 : 1,
+                                        fontWeight: 'bold'
+                                    }}
+                                    title={totalVotingPower === 0 ? 'You must have neurons with voting power to vote on posts' : 
+                                           `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
+                                >
+                                    ▲ {votingStates.get(post.id.toString()) === 'voting' ? '...' : 
+                                        totalVotingPower === 0 ? 'No VP' : 
+                                        `${formatVotingPowerDisplay(totalVotingPower)}`}
+                                </button>
 
-                            <button
-                                onClick={() => handleVote(post.id, 'down')}
-                                disabled={votingStates.get(post.id.toString()) === 'voting'}
-                                style={{
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    color: userVotes.get(post.id.toString())?.vote_type === 'downvote' ? '#e74c3c' : '#6b8eb8',
-                                    borderRadius: '4px',
-                                    padding: '4px 8px',
-                                    cursor: votingStates.get(post.id.toString()) === 'voting' ? 'not-allowed' : 'pointer',
-                                    fontSize: '12px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    opacity: votingStates.get(post.id.toString()) === 'voting' ? 0.6 : 1
-                                }}
-                            >
-                                {votingStates.get(post.id.toString()) === 'voting' ? '⏳' : '👎'} {formatScore(Number(post.downvote_score) || 0)}
-                            </button>
+                                {/* Score Display - Shows total post score */}
+                                <span style={{ 
+                                    color: (Number(post.upvote_score) - Number(post.downvote_score)) > 0 ? '#6b8e6b' : 
+                                           (Number(post.upvote_score) - Number(post.downvote_score)) < 0 ? '#b85c5c' : '#888',
+                                    fontSize: '14px',
+                                    fontWeight: 'bold',
+                                    minWidth: '60px',
+                                    textAlign: 'center',
+                                    padding: '0 4px'
+                                }}>
+                                    {votingStates.get(post.id.toString()) === 'voting' ? (
+                                        <div style={{ 
+                                            display: 'inline-block',
+                                            width: '12px',
+                                            height: '12px',
+                                            border: '2px solid #f3f3f3',
+                                            borderTop: '2px solid #3498db',
+                                            borderRadius: '50%',
+                                            animation: 'spin 1s linear infinite'
+                                        }} />
+                                    ) : (
+                                        (() => {
+                                            const score = Number(post.upvote_score) - Number(post.downvote_score);
+                                            return (score > 0 ? '+' : '') + formatScore(score);
+                                        })()
+                                    )}
+                                </span>
+
+                                {/* Downvote Button - Shows voting power */}
+                                <button
+                                    onClick={() => handleVote(post.id, 'down')}
+                                    disabled={votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0}
+                                    style={{
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: userVotes.get(post.id.toString())?.vote_type === 'downvote' ? '#e74c3c' : '#6b8eb8',
+                                        borderRadius: '4px',
+                                        padding: '4px 8px',
+                                        cursor: (votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
+                                        fontSize: '12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '3px',
+                                        opacity: (votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0) ? 0.6 : 1,
+                                        fontWeight: 'bold'
+                                    }}
+                                    title={totalVotingPower === 0 ? 'You must have neurons with voting power to vote on posts' : 
+                                           `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
+                                >
+                                    ▼ {votingStates.get(post.id.toString()) === 'voting' ? '...' : 
+                                        totalVotingPower === 0 ? 'No VP' : 
+                                        `${formatVotingPowerDisplay(totalVotingPower)}`}
+                                </button>
+                            </div>
 
                             {/* Tip Button - Only show for posts by other users */}
                             {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
