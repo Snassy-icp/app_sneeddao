@@ -139,10 +139,23 @@ function Forum() {
             setForum(forum);
 
             // Get topics for this forum
-            const topicsResponse = await forumActor.get_topics_by_forum(Number(forum.id));
+            console.log('Forum ID raw:', forum.id);
+            console.log('Forum ID type:', typeof forum.id);
+            const forumIdNumber = typeof forum.id === 'bigint' ? Number(forum.id) : forum.id;
+            console.log('Calling get_topics_by_forum with forum ID:', forumIdNumber);
+            const topicsResponse = await forumActor.get_topics_by_forum(forumIdNumber);
+            console.log('Topics response:', topicsResponse);
+            console.log('Topics response length:', topicsResponse?.length);
             
             // Filter out deleted topics and only show root-level topics (no parent)
-            const rootTopics = topicsResponse.filter(topic => !topic.deleted && !topic.parent_topic_id);
+            // Note: parent_topic_id is a Motoko optional, so null = [], Some(value) = [value]
+            const rootTopics = topicsResponse.filter(topic => {
+                const isNotDeleted = !topic.deleted;
+                const isRootLevel = !topic.parent_topic_id || topic.parent_topic_id.length === 0;
+                console.log(`Topic "${topic.title}": deleted=${topic.deleted}, parent_topic_id=`, topic.parent_topic_id, `isRootLevel=${isRootLevel}`);
+                return isNotDeleted && isRootLevel;
+            });
+            console.log('Root topics after filtering:', rootTopics);
             setTopics(rootTopics);
 
         } catch (err) {
