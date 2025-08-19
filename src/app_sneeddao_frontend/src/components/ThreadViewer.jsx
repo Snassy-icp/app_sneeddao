@@ -1032,13 +1032,27 @@ function ThreadViewer({
             <div className="discussion-controls">
                 <div className="view-mode-controls">
                     <button 
-                        onClick={() => setViewMode('tree')} 
+                        onClick={() => {
+                            setViewMode('tree');
+                            try {
+                                localStorage.setItem('discussionViewMode', 'tree');
+                            } catch (error) {
+                                console.warn('Could not save to localStorage:', error);
+                            }
+                        }} 
                         className={viewMode === 'tree' ? 'active' : ''}
                     >
                         🌳 Tree View
                     </button>
                     <button 
-                        onClick={() => setViewMode('flat')} 
+                        onClick={() => {
+                            setViewMode('flat');
+                            try {
+                                localStorage.setItem('discussionViewMode', 'flat');
+                            } catch (error) {
+                                console.warn('Could not save to localStorage:', error);
+                            }
+                        }} 
                         className={viewMode === 'flat' ? 'active' : ''}
                     >
                         📋 Flat View
@@ -1090,7 +1104,14 @@ function ThreadViewer({
     // For now, I'll create a simplified placeholder that references the full implementation
     function PostComponent({ post, depth, isFlat, focusedPostId }) {
         const isFocused = focusedPostId && Number(post.id) === Number(focusedPostId);
-        const isCollapsed = collapsedPosts.has(Number(post.id));
+        const score = formatScore(post);
+        const isNegative = score < 0;
+        const hasBeenManuallyToggled = collapsedPosts.has(Number(post.id));
+        
+        // Default state: negative posts are collapsed, positive posts are expanded
+        // If manually toggled, use the opposite of the default state
+        const defaultCollapsed = isNegative;
+        const isCollapsed = hasBeenManuallyToggled ? !defaultCollapsed : defaultCollapsed;
         
         return (
             <div 
@@ -1098,18 +1119,24 @@ function ThreadViewer({
                 style={{ 
                     marginLeft: isFlat ? 0 : `${depth * 20}px`,
                     border: isFocused ? '2px solid #ffd700' : undefined,
-                    backgroundColor: isFocused ? 'rgba(255, 215, 0, 0.1)' : undefined
+                    backgroundColor: isNegative ? '#3a2a2a' : (isFocused ? 'rgba(255, 215, 0, 0.1)' : '#2a2a2a'),
+                    borderColor: isNegative ? '#8b4513' : '#4a4a4a',
+                    borderWidth: '1px',
+                    borderStyle: 'solid',
+                    borderRadius: '6px',
+                    padding: '15px',
+                    marginBottom: '10px'
                 }}
             >
                 {/* Post content - simplified for now */}
                 <div className="post-content">
                     <div className="post-header">
-                        {/* Collapse button for posts with replies */}
-                        {!isFlat && post.replies && post.replies.length > 0 && (
+                        {/* Collapse button - always show for tree view */}
+                        {!isFlat && (
                             <button
                                 onClick={() => {
                                     const newCollapsed = new Set(collapsedPosts);
-                                    if (isCollapsed) {
+                                    if (hasBeenManuallyToggled) {
                                         newCollapsed.delete(Number(post.id));
                                     } else {
                                         newCollapsed.add(Number(post.id));
@@ -1117,16 +1144,21 @@ function ThreadViewer({
                                     setCollapsedPosts(newCollapsed);
                                 }}
                                 style={{
-                                    background: 'none',
-                                    border: 'none',
+                                    backgroundColor: 'transparent',
+                                    border: '1px solid #666',
                                     color: '#888',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px',
                                     cursor: 'pointer',
-                                    fontSize: '12px',
-                                    marginRight: '8px'
+                                    fontSize: '14px',
+                                    minWidth: '28px',
+                                    height: '28px',
+                                    marginRight: '8px',
+                                    flexShrink: 0
                                 }}
-                                title={isCollapsed ? 'Expand replies' : 'Collapse replies'}
+                                title={isCollapsed ? 'Expand post' : 'Collapse post'}
                             >
-                                {isCollapsed ? '▶' : '▼'}
+                                {isCollapsed ? '+' : '−'}
                             </button>
                         )}
                         <span className="post-id">#{post.id.toString()}</span>
@@ -1157,23 +1189,27 @@ function ThreadViewer({
                             return null;
                         })()}
                     </div>
-                    {/* Post body - hide when editing */}
-                    {editingPost !== Number(post.id) && (
-                        <div className="post-body">
-                            <p>{post.body}</p>
-                        </div>
-                    )}
                     
-                    {/* Tips Display */}
-                    {postTips[Number(post.id)] && postTips[Number(post.id)].length > 0 && (
-                        <TipDisplay 
-                            tips={postTips[Number(post.id)]}
-                            principalDisplayInfo={principalDisplayInfo}
-                        />
-                    )}
+                    {/* Post content - hide when collapsed */}
+                    {!isCollapsed && (
+                        <>
+                            {/* Post body - hide when editing */}
+                            {editingPost !== Number(post.id) && (
+                                <div className="post-body">
+                                    <p>{post.body}</p>
+                                </div>
+                            )}
+                            
+                            {/* Tips Display */}
+                            {postTips[Number(post.id)] && postTips[Number(post.id)].length > 0 && (
+                                <TipDisplay 
+                                    tips={postTips[Number(post.id)]}
+                                    principalDisplayInfo={principalDisplayInfo}
+                                />
+                            )}
 
-                    {/* Action Buttons - Only show for authenticated users */}
-                    {isAuthenticated && (
+                            {/* Action Buttons - Only show for authenticated users */}
+                            {isAuthenticated && (
                         <div style={{
                             display: 'flex',
                             gap: '8px',
@@ -1359,6 +1395,8 @@ function ThreadViewer({
                                 </button>
                             )}
                         </div>
+                    )}
+                        </>
                     )}
 
                     {/* Reply Form */}
