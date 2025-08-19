@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
@@ -226,6 +226,7 @@ function Topic() {
     const { topicId } = useParams();
     const { identity } = useAuth();
     const { selectedSnsRoot } = useSns();
+    const navigate = useNavigate();
     const [topic, setTopic] = useState(null);
     const [subtopics, setSubtopics] = useState([]);
     const [threads, setThreads] = useState([]);
@@ -339,11 +340,13 @@ function Topic() {
             });
 
             if ('ok' in result) {
-                // Clear form and refresh threads
+                // Clear form
                 setCreateThreadTitle('');
                 setCreateThreadBody('');
-                setCurrentPage(0); // Go back to first page to see new thread
-                await fetchTopicData();
+                
+                // Navigate to the new thread
+                const newThreadId = result.ok.toString();
+                navigate(`/thread?threadid=${newThreadId}`);
             } else {
                 setError('Failed to create thread: ' + (result.err || 'Unknown error'));
             }
@@ -467,8 +470,8 @@ function Topic() {
                                         onMouseEnter={() => setHoveredThread(thread.id)}
                                         onMouseLeave={() => setHoveredThread(null)}
                                         onClick={() => {
-                                            // TODO: Navigate to thread detail page when implemented
-                                            console.log('Navigate to thread:', thread.id);
+                                            const threadIdStr = thread.id.toString();
+                                            navigate(`/thread?threadid=${threadIdStr}`);
                                         }}
                                     >
                                         <h3 style={styles.threadTitle}>
