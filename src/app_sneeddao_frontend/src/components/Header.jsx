@@ -167,8 +167,12 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Locks', path: '/sneedlock' },
                 { name: 'Dashboard', path: '/sneedlock_info' }
             ]
-        },
-        'Tools': {
+        }
+    };
+
+    // Add tools section only if user is authenticated and confirmed admin
+    if (isAuthenticated && isAdmin === true) {
+        menuSections['Tools'] = {
             icon: <FaTools size={18} />,
             displayName: 'Sneed Tools',
             defaultPath: '/tools/main',
@@ -177,8 +181,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Escrow', path: '/tools/escrow' },
                 { name: 'Lookup Swap', path: '/tools/escrow/swap' }
             ]
-        }
-    };
+        };
+    }
 
     // Add admin section only if user is authenticated and confirmed admin
     if (isAuthenticated && isAdmin === true) {
