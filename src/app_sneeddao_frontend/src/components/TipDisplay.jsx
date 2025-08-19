@@ -123,27 +123,23 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         const tooltipHeight = 200; // Approximate tooltip height
         const margin = 15;
 
-        // Get scroll positions to account for page scroll
-        const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
-        const scrollY = window.pageYOffset || document.documentElement.scrollTop;
-
-        // Follow the mouse cursor like the original (accounting for scroll)
-        let x = event.clientX + scrollX + margin;
-        let y = event.clientY + scrollY - margin;
+        // Use clientX/clientY directly since position: fixed is relative to viewport
+        let x = event.clientX + margin;
+        let y = event.clientY - margin;
 
         // Adjust if tooltip would go off-screen to the right
-        if (event.clientX + tooltipWidth + margin > window.innerWidth) {
-            x = event.clientX + scrollX - tooltipWidth - margin;
+        if (x + tooltipWidth > window.innerWidth) {
+            x = event.clientX - tooltipWidth - margin;
         }
 
         // Adjust if tooltip would go off-screen at the bottom
-        if (event.clientY + tooltipHeight + margin > window.innerHeight) {
-            y = event.clientY + scrollY - tooltipHeight - margin;
+        if (y + tooltipHeight > window.innerHeight) {
+            y = event.clientY - tooltipHeight - margin;
         }
 
         // Ensure tooltip doesn't go off-screen at the top or left
-        x = Math.max(scrollX + margin, x);
-        y = Math.max(scrollY + margin, y);
+        x = Math.max(margin, x);
+        y = Math.max(margin, y);
 
         setTooltipPosition({ x, y });
     };
@@ -243,7 +239,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         color: '#ffffff',
                         fontSize: '12px',
                         maxWidth: '300px',
-                        zIndex: 1000,
+                        zIndex: 9999,
                         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
                         pointerEvents: 'none'
                     }}
