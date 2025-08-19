@@ -76,4 +76,16 @@
   backface-visibility: hidden;
   perspective: 1000;
   transform: translate3d(0, 0, 0);
+}
+
+/* Notification styling */
+.ticker-notification {
+  color: #FFD700 !important; /* Gold color for notifications */
+  font-weight: bold;
+  text-shadow: 0 0 5px rgba(255, 215, 0, 0.5);
+}
+
+.ticker-notification:hover {
+  color: #FFF700 !important; /* Brighter on hover */
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.8);
 } 

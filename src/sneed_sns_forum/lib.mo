@@ -1441,6 +1441,71 @@ module {
         }
     };
 
+    // Get count of replies to user since their last seen timestamp (optimized for notifications)
+    public func get_recent_replies_count(state: ForumState, user_principal: Principal) : Nat {
+        let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
+            case (?index) index;
+            case null return 0; // User not found in dedup, so no replies received
+        };
+        
+        // Get user's last seen replies timestamp (0 if never seen)
+        let since_timestamp = switch (Map.get(state.user_last_seen_replies, Map.n32hash, user_index)) {
+            case (?timestamp) timestamp;
+            case null 0; // If never seen, count all replies (since 0)
+        };
+        
+        var count = 0;
+        
+        // First, find all posts created by the user
+        let user_post_ids = Buffer.Buffer<Nat>(0);
+        for ((post_id, post) in Map.entries(state.posts)) {
+            if (post.created_by == user_index and not post.deleted) {
+                user_post_ids.add(post_id);
+            };
+        };
+        
+        // Then count replies to the user's posts that are newer than since_timestamp
+        for ((reply_id, reply_post) in Map.entries(state.posts)) {
+            if (not reply_post.deleted and reply_post.created_at > since_timestamp) {
+                switch (reply_post.reply_to_post_id) {
+                    case (?parent_post_id) {
+                        // Check if this reply is to one of the user's posts
+                        let user_post_array = Buffer.toArray(user_post_ids);
+                        for (user_post_id in user_post_array.vals()) {
+                            if (parent_post_id == user_post_id) {
+                                count += 1;
+                            };
+                        };
+                    };
+                    case null {}; // Not a reply, skip
+                };
+            };
+        };
+        
+        count
+    };
+
+    // Mark replies as seen up to a specific timestamp
+    public func mark_replies_seen_up_to(state: ForumState, user_principal: Principal, timestamp: Int) : () {
+        let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
+            case (?index) index;
+            case null return; // User not found in dedup, nothing to update
+        };
+        
+        // Update the user's last seen replies timestamp
+        ignore Map.put(state.user_last_seen_replies, Map.n32hash, user_index, timestamp);
+    };
+
+    // Get the last seen replies timestamp for a user
+    public func get_last_seen_replies_timestamp(state: ForumState, user_principal: Principal) : ?Int {
+        let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
+            case (?index) index;
+            case null return null; // User not found in dedup
+        };
+        
+        Map.get(state.user_last_seen_replies, Map.n32hash, user_index)
+    };
+
     // Legacy method - keep for backward compatibility but rename parameter for clarity
     public func get_tips_received_since(state: ForumState, user_principal: Principal, since_timestamp: Int) : [TipResponse] {
         let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {

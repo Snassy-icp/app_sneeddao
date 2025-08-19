@@ -8,17 +8,25 @@ import { get_token_conversion_rates } from '../utils/TokenUtils';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { useTipNotifications } from '../hooks/useTipNotifications';
+import { useReplyNotifications } from '../hooks/useReplyNotifications';
 
 const Layout = ({ children }) => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const { newTipCount, markAsViewed } = useTipNotifications();
+  const { newReplyCount, markAsViewed: markRepliesAsViewed } = useReplyNotifications();
   const [tickerText, setTickerText] = useState('Loading...');
 
   const handleTipClick = () => {
     // Mark tips as viewed when user clicks the notification
     markAsViewed();
     navigate('/tips');
+  };
+
+  const handleReplyClick = () => {
+    // Mark replies as viewed when user clicks the notification
+    markRepliesAsViewed();
+    navigate('/posts');
   };
 
   useEffect(() => {
@@ -68,6 +76,14 @@ const Layout = ({ children }) => {
           priceInfo.unshift(tipMessage); // Add at the beginning for prominence
         }
 
+        // Add reply notification if user is authenticated and has new replies
+        if (isAuthenticated && newReplyCount > 0) {
+          const replyMessage = newReplyCount === 1 
+            ? `💬 You have 1 new reply! Click here to view` 
+            : `💬 You have ${newReplyCount} new replies! Click here to view`;
+          priceInfo.unshift(replyMessage); // Add at the beginning for prominence
+        }
+
         const text = priceInfo.join('  •  ');
         console.log('Setting ticker text:', text);
         setTickerText(text);
@@ -81,11 +97,11 @@ const Layout = ({ children }) => {
     // Refresh every minute
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
-  }, [isAuthenticated, newTipCount]); // Re-run when tip count changes
+  }, [isAuthenticated, newTipCount, newReplyCount]); // Re-run when tip or reply count changes
   
   return (
     <div className="app-layout">
-      <Ticker text={tickerText} onTipClick={handleTipClick} />
+      <Ticker text={tickerText} onTipClick={handleTipClick} onReplyClick={handleReplyClick} />
       <div className="app-content">
         {children}
       </div>

@@ -93,6 +93,7 @@ persistent actor SneedSNSForum {
     stable let stable_tips_given = Map.new<Nat32, Vector.Vector<Nat>>();
     stable let stable_tips_received = Map.new<Nat32, Vector.Vector<Nat>>();
     stable let stable_user_last_seen_tips = Map.new<Nat32, Int>();
+    stable let stable_user_last_seen_replies = Map.new<Nat32, Int>();
     stable let stable_proposal_topics = Map.new<Nat, T.ProposalTopicMapping>();
     stable let stable_proposal_threads = Map.new<T.ProposalThreadKey, T.ProposalThreadMapping>();
     stable let stable_thread_proposals = Map.new<Nat, (Nat32, Nat)>();
@@ -121,6 +122,7 @@ persistent actor SneedSNSForum {
         tips_given = stable_tips_given;
         tips_received = stable_tips_received;
         user_last_seen_tips = stable_user_last_seen_tips;
+        user_last_seen_replies = stable_user_last_seen_replies;
         proposal_topics = stable_proposal_topics;
         proposal_threads = stable_proposal_threads;
         thread_proposals = stable_thread_proposals;
@@ -318,6 +320,10 @@ persistent actor SneedSNSForum {
         Lib.get_recent_tips_count(state, user_principal)
     };
 
+    public query func get_recent_replies_count(user_principal: Principal) : async Nat {
+        Lib.get_recent_replies_count(state, user_principal)
+    };
+
     public query func get_tips_received_since(user_principal: Principal, since_timestamp: Int) : async [T.TipResponse] {
         Lib.get_tips_received_since(state, user_principal, since_timestamp)
     };
@@ -328,6 +334,14 @@ persistent actor SneedSNSForum {
 
     public query func get_last_seen_tip_timestamp(user_principal: Principal) : async ?Int {
         Lib.get_last_seen_tip_timestamp(state, user_principal)
+    };
+
+    public shared ({ caller }) func mark_replies_seen_up_to(timestamp: Int) : async () {
+        Lib.mark_replies_seen_up_to(state, caller, timestamp)
+    };
+
+    public query func get_last_seen_replies_timestamp(user_principal: Principal) : async ?Int {
+        Lib.get_last_seen_replies_timestamp(state, user_principal)
     };
 
     public query func get_tip_stats() : async T.TipStats {

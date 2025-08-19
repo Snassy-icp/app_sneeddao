@@ -588,6 +588,37 @@ export const getLastSeenTipTimestamp = async (forumActor, userPrincipal) => {
     }
 };
 
+// Reply notification methods
+export const getRecentRepliesCount = async (forumActor, userPrincipal) => {
+    try {
+        const result = await forumActor.get_recent_replies_count(userPrincipal);
+        return result;
+    } catch (error) {
+        console.error('Error getting recent replies count:', error);
+        throw error;
+    }
+};
+
+export const markRepliesSeenUpTo = async (forumActor, timestamp) => {
+    try {
+        const result = await forumActor.mark_replies_seen_up_to(timestamp);
+        return result;
+    } catch (error) {
+        console.error('Error marking replies as seen:', error);
+        throw error;
+    }
+};
+
+export const getLastSeenRepliesTimestamp = async (forumActor, userPrincipal) => {
+    try {
+        const result = await forumActor.get_last_seen_replies_timestamp(userPrincipal);
+        return result;
+    } catch (error) {
+        console.error('Error getting last seen replies timestamp:', error);
+        throw error;
+    }
+};
+
 // Update a post
 export const updatePost = async (forumActor, postId, title, body) => {
     try {

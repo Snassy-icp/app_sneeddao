@@ -5,7 +5,10 @@ import { useForum } from '../contexts/ForumContext';
 import { useNaming } from '../NamingContext';
 import { 
     getPostsByUser, 
-    getRepliesToUser 
+    getRepliesToUser,
+    getRecentRepliesCount,
+    markRepliesSeenUpTo,
+    getLastSeenRepliesTimestamp
 } from '../utils/BackendUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import Header from '../components/Header';
@@ -23,6 +26,10 @@ const Posts = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    
+    // Reply highlighting state (using single-execution pattern like Tips)
+    const [capturedOldRepliesTimestamp, setCapturedOldRepliesTimestamp] = useState(0);
+    const [repliesTimestampProcessed, setRepliesTimestampProcessed] = useState(false);
 
     // Fetch posts data
     const fetchPostsData = useCallback(async () => {
@@ -58,9 +65,61 @@ const Posts = () => {
         }
     }, [isAuthenticated, identity, createForumActor]);
 
+    // ONE-TIME replies timestamp processing - executes ONCE per page load
     useEffect(() => {
-        fetchPostsData();
-    }, [fetchPostsData]);
+        const processRepliesTimestamp = async () => {
+            if (!isAuthenticated || !identity || repliesTimestampProcessed) {
+                return;
+            }
+
+            try {
+                const forumActor = createForumActor(identity);
+                const userPrincipal = identity.getPrincipal();
+
+                // Step 1: Get old timestamp ONCE
+                const oldTimestampResult = await getLastSeenRepliesTimestamp(forumActor, userPrincipal);
+                const currentOldTimestamp = oldTimestampResult || 0;
+                setCapturedOldRepliesTimestamp(currentOldTimestamp);
+                
+                console.log(`🔥 REPLIES: CAPTURED OLD TIMESTAMP: ${currentOldTimestamp}`);
+
+                // Step 2: Check if we have new replies
+                const newRepliesCount = await getRecentRepliesCount(forumActor, userPrincipal);
+                console.log(`🔥 REPLIES: NEW REPLIES COUNT: ${newRepliesCount}`);
+
+                // Step 3: Update backend timestamp ONCE if we have new replies
+                if (Number(newRepliesCount) > 0) {
+                    const currentTimestamp = Date.now() * 1_000_000;
+                    await markRepliesSeenUpTo(forumActor, currentTimestamp);
+                    console.log(`🔥 REPLIES: UPDATED BACKEND TIMESTAMP ONCE: ${currentTimestamp}`);
+                    
+                    // Step 4: Default to replies tab if new replies > 0
+                    setActiveTab('replies');
+                    console.log(`🔥 REPLIES: DEFAULTED TO REPLIES TAB (${newRepliesCount} new replies)`);
+                } else {
+                    console.log('🔥 REPLIES: NO NEW REPLIES - NO BACKEND UPDATE');
+                }
+
+                // Mark as processed to prevent re-execution
+                setRepliesTimestampProcessed(true);
+                console.log('🔥 REPLIES: TIMESTAMP PROCESSING COMPLETE - WILL NOT RUN AGAIN');
+
+            } catch (error) {
+                console.error('Error in replies timestamp processing:', error);
+                setRepliesTimestampProcessed(true); // Prevent infinite retries
+            }
+        };
+
+        processRepliesTimestamp();
+    }, [isAuthenticated, identity, createForumActor, repliesTimestampProcessed]);
+
+    // Separate effect for data fetching (can run multiple times)
+    useEffect(() => {
+        if (repliesTimestampProcessed) {
+            // Only fetch data after timestamp processing is complete
+            fetchPostsData();
+        }
+    }, [repliesTimestampProcessed, fetchPostsData]);
 
     // Separate effect to update principal display info when naming context changes
     useEffect(() => {
@@ -110,6 +169,13 @@ const Posts = () => {
         } catch (error) {
             return 'Invalid date';
         }
+    };
+
+    // Helper function to check if a reply is new (for highlighting)
+    const isReplyNew = (replyTimestamp) => {
+        const isNew = Number(replyTimestamp) > capturedOldRepliesTimestamp;
+        console.log(`🔥 REPLY NEW CHECK: replyTimestamp=${replyTimestamp}, capturedOldRepliesTimestamp=${capturedOldRepliesTimestamp}, isNew=${isNew}`);
+        return isNew;
     };
 
     const formatScore = (score) => {
@@ -170,10 +236,13 @@ const Posts = () => {
         const netScore = calculateNetScore(post);
         const isNegative = netScore < 0;
         
+        // Check if this reply is new (only highlight replies, not my posts)
+        const isNew = isReply && isReplyNew(post.created_at);
+        
         return (
             <div 
                 key={post.id} 
-                className={`post-item ${isNegative ? 'negative-score' : ''}`}
+                className={`post-item ${isNegative ? 'negative-score' : ''} ${isNew ? 'reply-new' : ''}`}
                 onClick={() => navigateToPost(post)}
             >
                 <div className="post-header">
