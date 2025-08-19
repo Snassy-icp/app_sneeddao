@@ -13,19 +13,17 @@ import { useReplyNotifications } from '../hooks/useReplyNotifications';
 const Layout = ({ children }) => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const { newTipCount, markAsViewed } = useTipNotifications();
-  const { newReplyCount, markAsViewed: markRepliesAsViewed } = useReplyNotifications();
+  const { newTipCount } = useTipNotifications();
+  const { newReplyCount } = useReplyNotifications();
   const [tickerText, setTickerText] = useState('Loading...');
 
   const handleTipClick = () => {
-    // Mark tips as viewed when user clicks the notification
-    markAsViewed();
+    // Just navigate - timestamp will be updated on /tips page
     navigate('/tips');
   };
 
   const handleReplyClick = () => {
-    // Mark replies as viewed when user clicks the notification
-    markRepliesAsViewed();
+    // Just navigate - timestamp will be updated on /posts page
     navigate('/posts');
   };
 

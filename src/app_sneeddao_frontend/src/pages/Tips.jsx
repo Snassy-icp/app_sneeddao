@@ -23,7 +23,7 @@ const Tips = () => {
     const { createForumActor } = useForum();
     const { getTokenMetadata, fetchTokenMetadata } = useTokenMetadata();
     const { principalNames, principalNicknames, fetchAllNames } = useNaming();
-    const { markAsViewed, refreshNotifications } = useTipNotifications();
+    const { refreshNotifications } = useTipNotifications();
     
     const [tipsReceived, setTipsReceived] = useState([]);
     const [tipsGiven, setTipsGiven] = useState([]);
