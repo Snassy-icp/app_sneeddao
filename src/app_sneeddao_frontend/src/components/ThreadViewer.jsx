@@ -1150,8 +1150,21 @@ function ThreadViewer({
                     </div>
                 )}
                 {mode === 'post' && focusedPostId && (
-                    <div className="post-focus-info">
-                        <p>📍 Focused on Post #{focusedPostId} and its context</p>
+                    <div className="post-focus-info" style={{
+                        backgroundColor: '#2c3e50',
+                        border: '1px solid #34495e',
+                        borderRadius: '4px',
+                        padding: '8px 12px',
+                        marginTop: '10px'
+                    }}>
+                        <p style={{
+                            margin: 0,
+                            color: '#95a5a6',
+                            fontSize: '13px',
+                            fontWeight: '500'
+                        }}>
+                            Viewing Post #{focusedPostId} in context
+                        </p>
                     </div>
                 )}
             </div>
@@ -1377,16 +1390,17 @@ function ThreadViewer({
                 className={`post-item ${isFocused ? 'focused-post' : ''}`} 
                 style={{ 
                     marginLeft: isFlat ? 0 : `${depth * 20}px`,
-                    border: isFocused ? '2px solid #ffd700' : undefined,
-                    backgroundColor: isNegative ? '#3a2a2a' : (isFocused ? 'rgba(255, 215, 0, 0.1)' : '#2a2a2a'),
-                    borderColor: isNegative ? '#8b4513' : '#4a4a4a',
-                    borderWidth: '1px',
+                    backgroundColor: isNegative ? '#3a2a2a' : (isFocused ? '#2f3542' : '#2a2a2a'),
+                    borderColor: isFocused ? '#3c6382' : (isNegative ? '#8b4513' : '#4a4a4a'),
+                    borderWidth: isFocused ? '2px' : '1px',
                     borderStyle: 'solid',
                     borderRadius: '6px',
                     padding: '15px',
-                    marginBottom: '10px'
+                    marginBottom: '10px',
+                    position: 'relative'
                 }}
             >
+
                 {/* Post content - simplified for now */}
                 <div className="post-content">
                     <div className="post-header">
