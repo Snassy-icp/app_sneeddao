@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaComments } from 'react-icons/fa';
+import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
@@ -28,11 +28,10 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const [activeSection, setActiveSection] = useState(() => {
         const path = location.pathname;
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
-        if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal'].includes(path)) return 'Hub';
+        if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
         if (['/wallet'].includes(path)) return 'Wallet';
         if (['/me', '/rewards', '/tips', '/posts'].includes(path)) return 'Me';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
-        if (['/forum'].includes(path) || location.pathname.startsWith('/topic/')) return 'Forum';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         return 'DAO';
@@ -149,7 +148,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Proposals', path: '/proposals' },
                 { name: 'Neurons', path: '/neurons' },
                 { name: 'Transactions', path: '/transactions' },
-                { name: 'Holders', path: '/principal' }
+                { name: 'Holders', path: '/principal' },
+                { name: 'Forum', path: '/forum' }
             ]
         },
         'Wallet': {
@@ -158,14 +158,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/wallet',
             subMenu: [
                 { name: 'Wallet', path: '/wallet' }
-            ]
-        },
-        'Forum': {
-            icon: <FaComments size={18} />,
-            displayName: 'Forum',
-            defaultPath: '/forum',
-            subMenu: [
-                { name: 'Forum', path: '/forum' }
             ]
         },
         'Locks': {
