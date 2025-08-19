@@ -557,14 +557,17 @@ function ThreadViewer({
         setTippingState('idle');
     }, []);
 
-    const handleTip = useCallback(async (tokenLedgerPrincipal, amount, recipientPrincipal) => {
+    const handleTip = useCallback(async ({ tokenPrincipal, amount, recipientPrincipal, postId }) => {
         if (!forumActor || !selectedPostForTip) return;
 
         try {
             setTippingState('transferring');
+            console.log('handleTip called with:', { tokenPrincipal, amount, recipientPrincipal, postId });
 
             // Create ledger actor for the selected token
-            const ledgerActor = createLedgerActor(tokenLedgerPrincipal, identity);
+            const ledgerActor = createLedgerActor(tokenPrincipal, {
+                agentOptions: { identity }
+            });
 
             // Perform the icrc1_transfer
             const transferResult = await ledgerActor.icrc1_transfer({
@@ -576,7 +579,7 @@ function ThreadViewer({
                 memo: [],
                 from_subaccount: [],
                 created_at_time: [],
-                amount: amount
+                amount: BigInt(amount) // Ensure amount is BigInt
             });
 
             if ('Err' in transferResult) {
@@ -591,10 +594,10 @@ function ThreadViewer({
             // Register the tip in the backend
             const tipResult = await createTip(forumActor, {
                 to_principal: recipientPrincipal,
-                post_id: Number(selectedPostForTip.id),
-                token_ledger_principal: tokenLedgerPrincipal,
+                post_id: Number(postId),
+                token_ledger_principal: Principal.fromText(tokenPrincipal), // Convert string to Principal
                 amount: Number(amount), // Convert BigInt to Number to avoid serialization issues
-                transaction_block_index: transferResult.Ok
+                transaction_block_index: Number(transferResult.Ok) // Convert BigInt to Number
             });
 
             if ('ok' in tipResult) {
@@ -606,7 +609,7 @@ function ThreadViewer({
                 
                 // Refresh token balance
                 if (refreshTokenBalance) {
-                    refreshTokenBalance(tokenLedgerPrincipal.toString());
+                    refreshTokenBalance(tokenPrincipal.toString());
                 }
                 
                 // Close modal after a short delay

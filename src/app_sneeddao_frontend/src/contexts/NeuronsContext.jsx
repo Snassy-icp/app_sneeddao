@@ -73,9 +73,15 @@ export function NeuronsProvider({ children }) {
             const neurons = await fetchNeuronsForSns(snsRoot);
             console.log('fetchHotkeyNeuronsData: Got neurons from SNS:', neurons.length);
             
+            // Add SNS root canister ID to each neuron for filtering purposes
+            const neuronsWithSns = neurons.map(neuron => ({
+                ...neuron,
+                sns_root_canister_id: snsRoot
+            }));
+            
             // Create the data structure without RLL call
             const result = {
-                neurons_by_owner: [[identity.getPrincipal().toString(), neurons]],
+                neurons_by_owner: [[identity.getPrincipal().toString(), neuronsWithSns]],
                 total_voting_power: 0, // Will be calculated by frontend
                 distribution_voting_power: 0 // Will be calculated by frontend
             };
@@ -158,9 +164,15 @@ export function NeuronsProvider({ children }) {
                 
                 const neurons = await fetchUserNeuronsForSns(identity, selectedSns.canisters.governance);
                 
+                // Add SNS root canister ID to each neuron for filtering purposes
+                const neuronsWithSns = neurons.map(neuron => ({
+                    ...neuron,
+                    sns_root_canister_id: snsRoot
+                }));
+                
                 // Create the data structure without RLL call
                 const result = {
-                    neurons_by_owner: [[identity.getPrincipal().toString(), neurons]],
+                    neurons_by_owner: [[identity.getPrincipal().toString(), neuronsWithSns]],
                     total_voting_power: 0, // Will be calculated by frontend
                     distribution_voting_power: 0 // Will be calculated by frontend
                 };

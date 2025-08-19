@@ -105,10 +105,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
 
     const handleMouseEnter = (tokenKey, event) => {
         setHoveredToken(tokenKey);
-        setTooltipPosition({
-            x: event.clientX,
-            y: event.clientY
-        });
+        updateTooltipPosition(event);
     };
 
     const handleMouseLeave = () => {
@@ -117,11 +114,38 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
 
     const handleMouseMove = (event) => {
         if (hoveredToken) {
-            setTooltipPosition({
-                x: event.clientX,
-                y: event.clientY
-            });
+            updateTooltipPosition(event);
         }
+    };
+
+    const updateTooltipPosition = (event) => {
+        const tooltipWidth = 300; // Approximate tooltip width
+        const tooltipHeight = 200; // Approximate tooltip height
+        const margin = 15;
+
+        // Get scroll positions to account for page scroll
+        const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+        const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+
+        // Follow the mouse cursor like the original (accounting for scroll)
+        let x = event.clientX + scrollX + margin;
+        let y = event.clientY + scrollY - margin;
+
+        // Adjust if tooltip would go off-screen to the right
+        if (event.clientX + tooltipWidth + margin > window.innerWidth) {
+            x = event.clientX + scrollX - tooltipWidth - margin;
+        }
+
+        // Adjust if tooltip would go off-screen at the bottom
+        if (event.clientY + tooltipHeight + margin > window.innerHeight) {
+            y = event.clientY + scrollY - tooltipHeight - margin;
+        }
+
+        // Ensure tooltip doesn't go off-screen at the top or left
+        x = Math.max(scrollX + margin, x);
+        y = Math.max(scrollY + margin, y);
+
+        setTooltipPosition({ x, y });
     };
 
     return (
@@ -210,8 +234,8 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                 <div
                     style={{
                         position: 'fixed',
-                        left: tooltipPosition.x + 10,
-                        top: tooltipPosition.y - 10,
+                        left: tooltipPosition.x,
+                        top: tooltipPosition.y,
                         backgroundColor: '#1a1a1a',
                         border: '1px solid #4a4a4a',
                         borderRadius: '6px',

@@ -17,6 +17,60 @@ const TipModal = ({
     const [error, setError] = useState('');
     const [tokenBalances, setTokenBalances] = useState({});
     const [loadingBalances, setLoadingBalances] = useState({});
+    const [tokenMetadata, setTokenMetadata] = useState({}); // Store metadata for each token
+
+    // Fetch token metadata (fee, decimals, symbol)
+    const fetchTokenMetadata = async (tokenPrincipal) => {
+        if (!tokenPrincipal) return;
+
+        try {
+            const ledgerActor = createLedgerActor(tokenPrincipal, {
+                agentOptions: { identity }
+            });
+            
+            // Fetch metadata, fee, and decimals
+            const [metadata, fee, decimals] = await Promise.all([
+                ledgerActor.icrc1_metadata().catch(() => []),
+                ledgerActor.icrc1_fee().catch(() => BigInt(0)),
+                ledgerActor.icrc1_decimals().catch(() => 8)
+            ]);
+
+            console.log('Token metadata fetched:', {
+                tokenPrincipal,
+                metadata,
+                fee: fee.toString(),
+                decimals: Number(decimals)
+            });
+
+            // Extract symbol from metadata
+            let symbol = 'Unknown';
+            if (metadata && Array.isArray(metadata)) {
+                const symbolEntry = metadata.find(([key]) => key === 'icrc1:symbol');
+                if (symbolEntry && symbolEntry[1] && symbolEntry[1].Text) {
+                    symbol = symbolEntry[1].Text;
+                }
+            }
+            
+            setTokenMetadata(prev => ({
+                ...prev,
+                [tokenPrincipal]: {
+                    symbol,
+                    decimals: Number(decimals),
+                    fee: fee
+                }
+            }));
+        } catch (err) {
+            console.error(`Error fetching metadata for token ${tokenPrincipal}:`, err);
+            setTokenMetadata(prev => ({
+                ...prev,
+                [tokenPrincipal]: {
+                    symbol: 'Unknown',
+                    decimals: 8,
+                    fee: BigInt(0)
+                }
+            }));
+        }
+    };
 
     // Fetch balance for a specific token
     const fetchTokenBalance = async (tokenPrincipal) => {
@@ -51,10 +105,12 @@ const TipModal = ({
             setError('');
             setTokenBalances({});
             setLoadingBalances({});
+            setTokenMetadata({});
             
-            // Fetch balances for all available tokens
+            // Fetch balances and metadata for all available tokens
             availableTokens.forEach(token => {
                 fetchTokenBalance(token.principal);
+                fetchTokenMetadata(token.principal);
             });
         }
     }, [isOpen, availableTokens, identity]);
@@ -75,29 +131,45 @@ const TipModal = ({
             return;
         }
 
-        const token = availableTokens.find(t => t.principal === selectedToken);
-        if (!token) {
-            setError('Selected token not found');
+        // Get token metadata (decimals, fee, symbol) from our fetched data
+        const metadata = tokenMetadata[selectedToken];
+        if (!metadata) {
+            setError('Token metadata not loaded. Please try again.');
             return;
         }
 
+        const { decimals, fee: tokenFee, symbol } = metadata;
+        
+        console.log('Tip calculation:', {
+            amount,
+            decimals,
+            fee: tokenFee.toString(),
+            symbol
+        });
+
         // Convert amount to smallest unit (e.g., e8s for ICP)
-        const amountInSmallestUnit = Math.floor(parseFloat(amount) * Math.pow(10, token.decimals));
+        const amountInSmallestUnit = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
 
         // Check balance from our fetched balances
         const currentBalance = tokenBalances[selectedToken] || BigInt(0);
         
-        // We need to account for transaction fees - get fee from token data
-        const tokenFee = BigInt(token.fee || 0);
+        // We need to account for transaction fees
         const totalNeeded = BigInt(amountInSmallestUnit) + tokenFee;
+        
+        console.log('Balance check:', {
+            amountInSmallestUnit,
+            currentBalance: currentBalance.toString(),
+            tokenFee: tokenFee.toString(),
+            totalNeeded: totalNeeded.toString()
+        });
         
         if (totalNeeded > currentBalance) {
             const shortfall = totalNeeded - currentBalance;
-            const shortfallFormatted = (Number(shortfall) / Math.pow(10, token.decimals)).toLocaleString(undefined, {
+            const shortfallFormatted = (Number(shortfall) / Math.pow(10, decimals)).toLocaleString(undefined, {
                 minimumFractionDigits: 0,
-                maximumFractionDigits: Math.min(token.decimals, 8)
+                maximumFractionDigits: Math.min(decimals, 8)
             });
-            setError(`Insufficient balance. You need ${shortfallFormatted} ${token.symbol} more (including transaction fees)`);
+            setError(`Insufficient balance. You need ${shortfallFormatted} ${symbol} more (including transaction fees)`);
             return;
         }
 
@@ -113,12 +185,15 @@ const TipModal = ({
         }
     };
 
-    const formatBalance = (tokenPrincipal, decimals) => {
+    const formatBalance = (tokenPrincipal) => {
         if (loadingBalances[tokenPrincipal]) return 'Loading...';
         
         const balance = tokenBalances[tokenPrincipal];
-        if (balance === undefined || balance === null) return 'Loading...';
+        const metadata = tokenMetadata[tokenPrincipal];
         
+        if (balance === undefined || balance === null || !metadata) return 'Loading...';
+        
+        const { decimals } = metadata;
         const formatted = (Number(balance) / Math.pow(10, decimals)).toLocaleString(undefined, {
             minimumFractionDigits: 0,
             maximumFractionDigits: Math.min(decimals, 8) // Cap at 8 decimal places for display
@@ -209,7 +284,7 @@ const TipModal = ({
                             <option value="">Select a token</option>
                             {availableTokens.map(token => (
                                 <option key={token.principal} value={token.principal}>
-                                    {token.symbol} - Balance: {formatBalance(token.principal, token.decimals)}
+                                    {token.symbol} - Balance: {formatBalance(token.principal)}
                                 </option>
                             ))}
                         </select>
@@ -244,18 +319,20 @@ const TipModal = ({
                             }}
                             required
                         />
-                        {selectedTokenData && (
+                        {selectedToken && tokenMetadata[selectedToken] && (
                             <div style={{
                                 fontSize: '12px',
                                 color: '#888',
                                 marginTop: '4px'
                             }}>
-                                Available: {formatBalance(selectedTokenData.principal, selectedTokenData.decimals)} {selectedTokenData.symbol}
+                                Available: {formatBalance(selectedToken)} {tokenMetadata[selectedToken].symbol}
                                 <br />
-                                Transaction fee: {(Number(selectedTokenData.fee || 0) / Math.pow(10, selectedTokenData.decimals)).toLocaleString(undefined, {
+                                Decimals: {tokenMetadata[selectedToken].decimals}
+                                <br />
+                                Transaction fee: {(Number(tokenMetadata[selectedToken].fee) / Math.pow(10, tokenMetadata[selectedToken].decimals)).toLocaleString(undefined, {
                                     minimumFractionDigits: 0,
-                                    maximumFractionDigits: Math.min(selectedTokenData.decimals, 8)
-                                })} {selectedTokenData.symbol}
+                                    maximumFractionDigits: Math.min(tokenMetadata[selectedToken].decimals, 8)
+                                })} {tokenMetadata[selectedToken].symbol}
                             </div>
                         )}
                     </div>
