@@ -732,6 +732,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
 
     return (
         <div style={styles.container}>
+            {/* Header Row - Always visible */}
             <div style={styles.header}>
                 <div 
                     style={styles.headerTitle}
@@ -747,8 +748,16 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                     </span>
                     <h2 style={{ margin: 0 }}>Transactions</h2>
                 </div>
-                {!isCollapsed && (
-                    <div style={styles.filtersContainer}>
+            </div>
+            
+            {/* Filters Row - Only when expanded */}
+            {!isCollapsed && (
+                <div style={{
+                    ...styles.filtersContainer,
+                    flexWrap: 'wrap',
+                    gap: '15px',
+                    marginTop: '15px'
+                }}>
                         {!principalId && ( // Only show in ledger mode
                             <form 
                                 onSubmit={handleTxIndexSubmit}
@@ -784,63 +793,70 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 </button>
                             </form>
                         )}
-                        <div style={styles.filterGroup}>
-                            <span style={styles.filterLabel}>From:</span>
-                            <input
-                                type="text"
-                                value={fromFilter}
-                                onChange={(e) => {
-                                    setFromFilter(e.target.value);
-                                    setPage(0);
-                                }}
-                                placeholder="Filter by sender"
-                                style={styles.filterInput}
-                            />
-                        </div>
-                        <select
-                            value={filterOperator}
+                    <div style={{...styles.filterGroup, flexWrap: 'wrap'}}>
+                        <span style={styles.filterLabel}>From:</span>
+                        <input
+                            type="text"
+                            value={fromFilter}
                             onChange={(e) => {
-                                setFilterOperator(e.target.value);
+                                setFromFilter(e.target.value);
                                 setPage(0);
                             }}
-                            style={styles.filterSelect}
-                        >
-                            <option value="and">AND</option>
-                            <option value="or">OR</option>
-                        </select>
-                        <div style={styles.filterGroup}>
-                            <span style={styles.filterLabel}>To:</span>
-                            <input
-                                type="text"
-                                value={toFilter}
-                                onChange={(e) => {
-                                    setToFilter(e.target.value);
+                            placeholder="Filter by sender"
+                            style={{
+                                ...styles.filterInput,
+                                minWidth: '150px',
+                                flex: '1 1 200px'
+                            }}
+                        />
+                    </div>
+                    <select
+                        value={filterOperator}
+                        onChange={(e) => {
+                            setFilterOperator(e.target.value);
+                            setPage(0);
+                        }}
+                        style={styles.filterSelect}
+                    >
+                        <option value="and">AND</option>
+                        <option value="or">OR</option>
+                    </select>
+                    <div style={{...styles.filterGroup, flexWrap: 'wrap'}}>
+                        <span style={styles.filterLabel}>To:</span>
+                        <input
+                            type="text"
+                            value={toFilter}
+                            onChange={(e) => {
+                                setToFilter(e.target.value);
+                                setPage(0);
+                            }}
+                            placeholder="Filter by recipient"
+                            style={{
+                                ...styles.filterInput,
+                                minWidth: '150px',
+                                flex: '1 1 200px'
+                            }}
+                        />
+                    </div>
+                    <div style={{...styles.filters, flexWrap: 'wrap'}}>
+                        {Object.values(TransactionType).map(type => (
+                            <button
+                                key={type}
+                                style={{
+                                    ...styles.filterButton,
+                                    ...(selectedType === type ? styles.filterButtonActive : {})
+                                }}
+                                onClick={() => {
+                                    setSelectedType(type);
                                     setPage(0);
                                 }}
-                                placeholder="Filter by recipient"
-                                style={styles.filterInput}
-                            />
-                        </div>
-                        <div style={styles.filters}>
-                            {Object.values(TransactionType).map(type => (
-                                <button
-                                    key={type}
-                                    style={{
-                                        ...styles.filterButton,
-                                        ...(selectedType === type ? styles.filterButtonActive : {})
-                                    }}
-                                    onClick={() => {
-                                        setSelectedType(type);
-                                        setPage(0);
-                                    }}
-                                >
-                                    {type.charAt(0).toUpperCase() + type.slice(1)}
-                                </button>
-                            ))}
-                        </div>
+                            >
+                                {type.charAt(0).toUpperCase() + type.slice(1)}
+                            </button>
+                        ))}
                     </div>
-                )}
-            </div>
+                </div>
+            )}
 
             {!isCollapsed && (
                 <>
