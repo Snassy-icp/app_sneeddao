@@ -32,7 +32,8 @@ const Tips = () => {
     const [error, setError] = useState(null);
     const [loadingMetadata, setLoadingMetadata] = useState(new Set());
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
-    const [oldTimestamp, setOldTimestamp] = useState(0); // For highlighting new tips
+    const [capturedOldTimestamp, setCapturedOldTimestamp] = useState(0); // Captured ONCE for highlighting
+    const [timestampProcessed, setTimestampProcessed] = useState(false); // Ensures single execution
 
     // Fetch tips data
     const fetchTipsData = useCallback(async () => {
@@ -48,24 +49,7 @@ const Tips = () => {
             const forumActor = createForumActor(identity);
             const userPrincipal = identity.getPrincipal();
 
-            // Step 1: Get old timestamp BEFORE updating it
-            const oldTimestampResult = await getLastSeenTipTimestamp(forumActor, userPrincipal);
-            const currentOldTimestamp = oldTimestampResult || 0; // Default to 0 if never seen
-            setOldTimestamp(currentOldTimestamp);
-
-            // Step 2: Check if we have new tips
-            const newTipsCount = await getRecentTipsCount(forumActor, userPrincipal);
-            
-            // Step 3: Only update backend timestamp if we have new tips
-            if (Number(newTipsCount) > 0) {
-                const currentTimestamp = Date.now() * 1_000_000; // Convert to nanoseconds
-                await markTipsSeenUpTo(forumActor, currentTimestamp);
-                console.log(`Tips: Updated backend timestamp, had ${newTipsCount} new tips`);
-            } else {
-                console.log('Tips: No new tips, not updating backend timestamp');
-            }
-
-            // Step 4: Fetch both received and given tips
+            // Fetch both received and given tips
             const [received, given] = await Promise.all([
                 getTipsReceivedByUser(forumActor, userPrincipal),
                 getTipsGivenByUser(forumActor, userPrincipal)
@@ -75,12 +59,7 @@ const Tips = () => {
             const sortedReceived = received.sort((a, b) => Number(b.created_at) - Number(a.created_at));
             const sortedGiven = given.sort((a, b) => Number(b.created_at) - Number(a.created_at));
             
-            if (sortedReceived.length > 0) {
-                sortedReceived.forEach((tip, index) => {
-                    const tipDate = new Date(Number(tip.created_at) / 1_000_000);
-                    const isNew = Number(tip.created_at) > currentOldTimestamp;
-                });
-            }
+            console.log('📊 FETCHED TIPS DATA:', { receivedCount: sortedReceived.length, givenCount: sortedGiven.length });
 
             setTipsReceived(sortedReceived);
             setTipsGiven(sortedGiven);
@@ -138,15 +117,65 @@ const Tips = () => {
         }
     }, [isAuthenticated, identity, createForumActor, principalNames, principalNicknames, getTokenMetadata, fetchTokenMetadata]);
 
-    // Mark tips as viewed when component mounts
+    // ONE-TIME timestamp processing - executes ONCE per page load
     useEffect(() => {
-        markAsViewed();
-        fetchTipsData();
-    }, [markAsViewed, fetchTipsData]);
+        const processTimestamp = async () => {
+            if (!isAuthenticated || !identity || timestampProcessed) {
+                return;
+            }
+
+            try {
+                console.log('🔥🔥🔥 STARTING ONE-TIME TIMESTAMP PROCESSING 🔥🔥🔥');
+                
+                const forumActor = createForumActor(identity);
+                const userPrincipal = identity.getPrincipal();
+
+                // Step 1: Get old timestamp ONCE
+                const oldTimestampResult = await getLastSeenTipTimestamp(forumActor, userPrincipal);
+                const currentOldTimestamp = oldTimestampResult || 0;
+                setCapturedOldTimestamp(currentOldTimestamp);
+                
+                console.log(`🔥🔥🔥 CAPTURED OLD TIMESTAMP: ${currentOldTimestamp}`);
+                console.log(`🔥🔥🔥 CAPTURED DATE: ${new Date(Number(currentOldTimestamp) / 1_000_000).toISOString()}`);
+
+                // Step 2: Check if we have new tips
+                const newTipsCount = await getRecentTipsCount(forumActor, userPrincipal);
+                console.log(`🔥🔥🔥 NEW TIPS COUNT: ${newTipsCount}`);
+
+                // Step 3: Update backend timestamp ONCE if we have new tips
+                if (Number(newTipsCount) > 0) {
+                    const currentTimestamp = Date.now() * 1_000_000;
+                    await markTipsSeenUpTo(forumActor, currentTimestamp);
+                    console.log(`🔥🔥🔥 UPDATED BACKEND TIMESTAMP ONCE: ${currentTimestamp}`);
+                } else {
+                    console.log('🔥🔥🔥 NO NEW TIPS - NO BACKEND UPDATE');
+                }
+
+                // Mark as processed to prevent re-execution
+                setTimestampProcessed(true);
+                console.log('🔥🔥🔥 TIMESTAMP PROCESSING COMPLETE - WILL NOT RUN AGAIN 🔥🔥🔥');
+
+            } catch (error) {
+                console.error('Error in timestamp processing:', error);
+                setTimestampProcessed(true); // Prevent infinite retries
+            }
+        };
+
+        processTimestamp();
+    }, [isAuthenticated, identity, createForumActor, timestampProcessed]);
+
+    // Separate effect for data fetching (can run multiple times)
+    useEffect(() => {
+        if (timestampProcessed) {
+            // Only fetch data after timestamp processing is complete
+            fetchTipsData();
+        }
+    }, [timestampProcessed, fetchTipsData]);
 
     // Helper function to check if a tip is new (for highlighting)
     const isTipNew = (tipTimestamp) => {
-        const isNew = Number(tipTimestamp) > oldTimestamp;
+        const isNew = Number(tipTimestamp) > capturedOldTimestamp;
+        console.log(`🔥 TIP NEW CHECK: tipTimestamp=${tipTimestamp}, capturedOldTimestamp=${capturedOldTimestamp}, isNew=${isNew}`);
         return isNew;
     };
 
@@ -198,6 +227,8 @@ const Tips = () => {
         
         // Check if this tip is new (only highlight received tips)
         const isNew = isReceived && isTipNew(tip.created_at);
+        
+        console.log(`🔥🔥🔥 RENDERING TIP ${tip.id}: isReceived=${isReceived}, isNew=${isNew}, className=${isNew ? 'tip-new' : 'normal'}`);
 
         return (
             <tr key={tip.id} className={`tip-row ${isNew ? 'tip-new' : ''}`}>
