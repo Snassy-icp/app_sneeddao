@@ -295,47 +295,79 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         const urlStart = searchParams.get('start');
         return urlStart ? parseInt(urlStart) : 0;
     });
-    const [txIndexInput, setTxIndexInput] = useState('');
+    const [txIndexInput, setTxIndexInput] = useState(() => {
+        const urlStart = searchParams.get('start');
+        return urlStart ? urlStart : '';
+    });
 
-    // Effect to sync page with URL start parameter
+    // Effect to sync page with URL start parameter and input field
     useEffect(() => {
         const urlStart = searchParams.get('start');
         if (urlStart) {
             const startIndex = parseInt(urlStart);
             setStartTxIndex(startIndex);
             setPage(Math.floor(startIndex / pageSize));
+            // Always sync input field with URL parameter on page load/refresh
+            // but don't override if user is actively typing (input has focus)
+            const inputElement = document.querySelector('input[placeholder="Go to tx index"]');
+            if (!inputElement || inputElement !== document.activeElement) {
+                setTxIndexInput(startIndex.toString());
+            }
+        } else if (startTxIndex === 0) {
+            // Only reset input if we're at the beginning
+            setTxIndexInput('');
         }
     }, [searchParams, pageSize]);
 
-    // Update URL when page changes
+    // Update URL when page changes (but only for pagination, not direct tx input)
     useEffect(() => {
         if (!principalId) {  // Only update URL in ledger mode
             const newStart = page * pageSize;
-            if (newStart !== startTxIndex) {
+            const currentUrlStart = searchParams.get('start');
+            const currentUrlStartNum = currentUrlStart ? parseInt(currentUrlStart) : 0;
+            
+            // Only update URL if:
+            // 1. The calculated start differs from current URL start
+            // 2. The difference is due to page navigation, not direct tx input
+            // 3. We're not in the middle of processing a direct tx input
+            if (newStart !== currentUrlStartNum && newStart === startTxIndex) {
                 setSearchParams(prev => {
                     const newParams = new URLSearchParams(prev);
                     newParams.set('start', newStart.toString());
                     return newParams;
-                });
+                }, { replace: true }); // Use replace to prevent history buildup
+            }
+            
+            // Always keep startTxIndex in sync with the calculated page start
+            if (newStart !== startTxIndex) {
                 setStartTxIndex(newStart);
             }
         }
-    }, [page, pageSize]);
+    }, [page, pageSize, startTxIndex, principalId, searchParams, setSearchParams]);
 
     // Handle direct transaction index input
     const handleTxIndexSubmit = (e) => {
         e.preventDefault();
+        e.stopPropagation(); // Prevent event bubbling that might cause issues on mobile
+        
         const index = parseInt(txIndexInput);
         if (!isNaN(index) && index >= 0) {
             const newPage = Math.floor(index / pageSize);
+            
+            // Update state first
             setPage(newPage);
-            setSearchParams(prev => {
-                const newParams = new URLSearchParams(prev);
-                newParams.set('start', index.toString());
-                return newParams;
-            });
             setStartTxIndex(index);
-            setTxIndexInput('');
+            // Don't clear the input - keep the value that matches the URL param
+            
+            // Update URL parameters only if they would actually change
+            const currentStart = searchParams.get('start');
+            if (currentStart !== index.toString()) {
+                setSearchParams(prev => {
+                    const newParams = new URLSearchParams(prev);
+                    newParams.set('start', index.toString());
+                    return newParams;
+                }, { replace: true }); // Use replace instead of push to prevent history buildup
+            }
         }
     };
 
