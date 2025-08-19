@@ -2,6 +2,39 @@ import React, { useState, useEffect } from 'react';
 import { Principal } from '@dfinity/principal';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 
+// Add CSS animations
+const animationStyles = `
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideIn {
+    from { 
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+`;
+
+// Inject styles into document head
+if (typeof document !== 'undefined' && !document.getElementById('tip-modal-styles')) {
+    const styleSheet = document.createElement('style');
+    styleSheet.id = 'tip-modal-styles';
+    styleSheet.type = 'text/css';
+    styleSheet.innerText = animationStyles;
+    document.head.appendChild(styleSheet);
+}
+
 const TipModal = ({ 
     isOpen, 
     onClose, 
@@ -210,188 +243,366 @@ const TipModal = ({
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 1000
+            zIndex: 1000,
+            animation: 'fadeIn 0.2s ease-out'
         }}>
             <div style={{
-                backgroundColor: '#2a2a2a',
-                border: '1px solid #4a4a4a',
-                borderRadius: '8px',
-                padding: '24px',
-                maxWidth: '400px',
+                background: 'linear-gradient(145deg, #1a1a1a 0%, #2a2a2a 100%)',
+                border: '1px solid rgba(255, 215, 0, 0.2)',
+                borderRadius: '20px',
+                padding: '32px',
+                maxWidth: '480px',
                 width: '90%',
                 maxHeight: '90vh',
-                overflow: 'auto'
+                overflow: 'auto',
+                boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+                position: 'relative',
+                animation: 'slideIn 0.3s ease-out'
             }}>
+                {/* Elegant header with golden accent */}
                 <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '20px'
+                    textAlign: 'center',
+                    marginBottom: '32px',
+                    position: 'relative'
                 }}>
-                    <h3 style={{ color: '#ffffff', margin: 0, fontSize: '18px' }}>
-                        💰 Tip Post
+                    <div style={{
+                        background: 'linear-gradient(135deg, #ffd700, #ffaa00)',
+                        width: '60px',
+                        height: '60px',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 16px',
+                        boxShadow: '0 8px 16px rgba(255, 215, 0, 0.3)'
+                    }}>
+                        <span style={{ fontSize: '24px' }}>💎</span>
+                    </div>
+                    <h3 style={{ 
+                        color: '#ffffff', 
+                        margin: 0, 
+                        fontSize: '24px',
+                        fontWeight: '600',
+                        background: 'linear-gradient(135deg, #ffd700, #ffaa00)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent',
+                        backgroundClip: 'text'
+                    }}>
+                        Send Appreciation
                     </h3>
+                    <p style={{
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        margin: '8px 0 0',
+                        fontSize: '14px',
+                        fontWeight: '400'
+                    }}>
+                        Show your support with a thoughtful tip
+                    </p>
+                    
+                    {/* Close button */}
                     <button
                         onClick={onClose}
                         style={{
-                            backgroundColor: 'transparent',
+                            position: 'absolute',
+                            top: '-8px',
+                            right: '-8px',
+                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
                             border: 'none',
-                            color: '#888',
-                            fontSize: '20px',
+                            color: 'rgba(255, 255, 255, 0.7)',
+                            fontSize: '18px',
                             cursor: 'pointer',
-                            padding: '0',
-                            width: '24px',
-                            height: '24px',
+                            padding: '8px',
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '50%',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            transition: 'all 0.2s ease',
+                            backdropFilter: 'blur(10px)'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                            e.target.style.color = '#ffffff';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                            e.target.style.color = 'rgba(255, 255, 255, 0.7)';
                         }}
                     >
                         ×
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit}>
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                     {/* Token Selection */}
-                    <div style={{ marginBottom: '16px' }}>
+                    <div>
                         <label style={{
                             display: 'block',
-                            color: '#cccccc',
-                            fontSize: '14px',
-                            marginBottom: '6px',
-                            fontWeight: '500'
+                            color: 'rgba(255, 255, 255, 0.9)',
+                            fontSize: '15px',
+                            marginBottom: '12px',
+                            fontWeight: '500',
+                            letterSpacing: '0.5px'
                         }}>
-                            Token
+                            Choose Token
                         </label>
-                        <select
-                            value={selectedToken}
-                            onChange={(e) => setSelectedToken(e.target.value)}
-                            style={{
-                                width: '100%',
-                                backgroundColor: '#1a1a1a',
-                                border: '1px solid #4a4a4a',
-                                borderRadius: '4px',
-                                color: '#ffffff',
-                                padding: '8px 12px',
-                                fontSize: '14px'
-                            }}
-                            required
-                        >
-                            <option value="">Select a token</option>
-                            {availableTokens.map(token => (
-                                <option key={token.principal} value={token.principal}>
-                                    {token.symbol} - Balance: {formatBalance(token.principal)}
-                                </option>
-                            ))}
-                        </select>
+                        <div style={{
+                            position: 'relative',
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            borderRadius: '12px',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            overflow: 'hidden'
+                        }}>
+                            <select
+                                value={selectedToken}
+                                onChange={(e) => setSelectedToken(e.target.value)}
+                                style={{
+                                    width: '100%',
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    borderRadius: '12px',
+                                    color: '#ffffff',
+                                    padding: '16px 20px',
+                                    fontSize: '15px',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    outline: 'none',
+                                    appearance: 'none',
+                                    backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+                                    backgroundPosition: 'right 16px center',
+                                    backgroundRepeat: 'no-repeat',
+                                    backgroundSize: '16px',
+                                    paddingRight: '48px'
+                                }}
+                                required
+                            >
+                                <option value="" style={{ backgroundColor: '#2a2a2a' }}>Select a token</option>
+                                {availableTokens.map(token => (
+                                    <option key={token.principal} value={token.principal} style={{ backgroundColor: '#2a2a2a' }}>
+                                        {token.symbol} - Balance: {formatBalance(token.principal)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
 
                     {/* Amount Input */}
-                    <div style={{ marginBottom: '16px' }}>
+                    <div>
                         <label style={{
                             display: 'block',
-                            color: '#cccccc',
-                            fontSize: '14px',
-                            marginBottom: '6px',
-                            fontWeight: '500'
+                            color: 'rgba(255, 255, 255, 0.9)',
+                            fontSize: '15px',
+                            marginBottom: '12px',
+                            fontWeight: '500',
+                            letterSpacing: '0.5px'
                         }}>
                             Amount
                         </label>
-                        <input
-                            type="number"
-                            value={amount}
-                            onChange={(e) => setAmount(e.target.value)}
-                            placeholder="0.00"
-                            step="any"
-                            min="0"
-                            style={{
-                                width: '100%',
-                                backgroundColor: '#1a1a1a',
-                                border: '1px solid #4a4a4a',
-                                borderRadius: '4px',
-                                color: '#ffffff',
-                                padding: '8px 12px',
-                                fontSize: '14px'
-                            }}
-                            required
-                        />
+                        <div style={{
+                            position: 'relative',
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            borderRadius: '12px',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            overflow: 'hidden'
+                        }}>
+                            <input
+                                type="number"
+                                value={amount}
+                                onChange={(e) => setAmount(e.target.value)}
+                                placeholder="0.00"
+                                step="any"
+                                min="0"
+                                style={{
+                                    width: '100%',
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    borderRadius: '12px',
+                                    color: '#ffffff',
+                                    padding: '16px 20px',
+                                    fontSize: '18px',
+                                    fontWeight: '500',
+                                    outline: 'none',
+                                    textAlign: 'center',
+                                    letterSpacing: '1px'
+                                }}
+                                required
+                            />
+                        </div>
                         {selectedToken && tokenMetadata[selectedToken] && (
                             <div style={{
-                                fontSize: '12px',
-                                color: '#888',
-                                marginTop: '4px'
+                                marginTop: '16px',
+                                padding: '16px',
+                                background: 'rgba(255, 215, 0, 0.05)',
+                                border: '1px solid rgba(255, 215, 0, 0.1)',
+                                borderRadius: '12px',
+                                fontSize: '13px',
+                                color: 'rgba(255, 255, 255, 0.8)',
+                                lineHeight: '1.5'
                             }}>
-                                Available: {formatBalance(selectedToken)} {tokenMetadata[selectedToken].symbol}
-                                <br />
-                                Decimals: {tokenMetadata[selectedToken].decimals}
-                                <br />
-                                Transaction fee: {(Number(tokenMetadata[selectedToken].fee) / Math.pow(10, tokenMetadata[selectedToken].decimals)).toLocaleString(undefined, {
-                                    minimumFractionDigits: 0,
-                                    maximumFractionDigits: Math.min(tokenMetadata[selectedToken].decimals, 8)
-                                })} {tokenMetadata[selectedToken].symbol}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    marginBottom: '8px',
+                                    alignItems: 'center'
+                                }}>
+                                    <span style={{ color: 'rgba(255, 255, 255, 0.6)' }}>Available Balance</span>
+                                    <span style={{ 
+                                        fontWeight: '600',
+                                        color: '#ffd700'
+                                    }}>
+                                        {formatBalance(selectedToken)} {tokenMetadata[selectedToken].symbol}
+                                    </span>
+                                </div>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between',
+                                    marginBottom: '8px',
+                                    alignItems: 'center'
+                                }}>
+                                    <span style={{ color: 'rgba(255, 255, 255, 0.6)' }}>Transaction Fee</span>
+                                    <span style={{ fontWeight: '500' }}>
+                                        {(Number(tokenMetadata[selectedToken].fee) / Math.pow(10, tokenMetadata[selectedToken].decimals)).toLocaleString(undefined, {
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: Math.min(tokenMetadata[selectedToken].decimals, 8)
+                                        })} {tokenMetadata[selectedToken].symbol}
+                                    </span>
+                                </div>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                }}>
+                                    <span style={{ color: 'rgba(255, 255, 255, 0.6)' }}>Precision</span>
+                                    <span style={{ fontWeight: '500' }}>
+                                        {tokenMetadata[selectedToken].decimals} decimals
+                                    </span>
+                                </div>
                             </div>
                         )}
                     </div>
 
                     {/* Recipient Info */}
-                    <div style={{
-                        backgroundColor: '#1a1a1a',
-                        border: '1px solid #4a4a4a',
-                        borderRadius: '4px',
-                        padding: '12px',
-                        marginBottom: '16px'
-                    }}>
-                        <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px' }}>
-                            Tip recipient:
-                        </div>
-                        <div style={{
-                            fontSize: '14px',
-                            color: '#ffffff',
-                            fontFamily: 'monospace',
-                            wordBreak: 'break-all'
+                    <div>
+                        <label style={{
+                            display: 'block',
+                            color: 'rgba(255, 255, 255, 0.9)',
+                            fontSize: '15px',
+                            marginBottom: '12px',
+                            fontWeight: '500',
+                            letterSpacing: '0.5px'
                         }}>
-                            {post.created_by.toString()}
+                            Recipient
+                        </label>
+                        <div style={{
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '12px',
+                            padding: '16px 20px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px'
+                        }}>
+                            <div style={{
+                                width: '40px',
+                                height: '40px',
+                                borderRadius: '50%',
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '16px',
+                                fontWeight: 'bold',
+                                color: '#ffffff',
+                                flexShrink: 0
+                            }}>
+                                {post.created_by.toString().slice(0, 2).toUpperCase()}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{
+                                    fontSize: '14px',
+                                    color: 'rgba(255, 255, 255, 0.7)',
+                                    marginBottom: '4px'
+                                }}>
+                                    Post Creator
+                                </div>
+                                <div style={{
+                                    fontSize: '13px',
+                                    color: '#ffffff',
+                                    fontFamily: 'monospace',
+                                    wordBreak: 'break-all',
+                                    lineHeight: '1.3',
+                                    opacity: 0.8
+                                }}>
+                                    {post.created_by.toString()}
+                                </div>
+                            </div>
                         </div>
                     </div>
 
                     {/* Error Display */}
                     {error && (
                         <div style={{
-                            backgroundColor: 'rgba(231, 76, 60, 0.1)',
-                            border: '1px solid #e74c3c',
-                            color: '#e74c3c',
-                            padding: '8px 12px',
-                            borderRadius: '4px',
-                            fontSize: '14px',
-                            marginBottom: '16px'
+                            background: 'rgba(231, 76, 60, 0.1)',
+                            border: '1px solid rgba(231, 76, 60, 0.3)',
+                            borderRadius: '12px',
+                            padding: '16px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px'
                         }}>
-                            {error}
+                            <span style={{ fontSize: '18px' }}>⚠️</span>
+                            <div style={{ 
+                                color: '#ff6b6b', 
+                                fontSize: '14px',
+                                fontWeight: '500',
+                                lineHeight: '1.4'
+                            }}>
+                                {error}
+                            </div>
                         </div>
                     )}
 
                     {/* Action Buttons */}
                     <div style={{
                         display: 'flex',
-                        gap: '12px',
-                        justifyContent: 'flex-end'
+                        gap: '16px',
+                        marginTop: '8px'
                     }}>
                         <button
                             type="button"
                             onClick={onClose}
                             disabled={isSubmitting}
                             style={{
-                                backgroundColor: 'transparent',
-                                border: '1px solid #666',
-                                color: '#cccccc',
-                                borderRadius: '4px',
-                                padding: '8px 16px',
+                                flex: 1,
+                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                borderRadius: '12px',
+                                color: 'rgba(255, 255, 255, 0.8)',
+                                padding: '16px 24px',
                                 cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                fontSize: '14px',
+                                fontSize: '15px',
+                                fontWeight: '500',
+                                transition: 'all 0.2s ease',
+                                backdropFilter: 'blur(10px)',
                                 opacity: isSubmitting ? 0.6 : 1
+                            }}
+                            onMouseEnter={(e) => {
+                                if (!isSubmitting) {
+                                    e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+                                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                                }
+                            }}
+                            onMouseLeave={(e) => {
+                                if (!isSubmitting) {
+                                    e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                                }
                             }}
                         >
                             Cancel
@@ -400,17 +611,56 @@ const TipModal = ({
                             type="submit"
                             disabled={isSubmitting || !selectedToken || !amount}
                             style={{
-                                backgroundColor: (!isSubmitting && selectedToken && amount) ? '#f39c12' : '#666',
+                                flex: 2,
+                                background: (isSubmitting || !selectedToken || !amount)
+                                    ? 'rgba(255, 255, 255, 0.1)' 
+                                    : 'linear-gradient(135deg, #ffd700, #ffaa00)',
                                 border: 'none',
-                                color: '#ffffff',
-                                borderRadius: '4px',
-                                padding: '8px 16px',
-                                cursor: (!isSubmitting && selectedToken && amount) ? 'pointer' : 'not-allowed',
-                                fontSize: '14px',
-                                fontWeight: '500'
+                                borderRadius: '12px',
+                                color: (isSubmitting || !selectedToken || !amount) ? 'rgba(255, 255, 255, 0.5)' : '#000000',
+                                padding: '16px 24px',
+                                cursor: (isSubmitting || !selectedToken || !amount) ? 'not-allowed' : 'pointer',
+                                fontSize: '15px',
+                                fontWeight: '600',
+                                letterSpacing: '0.5px',
+                                transition: 'all 0.2s ease',
+                                boxShadow: (isSubmitting || !selectedToken || !amount) ? 'none' : '0 4px 12px rgba(255, 215, 0, 0.3)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '8px'
+                            }}
+                            onMouseEnter={(e) => {
+                                if (!isSubmitting && selectedToken && amount) {
+                                    e.target.style.transform = 'translateY(-1px)';
+                                    e.target.style.boxShadow = '0 6px 16px rgba(255, 215, 0, 0.4)';
+                                }
+                            }}
+                            onMouseLeave={(e) => {
+                                if (!isSubmitting && selectedToken && amount) {
+                                    e.target.style.transform = 'translateY(0)';
+                                    e.target.style.boxShadow = '0 4px 12px rgba(255, 215, 0, 0.3)';
+                                }
                             }}
                         >
-                            {isSubmitting ? 'Sending Tip...' : 'Send Tip'}
+                            {isSubmitting ? (
+                                <>
+                                    <div style={{
+                                        width: '16px',
+                                        height: '16px',
+                                        border: '2px solid rgba(255, 255, 255, 0.3)',
+                                        borderTop: '2px solid rgba(255, 255, 255, 0.8)',
+                                        borderRadius: '50%',
+                                        animation: 'spin 1s linear infinite'
+                                    }}></div>
+                                    Sending...
+                                </>
+                            ) : (
+                                <>
+                                    <span>💎</span>
+                                    Send Appreciation
+                                </>
+                            )}
                         </button>
                     </div>
                 </form>
