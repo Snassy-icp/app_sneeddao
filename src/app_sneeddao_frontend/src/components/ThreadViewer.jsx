@@ -1213,7 +1213,24 @@ function ThreadViewer({
         
         if (votedNeurons && votedNeurons.length > 0) {
             const voteTypeText = isUpvote ? 'upvotes' : 'downvotes';
-            return `Recant ${voteTypeText} from ${votedNeurons.length} neuron${votedNeurons.length > 1 ? 's' : ''}`;
+            
+            // Show each neuron on its own line with voting power
+            const neuronLines = votedNeurons.map(vote => {
+                const neuronId = vote.neuron_id?.id;
+                const votingPower = vote.voting_power ? Number(vote.voting_power) : 0;
+                
+                let neuronIdStr = 'unknown';
+                if (neuronId && neuronId.length > 0) {
+                    // Convert Uint8Array to hex string and truncate for display
+                    const idStr = Array.from(neuronId).map(b => b.toString(16).padStart(2, '0')).join('');
+                    neuronIdStr = idStr.length > 8 ? idStr.substring(0, 8) + '...' : idStr;
+                }
+                
+                return `${neuronIdStr}: ${formatVotingPowerDisplay(votingPower)} VP`;
+            });
+            
+            const neuronList = neuronLines.join('\n');
+            return `Recant ${voteTypeText} from ${votedNeurons.length} neuron${votedNeurons.length > 1 ? 's' : ''}:\n${neuronList}`;
         }
         
         return `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`;
