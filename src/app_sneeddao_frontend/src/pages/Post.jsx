@@ -352,8 +352,8 @@ const Post = () => {
                                 {votesExpanded && (
                                     <div style={{ 
                                         display: 'grid', 
-                                        gap: '8px',
-                                        maxHeight: '300px',
+                                        gap: '12px',
+                                        maxHeight: '400px',
                                         overflowY: 'auto',
                                         marginTop: '15px'
                                     }}>
@@ -376,53 +376,104 @@ const Post = () => {
                                             
                                             return (
                                                 <div key={index} style={{
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '10px',
-                                                    padding: '8px 12px',
+                                                    padding: '12px',
                                                     backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                                                    borderRadius: '4px',
-                                                    fontSize: '0.85rem'
+                                                    borderRadius: '8px',
+                                                    border: `1px solid ${isUpvote ? 'rgba(76, 175, 80, 0.2)' : 'rgba(244, 67, 54, 0.2)'}`,
+                                                    fontSize: '0.9rem'
                                                 }}>
-                                                    <span style={{
-                                                        color: isUpvote ? '#4CAF50' : '#f44336',
-                                                        fontWeight: 'bold',
-                                                        minWidth: '20px'
+                                                    {/* Header row with vote type and voting power */}
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        marginBottom: '8px'
                                                     }}>
-                                                        {isUpvote ? '▲' : '▼'}
-                                                    </span>
-                                                    
-                                                    {/* Neuron ID with proper link and formatting */}
-                                                    <div style={{ minWidth: '80px' }}>
-                                                        {neuronLink}
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '8px'
+                                                        }}>
+                                                            <span style={{
+                                                                color: isUpvote ? '#4CAF50' : '#f44336',
+                                                                fontWeight: 'bold',
+                                                                fontSize: '1.1rem'
+                                                            }}>
+                                                                {isUpvote ? '▲ Upvote' : '▼ Downvote'}
+                                                            </span>
+                                                        </div>
+                                                        <span style={{ 
+                                                            color: '#fff',
+                                                            fontWeight: 'bold',
+                                                            fontSize: '1rem'
+                                                        }}>
+                                                            {formatVotingPowerDisplay(votingPower)} VP
+                                                        </span>
                                                     </div>
                                                     
-                                                    <span style={{ 
-                                                        color: '#fff',
-                                                        fontWeight: 'bold',
-                                                        minWidth: '80px',
-                                                        textAlign: 'right'
+                                                    {/* Neuron row */}
+                                                    <div style={{
+                                                        marginBottom: '6px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px'
                                                     }}>
-                                                        {formatVotingPowerDisplay(votingPower)} VP
-                                                    </span>
-                                                    
-                                                    {/* Principal with name/link */}
-                                                    <div style={{ minWidth: '120px' }}>
-                                                        <PrincipalDisplay 
-                                                            principal={vote.voter_principal}
-                                                            displayInfo={principalDisplayInfo}
-                                                            showCopyButton={false}
-                                                            style={{ fontSize: '0.85rem' }}
-                                                        />
+                                                        <span style={{ 
+                                                            color: '#aaa',
+                                                            fontSize: '0.85rem',
+                                                            minWidth: '50px'
+                                                        }}>
+                                                            Neuron:
+                                                        </span>
+                                                        <div style={{ flex: 1 }}>
+                                                            {neuronLink}
+                                                        </div>
                                                     </div>
                                                     
-                                                    <span style={{ 
-                                                        color: '#888',
-                                                        fontSize: '0.8rem',
-                                                        flex: 1
+                                                    {/* Principal row */}
+                                                    <div style={{
+                                                        marginBottom: '6px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px'
                                                     }}>
-                                                        {new Date(Number(vote.created_at) / 1000000).toLocaleString()}
-                                                    </span>
+                                                        <span style={{ 
+                                                            color: '#aaa',
+                                                            fontSize: '0.85rem',
+                                                            minWidth: '50px'
+                                                        }}>
+                                                            Voter:
+                                                        </span>
+                                                        <div style={{ flex: 1 }}>
+                                                            <PrincipalDisplay 
+                                                                principal={vote.voter_principal}
+                                                                displayInfo={principalDisplayInfo}
+                                                                showCopyButton={false}
+                                                                style={{ fontSize: '0.9rem' }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {/* Timestamp row */}
+                                                    <div style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px'
+                                                    }}>
+                                                        <span style={{ 
+                                                            color: '#aaa',
+                                                            fontSize: '0.85rem',
+                                                            minWidth: '50px'
+                                                        }}>
+                                                            When:
+                                                        </span>
+                                                        <span style={{ 
+                                                            color: '#ccc',
+                                                            fontSize: '0.85rem'
+                                                        }}>
+                                                            {new Date(Number(vote.created_at) / 1000000).toLocaleString()}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             );
                                         })
