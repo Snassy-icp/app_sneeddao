@@ -3,8 +3,10 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
+import { useNaming } from '../NamingContext';
 import ThreadViewer from '../components/ThreadViewer';
 import Header from '../components/Header';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import './Post.css';
 
 const Post = () => {
@@ -13,6 +15,7 @@ const Post = () => {
     const { createForumActor } = useForum();
     const { isAuthenticated, identity } = useAuth();
     const { selectedSnsRoot } = useSns();
+    const { principalNames, principalNicknames } = useNaming();
 
     const [threadId, setThreadId] = useState(null);
     const [postDetails, setPostDetails] = useState(null);
@@ -292,11 +295,20 @@ const Post = () => {
                                         .map((vote, index) => {
                                             const isUpvote = vote.vote_type.upvote !== undefined;
                                             const neuronId = vote.neuron_id?.id;
-                                            const neuronIdStr = neuronId && neuronId.length > 0 
-                                                ? Array.from(neuronId).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 8) + '...'
-                                                : 'unknown';
                                             const votingPower = Number(vote.voting_power || 0);
                                             const vpDisplay = (votingPower / 1e8).toFixed(1) + 'M';
+                                            
+                                            // Format neuron ID like in ThreadViewer
+                                            const neuronIdDisplay = neuronId && neuronId.length > 0 
+                                                ? Array.from(neuronId).slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('') + '...'
+                                                : 'unknown';
+                                            
+                                            // Get principal display info
+                                            const principalDisplayInfo = getPrincipalDisplayInfoFromContext(
+                                                vote.voter_principal, 
+                                                principalNames, 
+                                                principalNicknames
+                                            );
                                             
                                             return (
                                                 <div key={index} style={{
@@ -315,13 +327,22 @@ const Post = () => {
                                                     }}>
                                                         {isUpvote ? '▲' : '▼'}
                                                     </span>
-                                                    <span style={{ 
-                                                        color: '#ccc',
-                                                        fontFamily: 'monospace',
-                                                        minWidth: '80px'
-                                                    }}>
-                                                        {neuronIdStr}
-                                                    </span>
+                                                    
+                                                    {/* Neuron ID with link */}
+                                                    <Link 
+                                                        to={`/neuron?id=${Array.from(neuronId || []).map(b => b.toString(16).padStart(2, '0')).join('')}`}
+                                                        style={{ 
+                                                            color: '#3498db',
+                                                            textDecoration: 'none',
+                                                            fontFamily: 'monospace',
+                                                            minWidth: '80px'
+                                                        }}
+                                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                                    >
+                                                        {neuronIdDisplay}
+                                                    </Link>
+                                                    
                                                     <span style={{ 
                                                         color: '#fff',
                                                         fontWeight: 'bold',
@@ -330,6 +351,17 @@ const Post = () => {
                                                     }}>
                                                         {vpDisplay} VP
                                                     </span>
+                                                    
+                                                    {/* Principal with name/link */}
+                                                    <div style={{ minWidth: '120px' }}>
+                                                        <PrincipalDisplay 
+                                                            principal={vote.voter_principal}
+                                                            displayInfo={principalDisplayInfo}
+                                                            showCopyButton={false}
+                                                            style={{ fontSize: '0.85rem' }}
+                                                        />
+                                                    </div>
+                                                    
                                                     <span style={{ 
                                                         color: '#888',
                                                         fontSize: '0.8rem',
