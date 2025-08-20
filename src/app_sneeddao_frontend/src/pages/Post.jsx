@@ -7,6 +7,7 @@ import { useNaming } from '../NamingContext';
 import ThreadViewer from '../components/ThreadViewer';
 import Header from '../components/Header';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { formatNeuronIdLink } from '../utils/NeuronUtils';
 import './Post.css';
 
 const Post = () => {
@@ -34,6 +35,26 @@ const Post = () => {
     const forumActor = useMemo(() => {
         return identity ? createForumActor(identity) : null;
     }, [identity, createForumActor]);
+
+    // Format voting power for display (same as ThreadViewer)
+    const formatVotingPowerDisplay = (votingPower) => {
+        if (votingPower === 0) return '0';
+        
+        // Convert from e8s to display units
+        const displayValue = votingPower / 100_000_000;
+        
+        if (displayValue >= 1) {
+            return displayValue.toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            });
+        } else {
+            return displayValue.toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 8
+            });
+        }
+    };
 
     // Fetch post details to get the thread ID
     useEffect(() => {
@@ -272,11 +293,11 @@ const Post = () => {
                                         return (
                                             <div>
                                                 <span style={{ color: '#4CAF50' }}>
-                                                    ▲ {upvotes.length} upvotes ({(totalUpVP / 1e8).toFixed(1)}M VP)
+                                                    ▲ {upvotes.length} upvotes ({formatVotingPowerDisplay(totalUpVP)} VP)
                                                 </span>
                                                 <span style={{ margin: '0 15px', color: '#666' }}>•</span>
                                                 <span style={{ color: '#f44336' }}>
-                                                    ▼ {downvotes.length} downvotes ({(totalDownVP / 1e8).toFixed(1)}M VP)
+                                                    ▼ {downvotes.length} downvotes ({formatVotingPowerDisplay(totalDownVP)} VP)
                                                 </span>
                                             </div>
                                         );
@@ -296,12 +317,6 @@ const Post = () => {
                                             const isUpvote = vote.vote_type.upvote !== undefined;
                                             const neuronId = vote.neuron_id?.id;
                                             const votingPower = Number(vote.voting_power || 0);
-                                            const vpDisplay = (votingPower / 1e8).toFixed(1) + 'M';
-                                            
-                                            // Format neuron ID like in ThreadViewer
-                                            const neuronIdDisplay = neuronId && neuronId.length > 0 
-                                                ? Array.from(neuronId).slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('') + '...'
-                                                : 'unknown';
                                             
                                             // Get principal display info
                                             const principalDisplayInfo = getPrincipalDisplayInfoFromContext(
@@ -309,6 +324,9 @@ const Post = () => {
                                                 principalNames, 
                                                 principalNicknames
                                             );
+                                            
+                                            // Create neuron link using proper utility
+                                            const neuronLink = formatNeuronIdLink(neuronId, currentSnsRoot);
                                             
                                             return (
                                                 <div key={index} style={{
@@ -328,28 +346,18 @@ const Post = () => {
                                                         {isUpvote ? '▲' : '▼'}
                                                     </span>
                                                     
-                                                    {/* Neuron ID with link */}
-                                                    <Link 
-                                                        to={`/neuron?id=${Array.from(neuronId || []).map(b => b.toString(16).padStart(2, '0')).join('')}`}
-                                                        style={{ 
-                                                            color: '#3498db',
-                                                            textDecoration: 'none',
-                                                            fontFamily: 'monospace',
-                                                            minWidth: '80px'
-                                                        }}
-                                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                                                    >
-                                                        {neuronIdDisplay}
-                                                    </Link>
+                                                    {/* Neuron ID with proper link and formatting */}
+                                                    <div style={{ minWidth: '80px' }}>
+                                                        {neuronLink}
+                                                    </div>
                                                     
                                                     <span style={{ 
                                                         color: '#fff',
                                                         fontWeight: 'bold',
-                                                        minWidth: '60px',
+                                                        minWidth: '80px',
                                                         textAlign: 'right'
                                                     }}>
-                                                        {vpDisplay} VP
+                                                        {formatVotingPowerDisplay(votingPower)} VP
                                                     </span>
                                                     
                                                     {/* Principal with name/link */}
