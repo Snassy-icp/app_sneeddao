@@ -706,7 +706,9 @@ function ThreadViewer({
     // Handler functions
     const handleVote = useCallback(async (postId, voteType) => {
         const selectedNeurons = getSelectedNeurons();
-        if (!forumActor || !selectedNeurons || selectedNeurons.length === 0) return;
+        if (!forumActor || !selectedNeurons || selectedNeurons.length === 0) {
+            return;
+        }
 
         const postIdStr = postId.toString();
         setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
@@ -1109,7 +1111,7 @@ function ThreadViewer({
 
     // Initialize selected neurons from localStorage when neurons load
     useEffect(() => {
-        if (allNeurons && allNeurons.length > 0) {
+        if (allNeurons && allNeurons.length > 0 && selectedNeuronIds.size === 0) {
             try {
                 const storageKey = `selectedNeurons_${threadId}`;
                 const savedSelection = localStorage.getItem(storageKey);
@@ -1134,7 +1136,7 @@ function ThreadViewer({
                 setSelectedNeuronIds(new Set(allNeuronIds));
             }
         }
-    }, [allNeurons, threadId]);
+    }, [allNeurons, threadId, selectedNeuronIds.size]);
 
     // Handle neuron selection changes
     const handleNeuronToggle = useCallback((neuronId) => {
