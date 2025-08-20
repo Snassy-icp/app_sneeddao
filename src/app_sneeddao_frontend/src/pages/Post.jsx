@@ -20,6 +20,8 @@ const Post = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [breadcrumbLoading, setBreadcrumbLoading] = useState(true);
+    const [postVotes, setPostVotes] = useState([]);
+    const [votesLoading, setVotesLoading] = useState(false);
 
     // Get SNS from URL params if provided
     const snsParam = searchParams.get('sns');
@@ -78,6 +80,32 @@ const Post = () => {
 
         fetchPostDetails();
     }, [forumActor, postId]);
+
+    // Fetch all votes for the focused post
+    const fetchPostVotes = useCallback(async () => {
+        if (!forumActor || !postId) return;
+
+        try {
+            setVotesLoading(true);
+            console.log('Fetching all votes for post:', postId);
+            
+            const votes = await forumActor.get_post_votes(Number(postId));
+            console.log('Post votes:', votes);
+            
+            setPostVotes(votes || []);
+        } catch (error) {
+            console.error('Error fetching post votes:', error);
+        } finally {
+            setVotesLoading(false);
+        }
+    }, [forumActor, postId]);
+
+    // Fetch votes when post details are loaded
+    useEffect(() => {
+        if (postDetails) {
+            fetchPostVotes();
+        }
+    }, [postDetails, fetchPostVotes]);
 
     const handleError = useCallback((error) => {
         console.error('Post page error:', error);
@@ -200,6 +228,122 @@ const Post = () => {
                         }}>
                             Post
                         </span>
+                    </div>
+                )}
+                
+                {/* Post Votes Display */}
+                {postDetails && (
+                    <div style={{
+                        marginBottom: '20px',
+                        padding: '15px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255, 255, 255, 0.1)'
+                    }}>
+                        <h3 style={{ 
+                            margin: '0 0 15px 0', 
+                            color: '#fff',
+                            fontSize: '1.1rem'
+                        }}>
+                            All Votes for This Post
+                        </h3>
+                        
+                        {votesLoading ? (
+                            <div style={{ color: '#888' }}>Loading votes...</div>
+                        ) : postVotes.length === 0 ? (
+                            <div style={{ color: '#888' }}>No votes yet</div>
+                        ) : (
+                            <div>
+                                {/* Summary */}
+                                <div style={{ 
+                                    marginBottom: '15px',
+                                    fontSize: '0.9rem',
+                                    color: '#ccc'
+                                }}>
+                                    {(() => {
+                                        const upvotes = postVotes.filter(v => v.vote_type.upvote !== undefined);
+                                        const downvotes = postVotes.filter(v => v.vote_type.downvote !== undefined);
+                                        const totalUpVP = upvotes.reduce((sum, v) => sum + Number(v.voting_power || 0), 0);
+                                        const totalDownVP = downvotes.reduce((sum, v) => sum + Number(v.voting_power || 0), 0);
+                                        
+                                        return (
+                                            <div>
+                                                <span style={{ color: '#4CAF50' }}>
+                                                    ▲ {upvotes.length} upvotes ({(totalUpVP / 1e8).toFixed(1)}M VP)
+                                                </span>
+                                                <span style={{ margin: '0 15px', color: '#666' }}>•</span>
+                                                <span style={{ color: '#f44336' }}>
+                                                    ▼ {downvotes.length} downvotes ({(totalDownVP / 1e8).toFixed(1)}M VP)
+                                                </span>
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                                
+                                {/* Individual Votes */}
+                                <div style={{ 
+                                    display: 'grid', 
+                                    gap: '8px',
+                                    maxHeight: '300px',
+                                    overflowY: 'auto'
+                                }}>
+                                    {postVotes
+                                        .sort((a, b) => Number(b.voting_power || 0) - Number(a.voting_power || 0)) // Sort by voting power desc
+                                        .map((vote, index) => {
+                                            const isUpvote = vote.vote_type.upvote !== undefined;
+                                            const neuronId = vote.neuron_id?.id;
+                                            const neuronIdStr = neuronId && neuronId.length > 0 
+                                                ? Array.from(neuronId).map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 8) + '...'
+                                                : 'unknown';
+                                            const votingPower = Number(vote.voting_power || 0);
+                                            const vpDisplay = (votingPower / 1e8).toFixed(1) + 'M';
+                                            
+                                            return (
+                                                <div key={index} style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '10px',
+                                                    padding: '8px 12px',
+                                                    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                                    borderRadius: '4px',
+                                                    fontSize: '0.85rem'
+                                                }}>
+                                                    <span style={{
+                                                        color: isUpvote ? '#4CAF50' : '#f44336',
+                                                        fontWeight: 'bold',
+                                                        minWidth: '20px'
+                                                    }}>
+                                                        {isUpvote ? '▲' : '▼'}
+                                                    </span>
+                                                    <span style={{ 
+                                                        color: '#ccc',
+                                                        fontFamily: 'monospace',
+                                                        minWidth: '80px'
+                                                    }}>
+                                                        {neuronIdStr}
+                                                    </span>
+                                                    <span style={{ 
+                                                        color: '#fff',
+                                                        fontWeight: 'bold',
+                                                        minWidth: '60px',
+                                                        textAlign: 'right'
+                                                    }}>
+                                                        {vpDisplay} VP
+                                                    </span>
+                                                    <span style={{ 
+                                                        color: '#888',
+                                                        fontSize: '0.8rem',
+                                                        flex: 1
+                                                    }}>
+                                                        {new Date(Number(vote.created_at) / 1000000).toLocaleString()}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })
+                                    }
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
                 
