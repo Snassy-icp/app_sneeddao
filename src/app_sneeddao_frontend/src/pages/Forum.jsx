@@ -170,6 +170,7 @@ const styles = {
         border: '1px solid #3498db',
         borderRadius: '8px',
         padding: '20px',
+        marginTop: '40px',
         marginBottom: '30px',
         textAlign: 'center'
     },
