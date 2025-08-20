@@ -576,108 +576,98 @@ function Topic() {
                         )}
                     </div>
 
-                    {/* Create Thread Form */}
-                    <div style={styles.createThreadSection}>
-                        <h2 style={styles.sectionTitle}>Start a New Thread</h2>
-                        <form style={styles.form} onSubmit={handleCreateThread}>
-                            {/* Title Input */}
-                            <div style={styles.inputGroup}>
-                                <input
-                                    type="text"
-                                    placeholder="Thread title"
-                                    value={createThreadTitle}
-                                    onChange={(e) => setCreateThreadTitle(e.target.value)}
-                                    style={{
-                                        ...styles.threadTitleInput,
-                                        ...(textLimits && createThreadTitle.length > textLimits.thread_title_max_length ? styles.threadInputError : {})
-                                    }}
-                                    disabled={submitting}
-                                    onFocus={(e) => {
-                                        e.target.style.borderColor = '#3498db';
-                                        e.target.style.boxShadow = '0 0 0 2px rgba(52, 152, 219, 0.2)';
-                                    }}
-                                    onBlur={(e) => {
-                                        e.target.style.borderColor = textLimits && createThreadTitle.length > textLimits.thread_title_max_length ? '#e74c3c' : '#4a4a4a';
-                                        e.target.style.boxShadow = 'none';
-                                    }}
-                                />
-                                {textLimits && (
-                                    <div style={{
-                                        ...styles.characterCounter,
-                                        color: createThreadTitle.length > textLimits.thread_title_max_length ? '#e74c3c' : 
-                                               (textLimits.thread_title_max_length - createThreadTitle.length) < 20 ? '#f39c12' : '#888'
-                                    }}>
-                                        {createThreadTitle.length}/{textLimits.thread_title_max_length} characters
-                                        {createThreadTitle.length > textLimits.thread_title_max_length && 
-                                            <span style={{ marginLeft: '10px' }}>({createThreadTitle.length - textLimits.thread_title_max_length} over limit)</span>
-                                        }
-                                    </div>
-                                )}
+                    {/* Create Thread Form - Full Width Style like ThreadViewer */}
+                    <div style={{ marginBottom: '20px' }}>
+                        <input
+                            type="text"
+                            value={createThreadTitle}
+                            onChange={(e) => setCreateThreadTitle(e.target.value)}
+                            placeholder="Thread title"
+                            style={{
+                                width: '100%',
+                                backgroundColor: '#2a2a2a',
+                                color: '#ffffff',
+                                border: `1px solid ${textLimits && createThreadTitle.length > textLimits.thread_title_max_length ? '#e74c3c' : '#444'}`,
+                                borderRadius: '4px',
+                                padding: '10px',
+                                marginBottom: '5px',
+                                fontSize: '14px',
+                                boxSizing: 'border-box'
+                            }}
+                            disabled={submitting}
+                        />
+                        {textLimits && (
+                            <div style={{
+                                fontSize: '12px',
+                                color: createThreadTitle.length > textLimits.thread_title_max_length ? '#e74c3c' : 
+                                       (textLimits.thread_title_max_length - createThreadTitle.length) < 20 ? '#f39c12' : '#888',
+                                marginBottom: '10px'
+                            }}>
+                                Title: {createThreadTitle.length}/{textLimits.thread_title_max_length} characters
+                                {createThreadTitle.length > textLimits.thread_title_max_length && 
+                                    <span style={{ marginLeft: '10px' }}>({createThreadTitle.length - textLimits.thread_title_max_length} over limit)</span>
+                                }
                             </div>
-
-                            {/* Body Textarea */}
-                            <div style={styles.inputGroup}>
-                                <textarea
-                                    placeholder="What would you like to discuss?"
-                                    value={createThreadBody}
-                                    onChange={(e) => setCreateThreadBody(e.target.value)}
-                                    style={{
-                                        ...styles.threadBodyTextarea,
-                                        ...(textLimits && createThreadBody.length > textLimits.thread_body_max_length ? styles.threadInputError : {})
-                                    }}
-                                    disabled={submitting}
-                                    onFocus={(e) => {
-                                        e.target.style.borderColor = '#3498db';
-                                        e.target.style.boxShadow = '0 0 0 2px rgba(52, 152, 219, 0.2)';
-                                    }}
-                                    onBlur={(e) => {
-                                        e.target.style.borderColor = textLimits && createThreadBody.length > textLimits.thread_body_max_length ? '#e74c3c' : '#4a4a4a';
-                                        e.target.style.boxShadow = 'none';
-                                    }}
-                                />
-                                {textLimits && (
-                                    <div style={{
-                                        ...styles.characterCounter,
-                                        color: createThreadBody.length > textLimits.thread_body_max_length ? '#e74c3c' : 
-                                               (textLimits.thread_body_max_length - createThreadBody.length) < 100 ? '#f39c12' : '#888'
-                                    }}>
-                                        {createThreadBody.length}/{textLimits.thread_body_max_length} characters
-                                        {createThreadBody.length > textLimits.thread_body_max_length && 
-                                            <span style={{ marginLeft: '10px' }}>({createThreadBody.length - textLimits.thread_body_max_length} over limit)</span>
-                                        }
-                                    </div>
-                                )}
+                        )}
+                        <textarea
+                            value={createThreadBody}
+                            onChange={(e) => setCreateThreadBody(e.target.value)}
+                            placeholder="What would you like to discuss?"
+                            style={{
+                                width: '100%',
+                                backgroundColor: '#2a2a2a',
+                                color: '#ffffff',
+                                border: `1px solid ${textLimits && createThreadBody.length > textLimits.thread_body_max_length ? '#e74c3c' : '#444'}`,
+                                borderRadius: '4px',
+                                padding: '10px',
+                                fontSize: '14px',
+                                minHeight: '100px',
+                                resize: 'vertical',
+                                marginBottom: '5px',
+                                boxSizing: 'border-box'
+                            }}
+                            disabled={submitting}
+                        />
+                        {textLimits && (
+                            <div style={{
+                                fontSize: '12px',
+                                color: createThreadBody.length > textLimits.thread_body_max_length ? '#e74c3c' : 
+                                       (textLimits.thread_body_max_length - createThreadBody.length) < 100 ? '#f39c12' : '#888',
+                                marginBottom: '10px'
+                            }}>
+                                Body: {createThreadBody.length}/{textLimits.thread_body_max_length} characters
+                                {createThreadBody.length > textLimits.thread_body_max_length && 
+                                    <span style={{ marginLeft: '10px' }}>({createThreadBody.length - textLimits.thread_body_max_length} over limit)</span>
+                                }
                             </div>
-
+                        )}
+                        <div style={{ 
+                            display: 'flex', 
+                            gap: '10px', 
+                            marginTop: '10px'
+                        }}>
                             <button
-                                type="submit"
-                                style={{
-                                    ...styles.submitButton,
-                                    ...(submitting || !createThreadTitle.trim() || !createThreadBody.trim() || 
-                                        (textLimits && (createThreadTitle.length > textLimits.thread_title_max_length || 
-                                                       createThreadBody.length > textLimits.thread_body_max_length)) ? styles.submitButtonDisabled : {})
-                                }}
+                                onClick={handleCreateThread}
                                 disabled={submitting || !createThreadTitle.trim() || !createThreadBody.trim() || 
                                          (textLimits && (createThreadTitle.length > textLimits.thread_title_max_length || 
                                                         createThreadBody.length > textLimits.thread_body_max_length))}
-                                onMouseEnter={(e) => {
-                                    if (!e.target.disabled) {
-                                        e.target.style.backgroundColor = '#2980b9';
-                                        e.target.style.transform = 'translateY(-1px)';
-                                        e.target.style.boxShadow = '0 4px 8px rgba(52, 152, 219, 0.3)';
-                                    }
-                                }}
-                                onMouseLeave={(e) => {
-                                    if (!e.target.disabled) {
-                                        e.target.style.backgroundColor = '#3498db';
-                                        e.target.style.transform = 'none';
-                                        e.target.style.boxShadow = '0 2px 4px rgba(52, 152, 219, 0.2)';
-                                    }
+                                style={{
+                                    backgroundColor: (submitting || !createThreadTitle.trim() || !createThreadBody.trim() || 
+                                                     (textLimits && (createThreadTitle.length > textLimits.thread_title_max_length || 
+                                                                    createThreadBody.length > textLimits.thread_body_max_length))) ? '#666' : '#2ecc71',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '8px 16px',
+                                    cursor: (submitting || !createThreadTitle.trim() || !createThreadBody.trim() || 
+                                            (textLimits && (createThreadTitle.length > textLimits.thread_title_max_length || 
+                                                           createThreadBody.length > textLimits.thread_body_max_length))) ? 'not-allowed' : 'pointer',
+                                    fontSize: '14px'
                                 }}
                             >
                                 {submitting ? 'Creating...' : 'Create Thread'}
                             </button>
-                        </form>
+                        </div>
                     </div>
                 </div>
             </main>
