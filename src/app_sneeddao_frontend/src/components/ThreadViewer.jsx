@@ -1747,7 +1747,7 @@ function ThreadViewer({
                                             const hasUpvotes = postVotes?.upvoted_neurons?.length > 0;
                                             return hasUpvotes ? '#2ecc71' : '#6b8eb8';
                                         })(),
-                                        borderRadius: '50%',
+                                        borderRadius: '4px',
                                         padding: '4px 8px',
                                         cursor: (votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
                                         fontSize: '12px',
@@ -1824,7 +1824,7 @@ function ThreadViewer({
                                             const postIdStr = post.id.toString();
                                             const postVotes = threadVotes.get(postIdStr);
                                             const hasDownvotes = postVotes?.downvoted_neurons?.length > 0;
-                                            return hasDownvotes ? '2px solid #e74c3c' : 'none';
+                                            return hasDownvotes ? '1px solid #e74c3c' : '1px solid transparent';
                                         })(),
                                         color: (() => {
                                             const postIdStr = post.id.toString();
@@ -1832,7 +1832,7 @@ function ThreadViewer({
                                             const hasDownvotes = postVotes?.downvoted_neurons?.length > 0;
                                             return hasDownvotes ? '#e74c3c' : '#6b8eb8';
                                         })(),
-                                        borderRadius: '50%',
+                                        borderRadius: '4px',
                                         padding: '4px 8px',
                                         cursor: (votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
                                         fontSize: '12px',
