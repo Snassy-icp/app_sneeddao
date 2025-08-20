@@ -274,42 +274,13 @@ function Forum() {
             console.log('Topics response:', topicsResponse);
             console.log('Topics response length:', topicsResponse?.length);
             
-            // Filter out deleted topics and organize into hierarchy
-            // Note: parent_topic_id is a Motoko optional, so null = [], Some(value) = [value]
-            const activeTopics = topicsResponse.filter(topic => !topic.deleted);
-            console.log('Active topics:', activeTopics);
-            
-            // Separate root and child topics
-            const rootTopics = [];
-            const childTopicsMap = new Map();
-            
-            activeTopics.forEach(topic => {
-                const isRootLevel = !topic.parent_topic_id || topic.parent_topic_id.length === 0;
-                console.log(`Topic "${topic.title}": deleted=${topic.deleted}, parent_topic_id=`, topic.parent_topic_id, `isRootLevel=${isRootLevel}`);
-                
-                if (isRootLevel) {
-                    rootTopics.push({ ...topic, children: [] });
-                } else {
-                    // It's a child topic
-                    const parentId = topic.parent_topic_id[0]; // Get parent ID from array
-                    const parentIdStr = parentId.toString(); // Convert BigInt to string for Map key
-                    
-                    if (!childTopicsMap.has(parentIdStr)) {
-                        childTopicsMap.set(parentIdStr, []);
-                    }
-                    childTopicsMap.get(parentIdStr).push(topic);
-                }
-            });
-            
-            // Add children to their parent topics
-            const hierarchyTopics = rootTopics.map(rootTopic => {
-                const rootIdStr = rootTopic.id.toString();
-                const children = childTopicsMap.get(rootIdStr) || [];
-                return { ...rootTopic, children };
-            });
-            
+            // Build topic hierarchy using the shared function
+            const hierarchyTopics = buildTopicHierarchy(topicsResponse);
             console.log('Hierarchical topics:', hierarchyTopics);
-            setTopics(rootTopics); // Keep for backward compatibility
+            
+            // Extract root topics for backward compatibility
+            const rootTopics = hierarchyTopics.map(topic => ({ ...topic, children: undefined }));
+            setTopics(rootTopics);
             setTopicHierarchy(hierarchyTopics);
 
         } catch (err) {
@@ -318,6 +289,41 @@ function Forum() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const buildTopicHierarchy = (topics) => {
+        // Filter only active (non-deleted) topics
+        const activeTopics = topics.filter(topic => !topic.deleted);
+        
+        // Separate root and child topics
+        const rootTopics = [];
+        const childTopicsMap = new Map();
+        
+        activeTopics.forEach(topic => {
+            const isRootLevel = !topic.parent_topic_id || topic.parent_topic_id.length === 0;
+            
+            if (isRootLevel) {
+                rootTopics.push({ ...topic, children: [] });
+            } else {
+                // It's a child topic
+                const parentId = topic.parent_topic_id[0]; // Get parent ID from array
+                const parentIdStr = parentId.toString(); // Convert BigInt to string for Map key
+                
+                if (!childTopicsMap.has(parentIdStr)) {
+                    childTopicsMap.set(parentIdStr, []);
+                }
+                childTopicsMap.get(parentIdStr).push(topic);
+            }
+        });
+        
+        // Add children to their parent topics
+        const hierarchyTopics = rootTopics.map(rootTopic => {
+            const rootIdStr = rootTopic.id.toString();
+            const children = childTopicsMap.get(rootIdStr) || [];
+            return { ...rootTopic, children };
+        });
+        
+        return hierarchyTopics;
     };
 
     const formatDate = (timestamp) => {
