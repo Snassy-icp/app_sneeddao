@@ -4,6 +4,7 @@ import Dedup "mo:dedup";
 import Vector "mo:vector";
 import Nat64 "mo:base/Nat64";
 import Nat "mo:base/Nat";
+import Time "mo:base/Time";
 
 import T "Types";
 import Lib "lib";
@@ -493,6 +494,17 @@ persistent actor SneedSNSForum {
         let (result, updated_cache) = await Lib.create_proposal_thread_with_auto_setup(state, caller, input, sns_cache);
         sns_cache := updated_cache;
         result
+    };
+
+    // Create forum with governance and proposals topics for an SNS
+    public shared ({ caller }) func create_sns_forum_setup(sns_root_canister_id: Principal) : async T.Result<Nat, T.ForumError> {
+        let current_time = Time.now();
+        let (result, updated_cache) = await Lib.ensure_sns_proposal_structure(state, caller, sns_root_canister_id, sns_cache, current_time);
+        sns_cache := updated_cache;
+        switch (result) {
+            case (#ok(proposals_topic_id)) #ok(proposals_topic_id);
+            case (#err(error)) #err(error);
+        }
     };
 
     public query func get_proposal_thread(sns_root: Principal, proposal_id: Nat) : async ?T.ProposalThreadMappingResponse {

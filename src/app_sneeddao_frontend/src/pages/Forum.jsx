@@ -112,6 +112,58 @@ const styles = {
         backgroundColor: '#2a2a2a',
         borderRadius: '8px',
         border: '1px solid #3a3a3a'
+    },
+    noForumContainer: {
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '60vh',
+        padding: '40px'
+    },
+    noForumContent: {
+        textAlign: 'center',
+        backgroundColor: '#2a2a2a',
+        borderRadius: '12px',
+        padding: '40px',
+        border: '1px solid #3a3a3a',
+        maxWidth: '500px',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
+    },
+    noForumTitle: {
+        color: '#ffffff',
+        fontSize: '2rem',
+        fontWeight: '600',
+        marginBottom: '20px'
+    },
+    noForumMessage: {
+        color: '#ccc',
+        fontSize: '1.1rem',
+        marginBottom: '15px',
+        lineHeight: '1.5'
+    },
+    noForumDescription: {
+        color: '#888',
+        fontSize: '0.95rem',
+        marginBottom: '30px',
+        lineHeight: '1.4'
+    },
+    createForumButton: {
+        backgroundColor: '#3498db',
+        color: '#ffffff',
+        border: 'none',
+        borderRadius: '8px',
+        padding: '14px 28px',
+        fontSize: '1rem',
+        fontWeight: '600',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        boxShadow: '0 2px 8px rgba(52, 152, 219, 0.3)'
+    },
+    createForumButtonDisabled: {
+        backgroundColor: '#555',
+        cursor: 'not-allowed',
+        opacity: 0.6,
+        boxShadow: 'none'
     }
 };
 
@@ -123,6 +175,7 @@ function Forum() {
     const [topicHierarchy, setTopicHierarchy] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [creatingForum, setCreatingForum] = useState(false);
     const [hoveredCard, setHoveredCard] = useState(null);
 
     useEffect(() => {
@@ -134,6 +187,57 @@ function Forum() {
 
         fetchForumData();
     }, [selectedSnsRoot, identity]);
+
+    const handleCreateForum = async () => {
+        if (!identity || !selectedSnsRoot || creatingForum) return;
+
+        setCreatingForum(true);
+        try {
+            const forumActor = createActor(canisterId, {
+                agentOptions: {
+                    host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                    identity: identity,
+                },
+            });
+
+            const snsRootPrincipal = Principal.fromText(selectedSnsRoot);
+            const result = await forumActor.create_sns_forum_setup(snsRootPrincipal);
+
+            if ('ok' in result) {
+                console.log('Forum created successfully, proposals topic ID:', result.ok);
+                // Refresh the forum data
+                setError(null);
+                setLoading(true);
+                // Re-fetch forum data to show the newly created forum
+                const forumResponse = await forumActor.get_forum_by_sns_root(snsRootPrincipal);
+                if (forumResponse && forumResponse.length > 0) {
+                    const forum = forumResponse[0];
+                    setForum(forum);
+                    
+                    // Fetch topics for the new forum
+                    const forumIdNumber = typeof forum.id === 'bigint' ? Number(forum.id) : forum.id;
+                    const topicsResponse = await forumActor.get_topics_by_forum(forumIdNumber);
+                    
+                    if (topicsResponse) {
+                        setTopics(topicsResponse);
+                        
+                        // Build topic hierarchy
+                        const hierarchy = buildTopicHierarchy(topicsResponse);
+                        setTopicHierarchy(hierarchy);
+                    }
+                }
+            } else {
+                console.error('Error creating forum:', result.err);
+                setError('Failed to create forum: ' + result.err);
+            }
+        } catch (err) {
+            console.error('Error creating forum:', err);
+            setError('Failed to create forum: ' + err.message);
+        } finally {
+            setCreatingForum(false);
+            setLoading(false);
+        }
+    };
 
     const fetchForumData = async () => {
         try {
@@ -154,7 +258,7 @@ function Forum() {
             
             // Motoko optionals are serialized as arrays: [] for null, [value] for Some(value)
             if (!forumResponse || forumResponse.length === 0) {
-                setError('This SNS does not have a forum yet. Forums are created automatically when needed.');
+                setError('NO_FORUM'); // Special error code to show create forum UI
                 return;
             }
 
@@ -232,6 +336,37 @@ function Forum() {
     }
 
     if (error) {
+        if (error === 'NO_FORUM') {
+            return (
+                <div className='page-container'>
+                    <Header showSnsDropdown={true} />
+                    <main className="wallet-container">
+                        <div style={styles.noForumContainer}>
+                            <div style={styles.noForumContent}>
+                                <h1 style={styles.noForumTitle}>Forum Not Available</h1>
+                                <p style={styles.noForumMessage}>
+                                    This SNS doesn't have a forum yet. Would you like to create one?
+                                </p>
+                                <p style={styles.noForumDescription}>
+                                    Creating a forum will set up discussion spaces for governance topics and proposals.
+                                </p>
+                                <button 
+                                    onClick={handleCreateForum}
+                                    disabled={creatingForum}
+                                    style={{
+                                        ...styles.createForumButton,
+                                        ...(creatingForum ? styles.createForumButtonDisabled : {})
+                                    }}
+                                >
+                                    {creatingForum ? 'Creating Forum...' : 'Create Forum'}
+                                </button>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+        
         return (
             <div className='page-container'>
                 <Header showSnsDropdown={true} />
