@@ -26,6 +26,7 @@ const Post = () => {
     const [breadcrumbLoading, setBreadcrumbLoading] = useState(true);
     const [postVotes, setPostVotes] = useState([]);
     const [votesLoading, setVotesLoading] = useState(false);
+    const [votesExpanded, setVotesExpanded] = useState(false);
 
     // Get SNS from URL params if provided
     const snsParam = searchParams.get('sns');
@@ -264,13 +265,45 @@ const Post = () => {
                         borderRadius: '8px',
                         border: '1px solid rgba(255, 255, 255, 0.1)'
                     }}>
-                        <h3 style={{ 
-                            margin: '0 0 15px 0', 
-                            color: '#fff',
-                            fontSize: '1.1rem'
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            marginBottom: '15px'
                         }}>
-                            All Votes for This Post
-                        </h3>
+                            <h3 style={{ 
+                                margin: '0', 
+                                color: '#fff',
+                                fontSize: '1.1rem'
+                            }}>
+                                All Votes for This Post
+                            </h3>
+                            {postVotes.length > 0 && (
+                                <button
+                                    onClick={() => setVotesExpanded(!votesExpanded)}
+                                    style={{
+                                        background: 'none',
+                                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                                        borderRadius: '4px',
+                                        color: '#3498db',
+                                        padding: '4px 8px',
+                                        fontSize: '0.8rem',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.borderColor = '#3498db';
+                                        e.target.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                                        e.target.style.backgroundColor = 'transparent';
+                                    }}
+                                >
+                                    {votesExpanded ? 'Hide Details' : 'Show Details'} {votesExpanded ? '▲' : '▼'}
+                                </button>
+                            )}
+                        </div>
                         
                         {votesLoading ? (
                             <div style={{ color: '#888' }}>Loading votes...</div>
@@ -290,27 +323,40 @@ const Post = () => {
                                         const totalUpVP = upvotes.reduce((sum, v) => sum + Number(v.voting_power || 0), 0);
                                         const totalDownVP = downvotes.reduce((sum, v) => sum + Number(v.voting_power || 0), 0);
                                         
+                                        const netScore = totalUpVP - totalDownVP;
+                                        const netColor = netScore > 0 ? '#4CAF50' : netScore < 0 ? '#f44336' : '#888';
+                                        
                                         return (
                                             <div>
-                                                <span style={{ color: '#4CAF50' }}>
-                                                    ▲ {upvotes.length} upvotes ({formatVotingPowerDisplay(totalUpVP)} VP)
-                                                </span>
-                                                <span style={{ margin: '0 15px', color: '#666' }}>•</span>
-                                                <span style={{ color: '#f44336' }}>
-                                                    ▼ {downvotes.length} downvotes ({formatVotingPowerDisplay(totalDownVP)} VP)
-                                                </span>
+                                                <div style={{ marginBottom: '8px' }}>
+                                                    <span style={{ color: '#4CAF50' }}>
+                                                        ▲ {upvotes.length} upvotes ({formatVotingPowerDisplay(totalUpVP)} VP)
+                                                    </span>
+                                                    <span style={{ margin: '0 15px', color: '#666' }}>•</span>
+                                                    <span style={{ color: '#f44336' }}>
+                                                        ▼ {downvotes.length} downvotes ({formatVotingPowerDisplay(totalDownVP)} VP)
+                                                    </span>
+                                                </div>
+                                                <div style={{ 
+                                                    fontSize: '0.95rem',
+                                                    fontWeight: 'bold',
+                                                    color: netColor
+                                                }}>
+                                                    Net Score: {netScore >= 0 ? '+' : ''}{formatVotingPowerDisplay(netScore)} VP
+                                                </div>
                                             </div>
                                         );
                                     })()}
                                 </div>
-                                
-                                {/* Individual Votes */}
-                                <div style={{ 
-                                    display: 'grid', 
-                                    gap: '8px',
-                                    maxHeight: '300px',
-                                    overflowY: 'auto'
-                                }}>
+                                {/* Individual Votes - Only show when expanded */}
+                                {votesExpanded && (
+                                    <div style={{ 
+                                        display: 'grid', 
+                                        gap: '8px',
+                                        maxHeight: '300px',
+                                        overflowY: 'auto',
+                                        marginTop: '15px'
+                                    }}>
                                     {postVotes
                                         .sort((a, b) => Number(b.voting_power || 0) - Number(a.voting_power || 0)) // Sort by voting power desc
                                         .map((vote, index) => {
@@ -381,7 +427,8 @@ const Post = () => {
                                             );
                                         })
                                     }
-                                </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
