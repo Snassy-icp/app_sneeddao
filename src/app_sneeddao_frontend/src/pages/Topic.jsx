@@ -762,7 +762,9 @@ function Topic() {
                     </div>
 
                     {/* Create Thread Form - Full Width Style like ThreadViewer */}
-                    <div style={{ marginBottom: '20px' }}>
+                    {/* Hide create thread form if we're in the Proposals topic */}
+                    {topic?.title !== "Proposals" && (
+                        <div style={{ marginBottom: '20px' }}>
                         <input
                             type="text"
                             value={createThreadTitle}
@@ -854,6 +856,7 @@ function Topic() {
                             </button>
                         </div>
                     </div>
+                    )}
                 </div>
             </main>
         </div>
