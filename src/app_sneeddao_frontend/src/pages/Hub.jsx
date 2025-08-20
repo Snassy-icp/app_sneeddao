@@ -340,14 +340,6 @@ function Hub() {
                         flex: isMobile ? 'none' : '1',
                         minWidth: isMobile ? 'auto' : '400px'
                     }}>
-                        <h2 style={{
-                            fontSize: '1.5rem',
-                            color: '#ffffff',
-                            marginBottom: '1.5rem'
-                        }}>
-                            SNS Explorer
-                        </h2>
-                    
                     {/* Sort Controls */}
                     <div style={{
                         display: 'flex',
