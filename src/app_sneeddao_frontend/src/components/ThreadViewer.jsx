@@ -635,6 +635,59 @@ function ThreadViewer({
         }
     };
 
+    // Function to refresh votes for a single post (efficient)
+    const refreshPostVotes = useCallback(async (postId) => {
+        if (!forumActor || !allNeurons || allNeurons.length === 0) {
+            return;
+        }
+
+        try {
+            const neuronIds = allNeurons.map(neuron => ({
+                id: neuron.id[0].id
+            }));
+
+            const voteResult = await forumActor.get_post_votes_for_neurons(Number(postId), neuronIds);
+            
+            // voteResult is an optional, so check if it exists and extract from array
+            if (voteResult && voteResult.length > 0) {
+                const postVotes = voteResult[0]; // Extract from Motoko optional array
+                const postIdStr = postVotes.post_id.toString();
+                const upvotedNeurons = [];
+                const downvotedNeurons = [];
+
+                postVotes.neuron_votes.forEach(neuronVote => {
+                    const neuronData = {
+                        neuron_id: neuronVote.neuron_id,
+                        voting_power: neuronVote.voting_power,
+                        created_at: neuronVote.created_at,
+                        updated_at: neuronVote.updated_at
+                    };
+
+                    if (neuronVote.vote_type.upvote !== undefined) {
+                        upvotedNeurons.push(neuronData);
+                    } else if (neuronVote.vote_type.downvote !== undefined) {
+                        downvotedNeurons.push(neuronData);
+                    }
+                });
+
+                // Update only this post's votes in the state
+                setThreadVotes(prev => new Map(prev.set(postIdStr, {
+                    upvoted_neurons: upvotedNeurons,
+                    downvoted_neurons: downvotedNeurons
+                })));
+            } else {
+                // No votes found, clear the votes for this post
+                const postIdStr = postId.toString();
+                setThreadVotes(prev => new Map(prev.set(postIdStr, {
+                    upvoted_neurons: [],
+                    downvoted_neurons: []
+                })));
+            }
+        } catch (error) {
+            console.error('Error refreshing post votes:', error);
+        }
+    }, [forumActor, allNeurons]);
+
     // Handler functions
     const handleVote = useCallback(async (postId, voteType) => {
         if (!forumActor || !allNeurons || allNeurons.length === 0) return;
@@ -652,6 +705,9 @@ function ThreadViewer({
                 
                 // Refresh posts to get updated scores (same as original Discussion.jsx)
                 await fetchPosts();
+                
+                // Refresh vote button states for this specific post
+                await refreshPostVotes(postId);
                 
                 // Clear voting state after a delay
                 setTimeout(() => {
@@ -687,7 +743,7 @@ function ThreadViewer({
                 });
             }, 3000);
         }
-    }, [forumActor, allNeurons, totalVotingPower]);
+    }, [forumActor, allNeurons, totalVotingPower, fetchPosts, refreshPostVotes]);
 
     const handleRetractVote = useCallback(async (postId) => {
         if (!forumActor) return;
@@ -709,6 +765,9 @@ function ThreadViewer({
                 
                 // Refresh posts to get updated scores
                 await fetchPosts();
+                
+                // Refresh vote button states for this specific post
+                await refreshPostVotes(postId);
                 
                 // Clear voting state after a delay
                 setTimeout(() => {
@@ -744,7 +803,7 @@ function ThreadViewer({
                 });
             }, 3000);
         }
-    }, [forumActor, fetchPosts]);
+    }, [forumActor, fetchPosts, refreshPostVotes]);
 
     const submitReply = useCallback(async (parentPostId, replyText) => {
         if (!replyText.trim() || !forumActor || !threadId) return;
