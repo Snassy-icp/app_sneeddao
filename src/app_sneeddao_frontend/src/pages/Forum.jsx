@@ -230,6 +230,8 @@ function Forum() {
     const [hoveredCard, setHoveredCard] = useState(null);
     const [showGeneralPrompt, setShowGeneralPrompt] = useState(false);
     const [creatingGeneral, setCreatingGeneral] = useState(false);
+    const [showGovernancePrompt, setShowGovernancePrompt] = useState(false);
+    const [creatingGovernance, setCreatingGovernance] = useState(false);
 
     useEffect(() => {
         if (!selectedSnsRoot) {
@@ -244,6 +246,14 @@ function Forum() {
     const checkForGeneralTopic = (topics) => {
         return topics.some(topic => 
             topic.title === "General" && 
+            (!topic.parent_topic_id || topic.parent_topic_id.length === 0) &&
+            !topic.deleted
+        );
+    };
+
+    const checkForGovernanceTopic = (topics) => {
+        return topics.some(topic => 
+            topic.title === "Governance" && 
             (!topic.parent_topic_id || topic.parent_topic_id.length === 0) &&
             !topic.deleted
         );
@@ -281,6 +291,41 @@ function Forum() {
             setError('Failed to create General topic: ' + err.message);
         } finally {
             setCreatingGeneral(false);
+        }
+    };
+
+    const handleCreateGovernanceTopic = async () => {
+        if (!identity || !selectedSnsRoot || creatingGovernance) return;
+
+        setCreatingGovernance(true);
+        try {
+            const forumActor = createActor(canisterId, {
+                agentOptions: {
+                    host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                    identity: identity,
+                },
+            });
+
+            const snsRootPrincipal = Principal.fromText(selectedSnsRoot);
+            const result = await forumActor.create_special_topic({
+                sns_root_canister_id: snsRootPrincipal,
+                special_topic_type: { 'Governance': null }
+            });
+
+            if ('ok' in result) {
+                console.log('Governance topic created successfully, topic ID:', result.ok);
+                setShowGovernancePrompt(false);
+                // Refresh the forum data to show the new topic
+                await fetchForumData();
+            } else {
+                console.error('Error creating Governance topic:', result.err);
+                setError('Failed to create Governance topic: ' + result.err);
+            }
+        } catch (err) {
+            console.error('Error creating Governance topic:', err);
+            setError('Failed to create Governance topic: ' + err.message);
+        } finally {
+            setCreatingGovernance(false);
         }
     };
 
@@ -379,9 +424,11 @@ function Forum() {
             setTopics(rootTopics);
             setTopicHierarchy(hierarchyTopics);
 
-            // Check if General topic exists and show prompt if not
+            // Check if General and Governance topics exist and show prompts if not
             const hasGeneralTopic = checkForGeneralTopic(topicsResponse);
-            setShowGeneralPrompt(!hasGeneralTopic && topicsResponse.length >= 0); // Show prompt if no General topic exists
+            const hasGovernanceTopic = checkForGovernanceTopic(topicsResponse);
+            setShowGeneralPrompt(!hasGeneralTopic && topicsResponse.length >= 0);
+            setShowGovernancePrompt(!hasGovernanceTopic && topicsResponse.length >= 0);
 
         } catch (err) {
             console.error('Error fetching forum data:', err);
@@ -496,39 +543,6 @@ function Forum() {
                         </p>
                     </div>
 
-                    {/* General Topic Prompt */}
-                    {showGeneralPrompt && (
-                        <div style={styles.generalPrompt}>
-                            <h3 style={styles.generalPromptTitle}>Create General Topic?</h3>
-                            <p style={styles.generalPromptMessage}>
-                                This SNS does not have a "General" topic yet. Would you like to create it? 
-                                This will provide a space for general community discussions.
-                            </p>
-                            <div style={styles.generalPromptButtons}>
-                                <button 
-                                    onClick={handleCreateGeneralTopic}
-                                    disabled={creatingGeneral}
-                                    style={{
-                                        ...styles.createGeneralButton,
-                                        ...(creatingGeneral ? styles.buttonDisabled : {})
-                                    }}
-                                >
-                                    {creatingGeneral ? 'Creating...' : 'Create General Topic'}
-                                </button>
-                                <button 
-                                    onClick={() => setShowGeneralPrompt(false)}
-                                    disabled={creatingGeneral}
-                                    style={{
-                                        ...styles.dismissButton,
-                                        ...(creatingGeneral ? styles.buttonDisabled : {})
-                                    }}
-                                >
-                                    Maybe Later
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
                     {/* Topics Grid */}
                     {topicHierarchy.length > 0 ? (
                         <div style={styles.topicsGrid}>
@@ -585,6 +599,71 @@ function Forum() {
                         <div style={styles.noTopics}>
                             <p>No topics available in this forum yet.</p>
                             <p>Topics will be created automatically as the community grows.</p>
+                        </div>
+                    )}
+
+                    {/* Special Topic Prompts */}
+                    {showGeneralPrompt && (
+                        <div style={styles.generalPrompt}>
+                            <h3 style={styles.generalPromptTitle}>Create General Topic?</h3>
+                            <p style={styles.generalPromptMessage}>
+                                This SNS does not have a "General" topic yet. Would you like to create it? 
+                                This will provide a space for general community discussions.
+                            </p>
+                            <div style={styles.generalPromptButtons}>
+                                <button 
+                                    onClick={handleCreateGeneralTopic}
+                                    disabled={creatingGeneral}
+                                    style={{
+                                        ...styles.createGeneralButton,
+                                        ...(creatingGeneral ? styles.buttonDisabled : {})
+                                    }}
+                                >
+                                    {creatingGeneral ? 'Creating...' : 'Create General Topic'}
+                                </button>
+                                <button 
+                                    onClick={() => setShowGeneralPrompt(false)}
+                                    disabled={creatingGeneral}
+                                    style={{
+                                        ...styles.dismissButton,
+                                        ...(creatingGeneral ? styles.buttonDisabled : {})
+                                    }}
+                                >
+                                    Maybe Later
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {showGovernancePrompt && (
+                        <div style={styles.generalPrompt}>
+                            <h3 style={styles.generalPromptTitle}>Create Governance Topic?</h3>
+                            <p style={styles.generalPromptMessage}>
+                                This SNS does not have a "Governance" topic yet. Would you like to create it? 
+                                This will provide a space for governance discussions and decision-making.
+                            </p>
+                            <div style={styles.generalPromptButtons}>
+                                <button 
+                                    onClick={handleCreateGovernanceTopic}
+                                    disabled={creatingGovernance}
+                                    style={{
+                                        ...styles.createGeneralButton,
+                                        ...(creatingGovernance ? styles.buttonDisabled : {})
+                                    }}
+                                >
+                                    {creatingGovernance ? 'Creating...' : 'Create Governance Topic'}
+                                </button>
+                                <button 
+                                    onClick={() => setShowGovernancePrompt(false)}
+                                    disabled={creatingGovernance}
+                                    style={{
+                                        ...styles.dismissButton,
+                                        ...(creatingGovernance ? styles.buttonDisabled : {})
+                                    }}
+                                >
+                                    Maybe Later
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
