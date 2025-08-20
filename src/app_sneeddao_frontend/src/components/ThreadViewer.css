@@ -125,10 +125,12 @@
     transition: all 0.3s ease;
 }
 
+/* Disabled hover effect to prevent jitter
 .post-item:hover {
     background: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.2);
 }
+*/
 
 /* Focused Post Styling - Slick Blue Theme */
 .post-item.focused-post {
