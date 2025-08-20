@@ -260,6 +260,58 @@ const styles = {
         color: '#888',
         fontSize: '1rem',
         padding: '30px'
+    },
+    preproposalsPrompt: {
+        backgroundColor: '#2a2a2a',
+        border: '1px solid #3498db',
+        borderRadius: '8px',
+        padding: '20px',
+        marginTop: '30px',
+        marginBottom: '30px',
+        textAlign: 'center'
+    },
+    preproposalsPromptTitle: {
+        color: '#3498db',
+        fontSize: '1.3rem',
+        fontWeight: '600',
+        marginBottom: '10px'
+    },
+    preproposalsPromptMessage: {
+        color: '#ccc',
+        fontSize: '1rem',
+        marginBottom: '20px',
+        lineHeight: '1.5'
+    },
+    preproposalsPromptButtons: {
+        display: 'flex',
+        gap: '15px',
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    createPreproposalsButton: {
+        backgroundColor: '#3498db',
+        color: '#ffffff',
+        border: 'none',
+        borderRadius: '6px',
+        padding: '10px 20px',
+        fontSize: '0.95rem',
+        fontWeight: '500',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease'
+    },
+    dismissButton: {
+        backgroundColor: 'transparent',
+        color: '#888',
+        border: '1px solid #555',
+        borderRadius: '6px',
+        padding: '10px 20px',
+        fontSize: '0.95rem',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease'
+    },
+    buttonDisabled: {
+        opacity: 0.6,
+        cursor: 'not-allowed'
     }
 };
 
@@ -281,6 +333,8 @@ function Topic() {
     const [createThreadTitle, setCreateThreadTitle] = useState('');
     const [createThreadBody, setCreateThreadBody] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [showPreproposalsPrompt, setShowPreproposalsPrompt] = useState(false);
+    const [creatingPreproposals, setCreatingPreproposals] = useState(false);
     
     // Get forum actor for text limits
     const forumActor = identity ? createActor(canisterId, {
@@ -302,6 +356,54 @@ function Topic() {
 
         fetchTopicData();
     }, [topicId, identity, currentPage, threadsPerPage]);
+
+    const isRootGovernanceTopic = (topic) => {
+        return topic && 
+               topic.title === "Governance" && 
+               (!topic.parent_topic_id || topic.parent_topic_id.length === 0) &&
+               !topic.deleted;
+    };
+
+    const checkForPreproposalsSubtopic = (subtopics) => {
+        return subtopics.some(subtopic => 
+            subtopic.title === "Preproposals" && !subtopic.deleted
+        );
+    };
+
+    const handleCreatePreproposalsTopic = async () => {
+        if (!identity || !selectedSnsRoot || creatingPreproposals) return;
+
+        setCreatingPreproposals(true);
+        try {
+            const forumActor = createActor(canisterId, {
+                agentOptions: {
+                    host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                    identity: identity,
+                },
+            });
+
+            const snsRootPrincipal = Principal.fromText(selectedSnsRoot);
+            const result = await forumActor.create_special_topic({
+                sns_root_canister_id: snsRootPrincipal,
+                special_topic_type: { 'Preproposals': null }
+            });
+
+            if ('ok' in result) {
+                console.log('Preproposals topic created successfully, topic ID:', result.ok);
+                setShowPreproposalsPrompt(false);
+                // Refresh the topic data to show the new subtopic
+                await fetchTopicData();
+            } else {
+                console.error('Error creating Preproposals topic:', result.err);
+                setError('Failed to create Preproposals topic: ' + result.err);
+            }
+        } catch (err) {
+            console.error('Error creating Preproposals topic:', err);
+            setError('Failed to create Preproposals topic: ' + err.message);
+        } finally {
+            setCreatingPreproposals(false);
+        }
+    };
 
     const fetchTopicData = async () => {
         try {
@@ -331,6 +433,14 @@ function Topic() {
             const subtopicsResponse = await forumActor.get_subtopics(parseInt(topicId));
             const activeSubtopics = subtopicsResponse.filter(subtopic => !subtopic.deleted);
             setSubtopics(activeSubtopics);
+
+            // Check if we need to show Preproposals prompt
+            if (isRootGovernanceTopic(topic)) {
+                const hasPreproposals = checkForPreproposalsSubtopic(activeSubtopics);
+                setShowPreproposalsPrompt(!hasPreproposals);
+            } else {
+                setShowPreproposalsPrompt(false);
+            }
 
             // Get threads for this topic
             const threadsResponse = await forumActor.get_threads_by_topic(parseInt(topicId));
@@ -503,6 +613,39 @@ function Topic() {
                                         </p>
                                     </Link>
                                 ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Preproposals Topic Prompt */}
+                    {showPreproposalsPrompt && (
+                        <div style={styles.preproposalsPrompt}>
+                            <h3 style={styles.preproposalsPromptTitle}>Create Preproposals Topic?</h3>
+                            <p style={styles.preproposalsPromptMessage}>
+                                This Governance topic does not have a "Preproposals" subtopic yet. Would you like to create it? 
+                                This will provide a space for discussing potential proposals before formal submission.
+                            </p>
+                            <div style={styles.preproposalsPromptButtons}>
+                                <button 
+                                    onClick={handleCreatePreproposalsTopic}
+                                    disabled={creatingPreproposals}
+                                    style={{
+                                        ...styles.createPreproposalsButton,
+                                        ...(creatingPreproposals ? styles.buttonDisabled : {})
+                                    }}
+                                >
+                                    {creatingPreproposals ? 'Creating...' : 'Create Preproposals Topic'}
+                                </button>
+                                <button 
+                                    onClick={() => setShowPreproposalsPrompt(false)}
+                                    disabled={creatingPreproposals}
+                                    style={{
+                                        ...styles.dismissButton,
+                                        ...(creatingPreproposals ? styles.buttonDisabled : {})
+                                    }}
+                                >
+                                    Maybe Later
+                                </button>
                             </div>
                         </div>
                     )}
