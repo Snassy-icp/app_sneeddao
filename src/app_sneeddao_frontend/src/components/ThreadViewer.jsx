@@ -276,6 +276,71 @@ function ThreadViewer({
         }
     };
 
+    // Fetch thread votes for user's neurons
+    const fetchThreadVotes = useCallback(async () => {
+        console.log('fetchThreadVotes called with:', {
+            hasForumActor: !!forumActor,
+            threadId,
+            neuronsCount: allNeurons?.length || 0
+        });
+        
+        if (!forumActor || !threadId || !allNeurons || allNeurons.length === 0) {
+            console.log('fetchThreadVotes: Missing dependencies, skipping');
+            return;
+        }
+
+        try {
+            // Convert neurons to the format expected by the backend
+            const neuronIds = allNeurons.map(neuron => ({
+                id: neuron.id[0].id // Extract the blob from the NeuronId (neuron.id is an array)
+            }));
+
+            console.log('Fetching thread votes for neurons:', neuronIds.length);
+            const voteResults = await forumActor.get_thread_votes_for_neurons(Number(threadId), neuronIds);
+            console.log('Thread vote results:', voteResults);
+
+            // Process the results into our state format
+            const votesMap = new Map();
+            voteResults.forEach(postVotes => {
+                const postIdStr = postVotes.post_id.toString();
+                const upvotedNeurons = [];
+                const downvotedNeurons = [];
+
+                postVotes.neuron_votes.forEach(neuronVote => {
+                    const neuronData = {
+                        neuron_id: neuronVote.neuron_id,
+                        voting_power: neuronVote.voting_power,
+                        created_at: neuronVote.created_at,
+                        updated_at: neuronVote.updated_at
+                    };
+
+                    if (neuronVote.vote_type.upvote !== undefined) {
+                        upvotedNeurons.push(neuronData);
+                    } else if (neuronVote.vote_type.downvote !== undefined) {
+                        downvotedNeurons.push(neuronData);
+                    }
+                });
+
+                votesMap.set(postIdStr, {
+                    upvoted_neurons: upvotedNeurons,
+                    downvoted_neurons: downvotedNeurons
+                });
+            });
+
+            setThreadVotes(votesMap);
+            console.log('Updated thread votes state:', votesMap);
+        } catch (error) {
+            console.error('Error fetching thread votes:', error);
+            console.error('Error details:', {
+                message: error.message,
+                stack: error.stack,
+                forumActor: !!forumActor,
+                threadId,
+                neuronsCount: allNeurons?.length
+            });
+        }
+    }, [forumActor, threadId, allNeurons]);
+
     // Format voting power for display like Discussion.jsx
     const formatVotingPowerDisplay = (votingPower) => {
         if (votingPower === 0) return '0';
@@ -322,6 +387,7 @@ function ThreadViewer({
     const [replyingTo, setReplyingTo] = useState(null);
     const [votingStates, setVotingStates] = useState(new Map());
     const [userVotes, setUserVotes] = useState(new Map());
+    const [threadVotes, setThreadVotes] = useState(new Map()); // Map<postId, {upvoted_neurons: [], downvoted_neurons: []}>
 
     // Tipping state
     const [tipModalOpen, setTipModalOpen] = useState(false);
@@ -650,6 +716,9 @@ function ThreadViewer({
                 // Refresh posts to get updated scores (same as original Discussion.jsx)
                 await fetchPosts();
                 
+                // Refresh thread votes to update button states
+                fetchThreadVotes();
+                
                 // Clear voting state after a delay
                 setTimeout(() => {
                     setVotingStates(prev => {
@@ -685,6 +754,66 @@ function ThreadViewer({
             }, 3000);
         }
     }, [forumActor, allNeurons, totalVotingPower]);
+
+    const handleRetractVote = useCallback(async (postId) => {
+        if (!forumActor) return;
+
+        const postIdStr = postId.toString();
+        setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
+
+        try {
+            const result = await forumActor.retract_vote(Number(postId));
+            if ('ok' in result) {
+                setVotingStates(prev => new Map(prev.set(postIdStr, 'success')));
+                
+                // Clear user votes for this post
+                setUserVotes(prev => {
+                    const newState = new Map(prev);
+                    newState.delete(postIdStr);
+                    return newState;
+                });
+                
+                // Refresh posts to get updated scores
+                await fetchPosts();
+                
+                // Refresh thread votes to update button states
+                fetchThreadVotes();
+                
+                // Clear voting state after a delay
+                setTimeout(() => {
+                    setVotingStates(prev => {
+                        const newState = new Map(prev);
+                        newState.delete(postIdStr);
+                        return newState;
+                    });
+                }, 2000);
+            } else {
+                console.error('Retract vote failed:', result.err);
+                setVotingStates(prev => new Map(prev.set(postIdStr, 'error')));
+                
+                // Clear error state after a delay
+                setTimeout(() => {
+                    setVotingStates(prev => {
+                        const newState = new Map(prev);
+                        newState.delete(postIdStr);
+                        return newState;
+                    });
+                }, 3000);
+            }
+        } catch (error) {
+            console.error('Error retracting vote:', error);
+            setVotingStates(prev => new Map(prev.set(postIdStr, 'error')));
+            
+            // Clear error state after a delay
+            setTimeout(() => {
+                setVotingStates(prev => {
+                    const newState = new Map(prev);
+                    newState.delete(postIdStr);
+                    return newState;
+                });
+            }, 3000);
+        }
+    }, [forumActor, fetchPosts, fetchThreadVotes]);
 
     const submitReply = useCallback(async (parentPostId, replyText) => {
         if (!replyText.trim() || !forumActor || !threadId) return;
@@ -923,6 +1052,14 @@ function ThreadViewer({
             fetchThreadData();
         }
     }, [fetchThreadData, threadId]);
+
+    // Effect to fetch thread votes when neurons become available
+    useEffect(() => {
+        if (discussionPosts.length > 0 && allNeurons && allNeurons.length > 0) {
+            console.log('Neurons available, fetching thread votes...');
+            fetchThreadVotes();
+        }
+    }, [discussionPosts.length, allNeurons, fetchThreadVotes]);
 
     // Effect to update URL parameter when SNS is detected
     useEffect(() => {
@@ -1582,13 +1719,35 @@ function ThreadViewer({
                             }}>
                                 {/* Upvote Button - Shows voting power */}
                                 <button
-                                    onClick={() => handleVote(post.id, 'up')}
+                                    onClick={() => {
+                                        const postIdStr = post.id.toString();
+                                        const postVotes = threadVotes.get(postIdStr);
+                                        const hasUpvotes = postVotes?.upvoted_neurons?.length > 0;
+                                        
+                                        if (hasUpvotes) {
+                                            // Recant upvotes for neurons that upvoted
+                                            handleRetractVote(post.id);
+                                        } else {
+                                            // Regular upvote
+                                            handleVote(post.id, 'up');
+                                        }
+                                    }}
                                     disabled={votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0}
                                     style={{
                                         backgroundColor: 'transparent',
-                                        border: 'none',
-                                        color: userVotes.get(post.id.toString())?.vote_type === 'upvote' ? '#2ecc71' : '#6b8eb8',
-                                        borderRadius: '4px',
+                                        border: (() => {
+                                            const postIdStr = post.id.toString();
+                                            const postVotes = threadVotes.get(postIdStr);
+                                            const hasUpvotes = postVotes?.upvoted_neurons?.length > 0;
+                                            return hasUpvotes ? '1px solid #2ecc71' : '1px solid transparent';
+                                        })(),
+                                        color: (() => {
+                                            const postIdStr = post.id.toString();
+                                            const postVotes = threadVotes.get(postIdStr);
+                                            const hasUpvotes = postVotes?.upvoted_neurons?.length > 0;
+                                            return hasUpvotes ? '#2ecc71' : '#6b8eb8';
+                                        })(),
+                                        borderRadius: '50%',
                                         padding: '4px 8px',
                                         cursor: (votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
                                         fontSize: '12px',
@@ -1598,8 +1757,17 @@ function ThreadViewer({
                                         opacity: (votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0) ? 0.6 : 1,
                                         fontWeight: 'bold'
                                     }}
-                                    title={totalVotingPower === 0 ? 'You must have neurons with voting power to vote on posts' : 
-                                           `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
+                                    title={(() => {
+                                        if (totalVotingPower === 0) return 'You must have neurons with voting power to vote on posts';
+                                        const postIdStr = post.id.toString();
+                                        const postVotes = threadVotes.get(postIdStr);
+                                        const hasUpvotes = postVotes?.upvoted_neurons?.length > 0;
+                                        if (hasUpvotes) {
+                                            const upvotedCount = postVotes.upvoted_neurons.length;
+                                            return `Recant upvotes from ${upvotedCount} neuron${upvotedCount > 1 ? 's' : ''}`;
+                                        }
+                                        return `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`;
+                                    })()}
                                 >
                                     ▲ {votingStates.get(post.id.toString()) === 'voting' ? '...' : 
                                         totalVotingPower === 0 ? 'No VP' : 
@@ -1636,13 +1804,35 @@ function ThreadViewer({
 
                                 {/* Downvote Button - Shows voting power */}
                                 <button
-                                    onClick={() => handleVote(post.id, 'down')}
+                                    onClick={() => {
+                                        const postIdStr = post.id.toString();
+                                        const postVotes = threadVotes.get(postIdStr);
+                                        const hasDownvotes = postVotes?.downvoted_neurons?.length > 0;
+                                        
+                                        if (hasDownvotes) {
+                                            // Recant downvotes for neurons that downvoted
+                                            handleRetractVote(post.id);
+                                        } else {
+                                            // Regular downvote
+                                            handleVote(post.id, 'down');
+                                        }
+                                    }}
                                     disabled={votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0}
                                     style={{
                                         backgroundColor: 'transparent',
-                                        border: 'none',
-                                        color: userVotes.get(post.id.toString())?.vote_type === 'downvote' ? '#e74c3c' : '#6b8eb8',
-                                        borderRadius: '4px',
+                                        border: (() => {
+                                            const postIdStr = post.id.toString();
+                                            const postVotes = threadVotes.get(postIdStr);
+                                            const hasDownvotes = postVotes?.downvoted_neurons?.length > 0;
+                                            return hasDownvotes ? '2px solid #e74c3c' : 'none';
+                                        })(),
+                                        color: (() => {
+                                            const postIdStr = post.id.toString();
+                                            const postVotes = threadVotes.get(postIdStr);
+                                            const hasDownvotes = postVotes?.downvoted_neurons?.length > 0;
+                                            return hasDownvotes ? '#e74c3c' : '#6b8eb8';
+                                        })(),
+                                        borderRadius: '50%',
                                         padding: '4px 8px',
                                         cursor: (votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0) ? 'not-allowed' : 'pointer',
                                         fontSize: '12px',
@@ -1652,8 +1842,17 @@ function ThreadViewer({
                                         opacity: (votingStates.get(post.id.toString()) === 'voting' || totalVotingPower === 0) ? 0.6 : 1,
                                         fontWeight: 'bold'
                                     }}
-                                    title={totalVotingPower === 0 ? 'You must have neurons with voting power to vote on posts' : 
-                                           `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`}
+                                    title={(() => {
+                                        if (totalVotingPower === 0) return 'You must have neurons with voting power to vote on posts';
+                                        const postIdStr = post.id.toString();
+                                        const postVotes = threadVotes.get(postIdStr);
+                                        const hasDownvotes = postVotes?.downvoted_neurons?.length > 0;
+                                        if (hasDownvotes) {
+                                            const downvotedCount = postVotes.downvoted_neurons.length;
+                                            return `Recant downvotes from ${downvotedCount} neuron${downvotedCount > 1 ? 's' : ''}`;
+                                        }
+                                        return `Vote with ${formatVotingPowerDisplay(totalVotingPower)} VP`;
+                                    })()}
                                 >
                                     ▼ {votingStates.get(post.id.toString()) === 'voting' ? '...' : 
                                         totalVotingPower === 0 ? 'No VP' : 
