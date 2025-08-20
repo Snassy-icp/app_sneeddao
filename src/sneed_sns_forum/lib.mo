@@ -180,6 +180,71 @@ module {
         }
     };
 
+    // Vote with specific neurons only
+    public func vote_on_post_with_specific_neurons(
+        state: ForumState,
+        caller: Principal,
+        post_id: Nat,
+        vote_type: VoteType,
+        neuron_ids: [T.NeuronId],
+        cache: SnsCache
+    ) : async (T.Result<(), T.ForumError>, SnsCache) {
+        // Get the governance canister ID for this post
+        let (governance_canister_id_opt, updated_cache) = await get_governance_canister_id_from_post(state, post_id, cache, Time.now());
+        
+        switch (governance_canister_id_opt) {
+            case (?governance_canister_id) {
+                try {
+                    let reachable_neurons = await SnsUtil.get_reachable_neurons(governance_canister_id, caller);
+                    
+                    if (reachable_neurons.size() == 0) {
+                        return (#err(#Unauthorized("No accessible neurons found")), updated_cache);
+                    };
+                    
+                    let system_parameters = await SnsUtil.get_system_parameters(governance_canister_id);
+                    
+                    // Filter reachable neurons to only include the specified ones
+                    let target_neuron_ids = Array.map<T.NeuronId, Blob>(neuron_ids, func(n) = n.id);
+                    
+                    for (neuron in reachable_neurons.vals()) {
+                        switch (neuron.id) {
+                            case (?neuron_id) {
+                                // Check if this neuron is in our target list
+                                let neuron_blob = neuron_id.id;
+                                var should_vote = false;
+                                for (target_id in target_neuron_ids.vals()) {
+                                    if (Blob.equal(neuron_blob, target_id)) {
+                                        should_vote := true;
+                                    };
+                                };
+                                
+                                if (should_vote) {
+                                    let voting_power = SnsUtil.calculate_neuron_voting_power(neuron, system_parameters);
+                                    if (voting_power > 0) {
+                                        switch (vote_on_post(state, caller, post_id, vote_type, neuron_id, voting_power, Time.now())) {
+                                            case (#err(error)) {
+                                                return (#err(error), updated_cache);
+                                            };
+                                            case (#ok()) { };
+                                        };
+                                    };
+                                };
+                            };
+                            case null { };
+                        };
+                    };
+                    
+                    return (#ok(), updated_cache);
+                } catch (_error) {
+                    return (#err(#InternalError("Failed to vote")), updated_cache);
+                };
+            };
+            case null {
+                return (#err(#NotFound("Post not found")), updated_cache);
+            };
+        };
+    };
+
     // New vote_on_post function that handles SNS integration internally
     public func vote_on_post_with_sns(
         state: ForumState,
@@ -228,6 +293,70 @@ module {
                 (#err(#InternalError("No SNS governance canister found")), updated_cache)
             };
         }
+    };
+
+    // Retract votes for specific neurons only
+    public func retract_vote_with_specific_neurons(
+        state: ForumState,
+        caller: Principal,
+        post_id: Nat,
+        neuron_ids: [T.NeuronId],
+        cache: SnsCache
+    ) : async (T.Result<(), T.ForumError>, SnsCache) {
+        // Get the governance canister ID for this post
+        let (governance_canister_id_opt, updated_cache) = await get_governance_canister_id_from_post(state, post_id, cache, Time.now());
+        
+        switch (governance_canister_id_opt) {
+            case (?governance_canister_id) {
+                try {
+                    let reachable_neurons = await SnsUtil.get_reachable_neurons(governance_canister_id, caller);
+                    
+                    if (reachable_neurons.size() == 0) {
+                        return (#err(#Unauthorized("No accessible neurons found")), updated_cache);
+                    };
+                    
+                    // Filter reachable neurons to only include the specified ones
+                    let target_neuron_ids = Array.map<T.NeuronId, Blob>(neuron_ids, func(n) = n.id);
+                    
+                    var any_vote_retracted = false;
+                    for (neuron in reachable_neurons.vals()) {
+                        switch (neuron.id) {
+                            case (?neuron_id) {
+                                // Check if this neuron is in our target list
+                                let neuron_blob = neuron_id.id;
+                                var should_retract = false;
+                                for (target_id in target_neuron_ids.vals()) {
+                                    if (Blob.equal(neuron_blob, target_id)) {
+                                        should_retract := true;
+                                    };
+                                };
+                                
+                                if (should_retract) {
+                                    switch (retract_vote(state, post_id, neuron_id)) {
+                                        case (#ok()) {
+                                            any_vote_retracted := true;
+                                        };
+                                        case (#err(_)) { };
+                                    };
+                                };
+                            };
+                            case null { };
+                        };
+                    };
+                    
+                    if (any_vote_retracted) {
+                        return (#ok(), updated_cache);
+                    } else {
+                        return (#err(#NotFound("No votes found to retract")), updated_cache);
+                    };
+                } catch (_error) {
+                    return (#err(#InternalError("Failed to retract vote")), updated_cache);
+                };
+            };
+            case null {
+                return (#err(#NotFound("Post not found")), updated_cache);
+            };
+        };
     };
 
     // New retract_vote function that handles SNS integration internally

@@ -716,7 +716,13 @@ function ThreadViewer({
         try {
             // Convert vote type to proper Candid variant format
             const voteVariant = voteType === 'up' ? { upvote: null } : { downvote: null };
-            const result = await forumActor.vote_on_post(Number(postId), voteVariant);
+            
+            // Convert selected neurons to the format expected by backend
+            const neuronIds = selectedNeurons.map(neuron => ({
+                id: neuron.id[0].id
+            }));
+            
+            const result = await forumActor.vote_on_post_with_neurons(Number(postId), voteVariant, neuronIds);
             if ('ok' in result) {
                 setVotingStates(prev => new Map(prev.set(postIdStr, 'success')));
                 setUserVotes(prev => new Map(prev.set(postIdStr, { vote_type: voteType, voting_power: totalVotingPower })));
@@ -764,13 +770,19 @@ function ThreadViewer({
     }, [forumActor, getSelectedNeurons, totalVotingPower, fetchPosts, refreshPostVotes]);
 
     const handleRetractVote = useCallback(async (postId) => {
-        if (!forumActor) return;
+        const selectedNeurons = getSelectedNeurons();
+        if (!forumActor || !selectedNeurons || selectedNeurons.length === 0) return;
 
         const postIdStr = postId.toString();
         setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
 
         try {
-            const result = await forumActor.retract_vote(Number(postId));
+            // Convert selected neurons to the format expected by backend
+            const neuronIds = selectedNeurons.map(neuron => ({
+                id: neuron.id[0].id
+            }));
+            
+            const result = await forumActor.retract_vote_with_neurons(Number(postId), neuronIds);
             if ('ok' in result) {
                 setVotingStates(prev => new Map(prev.set(postIdStr, 'success')));
                 
@@ -821,7 +833,7 @@ function ThreadViewer({
                 });
             }, 3000);
         }
-    }, [forumActor, fetchPosts, refreshPostVotes]);
+    }, [forumActor, getSelectedNeurons, fetchPosts, refreshPostVotes]);
 
     const submitReply = useCallback(async (parentPostId, replyText) => {
         if (!replyText.trim() || !forumActor || !threadId) return;
