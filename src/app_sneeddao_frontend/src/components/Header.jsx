@@ -145,11 +145,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/hub',
             subMenu: [
                 { name: 'Hub', path: '/hub' },
+                { name: 'Forum', path: '/forum' },
                 { name: 'Proposals', path: '/proposals' },
                 { name: 'Neurons', path: '/neurons' },
                 { name: 'Transactions', path: '/transactions' },
-                { name: 'Holders', path: '/principal' },
-                { name: 'Forum', path: '/forum' }
+                { name: 'Holders', path: '/principal' }
             ]
         },
         'Wallet': {
