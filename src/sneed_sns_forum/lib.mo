@@ -823,6 +823,161 @@ module {
         Buffer.toArray(topics)
     };
 
+    // Special topic creation function
+    public func create_special_topic(
+        state: ForumState,
+        caller: Principal,
+        input: T.CreateSpecialTopicInput
+    ) : async Result<Nat, ForumError> {
+        // Find the forum for this SNS
+        var found_forum_id : ?Nat = null;
+        for ((forum_id, forum) in Map.entries(state.forums)) {
+            switch (forum.sns_root_canister_id) {
+                case (?root) {
+                    if (Principal.equal(root, input.sns_root_canister_id) and not forum.deleted) {
+                        found_forum_id := ?forum_id;
+                    };
+                };
+                case null {};
+            };
+        };
+
+        let forum_id = switch (found_forum_id) {
+            case (?fid) fid;
+            case null return #err(#NotFound("Forum not found for this SNS"));
+        };
+
+        switch (input.special_topic_type) {
+            case (#General) {
+                // Check if "General" topic already exists at root level
+                switch (Map.get(state.forum_topics, Map.nhash, forum_id)) {
+                    case (?topic_ids) {
+                        for (topic_id in Vector.vals(topic_ids)) {
+                            switch (Map.get(state.topics, Map.nhash, topic_id)) {
+                                case (?topic) {
+                                    if (topic.title == "General" and topic.parent_topic_id == null and not topic.deleted) {
+                                        return #err(#AlreadyExists("General topic already exists"));
+                                    };
+                                };
+                                case null {};
+                            };
+                        };
+                    };
+                    case null {};
+                };
+
+                // Create "General" topic
+                let general_topic_input : T.CreateTopicInput = {
+                    forum_id = forum_id;
+                    parent_topic_id = null;
+                    title = "General";
+                    description = "General discussion topics for the community";
+                };
+                
+                create_topic_internal(state, caller, general_topic_input)
+            };
+
+            case (#Governance) {
+                // Check if "Governance" topic already exists at root level
+                switch (Map.get(state.forum_topics, Map.nhash, forum_id)) {
+                    case (?topic_ids) {
+                        for (topic_id in Vector.vals(topic_ids)) {
+                            switch (Map.get(state.topics, Map.nhash, topic_id)) {
+                                case (?topic) {
+                                    if (topic.title == "Governance" and topic.parent_topic_id == null and not topic.deleted) {
+                                        return #err(#AlreadyExists("Governance topic already exists"));
+                                    };
+                                };
+                                case null {};
+                            };
+                        };
+                    };
+                    case null {};
+                };
+
+                // Create "Governance" topic
+                let governance_topic_input : T.CreateTopicInput = {
+                    forum_id = forum_id;
+                    parent_topic_id = null;
+                    title = "Governance";
+                    description = "Topics related to governance, voting, and decision-making";
+                };
+                
+                create_topic_internal(state, caller, governance_topic_input)
+            };
+
+            case (#Preproposals) {
+                // First check if "Preproposals" topic already exists
+                var preproposals_exists = false;
+                switch (Map.get(state.forum_topics, Map.nhash, forum_id)) {
+                    case (?topic_ids) {
+                        for (topic_id in Vector.vals(topic_ids)) {
+                            switch (Map.get(state.topics, Map.nhash, topic_id)) {
+                                case (?topic) {
+                                    if (topic.title == "Preproposals" and not topic.deleted) {
+                                        preproposals_exists := true;
+                                    };
+                                };
+                                case null {};
+                            };
+                        };
+                    };
+                    case null {};
+                };
+
+                if (preproposals_exists) {
+                    return #err(#AlreadyExists("Preproposals topic already exists"));
+                };
+
+                // Check if "Governance" topic exists, if not create it
+                var governance_topic_id : ?Nat = null;
+                switch (Map.get(state.forum_topics, Map.nhash, forum_id)) {
+                    case (?topic_ids) {
+                        for (topic_id in Vector.vals(topic_ids)) {
+                            switch (Map.get(state.topics, Map.nhash, topic_id)) {
+                                case (?topic) {
+                                    if (topic.title == "Governance" and topic.parent_topic_id == null and not topic.deleted) {
+                                        governance_topic_id := ?topic_id;
+                                    };
+                                };
+                                case null {};
+                            };
+                        };
+                    };
+                    case null {};
+                };
+
+                let governance_topic_id_final = switch (governance_topic_id) {
+                    case (?tid) tid;
+                    case null {
+                        // Create "Governance" topic first
+                        let governance_topic_input : T.CreateTopicInput = {
+                            forum_id = forum_id;
+                            parent_topic_id = null;
+                            title = "Governance";
+                            description = "Topics related to governance, voting, and decision-making";
+                        };
+                        
+                        switch (create_topic_internal(state, caller, governance_topic_input)) {
+                            case (#ok(new_topic_id)) new_topic_id;
+                            case (#err(error)) return #err(error);
+                        }
+                    };
+                };
+
+                // Create "Preproposals" topic under Governance
+                let preproposals_topic_input : T.CreateTopicInput = {
+                    forum_id = forum_id;
+                    parent_topic_id = ?governance_topic_id_final;
+                    title = "Preproposals";
+                    description = "Discussion of potential proposals before formal submission";
+                };
+                
+                create_topic_internal(state, caller, preproposals_topic_input)
+            };
+        }
+    };
+
     // Thread operations
     public func create_thread(
         state: ForumState,

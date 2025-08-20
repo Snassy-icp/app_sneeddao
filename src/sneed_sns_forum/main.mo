@@ -183,6 +183,10 @@ persistent actor SneedSNSForum {
         Lib.update_topic(state, caller, id, input)
     };
 
+    public shared ({ caller }) func create_special_topic(input: T.CreateSpecialTopicInput) : async T.Result<Nat, T.ForumError> {
+        await Lib.create_special_topic(state, caller, input)
+    };
+
     public query ({ caller }) func get_topic(id: Nat) : async ?T.TopicResponse {
         let is_admin = Lib.is_admin(state, caller);
         Lib.get_topic_filtered(state, id, is_admin)

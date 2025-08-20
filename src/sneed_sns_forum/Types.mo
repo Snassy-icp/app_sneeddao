@@ -275,6 +275,18 @@ module {
         sns_root_canister_id: Principal;
     };
 
+    // Special topic types for automatic creation
+    public type SpecialTopicType = {
+        #General;
+        #Governance;
+        #Preproposals;
+    };
+
+    public type CreateSpecialTopicInput = {
+        sns_root_canister_id: Principal;
+        special_topic_type: SpecialTopicType;
+    };
+
     // Response types with resolved data
     public type ForumResponse = {
         id: Nat;
