@@ -329,6 +329,14 @@ function ThreadViewer({
     // Settings panel state
     const [showSettings, setShowSettings] = useState(false);
     const [selectedNeuronIds, setSelectedNeuronIds] = useState(new Set());
+    const [sortBy, setSortBy] = useState(() => {
+        try {
+            return localStorage.getItem('threadSortBy') || 'age-newest';
+        } catch (error) {
+            console.warn('Could not access localStorage:', error);
+            return 'age-newest';
+        }
+    }); // age-newest, age-oldest, score-best, score-worst, score-controversial
 
     // Get filtered neurons for voting (only selected ones) - defined after state to avoid hoisting issues
     const getSelectedNeurons = useCallback(() => {
@@ -339,6 +347,47 @@ function ThreadViewer({
             return selectedNeuronIds.has(neuronId);
         });
     }, [allNeurons, selectedNeuronIds]);
+
+    // Sort posts based on selected criteria
+    const sortPosts = useCallback((posts) => {
+        if (!posts || posts.length === 0) return posts;
+        
+        const sorted = [...posts].sort((a, b) => {
+            switch (sortBy) {
+                case 'age-newest':
+                    return Number(b.id) - Number(a.id); // Higher ID = newer
+                    
+                case 'age-oldest':
+                    return Number(a.id) - Number(b.id); // Lower ID = older
+                    
+                case 'score-best':
+                    const scoreA = Number(a.upvote_score || 0) - Number(a.downvote_score || 0);
+                    const scoreB = Number(b.upvote_score || 0) - Number(b.downvote_score || 0);
+                    return scoreB - scoreA; // Higher score first
+                    
+                case 'score-worst':
+                    const scoreA2 = Number(a.upvote_score || 0) - Number(a.downvote_score || 0);
+                    const scoreB2 = Number(b.upvote_score || 0) - Number(b.downvote_score || 0);
+                    return scoreA2 - scoreB2; // Lower score first
+                    
+                case 'score-controversial':
+                    const upA = Number(a.upvote_score || 0);
+                    const downA = Number(a.downvote_score || 0);
+                    const upB = Number(b.upvote_score || 0);
+                    const downB = Number(b.downvote_score || 0);
+                    
+                    // Controversial = total engagement (up + down)
+                    const controversyA = upA + downA;
+                    const controversyB = upB + downB;
+                    return controversyB - controversyA; // More engagement first
+                    
+                default:
+                    return Number(b.id) - Number(a.id); // Default to newest
+            }
+        });
+        
+        return sorted;
+    }, [sortBy]);
 
     // Tipping state
     const [tipModalOpen, setTipModalOpen] = useState(false);
@@ -1342,7 +1391,7 @@ function ThreadViewer({
         const posts = getDisplayPosts();
         
         if (viewMode === 'flat') {
-            // For flat view, flatten all posts and sort by creation time
+            // For flat view, flatten all posts and apply sorting
             const flattenPosts = (posts) => {
                 let result = [];
                 posts.forEach(post => {
@@ -1354,14 +1403,28 @@ function ThreadViewer({
                 return result;
             };
             
-            return flattenPosts(posts).sort((a, b) => 
-                Number(a.created_at) - Number(b.created_at)
-            );
+            // Apply sorting to flattened posts
+            return sortPosts(flattenPosts(posts));
         }
         
-        // For tree view, return hierarchical structure
-        return posts;
-    }, [getDisplayPosts, viewMode]);
+        // For tree view, apply sorting to each level of the hierarchy
+        const applySortingToTree = (posts) => {
+            if (!posts || posts.length === 0) return posts;
+            
+            // Sort posts at current level
+            const sortedPosts = sortPosts(posts);
+            
+            // Recursively sort replies
+            return sortedPosts.map(post => ({
+                ...post,
+                replies: post.replies && post.replies.length > 0 
+                    ? applySortingToTree(post.replies)
+                    : post.replies
+            }));
+        };
+        
+        return applySortingToTree(posts);
+    }, [getDisplayPosts, viewMode, sortPosts]);
 
     // Effect to fetch principal display info
     useEffect(() => {
@@ -1698,21 +1761,111 @@ function ThreadViewer({
                 }}>
                     <h3 style={{
                         color: '#ffd700',
-                        fontSize: '1.1rem',
+                        fontSize: '1.2rem',
                         fontWeight: '600',
-                        marginBottom: '15px',
+                        marginBottom: '20px',
                         margin: 0
                     }}>
-                        Voting Neurons
+                        Thread Settings
                     </h3>
-                    <p style={{
-                        color: 'rgba(255, 255, 255, 0.7)',
-                        fontSize: '0.9rem',
-                        marginBottom: '15px',
-                        margin: '8px 0 15px 0'
-                    }}>
-                        Select which neurons to use when voting on posts
-                    </p>
+                    
+                    {/* Sorting Options */}
+                    <div style={{ marginBottom: '25px' }}>
+                        <h4 style={{
+                            color: '#fff',
+                            fontSize: '1rem',
+                            fontWeight: '500',
+                            marginBottom: '10px',
+                            margin: '0 0 10px 0'
+                        }}>
+                            Sort Posts By
+                        </h4>
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                            gap: '8px'
+                        }}>
+                            {[
+                                { value: 'age-newest', label: '📅 Newest First' },
+                                { value: 'age-oldest', label: '📅 Oldest First' },
+                                { value: 'score-best', label: '⭐ Best Score' },
+                                { value: 'score-worst', label: '👎 Worst Score' },
+                                { value: 'score-controversial', label: '🔥 Most Active' }
+                            ].map(option => (
+                                <label 
+                                    key={option.value}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 12px',
+                                        backgroundColor: sortBy === option.value ? 'rgba(52, 152, 219, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                                        border: `1px solid ${sortBy === option.value ? 'rgba(52, 152, 219, 0.5)' : 'rgba(255, 255, 255, 0.1)'}`,
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (sortBy !== option.value) {
+                                            e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (sortBy !== option.value) {
+                                            e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                                        }
+                                    }}
+                                >
+                                    <input
+                                        type="radio"
+                                        name="sortBy"
+                                        value={option.value}
+                                        checked={sortBy === option.value}
+                                        onChange={(e) => {
+                                            setSortBy(e.target.value);
+                                            try {
+                                                localStorage.setItem('threadSortBy', e.target.value);
+                                            } catch (error) {
+                                                console.warn('Could not save sort preference to localStorage:', error);
+                                            }
+                                        }}
+                                        style={{
+                                            margin: 0,
+                                            accentColor: '#3498db'
+                                        }}
+                                    />
+                                    <span style={{ 
+                                        color: sortBy === option.value ? '#fff' : 'rgba(255, 255, 255, 0.8)',
+                                        fontWeight: sortBy === option.value ? '500' : '400'
+                                    }}>
+                                        {option.label}
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                    
+                    {/* Voting Neurons Section */}
+                    <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '20px' }}>
+                        <h4 style={{
+                            color: '#fff',
+                            fontSize: '1rem',
+                            fontWeight: '500',
+                            marginBottom: '10px',
+                            margin: '0 0 10px 0'
+                        }}>
+                            Voting Neurons
+                        </h4>
+                        <p style={{
+                            color: 'rgba(255, 255, 255, 0.7)',
+                            fontSize: '0.9rem',
+                            marginBottom: '15px',
+                            margin: '0 0 15px 0'
+                        }}>
+                            Select which neurons to use when voting on posts
+                        </p>
+                    </div>
                     
                     {allNeurons && allNeurons.length > 0 ? (
                         <div style={{
