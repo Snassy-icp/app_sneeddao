@@ -164,6 +164,57 @@ const styles = {
         cursor: 'not-allowed',
         opacity: 0.6,
         boxShadow: 'none'
+    },
+    generalPrompt: {
+        backgroundColor: '#2a2a2a',
+        border: '1px solid #3498db',
+        borderRadius: '8px',
+        padding: '20px',
+        marginBottom: '30px',
+        textAlign: 'center'
+    },
+    generalPromptTitle: {
+        color: '#3498db',
+        fontSize: '1.3rem',
+        fontWeight: '600',
+        marginBottom: '10px'
+    },
+    generalPromptMessage: {
+        color: '#ccc',
+        fontSize: '1rem',
+        marginBottom: '20px',
+        lineHeight: '1.5'
+    },
+    generalPromptButtons: {
+        display: 'flex',
+        gap: '15px',
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    createGeneralButton: {
+        backgroundColor: '#3498db',
+        color: '#ffffff',
+        border: 'none',
+        borderRadius: '6px',
+        padding: '10px 20px',
+        fontSize: '0.95rem',
+        fontWeight: '500',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease'
+    },
+    dismissButton: {
+        backgroundColor: 'transparent',
+        color: '#888',
+        border: '1px solid #555',
+        borderRadius: '6px',
+        padding: '10px 20px',
+        fontSize: '0.95rem',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease'
+    },
+    buttonDisabled: {
+        opacity: 0.6,
+        cursor: 'not-allowed'
     }
 };
 
@@ -177,6 +228,8 @@ function Forum() {
     const [error, setError] = useState(null);
     const [creatingForum, setCreatingForum] = useState(false);
     const [hoveredCard, setHoveredCard] = useState(null);
+    const [showGeneralPrompt, setShowGeneralPrompt] = useState(false);
+    const [creatingGeneral, setCreatingGeneral] = useState(false);
 
     useEffect(() => {
         if (!selectedSnsRoot) {
@@ -187,6 +240,49 @@ function Forum() {
 
         fetchForumData();
     }, [selectedSnsRoot, identity]);
+
+    const checkForGeneralTopic = (topics) => {
+        return topics.some(topic => 
+            topic.title === "General" && 
+            (!topic.parent_topic_id || topic.parent_topic_id.length === 0) &&
+            !topic.deleted
+        );
+    };
+
+    const handleCreateGeneralTopic = async () => {
+        if (!identity || !selectedSnsRoot || creatingGeneral) return;
+
+        setCreatingGeneral(true);
+        try {
+            const forumActor = createActor(canisterId, {
+                agentOptions: {
+                    host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                    identity: identity,
+                },
+            });
+
+            const snsRootPrincipal = Principal.fromText(selectedSnsRoot);
+            const result = await forumActor.create_special_topic({
+                sns_root_canister_id: snsRootPrincipal,
+                special_topic_type: { 'General': null }
+            });
+
+            if ('ok' in result) {
+                console.log('General topic created successfully, topic ID:', result.ok);
+                setShowGeneralPrompt(false);
+                // Refresh the forum data to show the new topic
+                await fetchForumData();
+            } else {
+                console.error('Error creating General topic:', result.err);
+                setError('Failed to create General topic: ' + result.err);
+            }
+        } catch (err) {
+            console.error('Error creating General topic:', err);
+            setError('Failed to create General topic: ' + err.message);
+        } finally {
+            setCreatingGeneral(false);
+        }
+    };
 
     const handleCreateForum = async () => {
         if (!identity || !selectedSnsRoot || creatingForum) return;
@@ -282,6 +378,10 @@ function Forum() {
             const rootTopics = hierarchyTopics.map(topic => ({ ...topic, children: undefined }));
             setTopics(rootTopics);
             setTopicHierarchy(hierarchyTopics);
+
+            // Check if General topic exists and show prompt if not
+            const hasGeneralTopic = checkForGeneralTopic(topicsResponse);
+            setShowGeneralPrompt(!hasGeneralTopic && topicsResponse.length >= 0); // Show prompt if no General topic exists
 
         } catch (err) {
             console.error('Error fetching forum data:', err);
@@ -395,6 +495,39 @@ function Forum() {
                             {forum?.description || 'Community discussion and governance topics'}
                         </p>
                     </div>
+
+                    {/* General Topic Prompt */}
+                    {showGeneralPrompt && (
+                        <div style={styles.generalPrompt}>
+                            <h3 style={styles.generalPromptTitle}>Create General Topic?</h3>
+                            <p style={styles.generalPromptMessage}>
+                                This SNS does not have a "General" topic yet. Would you like to create it? 
+                                This will provide a space for general community discussions.
+                            </p>
+                            <div style={styles.generalPromptButtons}>
+                                <button 
+                                    onClick={handleCreateGeneralTopic}
+                                    disabled={creatingGeneral}
+                                    style={{
+                                        ...styles.createGeneralButton,
+                                        ...(creatingGeneral ? styles.buttonDisabled : {})
+                                    }}
+                                >
+                                    {creatingGeneral ? 'Creating...' : 'Create General Topic'}
+                                </button>
+                                <button 
+                                    onClick={() => setShowGeneralPrompt(false)}
+                                    disabled={creatingGeneral}
+                                    style={{
+                                        ...styles.dismissButton,
+                                        ...(creatingGeneral ? styles.buttonDisabled : {})
+                                    }}
+                                >
+                                    Maybe Later
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Topics Grid */}
                     {topicHierarchy.length > 0 ? (
