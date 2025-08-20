@@ -168,9 +168,10 @@ const styles = {
     inputGroup: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '8px'
+        gap: '8px',
+        width: '100%'
     },
-    input: {
+    threadTitleInput: {
         backgroundColor: '#1a1a1a',
         border: '1px solid #4a4a4a',
         borderRadius: '6px',
@@ -178,18 +179,12 @@ const styles = {
         color: '#ffffff',
         fontSize: '1rem',
         transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-        fontFamily: 'inherit'
+        fontFamily: 'inherit',
+        width: '100%',
+        boxSizing: 'border-box',
+        display: 'block'
     },
-    inputFocus: {
-        borderColor: '#3498db',
-        boxShadow: '0 0 0 2px rgba(52, 152, 219, 0.2)',
-        outline: 'none'
-    },
-    inputError: {
-        borderColor: '#e74c3c',
-        boxShadow: '0 0 0 2px rgba(231, 76, 60, 0.2)'
-    },
-    textarea: {
+    threadBodyTextarea: {
         backgroundColor: '#1a1a1a',
         border: '1px solid #4a4a4a',
         borderRadius: '6px',
@@ -200,7 +195,19 @@ const styles = {
         resize: 'vertical',
         transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
         fontFamily: 'inherit',
-        lineHeight: '1.5'
+        lineHeight: '1.5',
+        width: '100%',
+        boxSizing: 'border-box',
+        display: 'block'
+    },
+    threadInputFocus: {
+        borderColor: '#3498db',
+        boxShadow: '0 0 0 2px rgba(52, 152, 219, 0.2)',
+        outline: 'none'
+    },
+    threadInputError: {
+        borderColor: '#e74c3c',
+        boxShadow: '0 0 0 2px rgba(231, 76, 60, 0.2)'
     },
     characterCounter: {
         fontSize: '0.85rem',
@@ -218,7 +225,8 @@ const styles = {
         fontWeight: '600',
         alignSelf: 'flex-start',
         transition: 'all 0.2s ease',
-        boxShadow: '0 2px 4px rgba(52, 152, 219, 0.2)'
+        boxShadow: '0 2px 4px rgba(52, 152, 219, 0.2)',
+        marginTop: '4px'
     },
     submitButtonHover: {
         backgroundColor: '#2980b9',
@@ -580,8 +588,8 @@ function Topic() {
                                     value={createThreadTitle}
                                     onChange={(e) => setCreateThreadTitle(e.target.value)}
                                     style={{
-                                        ...styles.input,
-                                        ...(textLimits && createThreadTitle.length > textLimits.thread_title_max_length ? styles.inputError : {})
+                                        ...styles.threadTitleInput,
+                                        ...(textLimits && createThreadTitle.length > textLimits.thread_title_max_length ? styles.threadInputError : {})
                                     }}
                                     disabled={submitting}
                                     onFocus={(e) => {
@@ -614,8 +622,8 @@ function Topic() {
                                     value={createThreadBody}
                                     onChange={(e) => setCreateThreadBody(e.target.value)}
                                     style={{
-                                        ...styles.textarea,
-                                        ...(textLimits && createThreadBody.length > textLimits.thread_body_max_length ? styles.inputError : {})
+                                        ...styles.threadBodyTextarea,
+                                        ...(textLimits && createThreadBody.length > textLimits.thread_body_max_length ? styles.threadInputError : {})
                                     }}
                                     disabled={submitting}
                                     onFocus={(e) => {
