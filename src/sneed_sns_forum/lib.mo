@@ -1243,6 +1243,75 @@ module {
         Buffer.toArray(response)
     };
 
+    // Get votes for specific neurons on a single post
+    public func get_post_votes_for_neurons(state: ForumState, post_id: Nat, neuron_ids: [T.NeuronId]) : ?T.ThreadVoteResponse {
+        // Get all votes for this post - need to filter from all votes
+        let all_votes = Map.entries(state.votes);
+        let post_votes = Buffer.Buffer<T.Vote>(0);
+        
+        for ((vote_key, vote) in all_votes) {
+            if (vote_key.0 == post_id) {
+                post_votes.add(vote);
+            };
+        };
+        
+        let post_votes_array = Buffer.toArray(post_votes);
+
+        // Convert neuron IDs to their deduplicated indices for efficient lookup
+        let neuron_indices = Buffer.Buffer<Nat32>(neuron_ids.size());
+        for (neuron_id in neuron_ids.vals()) {
+            switch (Dedup.getIndex(state.neuron_dedup_state, neuron_id.id)) {
+                case (?index) neuron_indices.add(index);
+                case null {}; // Neuron not found in dedup state, skip
+            };
+        };
+        let neuron_indices_array = Buffer.toArray(neuron_indices);
+
+        // Collect votes from the specified neurons
+        let matching_votes = Buffer.Buffer<T.NeuronVote>(0);
+        
+        for (vote in post_votes_array.vals()) {
+            // Check if this vote is from one of our target neurons
+            for (target_index in neuron_indices_array.vals()) {
+                if (vote.neuron_id == target_index) {
+                    // Reconstruct the neuron_id from the dedup state
+                    let neuron_id = switch (Dedup.getBlob(state.neuron_dedup_state, target_index)) {
+                        case (?blob) {
+                            { id = blob }
+                        };
+                        case null {
+                            // Fallback to empty blob if not found
+                            { id = Blob.fromArray([]) }
+                        };
+                    };
+
+                    let neuron_vote : T.NeuronVote = {
+                        neuron_id = neuron_id;
+                        vote_type = vote.vote_type;
+                        voting_power = vote.voting_power;
+                        created_at = vote.created_at;
+                        updated_at = vote.updated_at;
+                    };
+
+                    matching_votes.add(neuron_vote);
+                };
+            };
+        };
+
+        // Return the response if we found any votes
+        if (matching_votes.size() > 0) {
+            ?{
+                post_id;
+                neuron_votes = Buffer.toArray(matching_votes);
+            }
+        } else {
+            ?{
+                post_id;
+                neuron_votes = [];
+            }
+        }
+    };
+
     // Tip functions
     public func create_tip(
         state: ForumState,
