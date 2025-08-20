@@ -338,6 +338,20 @@ module {
         updated_at: Int;
     };
 
+    // Response type for thread votes query - groups votes by post and neuron
+    public type ThreadVoteResponse = {
+        post_id: Nat;
+        neuron_votes: [NeuronVote];
+    };
+
+    public type NeuronVote = {
+        neuron_id: NeuronId;
+        vote_type: VoteType;
+        voting_power: Nat;
+        created_at: Int;
+        updated_at: Int;
+    };
+
     // Proposal response types with resolved Principals
     public type ProposalTopicMappingResponse = {
         forum_id: Nat;

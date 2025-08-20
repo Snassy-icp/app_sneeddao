@@ -25,6 +25,8 @@ module {
     public type VoteKey = T.VoteKey;
     public type VoteType = T.VoteType;
     public type NeuronId = T.NeuronId;
+    public type ThreadVoteResponse = T.ThreadVoteResponse;
+    public type NeuronVote = T.NeuronVote;
     public type ForumError = T.ForumError;
     public type Result<A, B> = T.Result<A, B>;
     public type AdminInfo = T.AdminInfo;
@@ -1166,6 +1168,79 @@ module {
             };
         };
         Buffer.toArray(votes)
+    };
+
+    // Get votes for specific neurons across all posts in a thread
+    public func get_thread_votes_for_neurons(state: ForumState, thread_id: Nat, neuron_ids: [T.NeuronId]) : [T.ThreadVoteResponse] {
+        // First, get all posts in the thread
+        let thread_posts = switch (Map.get(state.thread_posts, Map.nhash, thread_id)) {
+            case (?post_ids) Vector.toArray(post_ids);
+            case null [];
+        };
+
+        // Create a map to store votes by post_id
+        let post_votes_map = Map.new<Nat, Buffer.Buffer<T.NeuronVote>>();
+
+        // Convert neuron IDs to their deduplicated indices for efficient lookup
+        let neuron_indices = Buffer.Buffer<Nat32>(neuron_ids.size());
+        for (neuron_id in neuron_ids.vals()) {
+            switch (Dedup.getIndex(state.neuron_dedup_state, neuron_id.id)) {
+                case (?index) neuron_indices.add(index);
+                case null {}; // Neuron not found in dedup state, skip
+            };
+        };
+
+        // Search through all votes for matching post_id and neuron_id combinations
+        for ((vote_key, vote) in Map.entries(state.votes)) {
+            let (post_id, neuron_index) = vote_key;
+            
+            // Check if this vote is for a post in our thread
+            let is_in_thread = Array.find<Nat>(thread_posts, func(id) = id == post_id) != null;
+            
+            // Check if this vote is from one of our target neurons
+            let is_target_neuron = Array.find<Nat32>(Buffer.toArray(neuron_indices), func(idx) = idx == neuron_index) != null;
+            
+            if (is_in_thread and is_target_neuron) {
+                // Get the original neuron ID from the dedup state
+                let neuron_id : T.NeuronId = switch (Dedup.getBlob(state.neuron_dedup_state, neuron_index)) {
+                    case (?blob) {
+                        { id = blob }
+                    };
+                    case null {
+                        { id = Blob.fromArray([]) }
+                    };
+                };
+
+                let neuron_vote : T.NeuronVote = {
+                    neuron_id = neuron_id;
+                    vote_type = vote.vote_type;
+                    voting_power = vote.voting_power;
+                    created_at = vote.created_at;
+                    updated_at = vote.updated_at;
+                };
+
+                // Add to the post's vote collection
+                switch (Map.get(post_votes_map, Map.nhash, post_id)) {
+                    case (?existing_votes) existing_votes.add(neuron_vote);
+                    case null {
+                        let new_votes = Buffer.Buffer<T.NeuronVote>(1);
+                        new_votes.add(neuron_vote);
+                        ignore Map.put(post_votes_map, Map.nhash, post_id, new_votes);
+                    };
+                };
+            };
+        };
+
+        // Convert the map to the response format
+        let response = Buffer.Buffer<T.ThreadVoteResponse>(Map.size(post_votes_map));
+        for ((post_id, votes_buffer) in Map.entries(post_votes_map)) {
+            response.add({
+                post_id;
+                neuron_votes = Buffer.toArray(votes_buffer);
+            });
+        };
+
+        Buffer.toArray(response)
     };
 
     // Tip functions

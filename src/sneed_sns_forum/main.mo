@@ -269,6 +269,11 @@ persistent actor SneedSNSForum {
         Lib.get_post_votes(state, post_id)
     };
 
+    // Get votes for specific neurons across all posts in a thread
+    public query func get_thread_votes_for_neurons(thread_id: Nat, neuron_ids: [T.NeuronId]) : async [Lib.ThreadVoteResponse] {
+        Lib.get_thread_votes_for_neurons(state, thread_id, neuron_ids)
+    };
+
     // Tip API endpoints
     public shared ({ caller }) func create_tip(
         to_principal: Principal,
