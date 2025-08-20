@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { useAuth } from './AuthContext';
@@ -51,6 +51,8 @@ function Proposal() {
     const [forumActor, setForumActor] = useState(null);
     const [isProposalExpanded, setIsProposalExpanded] = useState(true);
     const [isDiscussionExpanded, setIsDiscussionExpanded] = useState(true);
+    const [proposalThreadId, setProposalThreadId] = useState(null);
+    const [threadLinkLoading, setThreadLinkLoading] = useState(false);
 
     // Get naming context
     const { getNeuronDisplayName } = useNaming();
@@ -235,6 +237,31 @@ function Proposal() {
         const yesPercent = (Number(tally.yes) / total) * 100;
         const noPercent = (Number(tally.no) / total) * 100;
         return { yesPercent, noPercent };
+    };
+
+    // Function to fetch thread ID for the current proposal
+    const fetchProposalThread = async () => {
+        if (!forumActor || !currentProposalId || !selectedSnsRoot) return;
+        
+        try {
+            setThreadLinkLoading(true);
+            const response = await forumActor.get_proposal_thread(
+                Principal.fromText(selectedSnsRoot), 
+                Number(currentProposalId)
+            );
+            
+            if (response && response.length > 0) {
+                // Motoko optional returns as array
+                setProposalThreadId(Number(response[0].thread_id));
+            } else {
+                setProposalThreadId(null);
+            }
+        } catch (error) {
+            console.error('Error fetching proposal thread:', error);
+            setProposalThreadId(null);
+        } finally {
+            setThreadLinkLoading(false);
+        }
     };
 
     // Helper function to check if proposal is critical
@@ -474,6 +501,13 @@ function Proposal() {
             setVotingHistory(proposalData.ballots);
         }
     }, [proposalData, selectedSnsRoot, currentProposalId]);
+
+    // Effect to fetch proposal thread when forum actor and proposal data are available
+    useEffect(() => {
+        if (forumActor && currentProposalId && selectedSnsRoot) {
+            fetchProposalThread();
+        }
+    }, [forumActor, currentProposalId, selectedSnsRoot]);
 
     // Add helper function to filter and sort votes
     const filterAndSortVotes = (votes) => {
@@ -923,6 +957,7 @@ function Proposal() {
                                     cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
+                                    justifyContent: 'space-between',
                                     gap: '10px',
                                     padding: '10px',
                                     backgroundColor: '#3a3a3a',
@@ -930,12 +965,41 @@ function Proposal() {
                                     marginBottom: isDiscussionExpanded ? '10px' : '0'
                                 }}
                             >
-                                <span style={{ 
-                                    transform: isDiscussionExpanded ? 'rotate(90deg)' : 'none',
-                                    transition: 'transform 0.3s ease',
-                                    display: 'inline-block'
-                                }}>▶</span>
-                                <h2 style={{ margin: 0, color: '#ffffff' }}>Discussion</h2>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <span style={{ 
+                                        transform: isDiscussionExpanded ? 'rotate(90deg)' : 'none',
+                                        transition: 'transform 0.3s ease',
+                                        display: 'inline-block'
+                                    }}>▶</span>
+                                    <h2 style={{ margin: 0, color: '#ffffff' }}>Discussion</h2>
+                                </div>
+                                
+                                {/* Thread link - only show if thread exists */}
+                                {proposalThreadId && (
+                                    <Link 
+                                        to={`/thread?threadid=${proposalThreadId}&sns=${selectedSnsRoot}`}
+                                        onClick={(e) => e.stopPropagation()} // Prevent header click
+                                        style={{
+                                            color: '#3498db',
+                                            textDecoration: 'none',
+                                            fontSize: '0.9rem',
+                                            padding: '4px 8px',
+                                            borderRadius: '4px',
+                                            border: '1px solid rgba(52, 152, 219, 0.3)',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.target.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+                                            e.target.style.borderColor = '#3498db';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.target.style.backgroundColor = 'transparent';
+                                            e.target.style.borderColor = 'rgba(52, 152, 219, 0.3)';
+                                        }}
+                                    >
+                                        {threadLinkLoading ? 'Loading...' : 'View in Forum →'}
+                                    </Link>
+                                )}
                             </div>
                             
                             {isDiscussionExpanded && (
