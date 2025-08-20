@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaBars, FaTimes, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
@@ -259,20 +259,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         cursor: 'pointer'
                     }}
                 />
-                
-                <button
-                    onClick={toggleMenu}
-                    style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#fff',
-                        cursor: 'pointer',
-                        padding: '8px',
-                        paddingLeft: 0
-                    }}
-                >
-                    {isMenuOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
-                </button>
                 
                 <div 
                     style={{ 
