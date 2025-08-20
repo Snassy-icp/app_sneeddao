@@ -690,6 +690,22 @@ function Hub() {
                                                 📋 View Proposals →
                                             </Link>
                                             <Link
+                                                to={`/forum?sns=${selectedSnsRoot}`}
+                                                style={{
+                                                    color: '#2ecc71',
+                                                    textDecoration: 'none',
+                                                    padding: '0.5rem',
+                                                    backgroundColor: '#1a1a1a',
+                                                    borderRadius: '4px',
+                                                    display: 'block',
+                                                    transition: 'background-color 0.2s'
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.backgroundColor = '#2a2a2a'}
+                                                onMouseLeave={(e) => e.target.style.backgroundColor = '#1a1a1a'}
+                                            >
+                                                💬 Visit Forum →
+                                            </Link>
+                                            <Link
                                                 to={`/neurons?sns=${selectedSnsRoot}`}
                                                 style={{
                                                     color: '#2ecc71',
