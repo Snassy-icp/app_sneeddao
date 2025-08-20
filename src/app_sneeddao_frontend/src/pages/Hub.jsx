@@ -297,23 +297,56 @@ function Hub() {
             <main style={{
                 maxWidth: '1400px',
                 margin: '0 auto',
-                padding: '2rem',
-                display: 'flex',
-                flexDirection: isMobile ? 'column' : 'row',
-                gap: '2rem'
+                padding: '2rem'
             }}>
-                {/* SNS List */}
+                {/* Header Section - Spans full width */}
                 <div style={{
-                    flex: isMobile ? 'none' : '1',
-                    minWidth: isMobile ? 'auto' : '400px'
+                    backgroundColor: '#2a2a2a',
+                    borderRadius: '12px',
+                    padding: '2rem',
+                    marginBottom: '2rem',
+                    border: '1px solid #4a4a4a',
+                    textAlign: 'center'
                 }}>
                     <h1 style={{
-                        fontSize: '2rem',
+                        fontSize: '2.5rem',
                         color: '#ffffff',
-                        marginBottom: '1.5rem'
+                        marginBottom: '1rem',
+                        fontWeight: 'bold'
                     }}>
-                        SNS Explorer
-                </h1>
+                        Sneed DAO SNS Hub
+                    </h1>
+                    <p style={{
+                        color: '#ccc',
+                        fontSize: '1.1rem',
+                        lineHeight: '1.6',
+                        maxWidth: '800px',
+                        margin: '0 auto'
+                    }}>
+                        Explore the Internet Computer's Service Nervous System (SNS) ecosystem. Browse decentralized projects, 
+                        view their governance proposals, analyze token economics, participate in community discussions, 
+                        and manage your neuron voting power across multiple DAOs.
+                    </p>
+                </div>
+
+                {/* Content Section - Two columns */}
+                <div style={{
+                    display: 'flex',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    gap: '2rem'
+                }}>
+                    {/* SNS List */}
+                    <div style={{
+                        flex: isMobile ? 'none' : '1',
+                        minWidth: isMobile ? 'auto' : '400px'
+                    }}>
+                        <h2 style={{
+                            fontSize: '1.5rem',
+                            color: '#ffffff',
+                            marginBottom: '1.5rem'
+                        }}>
+                            SNS Explorer
+                        </h2>
                     
                     {/* Sort Controls */}
                     <div style={{
@@ -726,6 +759,7 @@ function Hub() {
                         </div>
                     )}
                 </div>
+                </div> {/* Close Content Section */}
             </main>
         </div>
     );
