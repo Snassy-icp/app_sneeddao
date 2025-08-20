@@ -325,6 +325,20 @@ function ThreadViewer({
     const [votingStates, setVotingStates] = useState(new Map());
     const [userVotes, setUserVotes] = useState(new Map());
     const [threadVotes, setThreadVotes] = useState(new Map()); // Map<postId, {upvoted_neurons: [], downvoted_neurons: []}>
+    
+    // Settings panel state
+    const [showSettings, setShowSettings] = useState(false);
+    const [selectedNeuronIds, setSelectedNeuronIds] = useState(new Set());
+
+    // Get filtered neurons for voting (only selected ones) - defined after state to avoid hoisting issues
+    const getSelectedNeurons = useCallback(() => {
+        if (!allNeurons || allNeurons.length === 0) return [];
+        
+        return allNeurons.filter(neuron => {
+            const neuronId = neuron.id[0].id ? Array.from(neuron.id[0].id).join(',') : '';
+            return selectedNeuronIds.has(neuronId);
+        });
+    }, [allNeurons, selectedNeuronIds]);
 
     // Tipping state
     const [tipModalOpen, setTipModalOpen] = useState(false);
@@ -413,12 +427,13 @@ function ThreadViewer({
         }
     };
 
-    // Calculate total reachable voting power from SNS-specific neurons (for forum voting)
+    // Calculate total reachable voting power from selected SNS-specific neurons (for forum voting)
     const totalVotingPower = React.useMemo(() => {
-        if (!allNeurons || allNeurons.length === 0 || !snsRootCanisterId) return 0;
+        const selectedNeurons = getSelectedNeurons();
+        if (!selectedNeurons || selectedNeurons.length === 0 || !snsRootCanisterId) return 0;
         
-        // Filter neurons for the specific SNS
-        const snsNeurons = allNeurons.filter(neuron => {
+        // Filter selected neurons for the specific SNS
+        const snsNeurons = selectedNeurons.filter(neuron => {
             try {
                 // Check if neuron belongs to this SNS by comparing root canister ID
                 const neuronSnsRoot = neuron.sns_root_canister_id;
@@ -440,7 +455,7 @@ function ThreadViewer({
                 return total;
             }
         }, 0);
-    }, [allNeurons, snsRootCanisterId]);
+    }, [getSelectedNeurons, snsRootCanisterId]);
 
     // Fetch thread details and posts
     const fetchThreadData = useCallback(async () => {
@@ -690,7 +705,8 @@ function ThreadViewer({
 
     // Handler functions
     const handleVote = useCallback(async (postId, voteType) => {
-        if (!forumActor || !allNeurons || allNeurons.length === 0) return;
+        const selectedNeurons = getSelectedNeurons();
+        if (!forumActor || !selectedNeurons || selectedNeurons.length === 0) return;
 
         const postIdStr = postId.toString();
         setVotingStates(prev => new Map(prev.set(postIdStr, 'voting')));
@@ -743,7 +759,7 @@ function ThreadViewer({
                 });
             }, 3000);
         }
-    }, [forumActor, allNeurons, totalVotingPower, fetchPosts, refreshPostVotes]);
+    }, [forumActor, getSelectedNeurons, totalVotingPower, fetchPosts, refreshPostVotes]);
 
     const handleRetractVote = useCallback(async (postId) => {
         if (!forumActor) return;
@@ -1090,6 +1106,57 @@ function ThreadViewer({
             fetchVotes();
         }
     }, [discussionPosts.length, allNeurons?.length, threadId, forumActor]);
+
+    // Initialize selected neurons from localStorage when neurons load
+    useEffect(() => {
+        if (allNeurons && allNeurons.length > 0) {
+            try {
+                const storageKey = `selectedNeurons_${threadId}`;
+                const savedSelection = localStorage.getItem(storageKey);
+                
+                if (savedSelection) {
+                    const savedIds = JSON.parse(savedSelection);
+                    setSelectedNeuronIds(new Set(savedIds));
+                } else {
+                    // Default to all neurons selected
+                    const allNeuronIds = allNeurons.map(neuron => {
+                        // Create a unique identifier for the neuron
+                        return neuron.id[0].id ? Array.from(neuron.id[0].id).join(',') : '';
+                    }).filter(id => id);
+                    setSelectedNeuronIds(new Set(allNeuronIds));
+                }
+            } catch (error) {
+                console.warn('Could not load neuron selection from localStorage:', error);
+                // Fallback to all neurons selected
+                const allNeuronIds = allNeurons.map(neuron => {
+                    return neuron.id[0].id ? Array.from(neuron.id[0].id).join(',') : '';
+                }).filter(id => id);
+                setSelectedNeuronIds(new Set(allNeuronIds));
+            }
+        }
+    }, [allNeurons, threadId]);
+
+    // Handle neuron selection changes
+    const handleNeuronToggle = useCallback((neuronId) => {
+        setSelectedNeuronIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(neuronId)) {
+                newSet.delete(neuronId);
+            } else {
+                newSet.add(neuronId);
+            }
+            
+            // Save to localStorage
+            try {
+                const storageKey = `selectedNeurons_${threadId}`;
+                localStorage.setItem(storageKey, JSON.stringify(Array.from(newSet)));
+            } catch (error) {
+                console.warn('Could not save neuron selection to localStorage:', error);
+            }
+            
+            return newSet;
+        });
+    }, [threadId]);
 
     // Memoize vote button styles to prevent re-renders
     const getVoteButtonStyles = useCallback((postId, voteType) => {
@@ -1578,8 +1645,136 @@ function ThreadViewer({
                     >
                         📋 Flat View
                     </button>
+                    <button 
+                        onClick={() => setShowSettings(!showSettings)}
+                        className={showSettings ? 'active' : ''}
+                        style={{ marginLeft: '10px' }}
+                    >
+                        ⚙️ Settings
+                    </button>
                 </div>
             </div>
+
+            {/* Settings Panel */}
+            {showSettings && (
+                <div style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '10px',
+                    padding: '20px',
+                    marginBottom: '20px',
+                    backdropFilter: 'blur(10px)'
+                }}>
+                    <h3 style={{
+                        color: '#ffd700',
+                        fontSize: '1.1rem',
+                        fontWeight: '600',
+                        marginBottom: '15px',
+                        margin: 0
+                    }}>
+                        Voting Neurons
+                    </h3>
+                    <p style={{
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        fontSize: '0.9rem',
+                        marginBottom: '15px',
+                        margin: '8px 0 15px 0'
+                    }}>
+                        Select which neurons to use when voting on posts
+                    </p>
+                    
+                    {allNeurons && allNeurons.length > 0 ? (
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                            gap: '10px'
+                        }}>
+                            {allNeurons.map(neuron => {
+                                const neuronId = neuron.id[0].id ? Array.from(neuron.id[0].id).join(',') : '';
+                                const isSelected = selectedNeuronIds.has(neuronId);
+                                const neuronVotingPower = calculateVotingPower(neuron);
+                                
+                                return (
+                                    <label 
+                                        key={neuronId}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            padding: '8px 12px',
+                                            backgroundColor: isSelected ? 'rgba(255, 215, 0, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                                            border: `1px solid ${isSelected ? 'rgba(255, 215, 0, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            if (!isSelected) {
+                                                e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
+                                            }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            if (!isSelected) {
+                                                e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                                            }
+                                        }}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => handleNeuronToggle(neuronId)}
+                                            style={{
+                                                accentColor: '#ffd700',
+                                                width: '16px',
+                                                height: '16px'
+                                            }}
+                                        />
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{
+                                                color: '#ffffff',
+                                                fontSize: '0.9rem',
+                                                fontWeight: '500'
+                                            }}>
+                                                Neuron {neuron.id[0].id ? 
+                                                    Array.from(neuron.id[0].id).slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('') 
+                                                    : 'Unknown'
+                                                }...
+                                            </div>
+                                            <div style={{
+                                                color: 'rgba(255, 255, 255, 0.6)',
+                                                fontSize: '0.8rem'
+                                            }}>
+                                                {formatVotingPowerDisplay(neuronVotingPower)} VP
+                                            </div>
+                                        </div>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div style={{
+                            color: 'rgba(255, 255, 255, 0.6)',
+                            fontSize: '0.9rem',
+                            textAlign: 'center',
+                            padding: '20px'
+                        }}>
+                            No neurons available for voting
+                        </div>
+                    )}
+                    
+                    <div style={{
+                        marginTop: '15px',
+                        padding: '10px',
+                        backgroundColor: 'rgba(255, 215, 0, 0.1)',
+                        border: '1px solid rgba(255, 215, 0, 0.3)',
+                        borderRadius: '6px',
+                        fontSize: '0.85rem',
+                        color: 'rgba(255, 255, 255, 0.8)'
+                    }}>
+                        <strong>Total Selected Voting Power:</strong> {formatVotingPowerDisplay(totalVotingPower)}
+                    </div>
+                </div>
+            )}
 
             {/* Posts Display */}
             <div className="discussion-posts">
