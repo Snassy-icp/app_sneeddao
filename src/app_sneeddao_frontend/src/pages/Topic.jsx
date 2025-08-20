@@ -263,8 +263,6 @@ const styles = {
     }
 };
 
-const THREADS_PER_PAGE = 10;
-
 function Topic() {
     const { topicId } = useParams();
     const { identity } = useAuth();
@@ -279,6 +277,7 @@ function Topic() {
     const [hoveredThread, setHoveredThread] = useState(null);
     const [currentPage, setCurrentPage] = useState(0);
     const [totalThreads, setTotalThreads] = useState(0);
+    const [threadsPerPage, setThreadsPerPage] = useState(10);
     const [createThreadTitle, setCreateThreadTitle] = useState('');
     const [createThreadBody, setCreateThreadBody] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -302,7 +301,7 @@ function Topic() {
         }
 
         fetchTopicData();
-    }, [topicId, identity, currentPage]);
+    }, [topicId, identity, currentPage, threadsPerPage]);
 
     const fetchTopicData = async () => {
         try {
@@ -344,8 +343,8 @@ function Topic() {
                 activeThreads.sort((a, b) => Number(b.created_at - a.created_at));
                 
                 // Apply pagination on the frontend
-                const startIndex = currentPage * THREADS_PER_PAGE;
-                const endIndex = startIndex + THREADS_PER_PAGE;
+                const startIndex = currentPage * threadsPerPage;
+                const endIndex = startIndex + threadsPerPage;
                 const paginatedThreads = activeThreads.slice(startIndex, endIndex);
                 
                 setThreads(paginatedThreads);
@@ -430,7 +429,12 @@ function Topic() {
         return `${Math.floor(diffDays / 30)} months ago`;
     };
 
-    const totalPages = Math.ceil(totalThreads / THREADS_PER_PAGE);
+    const totalPages = Math.ceil(totalThreads / threadsPerPage);
+
+    const handleThreadsPerPageChange = (newThreadsPerPage) => {
+        setThreadsPerPage(newThreadsPerPage);
+        setCurrentPage(0); // Reset to first page when changing page size
+    };
 
     if (loading) {
         return (
@@ -539,34 +543,72 @@ function Topic() {
                                     </div>
                                 ))}
                                 
-                                {/* Pagination */}
-                                {totalPages > 1 && (
-                                    <div style={styles.pagination}>
-                                        <button
+                                {/* Threads Per Page Selector */}
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '15px 0',
+                                    borderTop: '1px solid #333',
+                                    marginTop: '20px'
+                                }}>
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                        fontSize: '14px',
+                                        color: '#ccc'
+                                    }}>
+                                        <span>Show:</span>
+                                        <select
+                                            value={threadsPerPage}
+                                            onChange={(e) => handleThreadsPerPageChange(Number(e.target.value))}
                                             style={{
-                                                ...styles.pageButton,
-                                                ...(currentPage === 0 ? styles.pageButtonDisabled : {})
+                                                backgroundColor: '#2a2a2a',
+                                                color: '#ffffff',
+                                                border: '1px solid #444',
+                                                borderRadius: '4px',
+                                                padding: '4px 8px',
+                                                fontSize: '14px'
                                             }}
-                                            onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
-                                            disabled={currentPage === 0}
                                         >
-                                            Previous
-                                        </button>
-                                        <span style={styles.pageInfo}>
-                                            Page {currentPage + 1} of {totalPages}
-                                        </span>
-                                        <button
-                                            style={{
-                                                ...styles.pageButton,
-                                                ...(currentPage >= totalPages - 1 ? styles.pageButtonDisabled : {})
-                                            }}
-                                            onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
-                                            disabled={currentPage >= totalPages - 1}
-                                        >
-                                            Next
-                                        </button>
+                                            <option value={5}>5 threads</option>
+                                            <option value={10}>10 threads</option>
+                                            <option value={20}>20 threads</option>
+                                            <option value={50}>50 threads</option>
+                                        </select>
+                                        <span>per page</span>
                                     </div>
-                                )}
+
+                                    {/* Pagination */}
+                                    {totalPages > 1 && (
+                                        <div style={styles.pagination}>
+                                            <button
+                                                style={{
+                                                    ...styles.pageButton,
+                                                    ...(currentPage === 0 ? styles.pageButtonDisabled : {})
+                                                }}
+                                                onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                                                disabled={currentPage === 0}
+                                            >
+                                                Previous
+                                            </button>
+                                            <span style={styles.pageInfo}>
+                                                Page {currentPage + 1} of {totalPages}
+                                            </span>
+                                            <button
+                                                style={{
+                                                    ...styles.pageButton,
+                                                    ...(currentPage >= totalPages - 1 ? styles.pageButtonDisabled : {})
+                                                }}
+                                                onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                                                disabled={currentPage >= totalPages - 1}
+                                            >
+                                                Next
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         ) : (
                             <div style={styles.noContent}>
