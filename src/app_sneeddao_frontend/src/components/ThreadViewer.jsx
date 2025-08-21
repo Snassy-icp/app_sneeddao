@@ -638,7 +638,7 @@ function ThreadViewer({
                     setThreadPolls(prev => prev.map(p => p.id === pollId ? poll : p));
                 } else {
                     // Update post polls
-                    const postId = poll.post_id[0];
+                    const postId = Number(poll.post_id[0]); // Ensure consistent number type
                     setPostPolls(prev => {
                         const newMap = new Map(prev);
                         const postPolls = newMap.get(postId) || [];

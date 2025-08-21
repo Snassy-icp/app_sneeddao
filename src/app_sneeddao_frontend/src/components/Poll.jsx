@@ -315,6 +315,18 @@ const Poll = ({
         return voteCount;
     };
 
+    // Get the winning option(s) - could be multiple in case of ties
+    const getWinningOptionIds = () => {
+        if (!poll || !poll.options || !Array.isArray(poll.options)) return new Set();
+        
+        const maxVotingPower = Math.max(...poll.options.map(opt => Number(opt.total_voting_power || 0)));
+        const winningOptions = poll.options
+            .filter(opt => Number(opt.total_voting_power || 0) === maxVotingPower)
+            .map(opt => opt.id);
+        
+        return new Set(winningOptions);
+    };
+
     // Show create form
 
 
@@ -722,6 +734,8 @@ const Poll = ({
                     const percentage = getOptionVotePercentage(option);
                     const userVoteCount = getUserVoteForOption(option.id);
                     const votingState = votingStates.get(option.id);
+                    const winningOptionIds = getWinningOptionIds();
+                    const isWinning = winningOptionIds.has(option.id);
                     
                     return (
                         <div key={option.id} style={{ marginBottom: '12px' }}>
@@ -811,8 +825,10 @@ const Poll = ({
                                 <div style={{
                                     width: `${percentage}%`,
                                     height: '100%',
-                                    backgroundColor: userVoteCount > 0 ? '#3498db' : '#555',
-                                    transition: 'width 0.3s ease'
+                                    backgroundColor: 
+                                        poll.has_ended && isWinning ? '#27ae60' : // Green for winning option when poll ended
+                                        userVoteCount > 0 ? '#3498db' : '#555',    // Blue for user voted, gray for others
+                                    transition: 'width 0.3s ease, background-color 0.3s ease'
                                 }} />
                             </div>
                             <div style={{ 
