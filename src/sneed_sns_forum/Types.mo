@@ -559,6 +559,7 @@ module {
         options: [PollOption];
         vp_power: Float; // defaults to 1.0, can be 0 or higher (supports fractions)
         end_timestamp: Int;
+        allow_vote_changes: Bool; // whether voters can change their votes
         created_by: Nat32;
         created_at: Int;
         updated_by: Nat32;
@@ -597,6 +598,7 @@ module {
         options: [PollOptionResponse];
         vp_power: Float;
         end_timestamp: Int;
+        allow_vote_changes: Bool;
         created_by: Principal;
         created_at: Int;
         updated_by: Principal;
@@ -629,6 +631,7 @@ module {
         options: [CreatePollOptionInput];
         vp_power: ?Float; // optional, defaults to 1.0
         end_timestamp: Int;
+        allow_vote_changes: ?Bool; // optional, defaults to true
     };
 
     // Helper function for poll vote key comparison

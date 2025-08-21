@@ -1664,6 +1664,12 @@ module {
             case null 1.0;
         };
 
+        // Set allow vote changes (defaults to true)
+        let allow_vote_changes = switch (input.allow_vote_changes) {
+            case (?allow) allow;
+            case null true;
+        };
+
         // Validate end timestamp is in the future
         let current_time = Time.now();
         if (input.end_timestamp <= current_time) {
@@ -1744,6 +1750,7 @@ module {
             options = poll_options;
             vp_power = vp_power;
             end_timestamp = input.end_timestamp;
+            allow_vote_changes = allow_vote_changes;
             created_by = caller_index;
             created_at = current_time;
             updated_by = caller_index;
@@ -1796,6 +1803,7 @@ module {
                     options = option_responses;
                     vp_power = poll.vp_power;
                     end_timestamp = poll.end_timestamp;
+                    allow_vote_changes = poll.allow_vote_changes;
                     created_by;
                     created_at = poll.created_at;
                     updated_by;
@@ -1925,7 +1933,7 @@ module {
                                             if (result_int < 0) 0 else Int.abs(result_int)
                                         };
                                         
-                                        switch (vote_on_poll(state, caller, poll_id, option_id, neuron_id, adjusted_voting_power, current_time)) {
+                                        switch (vote_on_poll(state, caller, poll_id, option_id, neuron_id, adjusted_voting_power, current_time, poll)) {
                                             case (#err(error)) {
                                                 return (#err(error), updated_cache);
                                             };
@@ -1956,7 +1964,8 @@ module {
         option_id: Nat,
         neuron_id: NeuronId,
         voting_power: Nat,
-        current_time: Int
+        current_time: Int,
+        poll: Poll
     ) : Result<(), ForumError> {
         let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
         let neuron_index = Dedup.getOrCreateIndex(state.neuron_dedup_state, neuron_id.id);
@@ -1966,6 +1975,10 @@ module {
         // Check if vote already exists
         switch (Map.get(state.poll_votes, poll_vote_key_hash_utils, vote_key)) {
             case (?existing_vote) {
+                // Check if vote changes are allowed
+                if (not poll.allow_vote_changes) {
+                    return #err(#InvalidInput("Vote changes are not allowed for this poll"));
+                };
                 // Update existing vote
                 let updated_vote : PollVote = {
                     existing_vote with

@@ -30,6 +30,7 @@ const Poll = ({
     const [pollVpPower, setPollVpPower] = useState(1.0);
     const [pollEndDate, setPollEndDate] = useState('');
     const [pollEndTime, setPollEndTime] = useState('12:00');
+    const [allowVoteChanges, setAllowVoteChanges] = useState(true);
     const [submittingPoll, setSubmittingPoll] = useState(false);
     const [pollError, setPollError] = useState(null);
 
@@ -60,6 +61,7 @@ const Poll = ({
         setPollVpPower(1.0);
         setPollEndDate('');
         setPollEndTime('12:00');
+        setAllowVoteChanges(true);
         setPollError(null);
     };
 
@@ -113,6 +115,13 @@ const Poll = ({
 
         if (poll.has_ended) {
             alert('This poll has ended');
+            return;
+        }
+
+        // Check if user has already voted and vote changes are not allowed
+        const hasExistingVote = Array.from(userVotes.values()).length > 0;
+        if (hasExistingVote && !poll.allow_vote_changes) {
+            alert('Vote changes are not allowed for this poll. You have already cast your vote.');
             return;
         }
 
@@ -225,7 +234,8 @@ const Poll = ({
                 body: pollBody.trim(),
                 options: formattedOptions,
                 vp_power: pollVpPower === 1.0 ? [] : [pollVpPower], // Default to 1.0 if not specified
-                end_timestamp: endTimestamp
+                end_timestamp: endTimestamp,
+                allow_vote_changes: allowVoteChanges === true ? [] : [allowVoteChanges] // Default to true if not specified
             });
 
             if ('ok' in result) {
@@ -573,6 +583,37 @@ const Poll = ({
                             <option value={2}>Quadratic (2)</option>
                         </select>
                     </div>
+
+                    {/* Allow Vote Changes */}
+                    <div style={{ marginBottom: '15px' }}>
+                        <label style={{ 
+                            color: '#ccc', 
+                            fontSize: '14px', 
+                            display: 'flex', 
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: 'pointer'
+                        }}>
+                            <input
+                                type="checkbox"
+                                checked={allowVoteChanges}
+                                onChange={(e) => setAllowVoteChanges(e.target.checked)}
+                                disabled={submittingPoll}
+                                style={{
+                                    transform: 'scale(1.2)'
+                                }}
+                            />
+                            Allow voters to change their votes
+                        </label>
+                        <div style={{ 
+                            fontSize: '12px', 
+                            color: '#888', 
+                            marginTop: '5px',
+                            marginLeft: '28px'
+                        }}>
+                            If unchecked, voters can only vote once and cannot change their choice
+                        </div>
+                    </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
@@ -646,6 +687,14 @@ const Poll = ({
                 </p>
                 <div style={{ fontSize: '12px', color: '#888' }}>
                     Ends: {formatDate(poll.end_timestamp)} • VP Power: {poll.vp_power}x
+                    {!poll.allow_vote_changes && (
+                        <>
+                            {' • '}
+                            <span style={{ color: '#f39c12', fontWeight: '500' }}>
+                                ⚠️ Vote changes not allowed
+                            </span>
+                        </>
+                    )}
                 </div>
             </div>
 
