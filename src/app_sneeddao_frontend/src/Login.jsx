@@ -13,11 +13,11 @@ function Login() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      // Only redirect to wallet if we're on the root login page
+      // Only redirect to dao if we're on the root login page
       // If user is trying to access a specific page, let that page handle authentication
       if (location.pathname === '/') {
         const currentSearch = location.search;
-        navigate(`/wallet${currentSearch}`);
+        navigate(`/dao${currentSearch}`);
       }
     }
   }, [isAuthenticated, navigate, location.search, location.pathname]);
