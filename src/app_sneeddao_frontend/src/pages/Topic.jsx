@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
@@ -7,6 +7,8 @@ import Header from '../components/Header';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 import { useTextLimits } from '../hooks/useTextLimits';
 import { formatError } from '../utils/errorUtils';
+import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { getSnsById } from '../utils/SnsUtils';
 
 const styles = {
     container: {
@@ -337,6 +339,9 @@ function Topic() {
     const [showPreproposalsPrompt, setShowPreproposalsPrompt] = useState(false);
     const [creatingPreproposals, setCreatingPreproposals] = useState(false);
     
+    // State for thread proposal information
+    const [threadProposals, setThreadProposals] = useState(new Map()); // Map<threadId, {proposalId, proposalData}>
+    
     // Get forum actor for text limits (memoized to prevent repeated fetching)
     const forumActor = useMemo(() => {
         return identity ? createActor(canisterId, {
@@ -350,6 +355,78 @@ function Topic() {
     // Get text limits
     const { textLimits } = useTextLimits(forumActor);
 
+    // Async function to check and fetch proposal data for threads
+    const fetchProposalDataForThreads = useCallback(async (threads) => {
+        if (!forumActor || !identity || !selectedSnsRoot || !threads.length) return;
+        
+        // Only fetch for "Proposals" topic to avoid unnecessary API calls
+        if (topic?.title !== "Proposals") return;
+
+        console.log('Fetching proposal data for threads in Proposals topic');
+        
+        // Process threads in parallel, but limit concurrency to avoid overwhelming the API
+        const batchSize = 5;
+        const newProposalData = new Map();
+        
+        for (let i = 0; i < threads.length; i += batchSize) {
+            const batch = threads.slice(i, i + batchSize);
+            
+            await Promise.allSettled(batch.map(async (thread) => {
+                try {
+                    // Check if thread is linked to proposal
+                    const proposalLink = await forumActor.get_thread_proposal_id(Number(thread.id));
+                    
+                    if (proposalLink && Array.isArray(proposalLink) && proposalLink.length > 0) {
+                        const tuple = proposalLink[0];
+                        if (Array.isArray(tuple) && tuple.length === 2) {
+                            const [snsRootIndex, proposalId] = tuple;
+                            const proposalIdNum = Number(proposalId);
+                            
+                            console.log(`Thread ${thread.id} linked to proposal ${proposalIdNum}`);
+                            
+                            // Fetch proposal data from governance
+                            try {
+                                const selectedSns = getSnsById(selectedSnsRoot);
+                                if (selectedSns) {
+                                    const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                                        agentOptions: { identity },
+                                    });
+
+                                    const response = await snsGovActor.get_proposal({
+                                        proposal_id: [{ id: BigInt(proposalIdNum) }]
+                                    });
+
+                                    if (response?.result?.[0]?.Proposal) {
+                                        newProposalData.set(thread.id.toString(), {
+                                            proposalId: proposalIdNum,
+                                            proposalData: response.result[0].Proposal
+                                        });
+                                        console.log(`Fetched proposal data for thread ${thread.id}, proposal ${proposalIdNum}`);
+                                    }
+                                }
+                            } catch (govError) {
+                                console.warn(`Failed to fetch proposal ${proposalIdNum} for thread ${thread.id}:`, govError);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`Failed to check proposal link for thread ${thread.id}:`, error);
+                }
+            }));
+        }
+        
+        // Update state with new proposal data
+        if (newProposalData.size > 0) {
+            setThreadProposals(prev => {
+                const updated = new Map(prev);
+                newProposalData.forEach((value, key) => {
+                    updated.set(key, value);
+                });
+                return updated;
+            });
+        }
+    }, [forumActor, identity, selectedSnsRoot, topic?.title]);
+
     useEffect(() => {
         if (!topicId) {
             setError('Invalid topic ID');
@@ -359,6 +436,14 @@ function Topic() {
 
         fetchTopicData();
     }, [topicId, identity, currentPage, threadsPerPage]);
+
+    // Fetch proposal data for threads when threads are loaded (async, non-blocking)
+    useEffect(() => {
+        if (threads.length > 0) {
+            // Run in background without blocking UI
+            fetchProposalDataForThreads(threads);
+        }
+    }, [threads, fetchProposalDataForThreads]);
 
     const isRootGovernanceTopic = (topic) => {
         return topic && 
@@ -682,6 +767,42 @@ function Topic() {
                                             {thread.title || `Thread #${thread.id}`}
                                         </h3>
                                         <p style={styles.threadBody}>{thread.body}</p>
+                                        
+                                        {/* Show proposal link if this thread is linked to a proposal */}
+                                        {threadProposals.has(thread.id.toString()) && (
+                                            <div style={{
+                                                marginTop: '10px',
+                                                padding: '8px 12px',
+                                                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                                                border: '1px solid rgba(52, 152, 219, 0.3)',
+                                                borderRadius: '4px',
+                                                fontSize: '0.85rem'
+                                            }}>
+                                                <span style={{ color: '#3498db', fontWeight: '500' }}>
+                                                    📋 Proposal Discussion:{' '}
+                                                </span>
+                                                <a 
+                                                    href={`/proposal?proposalid=${threadProposals.get(thread.id.toString()).proposalId}&sns=${selectedSnsRoot || ''}`}
+                                                    style={{
+                                                        color: '#3498db',
+                                                        textDecoration: 'none',
+                                                        fontWeight: '500'
+                                                    }}
+                                                    onClick={(e) => e.stopPropagation()} // Prevent thread click
+                                                    onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                    onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                                >
+                                                    {(() => {
+                                                        const proposalInfo = threadProposals.get(thread.id.toString());
+                                                        const proposalTitle = proposalInfo?.proposalData?.proposal?.[0]?.title;
+                                                        return proposalTitle 
+                                                            ? `Proposal #${proposalInfo.proposalId}: ${proposalTitle}`
+                                                            : `Proposal #${proposalInfo.proposalId}`;
+                                                    })()}
+                                                </a>
+                                            </div>
+                                        )}
+                                        
                                         <div style={styles.threadMeta}>
                                             <span>Created {formatTimeAgo(thread.created_at)}</span>
                                             <span>→</span>
