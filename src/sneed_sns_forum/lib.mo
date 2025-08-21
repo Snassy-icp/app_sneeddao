@@ -984,9 +984,9 @@ module {
         caller: Principal,
         input: T.CreateThreadInput
     ) : Result<Nat, ForumError> {
-        // Check admin access
-        if (not is_admin(state, caller)) {
-            return #err(#Unauthorized("Admin access required"));
+        // Check that user is authenticated (not anonymous)
+        if (Principal.isAnonymous(caller)) {
+            return #err(#Unauthorized("Authentication required to create threads"));
         };
 
         // Validate input
@@ -1113,6 +1113,11 @@ module {
         initial_voting_power: Nat,
         current_time: Int
     ) : Result<Nat, ForumError> {
+        // Check that user is authenticated (not anonymous)
+        if (Principal.isAnonymous(caller)) {
+            return #err(#Unauthorized("Authentication required to create posts"));
+        };
+
         // Validate input
         switch (title) {
             case (?t) {
