@@ -13,6 +13,7 @@ import TipModal from './TipModal';
 import TipDisplay from './TipDisplay';
 import { createTip, getTipsByPost } from '../utils/BackendUtils';
 import { useTokens } from '../hooks/useTokens';
+import { formatError } from '../utils/errorUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 
 // Add CSS for spinner animation
@@ -449,12 +450,12 @@ function Discussion({
                 return result.ok;
             } else {
                 console.error('Failed to create thread with auto-setup:', result.err);
-                if (onError) onError('Failed to create discussion thread: ' + JSON.stringify(result.err));
+                if (onError) onError('Failed to create discussion thread: ' + formatError(result.err));
                 return null;
             }
         } catch (err) {
             console.error('Error creating proposal thread with auto-setup:', err);
-            if (onError) onError('Error creating proposal thread: ' + err.message);
+            if (onError) onError('Error creating proposal thread: ' + formatError(err));
             return null;
         }
     };
@@ -561,7 +562,7 @@ function Discussion({
                 }
             } else {
                 console.error('Failed to create comment:', result.err);
-                if (onError) onError('Failed to create comment: ' + JSON.stringify(result.err));
+                if (onError) onError('Failed to create comment: ' + formatError(result.err));
                 // Clear the first post creation flag on error
                 setCreatingFirstPost(false);
                 return;
@@ -827,7 +828,7 @@ function Discussion({
                 }
             } else {
                 console.error('Failed to create reply:', result.err);
-                if (onError) onError('Failed to create reply: ' + JSON.stringify(result.err));
+                if (onError) onError('Failed to create reply: ' + formatError(result.err));
             }
         } catch (err) {
             console.error('Error submitting reply:', err);
@@ -1356,7 +1357,7 @@ function Discussion({
                     });
                 }, 2000);
             } else {
-                throw new Error(JSON.stringify(result.err));
+                throw new Error(formatError(result.err));
             }
         } catch (error) {
             console.error('Error voting on post:', error);
@@ -1410,7 +1411,7 @@ function Discussion({
                     });
                 }, 2000);
             } else {
-                throw new Error(JSON.stringify(result.err));
+                throw new Error(formatError(result.err));
             }
         } catch (error) {
             console.error('Error retracting vote:', error);
@@ -1458,7 +1459,7 @@ function Discussion({
                 cancelEditPost();
             } else {
                 console.error('Failed to edit post:', result.err);
-                if (onError) onError('Failed to edit post: ' + JSON.stringify(result.err));
+                if (onError) onError('Failed to edit post: ' + formatError(result.err));
             }
         } catch (err) {
             console.error('Error editing post:', err);
@@ -1484,7 +1485,7 @@ function Discussion({
                 }
             } else {
                 console.error('Failed to delete post:', result.err);
-                if (onError) onError('Failed to delete post: ' + JSON.stringify(result.err));
+                if (onError) onError('Failed to delete post: ' + formatError(result.err));
             }
         } catch (err) {
             console.error('Error deleting post:', err);

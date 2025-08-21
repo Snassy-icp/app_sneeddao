@@ -7,6 +7,7 @@ import Header from '../../components/Header';
 import './Forum.css';
 import { Principal } from '@dfinity/principal';
 import { getTextLimits, updateTextLimits } from '../../utils/BackendUtils';
+import { formatError } from '../../utils/errorUtils';
 
 export default function Forum() {
   const { isAuthenticated, identity } = useAuth();
@@ -240,7 +241,7 @@ export default function Forum() {
         await fetchTextLimits(); // Refresh the limits
         setTextLimitsError('');
       } else {
-        setTextLimitsError('Failed to update text limits: ' + JSON.stringify(result.err));
+        setTextLimitsError('Failed to update text limits: ' + formatError(result.err));
       }
     } catch (err) {
       console.error('Error updating text limits:', err);
@@ -355,7 +356,7 @@ export default function Forum() {
         setShowCreateForm(false);
         await fetchData();
       } else {
-        setError('Error: ' + JSON.stringify(result.err));
+        setError('Error: ' + formatError(result.err));
       }
     } catch (err) {
       console.error('Error creating:', err);
@@ -412,7 +413,7 @@ export default function Forum() {
         await fetchData();
         setError('');
       } else {
-        setError('Error: ' + JSON.stringify(result.err));
+        setError('Error: ' + formatError(result.err));
       }
     } catch (err) {
       console.error('Error editing:', err);
@@ -480,7 +481,7 @@ export default function Forum() {
       if ('ok' in result) {
         await fetchData();
       } else {
-        setError('Error: ' + JSON.stringify(result.err));
+        setError('Error: ' + formatError(result.err));
       }
     } catch (err) {
       console.error('Error deleting:', err);
@@ -517,7 +518,7 @@ export default function Forum() {
       if ('ok' in result) {
         await fetchData();
       } else {
-        setError('Error: ' + JSON.stringify(result.err));
+        setError('Error: ' + formatError(result.err));
       }
     } catch (err) {
       console.error('Error undeleting:', err);
@@ -1341,7 +1342,7 @@ export default function Forum() {
         await fetchAdmins();
         setError('');
       } else {
-        setError('Error adding admin: ' + JSON.stringify(result.err));
+        setError('Error adding admin: ' + formatError(result.err));
       }
     } catch (err) {
       console.error('Error adding admin:', err);
@@ -1361,7 +1362,7 @@ export default function Forum() {
         await fetchAdmins();
         setError('');
       } else {
-        setError('Error removing admin: ' + JSON.stringify(result.err));
+        setError('Error removing admin: ' + formatError(result.err));
       }
     } catch (err) {
       console.error('Error removing admin:', err);
@@ -1385,7 +1386,7 @@ export default function Forum() {
         alert('Successfully set as proposals topic!');
         await fetchProposalsTopic(); // Refresh the proposals topic info
       } else {
-        setError('Error setting proposals topic: ' + JSON.stringify(result.err));
+        setError('Error setting proposals topic: ' + formatError(result.err));
       }
     } catch (err) {
       console.error('Error setting proposals topic:', err);

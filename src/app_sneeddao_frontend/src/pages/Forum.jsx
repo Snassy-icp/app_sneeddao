@@ -5,6 +5,7 @@ import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
+import { formatError } from '../utils/errorUtils';
 
 const styles = {
     container: {
@@ -285,7 +286,7 @@ function Forum() {
                 await fetchForumData();
             } else {
                 console.error('Error creating General topic:', result.err);
-                setError('Failed to create General topic: ' + result.err);
+                setError('Failed to create General topic: ' + formatError(result.err));
             }
         } catch (err) {
             console.error('Error creating General topic:', err);
@@ -320,7 +321,7 @@ function Forum() {
                 await fetchForumData();
             } else {
                 console.error('Error creating Governance topic:', result.err);
-                setError('Failed to create Governance topic: ' + result.err);
+                setError('Failed to create Governance topic: ' + formatError(result.err));
             }
         } catch (err) {
             console.error('Error creating Governance topic:', err);
@@ -370,7 +371,7 @@ function Forum() {
                 }
             } else {
                 console.error('Error creating forum:', result.err);
-                setError('Failed to create forum: ' + result.err);
+                setError('Failed to create forum: ' + formatError(result.err));
             }
         } catch (err) {
             console.error('Error creating forum:', err);

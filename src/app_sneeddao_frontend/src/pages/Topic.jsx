@@ -6,6 +6,7 @@ import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 import { useTextLimits } from '../hooks/useTextLimits';
+import { formatError } from '../utils/errorUtils';
 
 const styles = {
     container: {
@@ -511,12 +512,12 @@ function Topic() {
                 const newThreadId = result.ok.toString();
                 navigate(`/thread?threadid=${newThreadId}`);
             } else {
-                setError('Failed to create thread: ' + (result.err || 'Unknown error'));
+                setError('Failed to create thread: ' + formatError(result.err, 'Unknown error'));
             }
 
         } catch (err) {
             console.error('Error creating thread:', err);
-            setError('Failed to create thread');
+            setError('Failed to create thread: ' + formatError(err, 'Network or system error'));
         } finally {
             setSubmitting(false);
         }

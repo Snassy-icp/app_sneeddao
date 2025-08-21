@@ -8,6 +8,7 @@ import { useTextLimits } from '../hooks/useTextLimits';
 import { calculateVotingPower } from '../utils/VotingPowerUtils';
 import { useTokens } from '../hooks/useTokens';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
+import { formatError } from '../utils/errorUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import { 
@@ -664,7 +665,7 @@ function ThreadViewer({
                     }
                 }
             } else {
-                throw new Error(JSON.stringify(result.err));
+                throw new Error(formatError(result.err));
             }
         } catch (error) {
             console.error('Error creating comment:', error);
