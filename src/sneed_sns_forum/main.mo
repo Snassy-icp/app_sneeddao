@@ -81,6 +81,8 @@ persistent actor SneedSNSForum {
     stable let stable_posts = Map.new<Nat, T.Post>();
     stable let stable_votes = Map.new<T.VoteKey, T.Vote>();
     stable let stable_tips = Map.new<Nat, T.Tip>();
+    stable let stable_polls = Map.new<Nat, T.Poll>();
+    stable let stable_poll_votes = Map.new<T.PollVoteKey, T.PollVote>();
     stable let stable_admins = Vector.new<T.AdminInfo>();
     stable var stable_principal_dedup : Dedup.DedupState = Dedup.empty();
     stable var stable_neuron_dedup : Dedup.DedupState = Dedup.empty();
@@ -91,6 +93,8 @@ persistent actor SneedSNSForum {
     stable let stable_post_replies = Map.new<Nat, Vector.Vector<Nat>>();
     stable let stable_post_tips = Map.new<Nat, Vector.Vector<Nat>>();
     stable let stable_thread_tips = Map.new<Nat, Vector.Vector<Nat>>();
+    stable let stable_thread_polls = Map.new<Nat, Vector.Vector<Nat>>();
+    stable let stable_post_polls = Map.new<Nat, Vector.Vector<Nat>>();
     stable let stable_tips_given = Map.new<Nat32, Vector.Vector<Nat>>();
     stable let stable_tips_received = Map.new<Nat32, Vector.Vector<Nat>>();
     stable let stable_user_last_seen_tips = Map.new<Nat32, Int>();
@@ -110,6 +114,8 @@ persistent actor SneedSNSForum {
         posts = stable_posts;
         votes = stable_votes;
         tips = stable_tips;
+        polls = stable_polls;
+        poll_votes = stable_poll_votes;
         admins = stable_admins;
         principal_dedup_state = stable_principal_dedup;
         neuron_dedup_state = stable_neuron_dedup;
@@ -120,6 +126,8 @@ persistent actor SneedSNSForum {
         post_replies = stable_post_replies;
         post_tips = stable_post_tips;
         thread_tips = stable_thread_tips;
+        thread_polls = stable_thread_polls;
+        post_polls = stable_post_polls;
         tips_given = stable_tips_given;
         tips_received = stable_tips_received;
         user_last_seen_tips = stable_user_last_seen_tips;
@@ -300,6 +308,37 @@ persistent actor SneedSNSForum {
     // Get votes for specific neurons on a single post
     public query func get_post_votes_for_neurons(post_id: Nat, neuron_ids: [T.NeuronId]) : async ?Lib.ThreadVoteResponse {
         Lib.get_post_votes_for_neurons(state, post_id, neuron_ids)
+    };
+
+    // Poll API endpoints
+    public shared ({ caller }) func create_poll(input: T.CreatePollInput) : async T.Result<Nat, T.ForumError> {
+        Lib.create_poll(state, caller, input)
+    };
+
+    public query func get_poll(id: Nat) : async ?T.PollResponse {
+        Lib.get_poll(state, id)
+    };
+
+    public query func get_polls_by_thread(thread_id: Nat) : async [T.PollResponse] {
+        Lib.get_polls_by_thread(state, thread_id)
+    };
+
+    public query func get_polls_by_post(post_id: Nat) : async [T.PollResponse] {
+        Lib.get_polls_by_post(state, post_id)
+    };
+
+    public shared ({ caller }) func vote_on_poll_with_neurons(
+        poll_id: Nat,
+        option_id: Nat,
+        neuron_ids: [T.NeuronId]
+    ) : async T.Result<(), T.ForumError> {
+        let (result, updated_cache) = await Lib.vote_on_poll_with_specific_neurons(state, caller, poll_id, option_id, neuron_ids, sns_cache);
+        sns_cache := updated_cache;
+        result
+    };
+
+    public query func get_poll_votes(poll_id: Nat) : async [T.PollVoteResponse] {
+        Lib.get_poll_votes(state, poll_id)
     };
 
     // Tip API endpoints

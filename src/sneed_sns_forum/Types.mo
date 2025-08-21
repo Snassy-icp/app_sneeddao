@@ -204,6 +204,8 @@ module {
         posts: Map.Map<Nat, Post>;
         votes: Map.Map<VoteKey, Vote>;
         tips: Map.Map<Nat, Tip>;
+        polls: Map.Map<Nat, Poll>;
+        poll_votes: Map.Map<PollVoteKey, PollVote>;
         
         // Admin management
         admins: Vector.Vector<AdminInfo>;
@@ -224,6 +226,8 @@ module {
         tips_received: Map.Map<Nat32, Vector.Vector<Nat>>; // to_principal_index -> [tip_ids]
         user_last_seen_tips: Map.Map<Nat32, Int>; // user_index -> last_seen_timestamp
         user_last_seen_replies: Map.Map<Nat32, Int>; // user_index -> last_seen_timestamp for replies
+        thread_polls: Map.Map<Nat, Vector.Vector<Nat>>; // thread_id -> [poll_ids]
+        post_polls: Map.Map<Nat, Vector.Vector<Nat>>; // post_id -> [poll_ids]
         
         // Proposal tracking (separate from core structures)
         proposal_topics: Map.Map<Nat, ProposalTopicMapping>; // forum_id -> mapping
@@ -534,6 +538,108 @@ module {
     public func tip_key_hash(key: TipKey) : Nat32 {
         let h1 : Nat32 = Nat32.fromNat(key.0 % 4294967295); // 2^32 - 1
         let h2 : Nat32 = Nat32.fromNat(key.1 % 4294967295); // 2^32 - 1
+        h1 ^ h2
+    };
+
+    // Poll system types
+    public type PollOption = {
+        id: Nat;
+        title: Text;
+        body: ?Text;
+        vote_count: Nat;
+        total_voting_power: Nat;
+    };
+
+    public type Poll = {
+        id: Nat;
+        thread_id: Nat;
+        post_id: ?Nat; // null for thread polls, set for post polls
+        title: Text;
+        body: Text;
+        options: [PollOption];
+        vp_power: Float; // defaults to 1.0, can be 0 or higher (supports fractions)
+        end_timestamp: Int;
+        created_by: Nat32;
+        created_at: Int;
+        updated_by: Nat32;
+        updated_at: Int;
+        deleted: Bool;
+    };
+
+    public type PollVote = {
+        poll_id: Nat;
+        option_id: Nat;
+        neuron_id: Nat32;
+        voter_principal: Nat32;
+        voting_power: Nat;
+        created_at: Int;
+        updated_at: Int;
+    };
+
+    // Composite key type for poll votes (poll_id, neuron_id)
+    public type PollVoteKey = (Nat, Nat32);
+
+    // Poll response types
+    public type PollOptionResponse = {
+        id: Nat;
+        title: Text;
+        body: ?Text;
+        vote_count: Nat;
+        total_voting_power: Nat;
+    };
+
+    public type PollResponse = {
+        id: Nat;
+        thread_id: Nat;
+        post_id: ?Nat;
+        title: Text;
+        body: Text;
+        options: [PollOptionResponse];
+        vp_power: Float;
+        end_timestamp: Int;
+        created_by: Principal;
+        created_at: Int;
+        updated_by: Principal;
+        updated_at: Int;
+        deleted: Bool;
+        has_ended: Bool; // computed field based on current time vs end_timestamp
+    };
+
+    public type PollVoteResponse = {
+        poll_id: Nat;
+        option_id: Nat;
+        neuron_id: NeuronId;
+        voter_principal: Principal;
+        voting_power: Nat;
+        created_at: Int;
+        updated_at: Int;
+    };
+
+    // Input types for poll creation
+    public type CreatePollOptionInput = {
+        title: Text;
+        body: ?Text;
+    };
+
+    public type CreatePollInput = {
+        thread_id: Nat;
+        post_id: ?Nat;
+        title: Text;
+        body: Text;
+        options: [CreatePollOptionInput];
+        vp_power: ?Float; // optional, defaults to 1.0
+        end_timestamp: Int;
+    };
+
+    // Helper function for poll vote key comparison
+    public func poll_vote_key_equal(a: PollVoteKey, b: PollVoteKey) : Bool {
+        a.0 == b.0 and a.1 == b.1
+    };
+
+    // Helper function for poll vote key hash
+    public func poll_vote_key_hash(key: PollVoteKey) : Nat32 {
+        let h1 : Nat32 = Nat32.fromNat(key.0 % 4294967295); // 2^32 - 1
+        let h2 = key.1;
         h1 ^ h2
     };
 }

@@ -11,6 +11,8 @@ import Nat "mo:base/Nat";
 import Array "mo:base/Array";
 import Order "mo:base/Order";
 import Vector "mo:vector";
+import Float "mo:base/Float";
+import Int "mo:base/Int";
 import SnsUtil "../SnsUtil";
 
 import T "Types";
@@ -38,6 +40,15 @@ module {
     public type CreateTipInput = T.CreateTipInput;
     public type TipResponse = T.TipResponse;
     public type TipStats = T.TipStats;
+    public type Poll = T.Poll;
+    public type PollOption = T.PollOption;
+    public type PollVote = T.PollVote;
+    public type PollVoteKey = T.PollVoteKey;
+    public type PollResponse = T.PollResponse;
+    public type PollOptionResponse = T.PollOptionResponse;
+    public type PollVoteResponse = T.PollVoteResponse;
+    public type CreatePollInput = T.CreatePollInput;
+    public type CreatePollOptionInput = T.CreatePollOptionInput;
 
 
 
@@ -410,6 +421,9 @@ module {
 
     // Hash utilities for VoteKey
     private let vote_key_hash_utils = (T.vote_key_hash, T.vote_key_equal);
+    
+    // Hash utilities for PollVoteKey
+    private let poll_vote_key_hash_utils = (T.poll_vote_key_hash, T.poll_vote_key_equal);
 
     // Admin management functions
     public func is_admin(state: ForumState, principal: Principal) : Bool {
@@ -1600,6 +1614,484 @@ module {
             }
         }
     };
+
+    // Poll functions
+    public func create_poll(
+        state: ForumState,
+        caller: Principal,
+        input: CreatePollInput
+    ) : Result<Nat, ForumError> {
+        // Validate input
+        switch (validate_text(input.title, "Title", state.text_limits.post_title_max_length)) {
+            case (#err(e)) return #err(e);
+            case (#ok()) {};
+        };
+        switch (validate_text(input.body, "Body", state.text_limits.post_body_max_length)) {
+            case (#err(e)) return #err(e);
+            case (#ok()) {};
+        };
+
+        // Validate options - must have at least 2
+        if (input.options.size() < 2) {
+            return #err(#InvalidInput("Poll must have at least 2 options"));
+        };
+
+        // Validate each option
+        for (option in input.options.vals()) {
+            switch (validate_text(option.title, "Option title", state.text_limits.post_title_max_length)) {
+                case (#err(e)) return #err(e);
+                case (#ok()) {};
+            };
+            switch (option.body) {
+                case (?body) {
+                    switch (validate_text(body, "Option body", state.text_limits.post_body_max_length)) {
+                        case (#err(e)) return #err(e);
+                        case (#ok()) {};
+                    };
+                };
+                case null {};
+            };
+        };
+
+        // Validate VP power
+        let vp_power = switch (input.vp_power) {
+            case (?power) {
+                if (power < 0) {
+                    return #err(#InvalidInput("VP power cannot be negative"));
+                };
+                power
+            };
+            case null 1.0;
+        };
+
+        // Validate end timestamp is in the future
+        let current_time = Time.now();
+        if (input.end_timestamp <= current_time) {
+            return #err(#InvalidInput("End timestamp must be in the future"));
+        };
+
+        // Check if thread exists
+        let thread = switch (Map.get(state.threads, Map.nhash, input.thread_id)) {
+            case (?t) t;
+            case null return #err(#NotFound("Thread not found"));
+        };
+
+        // If post_id is specified, check if post exists and belongs to the thread
+        switch (input.post_id) {
+            case (?post_id) {
+                let post = switch (Map.get(state.posts, Map.nhash, post_id)) {
+                    case (?p) p;
+                    case null return #err(#NotFound("Post not found"));
+                };
+                if (post.thread_id != input.thread_id) {
+                    return #err(#InvalidInput("Post does not belong to the specified thread"));
+                };
+                
+                // Check if caller is the creator of the post
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                if (post.created_by != caller_index) {
+                    return #err(#Unauthorized("Only the post creator can create a poll for it"));
+                };
+                
+                // Check if a poll already exists for this post
+                let existing_polls = switch (Map.get(state.post_polls, Map.nhash, post_id)) {
+                    case (?polls) polls;
+                    case null Vector.new<Nat>();
+                };
+                if (Vector.size(existing_polls) > 0) {
+                    return #err(#AlreadyExists("A poll already exists for this post"));
+                };
+            };
+            case null {
+                // Check if caller is the creator of the thread
+                let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+                if (thread.created_by != caller_index) {
+                    return #err(#Unauthorized("Only the thread creator can create a poll for it"));
+                };
+                
+                // Check if a poll already exists for this thread (without post_id)
+                for ((poll_id, poll) in Map.entries(state.polls)) {
+                    if (poll.thread_id == input.thread_id and poll.post_id == null and not poll.deleted) {
+                        return #err(#AlreadyExists("A poll already exists for this thread"));
+                    };
+                };
+            };
+        };
+
+        let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+        let poll_id = get_next_id(state);
+
+        // Create poll options
+        var option_id = 0;
+        let poll_options = Array.map<CreatePollOptionInput, PollOption>(input.options, func(option_input) {
+            let option : PollOption = {
+                id = option_id;
+                title = option_input.title;
+                body = option_input.body;
+                vote_count = 0;
+                total_voting_power = 0;
+            };
+            option_id += 1;
+            option
+        });
+
+        let poll : Poll = {
+            id = poll_id;
+            thread_id = input.thread_id;
+            post_id = input.post_id;
+            title = input.title;
+            body = input.body;
+            options = poll_options;
+            vp_power = vp_power;
+            end_timestamp = input.end_timestamp;
+            created_by = caller_index;
+            created_at = current_time;
+            updated_by = caller_index;
+            updated_at = current_time;
+            deleted = false;
+        };
+
+        ignore Map.put(state.polls, Map.nhash, poll_id, poll);
+        
+        // Add to indexes
+        switch (input.post_id) {
+            case (?post_id) add_to_index(state.post_polls, post_id, poll_id);
+            case null add_to_index(state.thread_polls, input.thread_id, poll_id);
+        };
+
+        #ok(poll_id)
+    };
+
+    public func get_poll(state: ForumState, id: Nat) : ?PollResponse {
+        switch (Map.get(state.polls, Map.nhash, id)) {
+            case (?poll) {
+                let created_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, poll.created_by)) {
+                    case (?p) p;
+                    case null Principal.fromText("2vxsx-fae");
+                };
+                let updated_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, poll.updated_by)) {
+                    case (?p) p;
+                    case null Principal.fromText("2vxsx-fae");
+                };
+                
+                let current_time = Time.now();
+                let has_ended = current_time >= poll.end_timestamp;
+                
+                let option_responses = Array.map<PollOption, PollOptionResponse>(poll.options, func(option) {
+                    {
+                        id = option.id;
+                        title = option.title;
+                        body = option.body;
+                        vote_count = option.vote_count;
+                        total_voting_power = option.total_voting_power;
+                    }
+                });
+
+                ?{
+                    id = poll.id;
+                    thread_id = poll.thread_id;
+                    post_id = poll.post_id;
+                    title = poll.title;
+                    body = poll.body;
+                    options = option_responses;
+                    vp_power = poll.vp_power;
+                    end_timestamp = poll.end_timestamp;
+                    created_by;
+                    created_at = poll.created_at;
+                    updated_by;
+                    updated_at = poll.updated_at;
+                    deleted = poll.deleted;
+                    has_ended;
+                }
+            };
+            case null null;
+        }
+    };
+
+    public func get_polls_by_thread(state: ForumState, thread_id: Nat) : [PollResponse] {
+        let poll_ids = switch (Map.get(state.thread_polls, Map.nhash, thread_id)) {
+            case (?ids) ids;
+            case null return [];
+        };
+        
+        let results = Buffer.Buffer<PollResponse>(Vector.size(poll_ids));
+        for (poll_id in Vector.vals(poll_ids)) {
+            switch (get_poll(state, poll_id)) {
+                case (?poll_response) {
+                    if (not poll_response.deleted) {
+                        results.add(poll_response);
+                    };
+                };
+                case null {};
+            };
+        };
+        Buffer.toArray(results)
+    };
+
+    public func get_polls_by_post(state: ForumState, post_id: Nat) : [PollResponse] {
+        let poll_ids = switch (Map.get(state.post_polls, Map.nhash, post_id)) {
+            case (?ids) ids;
+            case null return [];
+        };
+        
+        let results = Buffer.Buffer<PollResponse>(Vector.size(poll_ids));
+        for (poll_id in Vector.vals(poll_ids)) {
+            switch (get_poll(state, poll_id)) {
+                case (?poll_response) {
+                    if (not poll_response.deleted) {
+                        results.add(poll_response);
+                    };
+                };
+                case null {};
+            };
+        };
+        Buffer.toArray(results)
+    };
+
+    // Poll voting functions
+    public func vote_on_poll_with_specific_neurons(
+        state: ForumState,
+        caller: Principal,
+        poll_id: Nat,
+        option_id: Nat,
+        neuron_ids: [T.NeuronId],
+        cache: SnsCache
+    ) : async (T.Result<(), T.ForumError>, SnsCache) {
+        // Check if poll exists
+        let poll = switch (Map.get(state.polls, Map.nhash, poll_id)) {
+            case (?p) p;
+            case null return (#err(#NotFound("Poll not found")), cache);
+        };
+
+        // Check if poll has ended
+        let current_time = Time.now();
+        if (current_time >= poll.end_timestamp) {
+            return (#err(#InvalidInput("Poll has ended")), cache);
+        };
+
+        // Check if option exists
+        var option_found = false;
+        for (option in poll.options.vals()) {
+            if (option.id == option_id) {
+                option_found := true;
+            };
+        };
+        if (not option_found) {
+            return (#err(#NotFound("Poll option not found")), cache);
+        };
+
+        // Get the governance canister ID for this poll's thread
+        let (governance_canister_id_opt, updated_cache) = await get_governance_canister_id_from_thread(state, poll.thread_id, cache, current_time);
+        
+        switch (governance_canister_id_opt) {
+            case (?governance_canister_id) {
+                try {
+                    let reachable_neurons = await SnsUtil.get_reachable_neurons(governance_canister_id, caller);
+                    
+                    if (reachable_neurons.size() == 0) {
+                        return (#err(#Unauthorized("No accessible neurons found")), updated_cache);
+                    };
+                    
+                    let system_parameters = await SnsUtil.get_system_parameters(governance_canister_id);
+                    
+                    // Filter reachable neurons to only include the specified ones
+                    let target_neuron_ids = Array.map<T.NeuronId, Blob>(neuron_ids, func(n) = n.id);
+                    
+                    for (neuron in reachable_neurons.vals()) {
+                        switch (neuron.id) {
+                            case (?neuron_id) {
+                                // Check if this neuron is in our target list
+                                let neuron_blob = neuron_id.id;
+                                var should_vote = false;
+                                for (target_id in target_neuron_ids.vals()) {
+                                    if (Blob.equal(neuron_blob, target_id)) {
+                                        should_vote := true;
+                                    };
+                                };
+                                
+                                if (should_vote) {
+                                    let base_voting_power = SnsUtil.calculate_neuron_voting_power(neuron, system_parameters);
+                                    if (base_voting_power > 0) {
+                                        // Apply VP power transformation
+                                        let adjusted_voting_power = if (poll.vp_power == 1.0) {
+                                            base_voting_power
+                                        } else if (poll.vp_power == 0.0) {
+                                            1 // Every vote counts as 1 regardless of VP
+                                        } else {
+                                            // Calculate base_voting_power^vp_power
+                                            let base_float = Float.fromInt(base_voting_power);
+                                            let result_float = Float.pow(base_float, poll.vp_power);
+                                            let result_int = Float.toInt(result_float);
+                                            if (result_int < 0) 0 else Int.abs(result_int)
+                                        };
+                                        
+                                        switch (vote_on_poll(state, caller, poll_id, option_id, neuron_id, adjusted_voting_power, current_time)) {
+                                            case (#err(error)) {
+                                                return (#err(error), updated_cache);
+                                            };
+                                            case (#ok()) { };
+                                        };
+                                    };
+                                };
+                            };
+                            case null { };
+                        };
+                    };
+                    
+                    return (#ok(), updated_cache);
+                } catch (_error) {
+                    return (#err(#InternalError("Failed to vote on poll")), updated_cache);
+                };
+            };
+            case null {
+                return (#err(#NotFound("Thread not found")), updated_cache);
+            };
+        };
+    };
+
+    private func vote_on_poll(
+        state: ForumState,
+        caller: Principal,
+        poll_id: Nat,
+        option_id: Nat,
+        neuron_id: NeuronId,
+        voting_power: Nat,
+        current_time: Int
+    ) : Result<(), ForumError> {
+        let caller_index = Dedup.getOrCreateIndexForPrincipal(state.principal_dedup_state, caller);
+        let neuron_index = Dedup.getOrCreateIndex(state.neuron_dedup_state, neuron_id.id);
+        
+        let vote_key : PollVoteKey = (poll_id, neuron_index);
+
+        // Check if vote already exists
+        switch (Map.get(state.poll_votes, poll_vote_key_hash_utils, vote_key)) {
+            case (?existing_vote) {
+                // Update existing vote
+                let updated_vote : PollVote = {
+                    existing_vote with
+                    option_id = option_id;
+                    voting_power = voting_power;
+                    updated_at = current_time;
+                };
+
+                // Update poll option counts
+                switch (update_poll_vote_counts(state, poll_id, existing_vote.option_id, option_id, existing_vote.voting_power, voting_power, current_time)) {
+                    case (#err(error)) return #err(error);
+                    case (#ok()) {};
+                };
+
+                ignore Map.put(state.poll_votes, poll_vote_key_hash_utils, vote_key, updated_vote);
+            };
+            case null {
+                // Create new vote
+                let new_vote : PollVote = {
+                    poll_id;
+                    option_id;
+                    neuron_id = neuron_index;
+                    voter_principal = caller_index;
+                    voting_power;
+                    created_at = current_time;
+                    updated_at = current_time;
+                };
+
+                // Update poll option counts
+                switch (update_poll_vote_counts(state, poll_id, option_id, option_id, 0, voting_power, current_time)) {
+                    case (#err(error)) return #err(error);
+                    case (#ok()) {};
+                };
+
+                ignore Map.put(state.poll_votes, poll_vote_key_hash_utils, vote_key, new_vote);
+            };
+        };
+
+        #ok()
+    };
+
+    private func update_poll_vote_counts(
+        state: ForumState,
+        poll_id: Nat,
+        old_option_id: Nat,
+        new_option_id: Nat,
+        old_voting_power: Nat,
+        new_voting_power: Nat,
+        current_time: Int
+    ) : Result<(), ForumError> {
+        let poll = switch (Map.get(state.polls, Map.nhash, poll_id)) {
+            case (?p) p;
+            case null return #err(#NotFound("Poll not found"));
+        };
+
+        let updated_options = Array.map<PollOption, PollOption>(poll.options, func(option) {
+            if (option.id == old_option_id and old_option_id != new_option_id) {
+                // Remove vote from old option
+                {
+                    option with
+                    vote_count = if (option.vote_count > 0) option.vote_count - 1 else 0;
+                    total_voting_power = if (option.total_voting_power >= old_voting_power) {
+                        option.total_voting_power - old_voting_power
+                    } else { 0 };
+                }
+            } else if (option.id == new_option_id and old_option_id != new_option_id) {
+                // Add vote to new option
+                {
+                    option with
+                    vote_count = option.vote_count + 1;
+                    total_voting_power = option.total_voting_power + new_voting_power;
+                }
+            } else if (option.id == new_option_id and old_option_id == new_option_id) {
+                // Update vote on same option
+                {
+                    option with
+                    total_voting_power = if (option.total_voting_power >= old_voting_power) {
+                        (option.total_voting_power - old_voting_power) + new_voting_power
+                    } else { new_voting_power };
+                }
+            } else {
+                option
+            }
+        });
+
+        let updated_poll = {
+            poll with
+            options = updated_options;
+            updated_at = current_time;
+        };
+
+        ignore Map.put(state.polls, Map.nhash, poll_id, updated_poll);
+        #ok()
+    };
+
+    public func get_poll_votes(state: ForumState, poll_id: Nat) : [PollVoteResponse] {
+        let results = Buffer.Buffer<PollVoteResponse>(0);
+        
+        for ((vote_key, vote) in Map.entries(state.poll_votes)) {
+            if (vote_key.0 == poll_id) {
+                let voter_principal = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, vote.voter_principal)) {
+                    case (?p) p;
+                    case null Principal.fromText("2vxsx-fae");
+                };
+                let neuron_blob = switch (Dedup.getBlob(state.neuron_dedup_state, vote.neuron_id)) {
+                    case (?blob) blob;
+                    case null Blob.fromArray([]);
+                };
+                let neuron_id : NeuronId = { id = neuron_blob };
+                
+                results.add({
+                    poll_id = vote.poll_id;
+                    option_id = vote.option_id;
+                    neuron_id;
+                    voter_principal;
+                    voting_power = vote.voting_power;
+                    created_at = vote.created_at;
+                    updated_at = vote.updated_at;
+                });
+            };
+        };
+        
+        Buffer.toArray(results)
+    };
+
+
 
     // Tip functions
     public func create_tip(
