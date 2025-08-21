@@ -2288,12 +2288,16 @@ function ThreadViewer({
 
                 {/* Post content - simplified for now */}
                 <div className="post-content">
-                    <div className="post-header" style={{
+                    <div className="thread-post-header" style={{
                         display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: '8px'
+                        alignItems: 'center',
+                        justifyContent: 'flex-start',
+                        gap: '8px',
+                        flexWrap: 'wrap',
+                        wordBreak: 'break-word',
+                        overflowWrap: 'anywhere'
                     }}>
-                        {/* Collapse button - always show for tree view, always in top-left */}
+                        {/* Collapse button - flows inline with other elements */}
                         {!isFlat && (
                             <button
                                 onClick={() => {
@@ -2315,47 +2319,34 @@ function ThreadViewer({
                                     fontSize: '14px',
                                     minWidth: '28px',
                                     height: '28px',
-                                    flexShrink: 0,
-                                    marginTop: '2px'
+                                    flexShrink: 0
                                 }}
                                 title={isCollapsed ? 'Expand post' : 'Collapse post'}
                             >
                                 {isCollapsed ? '+' : '−'}
                             </button>
                         )}
-                        {/* Content flows from left after collapse button */}
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            flexWrap: 'wrap',
-                            wordBreak: 'break-word',
-                            overflowWrap: 'anywhere',
-                            flex: 1,
-                            minWidth: 0
-                        }}>
-                            <a 
-                                href={`/post?postid=${post.id}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
-                                className="post-id"
-                                style={{
-                                    color: '#3498db',
-                                    textDecoration: 'none',
-                                    fontWeight: '500',
-                                    flexShrink: 0
-                                }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                #{post.id.toString()}
-                            </a>
-                            {post.title && <h4 style={{ margin: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{post.title}</h4>}
-                            <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><PrincipalDisplay 
-                                principal={post.created_by} 
-                                displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
-                                showCopyButton={false} 
-                            /></span>
-                            <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
-                        </div>
+                        <a 
+                            href={`/post?postid=${post.id}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
+                            className="post-id"
+                            style={{
+                                color: '#3498db',
+                                textDecoration: 'none',
+                                fontWeight: '500',
+                                flexShrink: 0
+                            }}
+                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                        >
+                            #{post.id.toString()}
+                        </a>
+                        {post.title && <h4 style={{ margin: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{post.title}</h4>}
+                        <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><PrincipalDisplay 
+                            principal={post.created_by} 
+                            displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
+                            showCopyButton={false} 
+                        /></span>
+                        <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
                         {viewMode === 'flat' && post.reply_to_post_id && post.reply_to_post_id.length > 0 && (() => {
                             const parentPost = findPostById(discussionPosts, post.reply_to_post_id[0]);
                             if (parentPost) {

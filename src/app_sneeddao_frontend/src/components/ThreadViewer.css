@@ -160,14 +160,15 @@
     width: 100%;
 }
 
-.post-header {
+.thread-post-header {
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     gap: 0.75rem;
     margin-bottom: 1rem;
     padding-bottom: 0.5rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    justify-content: flex-start;
+    flex-wrap: wrap;
 }
 
 .post-id {
@@ -265,9 +266,10 @@
         text-align: center;
     }
     
-    .post-header {
-        flex-direction: column;
+    .thread-post-header {
+        flex-wrap: wrap;
         align-items: flex-start;
         gap: 0.5rem;
+        justify-content: flex-start;
     }
 }
