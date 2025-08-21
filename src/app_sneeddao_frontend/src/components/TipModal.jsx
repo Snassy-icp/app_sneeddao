@@ -853,48 +853,10 @@ const TipModal = ({
                     {/* Action Buttons */}
                     <div style={{
                         display: 'flex',
-                        justifyContent: 'space-between',
+                        justifyContent: 'center',
                         alignItems: 'center',
-                        marginTop: '8px',
-                        gap: '20px'
+                        marginTop: '8px'
                     }}>
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            disabled={isSubmitting}
-                            style={{
-                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                                border: '1px solid rgba(255, 255, 255, 0.2)',
-                                borderRadius: '12px',
-                                color: 'rgba(255, 255, 255, 0.8)',
-                                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                                fontSize: '15px',
-                                fontWeight: '500',
-                                transition: 'all 0.2s ease',
-                                backdropFilter: 'blur(10px)',
-                                opacity: isSubmitting ? 0.6 : 1,
-                                height: '56px',
-                                minWidth: '120px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                outline: 'none'
-                            }}
-                            onMouseEnter={(e) => {
-                                if (!isSubmitting) {
-                                    e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
-                                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.3)';
-                                }
-                            }}
-                            onMouseLeave={(e) => {
-                                if (!isSubmitting) {
-                                    e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                                }
-                            }}
-                        >
-                            Cancel
-                        </button>
                         <button
                             type="submit"
                             disabled={isSubmitting || !selectedToken || !amount}
@@ -916,7 +878,7 @@ const TipModal = ({
                                 justifyContent: 'center',
                                 gap: '8px',
                                 height: '56px',
-                                minWidth: '180px',
+                                minWidth: '160px',
                                 outline: 'none'
                             }}
                             onMouseEnter={(e) => {
@@ -947,7 +909,7 @@ const TipModal = ({
                             ) : (
                                 <>
                                     <span>💎</span>
-                                    Send Appreciation
+                                    Send Tip
                                 </>
                             )}
                         </button>
