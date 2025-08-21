@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
@@ -337,13 +337,15 @@ function Topic() {
     const [showPreproposalsPrompt, setShowPreproposalsPrompt] = useState(false);
     const [creatingPreproposals, setCreatingPreproposals] = useState(false);
     
-    // Get forum actor for text limits
-    const forumActor = identity ? createActor(canisterId, {
-        agentOptions: {
-            host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
-            identity: identity,
-        },
-    }) : null;
+    // Get forum actor for text limits (memoized to prevent repeated fetching)
+    const forumActor = useMemo(() => {
+        return identity ? createActor(canisterId, {
+            agentOptions: {
+                host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                identity: identity,
+            },
+        }) : null;
+    }, [identity]);
     
     // Get text limits
     const { textLimits } = useTextLimits(forumActor);

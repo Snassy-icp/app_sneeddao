@@ -1529,6 +1529,28 @@ function ThreadViewer({
                         <p>{threadDetails.body}</p>
                     </div>
                 )}
+                {threadDetails && threadDetails.created_by && (
+                    <div className="thread-creator" style={{
+                        marginTop: '10px',
+                        padding: '8px 0',
+                        borderTop: '1px solid #3a3a3a',
+                        fontSize: '0.9rem',
+                        color: '#ccc'
+                    }}>
+                        <span>Created by: </span>
+                        <PrincipalDisplay 
+                            principal={threadDetails.created_by}
+                            principalNames={principalNames}
+                            principalNicknames={principalNicknames}
+                            style={{ color: '#3498db', fontWeight: '500' }}
+                        />
+                        {threadDetails.created_at && (
+                            <span style={{ marginLeft: '12px', color: '#888' }}>
+                                {new Date(Number(threadDetails.created_at / 1000000n)).toLocaleDateString()}
+                            </span>
+                        )}
+                    </div>
+                )}
                 {mode === 'post' && focusedPostId && (
                     <div className="post-focus-info" style={{
                         backgroundColor: '#2c3e50',
