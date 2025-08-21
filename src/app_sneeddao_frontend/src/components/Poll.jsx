@@ -28,8 +28,21 @@ const Poll = ({
     const [pollBody, setPollBody] = useState('');
     const [pollOptions, setPollOptions] = useState([{ title: '', body: '' }, { title: '', body: '' }]);
     const [pollVpPower, setPollVpPower] = useState(1.0);
-    const [pollEndDate, setPollEndDate] = useState('');
-    const [pollEndTime, setPollEndTime] = useState('12:00');
+    
+    // Set default poll expiration to exactly 5 days from now
+    const getDefaultEndDateTime = () => {
+        const now = new Date();
+        const fiveDaysFromNow = new Date(now.getTime() + (5 * 24 * 60 * 60 * 1000)); // Add 5 days in milliseconds
+        
+        const dateStr = fiveDaysFromNow.toISOString().split('T')[0]; // YYYY-MM-DD format
+        const timeStr = fiveDaysFromNow.toTimeString().slice(0, 5); // HH:MM format
+        
+        return { dateStr, timeStr };
+    };
+    
+    const defaultDateTime = getDefaultEndDateTime();
+    const [pollEndDate, setPollEndDate] = useState(defaultDateTime.dateStr);
+    const [pollEndTime, setPollEndTime] = useState(defaultDateTime.timeStr);
     const [allowVoteChanges, setAllowVoteChanges] = useState(true);
     const [submittingPoll, setSubmittingPoll] = useState(false);
     const [pollError, setPollError] = useState(null);
@@ -55,12 +68,13 @@ const Poll = ({
     };
 
     const clearPollForm = () => {
+        const defaultDateTime = getDefaultEndDateTime();
         setPollTitle('');
         setPollBody('');
         setPollOptions([{ title: '', body: '' }, { title: '', body: '' }]);
         setPollVpPower(1.0);
-        setPollEndDate('');
-        setPollEndTime('12:00');
+        setPollEndDate(defaultDateTime.dateStr);
+        setPollEndTime(defaultDateTime.timeStr);
         setAllowVoteChanges(true);
         setPollError(null);
     };
