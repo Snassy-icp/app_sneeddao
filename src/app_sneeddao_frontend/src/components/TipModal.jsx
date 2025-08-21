@@ -579,53 +579,21 @@ const TipModal = ({
 
                     {/* Amount Input */}
                     <div style={{ width: '100%' }}>
-                        <label style={{
-                            display: 'block',
-                            color: 'rgba(255, 255, 255, 0.9)',
-                            fontSize: '15px',
-                            marginBottom: '12px',
-                            fontWeight: '500',
-                            letterSpacing: '0.5px'
-                        }}>
-                            Amount
-                        </label>
                         <div style={{
-                            position: 'relative',
-                            background: 'rgba(255, 255, 255, 0.05)',
-                            borderRadius: '12px',
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                            overflow: 'hidden',
                             display: 'flex',
-                            alignItems: 'center'
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '12px'
                         }}>
-                            <input
-                                type="number"
-                                value={amount}
-                                onChange={(e) => {
-                                    const value = e.target.value;
-                                    const maxAmount = getMaxAmount();
-                                    if (parseFloat(value) <= maxAmount || value === '') {
-                                        setAmount(value);
-                                    }
-                                }}
-                                placeholder="0.00"
-                                step="any"
-                                min="0"
-                                max={getMaxAmount()}
-                                style={{
-                                    flex: 1,
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    color: '#ffffff',
-                                    padding: '16px 20px',
-                                    fontSize: '18px',
-                                    fontWeight: '500',
-                                    outline: 'none',
-                                    textAlign: 'center',
-                                    letterSpacing: '1px'
-                                }}
-                                required
-                            />
+                            <label style={{
+                                color: 'rgba(255, 255, 255, 0.9)',
+                                fontSize: '15px',
+                                fontWeight: '500',
+                                letterSpacing: '0.5px',
+                                margin: 0
+                            }}>
+                                Amount
+                            </label>
                             <button
                                 type="button"
                                 onClick={handleMaxClick}
@@ -635,7 +603,6 @@ const TipModal = ({
                                     borderRadius: '8px',
                                     color: '#ffd700',
                                     padding: '8px 12px',
-                                    margin: '8px',
                                     fontSize: '12px',
                                     fontWeight: '600',
                                     cursor: 'pointer',
@@ -653,6 +620,42 @@ const TipModal = ({
                             >
                                 MAX
                             </button>
+                        </div>
+                        <div style={{
+                            position: 'relative',
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            borderRadius: '12px',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            overflow: 'hidden'
+                        }}>
+                            <input
+                                type="number"
+                                value={amount}
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    const maxAmount = getMaxAmount();
+                                    if (parseFloat(value) <= maxAmount || value === '') {
+                                        setAmount(value);
+                                    }
+                                }}
+                                placeholder="0.00"
+                                step="any"
+                                min="0"
+                                max={getMaxAmount()}
+                                style={{
+                                    width: '100%',
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    color: '#ffffff',
+                                    padding: '16px 20px',
+                                    fontSize: '18px',
+                                    fontWeight: '500',
+                                    outline: 'none',
+                                    textAlign: 'center',
+                                    letterSpacing: '1px'
+                                }}
+                                required
+                            />
                         </div>
                         {selectedToken && tokenMetadata[selectedToken] && (
                             <div style={{
