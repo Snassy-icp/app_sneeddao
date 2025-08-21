@@ -339,6 +339,15 @@ function Topic() {
     const [showPreproposalsPrompt, setShowPreproposalsPrompt] = useState(false);
     const [creatingPreproposals, setCreatingPreproposals] = useState(false);
     
+    // Poll creation state
+    const [includePoll, setIncludePoll] = useState(false);
+    const [pollTitle, setPollTitle] = useState('');
+    const [pollBody, setPollBody] = useState('');
+    const [pollOptions, setPollOptions] = useState([{ title: '', body: '' }, { title: '', body: '' }]);
+    const [pollVpPower, setPollVpPower] = useState(1.0);
+    const [pollEndDate, setPollEndDate] = useState('');
+    const [pollEndTime, setPollEndTime] = useState('12:00');
+    
     // State for thread proposal information
     const [threadProposals, setThreadProposals] = useState(new Map()); // Map<threadId, {proposalId, proposalData}>
     
@@ -573,6 +582,32 @@ function Topic() {
             return;
         }
 
+        // Validate poll if included
+        if (includePoll) {
+            if (!pollTitle.trim() || !pollBody.trim()) {
+                setError('Please fill in poll title and body');
+                return;
+            }
+            
+            if (!pollEndDate || !pollEndTime) {
+                setError('Please set poll end date and time');
+                return;
+            }
+            
+            const validOptions = pollOptions.filter(opt => opt.title.trim());
+            if (validOptions.length < 2) {
+                setError('Poll must have at least 2 options with titles');
+                return;
+            }
+            
+            // Check if end date is in the future
+            const endDateTime = new Date(`${pollEndDate}T${pollEndTime}`);
+            if (endDateTime <= new Date()) {
+                setError('Poll end date must be in the future');
+                return;
+            }
+        }
+
         try {
             setSubmitting(true);
             setError(null);
@@ -584,26 +619,59 @@ function Topic() {
                 },
             });
 
-            const result = await forumActor.create_thread({
+            // Step 1: Create the thread
+            const threadResult = await forumActor.create_thread({
                 topic_id: parseInt(topicId),
                 title: [createThreadTitle.trim()], // Motoko optional: Some(value) = [value]
                 body: createThreadBody.trim()
             });
 
-            if ('ok' in result) {
-                // Clear form
-                setCreateThreadTitle('');
-                setCreateThreadBody('');
-                
-                // Navigate to the new thread
-                const newThreadId = result.ok.toString();
-                navigate(`/thread?threadid=${newThreadId}`);
-            } else {
-                setError('Failed to create thread: ' + formatError(result.err, 'Unknown error'));
+            if (!('ok' in threadResult)) {
+                setError('Failed to create thread: ' + formatError(threadResult.err, 'Unknown error'));
+                return;
             }
 
+            const newThreadId = threadResult.ok;
+
+            // Step 2: Create the poll if requested
+            if (includePoll) {
+                const endDateTime = new Date(`${pollEndDate}T${pollEndTime}`);
+                const endTimestamp = endDateTime.getTime() * 1000000; // Convert to nanoseconds
+
+                const validOptions = pollOptions.filter(opt => opt.title.trim()).map(opt => ({
+                    title: opt.title.trim(),
+                    body: opt.body.trim() ? [opt.body.trim()] : [] // Motoko optional
+                }));
+
+                const pollResult = await forumActor.create_poll({
+                    thread_id: parseInt(newThreadId),
+                    post_id: [], // Empty for thread poll (Motoko optional)
+                    title: pollTitle.trim(),
+                    body: pollBody.trim(),
+                    options: validOptions,
+                    vp_power: pollVpPower === 1.0 ? [] : [pollVpPower], // Default to 1.0 if not specified
+                    end_timestamp: endTimestamp
+                });
+
+                if (!('ok' in pollResult)) {
+                    console.warn('Thread created but poll creation failed:', pollResult.err);
+                    setError('Thread created successfully, but poll creation failed: ' + formatError(pollResult.err, 'Unknown error'));
+                    // Still navigate to thread even if poll failed
+                    navigate(`/thread?threadid=${newThreadId}`);
+                    return;
+                }
+            }
+
+            // Clear forms
+            setCreateThreadTitle('');
+            setCreateThreadBody('');
+            clearPollForm();
+            
+            // Navigate to the new thread
+            navigate(`/thread?threadid=${newThreadId}`);
+
         } catch (err) {
-            console.error('Error creating thread:', err);
+            console.error('Error creating thread/poll:', err);
             setError('Failed to create thread: ' + formatError(err, 'Network or system error'));
         } finally {
             setSubmitting(false);
@@ -632,6 +700,36 @@ function Topic() {
     const handleThreadsPerPageChange = (newThreadsPerPage) => {
         setThreadsPerPage(newThreadsPerPage);
         setCurrentPage(0); // Reset to first page when changing page size
+    };
+
+    // Poll option management functions
+    const addPollOption = () => {
+        if (pollOptions.length < 10) { // Reasonable limit
+            setPollOptions([...pollOptions, { title: '', body: '' }]);
+        }
+    };
+
+    const removePollOption = (index) => {
+        if (pollOptions.length > 2) { // Minimum 2 options
+            setPollOptions(pollOptions.filter((_, i) => i !== index));
+        }
+    };
+
+    const updatePollOption = (index, field, value) => {
+        const updated = pollOptions.map((option, i) => 
+            i === index ? { ...option, [field]: value } : option
+        );
+        setPollOptions(updated);
+    };
+
+    const clearPollForm = () => {
+        setPollTitle('');
+        setPollBody('');
+        setPollOptions([{ title: '', body: '' }, { title: '', body: '' }]);
+        setPollVpPower(1.0);
+        setPollEndDate('');
+        setPollEndTime('12:00');
+        setIncludePoll(false);
     };
 
     if (loading) {
@@ -952,10 +1050,293 @@ function Topic() {
                                 }
                             </div>
                         )}
+                        
+                        {/* Poll Creation Section */}
+                        <div style={{ marginTop: '20px', borderTop: '1px solid #444', paddingTop: '20px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}>
+                                <input
+                                    type="checkbox"
+                                    id="includePoll"
+                                    checked={includePoll}
+                                    onChange={(e) => setIncludePoll(e.target.checked)}
+                                    style={{ 
+                                        width: '16px', 
+                                        height: '16px',
+                                        accentColor: '#3498db'
+                                    }}
+                                />
+                                <label htmlFor="includePoll" style={{ 
+                                    color: '#ffffff', 
+                                    fontSize: '16px', 
+                                    fontWeight: '500',
+                                    cursor: 'pointer'
+                                }}>
+                                    📊 Include a Poll with this Thread
+                                </label>
+                            </div>
+
+                            {includePoll && (
+                                <div style={{ 
+                                    backgroundColor: '#333', 
+                                    borderRadius: '6px', 
+                                    padding: '20px', 
+                                    border: '1px solid #444',
+                                    marginBottom: '15px'
+                                }}>
+                                    <h4 style={{ color: '#ffffff', marginBottom: '15px', fontSize: '16px' }}>Poll Details</h4>
+                                    
+                                    {/* Poll Title */}
+                                    <input
+                                        type="text"
+                                        value={pollTitle}
+                                        onChange={(e) => setPollTitle(e.target.value)}
+                                        placeholder="Poll title (e.g., 'What should we prioritize next?')"
+                                        style={{
+                                            width: '100%',
+                                            backgroundColor: '#2a2a2a',
+                                            color: '#ffffff',
+                                            border: `1px solid ${textLimits && pollTitle.length > textLimits.post_title_max_length ? '#e74c3c' : '#444'}`,
+                                            borderRadius: '4px',
+                                            padding: '10px',
+                                            marginBottom: '5px',
+                                            fontSize: '14px',
+                                            boxSizing: 'border-box'
+                                        }}
+                                        disabled={submitting}
+                                    />
+                                    {textLimits && (
+                                        <div style={{
+                                            fontSize: '12px',
+                                            color: pollTitle.length > textLimits.post_title_max_length ? '#e74c3c' : '#888',
+                                            marginBottom: '10px'
+                                        }}>
+                                            Poll title: {pollTitle.length}/{textLimits.post_title_max_length} characters
+                                        </div>
+                                    )}
+
+                                    {/* Poll Body */}
+                                    <textarea
+                                        value={pollBody}
+                                        onChange={(e) => setPollBody(e.target.value)}
+                                        placeholder="Poll description (optional - explain what this poll is about)"
+                                        style={{
+                                            width: '100%',
+                                            backgroundColor: '#2a2a2a',
+                                            color: '#ffffff',
+                                            border: `1px solid ${textLimits && pollBody.length > textLimits.post_body_max_length ? '#e74c3c' : '#444'}`,
+                                            borderRadius: '4px',
+                                            padding: '10px',
+                                            fontSize: '14px',
+                                            minHeight: '80px',
+                                            resize: 'vertical',
+                                            marginBottom: '5px',
+                                            boxSizing: 'border-box'
+                                        }}
+                                        disabled={submitting}
+                                    />
+                                    {textLimits && (
+                                        <div style={{
+                                            fontSize: '12px',
+                                            color: pollBody.length > textLimits.post_body_max_length ? '#e74c3c' : '#888',
+                                            marginBottom: '15px'
+                                        }}>
+                                            Poll body: {pollBody.length}/{textLimits.post_body_max_length} characters
+                                        </div>
+                                    )}
+
+                                    {/* Poll Options */}
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <h5 style={{ color: '#ffffff', marginBottom: '10px', fontSize: '14px' }}>Poll Options</h5>
+                                        {pollOptions.map((option, index) => (
+                                            <div key={index} style={{ 
+                                                display: 'flex', 
+                                                gap: '10px', 
+                                                marginBottom: '10px',
+                                                alignItems: 'flex-start'
+                                            }}>
+                                                <div style={{ flex: 1 }}>
+                                                    <input
+                                                        type="text"
+                                                        value={option.title}
+                                                        onChange={(e) => updatePollOption(index, 'title', e.target.value)}
+                                                        placeholder={`Option ${index + 1} (e.g., 'Feature A', 'Yes', 'No')`}
+                                                        style={{
+                                                            width: '100%',
+                                                            backgroundColor: '#2a2a2a',
+                                                            color: '#ffffff',
+                                                            border: '1px solid #444',
+                                                            borderRadius: '4px',
+                                                            padding: '8px',
+                                                            fontSize: '14px',
+                                                            marginBottom: '5px',
+                                                            boxSizing: 'border-box'
+                                                        }}
+                                                        disabled={submitting}
+                                                    />
+                                                    <textarea
+                                                        value={option.body}
+                                                        onChange={(e) => updatePollOption(index, 'body', e.target.value)}
+                                                        placeholder="Optional description for this option"
+                                                        style={{
+                                                            width: '100%',
+                                                            backgroundColor: '#2a2a2a',
+                                                            color: '#ffffff',
+                                                            border: '1px solid #444',
+                                                            borderRadius: '4px',
+                                                            padding: '8px',
+                                                            fontSize: '12px',
+                                                            minHeight: '40px',
+                                                            resize: 'vertical',
+                                                            boxSizing: 'border-box'
+                                                        }}
+                                                        disabled={submitting}
+                                                    />
+                                                </div>
+                                                {pollOptions.length > 2 && (
+                                                    <button
+                                                        onClick={() => removePollOption(index)}
+                                                        disabled={submitting}
+                                                        style={{
+                                                            backgroundColor: '#e74c3c',
+                                                            color: '#ffffff',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            padding: '8px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '12px',
+                                                            marginTop: '5px'
+                                                        }}
+                                                        title="Remove this option"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                        {pollOptions.length < 10 && (
+                                            <button
+                                                onClick={addPollOption}
+                                                disabled={submitting}
+                                                style={{
+                                                    backgroundColor: '#3498db',
+                                                    color: '#ffffff',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    padding: '6px 12px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '12px'
+                                                }}
+                                            >
+                                                + Add Option
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Poll Settings */}
+                                    <div style={{ 
+                                        display: 'grid', 
+                                        gridTemplateColumns: '1fr 1fr 1fr', 
+                                        gap: '15px',
+                                        marginBottom: '15px'
+                                    }}>
+                                        <div>
+                                            <label style={{ 
+                                                color: '#ccc', 
+                                                fontSize: '12px', 
+                                                display: 'block', 
+                                                marginBottom: '5px' 
+                                            }}>
+                                                End Date
+                                            </label>
+                                            <input
+                                                type="date"
+                                                value={pollEndDate}
+                                                onChange={(e) => setPollEndDate(e.target.value)}
+                                                min={new Date().toISOString().split('T')[0]}
+                                                style={{
+                                                    width: '100%',
+                                                    backgroundColor: '#2a2a2a',
+                                                    color: '#ffffff',
+                                                    border: '1px solid #444',
+                                                    borderRadius: '4px',
+                                                    padding: '8px',
+                                                    fontSize: '14px',
+                                                    boxSizing: 'border-box'
+                                                }}
+                                                disabled={submitting}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={{ 
+                                                color: '#ccc', 
+                                                fontSize: '12px', 
+                                                display: 'block', 
+                                                marginBottom: '5px' 
+                                            }}>
+                                                End Time
+                                            </label>
+                                            <input
+                                                type="time"
+                                                value={pollEndTime}
+                                                onChange={(e) => setPollEndTime(e.target.value)}
+                                                style={{
+                                                    width: '100%',
+                                                    backgroundColor: '#2a2a2a',
+                                                    color: '#ffffff',
+                                                    border: '1px solid #444',
+                                                    borderRadius: '4px',
+                                                    padding: '8px',
+                                                    fontSize: '14px',
+                                                    boxSizing: 'border-box'
+                                                }}
+                                                disabled={submitting}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label style={{ 
+                                                color: '#ccc', 
+                                                fontSize: '12px', 
+                                                display: 'block', 
+                                                marginBottom: '5px' 
+                                            }}>
+                                                VP Power
+                                            </label>
+                                            <select
+                                                value={pollVpPower}
+                                                onChange={(e) => setPollVpPower(parseFloat(e.target.value))}
+                                                style={{
+                                                    width: '100%',
+                                                    backgroundColor: '#2a2a2a',
+                                                    color: '#ffffff',
+                                                    border: '1px solid #444',
+                                                    borderRadius: '4px',
+                                                    padding: '8px',
+                                                    fontSize: '14px',
+                                                    boxSizing: 'border-box'
+                                                }}
+                                                disabled={submitting}
+                                            >
+                                                <option value={0}>Equal (0 - each vote = 1)</option>
+                                                <option value={0.5}>Square Root (0.5)</option>
+                                                <option value={1}>Linear (1 - default)</option>
+                                                <option value={2}>Quadratic (2)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ fontSize: '12px', color: '#888', fontStyle: 'italic' }}>
+                                        💡 VP Power determines how neuron voting power affects poll results. 
+                                        Equal (0) makes each vote count as 1 regardless of VP. 
+                                        Linear (1) uses normal VP. Higher values amplify VP differences.
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        
                         <div style={{ 
                             display: 'flex', 
                             gap: '10px', 
-                            marginTop: '10px'
+                            marginTop: '15px'
                         }}>
                             <button
                                 onClick={handleCreateThread}
@@ -973,11 +1354,29 @@ function Topic() {
                                     cursor: (submitting || !createThreadTitle.trim() || !createThreadBody.trim() || 
                                             (textLimits && (createThreadTitle.length > textLimits.thread_title_max_length || 
                                                            createThreadBody.length > textLimits.thread_body_max_length))) ? 'not-allowed' : 'pointer',
-                                    fontSize: '14px'
+                                    fontSize: '14px',
+                                    fontWeight: '500'
                                 }}
                             >
-                                {submitting ? 'Creating...' : 'Create Thread'}
+                                {submitting ? 'Creating...' : (includePoll ? 'Create Thread & Poll' : 'Create Thread')}
                             </button>
+                            {includePoll && (
+                                <button
+                                    onClick={clearPollForm}
+                                    disabled={submitting}
+                                    style={{
+                                        backgroundColor: 'transparent',
+                                        color: '#888',
+                                        border: '1px solid #555',
+                                        borderRadius: '4px',
+                                        padding: '8px 16px',
+                                        cursor: submitting ? 'not-allowed' : 'pointer',
+                                        fontSize: '14px'
+                                    }}
+                                >
+                                    Clear Poll
+                                </button>
+                            )}
                         </div>
                     </div>
                     )}
