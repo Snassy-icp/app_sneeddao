@@ -2290,13 +2290,10 @@ function ThreadViewer({
                 <div className="post-content">
                     <div className="post-header" style={{
                         display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        flexWrap: 'wrap',
-                        wordBreak: 'break-word',
-                        overflowWrap: 'anywhere'
+                        alignItems: 'flex-start',
+                        gap: '8px'
                     }}>
-                        {/* Collapse button - always show for tree view */}
+                        {/* Collapse button - always show for tree view, always in top-left */}
                         {!isFlat && (
                             <button
                                 onClick={() => {
@@ -2318,13 +2315,15 @@ function ThreadViewer({
                                     fontSize: '14px',
                                     minWidth: '28px',
                                     height: '28px',
-                                    flexShrink: 0
+                                    flexShrink: 0,
+                                    marginTop: '2px'
                                 }}
                                 title={isCollapsed ? 'Expand post' : 'Collapse post'}
                             >
                                 {isCollapsed ? '+' : '−'}
                             </button>
                         )}
+                        {/* Content flows from left after collapse button */}
                         <div style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -2332,6 +2331,7 @@ function ThreadViewer({
                             flexWrap: 'wrap',
                             wordBreak: 'break-word',
                             overflowWrap: 'anywhere',
+                            flex: 1,
                             minWidth: 0
                         }}>
                             <a 
