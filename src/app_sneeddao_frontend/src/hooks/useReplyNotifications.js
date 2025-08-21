@@ -17,7 +17,7 @@ import {
  */
 export function useReplyNotifications() {
     const { isAuthenticated, identity } = useAuth();
-    const { createForumActor } = useForum();
+    const { createNotificationForumActor } = useForum();
     
     const [newReplyCount, setNewReplyCount] = useState(0);
     const [loading, setLoading] = useState(false);
@@ -34,7 +34,7 @@ export function useReplyNotifications() {
             setLoading(true);
             setError(null);
 
-            const forumActor = createForumActor(identity);
+            const forumActor = createNotificationForumActor(identity);
             
             // Use optimized count method for ticker (much faster)
             const replyCount = await getRecentRepliesCount(forumActor, identity.getPrincipal());
@@ -56,7 +56,7 @@ export function useReplyNotifications() {
         } finally {
             setLoading(false);
         }
-    }, [isAuthenticated, identity, createForumActor]);
+    }, [isAuthenticated, identity, createNotificationForumActor]);
 
     const markAsViewed = useCallback(async () => {
         if (!isAuthenticated || !identity || newReplyCount === 0) {
@@ -64,7 +64,7 @@ export function useReplyNotifications() {
         }
 
         try {
-            const forumActor = createForumActor(identity);
+            const forumActor = createNotificationForumActor(identity);
             const currentTimestamp = Date.now() * 1_000_000; // Convert to nanoseconds
             
             await markRepliesSeenUpTo(forumActor, currentTimestamp);
@@ -79,7 +79,7 @@ export function useReplyNotifications() {
             console.error('Error marking replies as viewed:', err);
             setError(err.message);
         }
-    }, [isAuthenticated, identity, createForumActor, newReplyCount]);
+    }, [isAuthenticated, identity, createNotificationForumActor, newReplyCount]);
 
     const refreshNotifications = useCallback(() => {
         checkForNewReplies();

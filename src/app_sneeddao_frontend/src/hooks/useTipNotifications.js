@@ -19,7 +19,7 @@ import {
  */
 export function useTipNotifications() {
     const { isAuthenticated, identity } = useAuth();
-    const { createForumActor } = useForum();
+    const { createNotificationForumActor } = useForum();
     
     const [newTipCount, setNewTipCount] = useState(0);
     const [newTips, setNewTips] = useState([]);
@@ -38,7 +38,7 @@ export function useTipNotifications() {
             setLoading(true);
             setError(null);
 
-            const forumActor = createForumActor(identity);
+            const forumActor = createNotificationForumActor(identity);
             
             // Use optimized count method for ticker (much faster)
             const tipCount = await getRecentTipsCount(forumActor, identity.getPrincipal());
@@ -63,7 +63,7 @@ export function useTipNotifications() {
         } finally {
             setLoading(false);
         }
-    }, [isAuthenticated, identity, createForumActor]);
+    }, [isAuthenticated, identity, createNotificationForumActor]);
 
     const markAsViewed = useCallback(async () => {
         if (!isAuthenticated || !identity || newTipCount === 0) {
@@ -71,7 +71,7 @@ export function useTipNotifications() {
         }
 
         try {
-            const forumActor = createForumActor(identity);
+            const forumActor = createNotificationForumActor(identity);
             const currentTimestamp = Date.now() * 1_000_000; // Convert to nanoseconds
             
             await markTipsSeenUpTo(forumActor, currentTimestamp);
@@ -87,7 +87,7 @@ export function useTipNotifications() {
             console.error('Error marking tips as viewed:', err);
             setError(err.message);
         }
-    }, [isAuthenticated, identity, createForumActor, newTipCount]);
+    }, [isAuthenticated, identity, createNotificationForumActor, newTipCount]);
 
     const refreshNotifications = useCallback(() => {
         checkForNewTips();

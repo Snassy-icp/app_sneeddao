@@ -26,9 +26,28 @@ export function ForumProvider({ children }) {
     }
   }, []);
 
+  // Separate actor creation for notifications - doesn't update global state
+  const createNotificationForumActor = useCallback((identity) => {
+    try {
+      const actor = createActor(canisterId, {
+        agentOptions: {
+          host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+          identity: identity || undefined,
+        },
+      });
+
+      // Don't call setForumActor - this is for isolated notification checks
+      return actor;
+    } catch (err) {
+      console.error('Error creating notification forum actor:', err);
+      return null;
+    }
+  }, []);
+
   const value = {
     forumActor,
     createForumActor,
+    createNotificationForumActor,
     loading,
     error,
     setLoading,
