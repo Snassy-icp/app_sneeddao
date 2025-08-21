@@ -243,13 +243,15 @@ const Poll = ({
     };
 
     const formatDate = (timestamp) => {
-        return new Date(Number(timestamp / 1000000n)).toLocaleString();
+        // Convert nanoseconds to milliseconds, handling BigInt
+        const timestampBigInt = typeof timestamp === 'bigint' ? timestamp : BigInt(timestamp);
+        return new Date(Number(timestampBigInt / 1000000n)).toLocaleString();
     };
 
     const getOptionVotePercentage = (option) => {
         if (!poll || !poll.options) return 0;
-        const totalVotes = poll.options.reduce((sum, opt) => sum + opt.total_voting_power, 0);
-        return totalVotes > 0 ? (option.total_voting_power / totalVotes) * 100 : 0;
+        const totalVotes = poll.options.reduce((sum, opt) => sum + Number(opt.total_voting_power), 0);
+        return totalVotes > 0 ? (Number(option.total_voting_power) / totalVotes) * 100 : 0;
     };
 
     const getUserVoteForOption = (optionId) => {
@@ -661,7 +663,7 @@ const Poll = ({
                                     <span style={{ color: '#888', fontSize: '12px', minWidth: '60px', textAlign: 'right' }}>
                                         {option.vote_count} votes
                                         <br />
-                                        {option.total_voting_power.toLocaleString()} VP
+                                        {Number(option.total_voting_power).toLocaleString()} VP
                                     </span>
                                     {userVoteCount > 0 && (
                                         <span style={{
@@ -743,7 +745,7 @@ const Poll = ({
                     border: '1px solid #333'
                 }}>
                     💡 Voting with {selectedNeurons.length} neuron{selectedNeurons.length !== 1 ? 's' : ''} 
-                    ({totalVotingPower.toLocaleString()} total VP)
+                    ({Number(totalVotingPower).toLocaleString()} total VP)
                 </div>
             )}
         </div>
