@@ -2288,7 +2288,14 @@ function ThreadViewer({
 
                 {/* Post content - simplified for now */}
                 <div className="post-content">
-                    <div className="post-header">
+                    <div className="post-header" style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        flexWrap: 'wrap',
+                        wordBreak: 'break-word',
+                        overflowWrap: 'anywhere'
+                    }}>
                         {/* Collapse button - always show for tree view */}
                         {!isFlat && (
                             <button
@@ -2311,7 +2318,6 @@ function ThreadViewer({
                                     fontSize: '14px',
                                     minWidth: '28px',
                                     height: '28px',
-                                    marginRight: '8px',
                                     flexShrink: 0
                                 }}
                                 title={isCollapsed ? 'Expand post' : 'Collapse post'}
@@ -2319,27 +2325,38 @@ function ThreadViewer({
                                 {isCollapsed ? '+' : '−'}
                             </button>
                         )}
-                        <a 
-                            href={`/post?postid=${post.id}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
-                            className="post-id"
-                            style={{
-                                color: '#3498db',
-                                textDecoration: 'none',
-                                fontWeight: '500'
-                            }}
-                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                        >
-                            #{post.id.toString()}
-                        </a>
-                        {post.title && <h4>{post.title}</h4>}
-                        <span>By: <PrincipalDisplay 
-                            principal={post.created_by} 
-                            displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
-                            showCopyButton={false} 
-                        /></span>
-                        <span>•</span>
-                        <span>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            flexWrap: 'wrap',
+                            wordBreak: 'break-word',
+                            overflowWrap: 'anywhere',
+                            minWidth: 0
+                        }}>
+                            <a 
+                                href={`/post?postid=${post.id}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
+                                className="post-id"
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none',
+                                    fontWeight: '500',
+                                    flexShrink: 0
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                #{post.id.toString()}
+                            </a>
+                            {post.title && <h4 style={{ margin: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{post.title}</h4>}
+                            <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>By: <PrincipalDisplay 
+                                principal={post.created_by} 
+                                displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
+                                showCopyButton={false} 
+                            /></span>
+                            <span style={{ flexShrink: 0 }}>•</span>
+                            <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
+                        </div>
                         {viewMode === 'flat' && post.reply_to_post_id && post.reply_to_post_id.length > 0 && (() => {
                             const parentPost = findPostById(discussionPosts, post.reply_to_post_id[0]);
                             if (parentPost) {
@@ -2394,7 +2411,8 @@ function ThreadViewer({
                             gap: '8px',
                             marginTop: '10px',
                             paddingTop: '10px',
-                            borderTop: '1px solid #333'
+                            borderTop: '1px solid #333',
+                            flexWrap: 'wrap'
                         }}>
                             {/* Reply Button */}
                             <button
