@@ -9,40 +9,6 @@ import Time "mo:base/Time";
 import T "Types";
 import Lib "lib";
 
-(with migration = 
-    func(old_state: {
-        stable_polls: Map.Map<Nat, T.old_Poll>;
-    }) : {
-        stable_polls: Map.Map<Nat, T.Poll>;
-    } {
-        // Migrate old polls to new polls with allow_vote_changes = true
-        let migrated_polls = Map.new<Nat, T.Poll>();
-        
-        for ((poll_id, old_poll) in Map.entries(old_state.stable_polls)) {
-            let new_poll: T.Poll = {
-                id = old_poll.id;
-                thread_id = old_poll.thread_id;
-                post_id = old_poll.post_id;
-                title = old_poll.title;
-                body = old_poll.body;
-                options = old_poll.options;
-                vp_power = old_poll.vp_power;
-                end_timestamp = old_poll.end_timestamp;
-                allow_vote_changes = true; // Default to true for existing polls
-                created_by = old_poll.created_by;
-                created_at = old_poll.created_at;
-                updated_by = old_poll.updated_by;
-                updated_at = old_poll.updated_at;
-                deleted = old_poll.deleted;
-            };
-            ignore Map.put(migrated_polls, Map.nhash, poll_id, new_poll);
-        };
-        
-        {
-            stable_polls = migrated_polls;
-        }
-    }
-)
 persistent actor SneedSNSForum {
     // NNS SNS-W canister interface for getting deployed SNS instances
     type DeployedSns = {
