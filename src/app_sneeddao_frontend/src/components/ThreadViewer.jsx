@@ -2299,7 +2299,7 @@ function ThreadViewer({
                     }}>
                         {/* Collapse button - flows inline with other elements */}
                         {!isFlat && (
-                            <button
+                            <span
                                 onClick={() => {
                                     const newCollapsed = new Set(collapsedPosts);
                                     if (hasBeenManuallyToggled) {
@@ -2310,21 +2310,16 @@ function ThreadViewer({
                                     setCollapsedPosts(newCollapsed);
                                 }}
                                 style={{
-                                    backgroundColor: 'transparent',
-                                    border: '1px solid #666',
                                     color: '#888',
-                                    borderRadius: '4px',
-                                    padding: '4px 8px',
                                     cursor: 'pointer',
-                                    fontSize: '14px',
-                                    minWidth: '28px',
-                                    height: '28px',
+                                    fontSize: '12px',
+                                    userSelect: 'none',
                                     flexShrink: 0
                                 }}
                                 title={isCollapsed ? 'Expand post' : 'Collapse post'}
                             >
-                                {isCollapsed ? '+' : '−'}
-                            </button>
+                                {isCollapsed ? '▶' : '▼'}
+                            </span>
                         )}
                         <a 
                             href={`/post?postid=${post.id}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
