@@ -345,8 +345,22 @@ function Topic() {
     const [pollBody, setPollBody] = useState('');
     const [pollOptions, setPollOptions] = useState([{ title: '', body: '' }, { title: '', body: '' }]);
     const [pollVpPower, setPollVpPower] = useState(1.0);
-    const [pollEndDate, setPollEndDate] = useState('');
-    const [pollEndTime, setPollEndTime] = useState('12:00');
+    
+    // Set default poll expiration to exactly 5 days from now
+    const getDefaultEndDateTime = () => {
+        const now = new Date();
+        const fiveDaysFromNow = new Date(now.getTime() + (5 * 24 * 60 * 60 * 1000)); // Add 5 days in milliseconds
+        
+        const dateStr = fiveDaysFromNow.toISOString().split('T')[0]; // YYYY-MM-DD format
+        const timeStr = fiveDaysFromNow.toTimeString().slice(0, 5); // HH:MM format
+        
+        return { dateStr, timeStr };
+    };
+    
+    const defaultDateTime = getDefaultEndDateTime();
+    const [pollEndDate, setPollEndDate] = useState(defaultDateTime.dateStr);
+    const [pollEndTime, setPollEndTime] = useState(defaultDateTime.timeStr);
+    const [allowVoteChanges, setAllowVoteChanges] = useState(true);
     
     // State for thread proposal information
     const [threadProposals, setThreadProposals] = useState(new Map()); // Map<threadId, {proposalId, proposalData}>
@@ -650,7 +664,8 @@ function Topic() {
                     body: pollBody.trim(),
                     options: validOptions,
                     vp_power: pollVpPower === 1.0 ? [] : [pollVpPower], // Default to 1.0 if not specified
-                    end_timestamp: endTimestamp
+                    end_timestamp: endTimestamp,
+                    allow_vote_changes: allowVoteChanges === true ? [] : [allowVoteChanges] // Default to true if not specified
                 });
 
                 if (!('ok' in pollResult)) {
@@ -723,12 +738,14 @@ function Topic() {
     };
 
     const clearPollForm = () => {
+        const defaultDateTime = getDefaultEndDateTime();
         setPollTitle('');
         setPollBody('');
         setPollOptions([{ title: '', body: '' }, { title: '', body: '' }]);
         setPollVpPower(1.0);
-        setPollEndDate('');
-        setPollEndTime('12:00');
+        setPollEndDate(defaultDateTime.dateStr);
+        setPollEndTime(defaultDateTime.timeStr);
+        setAllowVoteChanges(true);
         setIncludePoll(false);
     };
 
@@ -1328,6 +1345,37 @@ function Topic() {
                                         💡 VP Power determines how neuron voting power affects poll results. 
                                         Equal (0) makes each vote count as 1 regardless of VP. 
                                         Linear (1) uses normal VP. Higher values amplify VP differences.
+                                    </div>
+
+                                    {/* Allow Vote Changes */}
+                                    <div style={{ marginTop: '15px' }}>
+                                        <label style={{ 
+                                            color: '#ccc', 
+                                            fontSize: '14px', 
+                                            display: 'flex', 
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            cursor: 'pointer'
+                                        }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={allowVoteChanges}
+                                                onChange={(e) => setAllowVoteChanges(e.target.checked)}
+                                                disabled={submitting}
+                                                style={{
+                                                    transform: 'scale(1.2)'
+                                                }}
+                                            />
+                                            Allow voters to change their votes
+                                        </label>
+                                        <div style={{ 
+                                            fontSize: '12px', 
+                                            color: '#888', 
+                                            marginTop: '5px',
+                                            marginLeft: '28px'
+                                        }}>
+                                            If unchecked, voters can only vote once and cannot change their choice
+                                        </div>
                                     </div>
                                 </div>
                             )}

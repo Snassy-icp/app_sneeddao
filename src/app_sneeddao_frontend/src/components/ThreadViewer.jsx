@@ -156,7 +156,8 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
                     padding: '10px',
                     fontSize: '14px',
                     resize: 'vertical',
-                    fontFamily: 'inherit'
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box'
                 }}
             />
             
