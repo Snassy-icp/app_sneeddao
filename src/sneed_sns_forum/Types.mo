@@ -550,6 +550,23 @@ module {
         total_voting_power: Nat;
     };
 
+    // Old poll type for migration
+    public type old_Poll = {
+        id: Nat;
+        thread_id: Nat;
+        post_id: ?Nat; // null for thread polls, set for post polls
+        title: Text;
+        body: Text;
+        options: [PollOption];
+        vp_power: Float; // defaults to 1.0, can be 0 or higher (supports fractions)
+        end_timestamp: Int;
+        created_by: Nat32;
+        created_at: Int;
+        updated_by: Nat32;
+        updated_at: Int;
+        deleted: Bool;
+    };
+
     public type Poll = {
         id: Nat;
         thread_id: Nat;
