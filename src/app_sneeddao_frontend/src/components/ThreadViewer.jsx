@@ -25,6 +25,7 @@ import {
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import TipModal from './TipModal';
 import TipDisplay from './TipDisplay';
+import Poll from './Poll';
 import './ThreadViewer.css';
 
 // Separate EditForm component to prevent PostComponent re-renders
@@ -309,6 +310,12 @@ function ThreadViewer({
     const [loadingDiscussion, setLoadingDiscussion] = useState(false);
     const [commentText, setCommentText] = useState('');
     const [showCommentForm, setShowCommentForm] = useState(false);
+    
+    // Poll state
+    const [threadPolls, setThreadPolls] = useState([]); // Polls for the thread
+    const [postPolls, setPostPolls] = useState(new Map()); // Map<postId, Poll[]>
+    const [showPollForm, setShowPollForm] = useState(new Map()); // Map<postId|'thread', boolean>
+    const [loadingPolls, setLoadingPolls] = useState(false);
     const [submittingComment, setSubmittingComment] = useState(false);
     const [commentTitle, setCommentTitle] = useState('');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
@@ -570,6 +577,83 @@ function ThreadViewer({
             setLoadingDiscussion(false);
         }
     }, [forumActor, threadId, postFilter, onError]);
+
+    // Fetch polls for thread and posts
+    const fetchPolls = useCallback(async () => {
+        if (!forumActor || !threadId) return;
+        
+        setLoadingPolls(true);
+        try {
+            // Fetch thread polls
+            const threadPollsResult = await forumActor.get_polls_by_thread(Number(threadId));
+            console.log('Thread polls result:', threadPollsResult);
+            setThreadPolls(threadPollsResult || []);
+            
+            // Fetch post polls if we have posts
+            if (discussionPosts.length > 0) {
+                const postPollsMap = new Map();
+                
+                // Fetch polls for each post
+                await Promise.all(discussionPosts.map(async (post) => {
+                    try {
+                        const postPollsResult = await forumActor.get_polls_by_post(Number(post.id));
+                        if (postPollsResult && postPollsResult.length > 0) {
+                            postPollsMap.set(Number(post.id), postPollsResult);
+                        }
+                    } catch (error) {
+                        console.warn(`Failed to fetch polls for post ${post.id}:`, error);
+                    }
+                }));
+                
+                setPostPolls(postPollsMap);
+            }
+        } catch (error) {
+            console.error('Error fetching polls:', error);
+        } finally {
+            setLoadingPolls(false);
+        }
+    }, [forumActor, threadId, discussionPosts]);
+
+    // Refresh a specific poll (after voting)
+    const refreshPoll = useCallback(async (pollId) => {
+        if (!forumActor) return;
+        
+        try {
+            const pollResult = await forumActor.get_poll(pollId);
+            if (pollResult && pollResult.length > 0) {
+                const poll = pollResult[0];
+                
+                // Update thread polls
+                if (poll.post_id.length === 0) {
+                    setThreadPolls(prev => prev.map(p => p.id === pollId ? poll : p));
+                } else {
+                    // Update post polls
+                    const postId = poll.post_id[0];
+                    setPostPolls(prev => {
+                        const newMap = new Map(prev);
+                        const postPolls = newMap.get(postId) || [];
+                        newMap.set(postId, postPolls.map(p => p.id === pollId ? poll : p));
+                        return newMap;
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error refreshing poll:', error);
+        }
+    }, [forumActor]);
+
+    // Handle poll creation
+    const handlePollCreated = useCallback(async (pollId) => {
+        // Refresh polls to get the new poll
+        await fetchPolls();
+        
+        // Hide the poll form
+        setShowPollForm(prev => {
+            const newMap = new Map(prev);
+            newMap.clear(); // Clear all poll forms
+            return newMap;
+        });
+    }, [fetchPolls]);
 
     // Fetch only posts (for refreshing after votes, like Discussion.jsx)
     const fetchPosts = useCallback(async () => {
@@ -1289,6 +1373,13 @@ function ThreadViewer({
         }
     }, [fetchThreadData, threadId]);
 
+    // Effect to fetch polls when thread data is loaded
+    useEffect(() => {
+        if (threadId && discussionPosts.length >= 0) { // >= 0 to load even if no posts
+            fetchPolls();
+        }
+    }, [fetchPolls, threadId, discussionPosts]);
+
     // Effect to fetch thread votes when neurons become available
     useEffect(() => {
         if (discussionPosts.length > 0 && allNeurons && allNeurons.length > 0 && forumActor && threadId) {
@@ -1706,6 +1797,55 @@ function ThreadViewer({
                     <div className="thread-description">
                         <p style={{ whiteSpace: 'pre-wrap' }}>{threadDetails.body}</p>
                     </div>
+                )}
+                
+                {/* Thread Polls */}
+                {threadPolls.length > 0 && threadPolls.map(poll => (
+                    <Poll
+                        key={poll.id}
+                        poll={poll}
+                        onPollUpdate={() => refreshPoll(poll.id)}
+                        textLimits={textLimits}
+                    />
+                ))}
+                
+                {/* Create Poll for Thread Button */}
+                {identity && threadDetails && threadDetails.created_by && 
+                 Principal.fromText(threadDetails.created_by).toString() === identity.getPrincipal().toString() && 
+                 threadPolls.length === 0 && !showPollForm.get('thread') && (
+                    <button
+                        onClick={() => setShowPollForm(prev => new Map(prev.set('thread', true)))}
+                        style={{
+                            backgroundColor: '#3498db',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '8px 16px',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            marginTop: '10px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                        }}
+                    >
+                        📊 Add Poll to Thread
+                    </button>
+                )}
+                
+                {/* Create Poll Form for Thread */}
+                {showPollForm.get('thread') && (
+                    <Poll
+                        showCreateForm={true}
+                        onCreatePoll={handlePollCreated}
+                        onCancelCreate={() => setShowPollForm(prev => {
+                            const newMap = new Map(prev);
+                            newMap.delete('thread');
+                            return newMap;
+                        })}
+                        threadId={threadId}
+                        textLimits={textLimits}
+                    />
                 )}
                 {threadDetails && threadDetails.created_by && (
                     <div className="thread-creator" style={{
@@ -2381,6 +2521,16 @@ function ThreadViewer({
                                 </div>
                             )}
                             
+                            {/* Post Polls */}
+                            {postPolls.get(Number(post.id))?.map(poll => (
+                                <Poll
+                                    key={poll.id}
+                                    poll={poll}
+                                    onPollUpdate={() => refreshPoll(poll.id)}
+                                    textLimits={textLimits}
+                                />
+                            ))}
+                            
                             {/* Tips Display */}
                             {postTips[Number(post.id)] && postTips[Number(post.id)].length > 0 && (
                                 <TipDisplay 
@@ -2572,6 +2722,28 @@ function ThreadViewer({
                                     🗑️ {deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}
                                 </button>
                             )}
+
+                            {/* Add Poll Button - Show for post owner if no poll exists */}
+                            {identity && post.created_by.toString() === identity.getPrincipal().toString() && 
+                             !postPolls.get(Number(post.id))?.length && !showPollForm.get(Number(post.id)) && (
+                                <button
+                                    onClick={() => setShowPollForm(prev => new Map(prev.set(Number(post.id), true)))}
+                                    style={{
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: '#3498db',
+                                        borderRadius: '4px',
+                                        padding: '4px 8px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}
+                                >
+                                    📊 Add Poll
+                                </button>
+                            )}
                         </div>
                     )}
                         </>
@@ -2598,6 +2770,22 @@ function ThreadViewer({
                             onSubmit={submitEditPost}
                             onCancel={cancelEditPost}
                             submittingEdit={updatingPost}
+                            textLimits={textLimits}
+                        />
+                    )}
+
+                    {/* Poll Creation Form */}
+                    {showPollForm.get(Number(post.id)) && (
+                        <Poll
+                            showCreateForm={true}
+                            onCreatePoll={handlePollCreated}
+                            onCancelCreate={() => setShowPollForm(prev => {
+                                const newMap = new Map(prev);
+                                newMap.delete(Number(post.id));
+                                return newMap;
+                            })}
+                            threadId={threadId}
+                            postId={Number(post.id)}
                             textLimits={textLimits}
                         />
                     )}
