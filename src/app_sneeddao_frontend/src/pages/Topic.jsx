@@ -766,7 +766,7 @@ function Topic() {
                                         <h3 style={styles.threadTitle}>
                                             {thread.title || `Thread #${thread.id}`}
                                         </h3>
-                                        <p style={styles.threadBody}>{thread.body}</p>
+                                        <p style={{...styles.threadBody, whiteSpace: 'pre-wrap'}}>{thread.body}</p>
                                         
                                         {/* Show proposal link if this thread is linked to a proposal */}
                                         {threadProposals.has(thread.id.toString()) && (

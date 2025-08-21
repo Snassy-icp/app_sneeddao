@@ -1703,7 +1703,7 @@ function ThreadViewer({
                 <h2>{getDisplayTitle()}</h2>
                 {threadDetails && threadDetails.body && (
                     <div className="thread-description">
-                        <p>{threadDetails.body}</p>
+                        <p style={{ whiteSpace: 'pre-wrap' }}>{threadDetails.body}</p>
                     </div>
                 )}
                 {threadDetails && threadDetails.created_by && (
@@ -2363,7 +2363,7 @@ function ThreadViewer({
                             {/* Post body - hide when editing */}
                             {editingPost !== Number(post.id) && (
                                 <div className="post-body">
-                                    <p>{post.body}</p>
+                                    <p style={{ whiteSpace: 'pre-wrap' }}>{post.body}</p>
                                 </div>
                             )}
                             
