@@ -222,7 +222,8 @@ function ThreadViewer({
     isAuthenticated,
     onError,
     showCreatePost = true, // Whether to show create post form
-    title = null // Optional title override
+    title = null, // Optional title override
+    hideProposalLink = false // Whether to hide the proposal link (when already on proposal page)
 }) {
     const { principalNames, principalNicknames } = useNaming();
     const { identity } = useAuth();
@@ -1750,20 +1751,31 @@ function ThreadViewer({
                         </div>
                         <div style={{ color: '#ccc' }}>
                             This thread is discussing{' '}
-                            <a 
-                                href={`/proposal?proposalid=${proposalInfo.proposalId}&sns=${proposalInfo.snsRoot || selectedSnsRoot || ''}`}
-                                style={{
+                            {hideProposalLink ? (
+                                <span style={{
                                     color: '#3498db',
-                                    textDecoration: 'none',
                                     fontWeight: '500'
-                                }}
-                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                                Proposal #{proposalInfo.proposalId}
-                                {proposalInfo.proposalData?.proposal?.[0]?.title && 
-                                    `: ${proposalInfo.proposalData.proposal[0].title}`}
-                            </a>
+                                }}>
+                                    Proposal #{proposalInfo.proposalId}
+                                    {proposalInfo.proposalData?.proposal?.[0]?.title && 
+                                        `: ${proposalInfo.proposalData.proposal[0].title}`}
+                                </span>
+                            ) : (
+                                <a 
+                                    href={`/proposal?proposalid=${proposalInfo.proposalId}&sns=${proposalInfo.snsRoot || selectedSnsRoot || ''}`}
+                                    style={{
+                                        color: '#3498db',
+                                        textDecoration: 'none',
+                                        fontWeight: '500'
+                                    }}
+                                    onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                    onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                >
+                                    Proposal #{proposalInfo.proposalId}
+                                    {proposalInfo.proposalData?.proposal?.[0]?.title && 
+                                        `: ${proposalInfo.proposalData.proposal[0].title}`}
+                                </a>
+                            )}
                             {!proposalInfo.proposalData && (
                                 <span style={{ color: '#888', fontSize: '0.8rem', marginLeft: '8px' }}>
                                     (Loading proposal details...)

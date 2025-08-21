@@ -1066,6 +1066,7 @@ function Proposal() {
                                             onError={setError}
                                             showCreatePost={true}
                                             title={`Discussion for Proposal #${currentProposalId}`}
+                                            hideProposalLink={true}
                                         />
                                     ) : (
                                         /* No thread exists - show create thread UI */
