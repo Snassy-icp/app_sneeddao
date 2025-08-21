@@ -585,13 +585,17 @@ function ThreadViewer({
         setLoadingPolls(true);
         try {
             // Fetch thread polls
+            console.log(`Fetching polls for thread ${threadId}...`);
             const threadPollsResult = await forumActor.get_polls_by_thread(Number(threadId));
             console.log('Thread polls result:', threadPollsResult);
+            console.log('Thread polls result type:', typeof threadPollsResult);
+            console.log('Thread polls result length:', Array.isArray(threadPollsResult) ? threadPollsResult.length : 'not array');
             
             // Validate thread polls data
             const validThreadPolls = Array.isArray(threadPollsResult) ? 
                 threadPollsResult.filter(poll => poll && typeof poll === 'object') : [];
             console.log('Valid thread polls:', validThreadPolls);
+            console.log('Setting thread polls count:', validThreadPolls.length);
             setThreadPolls(validThreadPolls);
             
             // Fetch post polls if we have posts
@@ -656,8 +660,13 @@ function ThreadViewer({
 
     // Handle poll creation
     const handlePollCreated = useCallback(async (pollId) => {
+        console.log('Poll created with ID:', pollId);
+        console.log('Refreshing polls after creation...');
+        
         // Refresh polls to get the new poll
         await fetchPolls();
+        
+        console.log('Polls refreshed after creation');
         
         // Hide the poll form
         setShowPollForm(prev => {
@@ -1812,6 +1821,7 @@ function ThreadViewer({
                 )}
                 
                 {/* Thread Polls */}
+                {console.log('Rendering thread polls, count:', threadPolls.length)}
                 {threadPolls.length > 0 && threadPolls.map(poll => (
                     <Poll
                         key={poll.id}

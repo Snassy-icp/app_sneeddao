@@ -73,7 +73,7 @@ const Poll = ({
 
     // Load user votes for existing poll
     useEffect(() => {
-        if (poll && forumActor && neurons.length > 0) {
+        if (poll && forumActor && neurons && neurons.length > 0) {
             loadUserVotes();
         }
     }, [poll, forumActor, neurons]);
@@ -104,7 +104,7 @@ const Poll = ({
     };
 
     const handleVoteOnOption = async (optionId) => {
-        if (!identity || !forumActor || selectedNeurons.length === 0) {
+        if (!identity || !forumActor || !selectedNeurons || selectedNeurons.length === 0) {
             alert('Please connect your wallet and select neurons to vote');
             return;
         }
@@ -249,9 +249,9 @@ const Poll = ({
     };
 
     const getOptionVotePercentage = (option) => {
-        if (!poll || !poll.options) return 0;
-        const totalVotes = poll.options.reduce((sum, opt) => sum + Number(opt.total_voting_power), 0);
-        return totalVotes > 0 ? (Number(option.total_voting_power) / totalVotes) * 100 : 0;
+        if (!poll || !poll.options || !Array.isArray(poll.options)) return 0;
+        const totalVotes = poll.options.reduce((sum, opt) => sum + Number(opt.total_voting_power || 0), 0);
+        return totalVotes > 0 ? (Number(option.total_voting_power || 0) / totalVotes) * 100 : 0;
     };
 
     const getUserVoteForOption = (optionId) => {
@@ -265,6 +265,8 @@ const Poll = ({
     };
 
     // Show create form
+
+
     if (showCreateForm) {
         return (
             <div style={{ 
@@ -320,7 +322,7 @@ const Poll = ({
                         width: '100%',
                         backgroundColor: '#2a2a2a',
                         color: '#ffffff',
-                        border: `1px solid ${textLimits && pollTitle.length > textLimits.post_title_max_length ? '#e74c3c' : '#444'}`,
+                        border: `1px solid ${textLimits && textLimits.post_title_max_length && pollTitle.length > textLimits.post_title_max_length ? '#e74c3c' : '#444'}`,
                         borderRadius: '4px',
                         padding: '10px',
                         marginBottom: '5px',
@@ -332,11 +334,11 @@ const Poll = ({
                 {textLimits && (
                     <div style={{
                         fontSize: '12px',
-                        color: pollTitle.length > textLimits.post_title_max_length ? '#e74c3c' : '#888',
+                        color: textLimits && textLimits.post_title_max_length && pollTitle.length > textLimits.post_title_max_length ? '#e74c3c' : '#888',
                         marginBottom: '10px',
                         textAlign: 'right'
                     }}>
-                        Poll title: {pollTitle.length}/{textLimits.post_title_max_length} characters
+                        Poll title: {pollTitle.length}/{textLimits.post_title_max_length || 0} characters
                     </div>
                 )}
 
@@ -349,7 +351,7 @@ const Poll = ({
                         width: '100%',
                         backgroundColor: '#2a2a2a',
                         color: '#ffffff',
-                        border: `1px solid ${textLimits && pollBody.length > textLimits.post_body_max_length ? '#e74c3c' : '#444'}`,
+                        border: `1px solid ${textLimits && textLimits.post_body_max_length && pollBody.length > textLimits.post_body_max_length ? '#e74c3c' : '#444'}`,
                         borderRadius: '4px',
                         padding: '10px',
                         fontSize: '14px',
@@ -363,11 +365,11 @@ const Poll = ({
                 {textLimits && (
                     <div style={{
                         fontSize: '12px',
-                        color: pollBody.length > textLimits.post_body_max_length ? '#e74c3c' : '#888',
+                        color: textLimits && textLimits.post_body_max_length && pollBody.length > textLimits.post_body_max_length ? '#e74c3c' : '#888',
                         marginBottom: '15px',
                         textAlign: 'right'
                     }}>
-                        Poll body: {pollBody.length}/{textLimits.post_body_max_length} characters
+                        Poll body: {pollBody.length}/{textLimits.post_body_max_length || 0} characters
                     </div>
                 )}
 
@@ -626,7 +628,7 @@ const Poll = ({
             </div>
 
             <div style={{ marginBottom: '15px' }}>
-                {poll.options.map((option, index) => {
+                {poll.options && poll.options.map((option, index) => {
                     const percentage = getOptionVotePercentage(option);
                     const userVoteCount = getUserVoteForOption(option.id);
                     const votingState = votingStates.get(option.id);
@@ -643,14 +645,14 @@ const Poll = ({
                                     <strong style={{ color: '#ffffff', fontSize: '14px' }}>
                                         {option.title}
                                     </strong>
-                                    {option.body && (
+                                    {option.body && Array.isArray(option.body) && option.body.length > 0 && (
                                         <p style={{ 
                                             color: '#ccc', 
                                             fontSize: '12px', 
                                             margin: '2px 0 0 0',
                                             lineHeight: '1.3'
                                         }}>
-                                            {option.body}
+                                            {option.body[0]}
                                         </p>
                                     )}
                                 </div>
@@ -680,7 +682,7 @@ const Poll = ({
                                     {!poll.has_ended && identity && (
                                         <button
                                             onClick={() => handleVoteOnOption(option.id)}
-                                            disabled={votingState === 'voting' || selectedNeurons.length === 0}
+                                            disabled={votingState === 'voting' || !selectedNeurons || selectedNeurons.length === 0}
                                             style={{
                                                 backgroundColor: 
                                                     votingState === 'voting' ? '#666' :
@@ -691,12 +693,12 @@ const Poll = ({
                                                 border: 'none',
                                                 borderRadius: '4px',
                                                 padding: '4px 8px',
-                                                cursor: (votingState === 'voting' || selectedNeurons.length === 0) ? 'not-allowed' : 'pointer',
+                                                cursor: (votingState === 'voting' || !selectedNeurons || selectedNeurons.length === 0) ? 'not-allowed' : 'pointer',
                                                 fontSize: '12px',
                                                 fontWeight: '500',
                                                 minWidth: '50px'
                                             }}
-                                            title={selectedNeurons.length === 0 ? 'Select neurons to vote' : ''}
+                                            title={!selectedNeurons || selectedNeurons.length === 0 ? 'Select neurons to vote' : ''}
                                         >
                                             {votingState === 'voting' ? '...' :
                                              votingState === 'success' ? '✓' :
@@ -735,7 +737,7 @@ const Poll = ({
                 })}
             </div>
 
-            {selectedNeurons.length > 0 && !poll.has_ended && (
+            {selectedNeurons && selectedNeurons.length > 0 && !poll.has_ended && (
                 <div style={{
                     fontSize: '12px',
                     color: '#888',
@@ -744,8 +746,8 @@ const Poll = ({
                     borderRadius: '4px',
                     border: '1px solid #333'
                 }}>
-                    💡 Voting with {selectedNeurons.length} neuron{selectedNeurons.length !== 1 ? 's' : ''} 
-                    ({Number(totalVotingPower).toLocaleString()} total VP)
+                    💡 Voting with {selectedNeurons ? selectedNeurons.length : 0} neuron{selectedNeurons && selectedNeurons.length !== 1 ? 's' : ''} 
+                    ({Number(totalVotingPower || 0).toLocaleString()} total VP)
                 </div>
             )}
         </div>
