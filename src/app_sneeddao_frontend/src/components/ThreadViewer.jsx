@@ -335,10 +335,10 @@ function ThreadViewer({
     const [selectedNeuronIds, setSelectedNeuronIds] = useState(new Set());
     const [sortBy, setSortBy] = useState(() => {
         try {
-            return localStorage.getItem('threadSortBy') || 'age-newest';
+            return localStorage.getItem('threadSortBy') || 'score-best';
         } catch (error) {
             console.warn('Could not access localStorage:', error);
-            return 'age-newest';
+            return 'score-best';
         }
     }); // age-newest, age-oldest, score-best, score-worst, score-controversial
 

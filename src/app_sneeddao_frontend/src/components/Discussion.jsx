@@ -210,7 +210,8 @@ function Discussion({
     currentProposalId, 
     selectedSnsRoot, 
     isAuthenticated,
-    onError 
+    onError,
+    onThreadCreated 
 }) {
     const { principalNames, principalNicknames } = useNaming();
     const { identity } = useAuth();
@@ -479,6 +480,11 @@ function Discussion({
                 
                 // Immediately refresh thread data to update UI state
                 await fetchDiscussionThread();
+                
+                // Notify parent component that a thread was created
+                if (onThreadCreated) {
+                    onThreadCreated();
+                }
                 
                 // Set flag to indicate we're creating the first post
                 setCreatingFirstPost(true);

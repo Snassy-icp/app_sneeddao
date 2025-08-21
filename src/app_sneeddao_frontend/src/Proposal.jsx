@@ -9,6 +9,7 @@ import { useForum } from './contexts/ForumContext';
 import Header from './components/Header';
 import HotkeyNeurons from './components/HotkeyNeurons';
 import Discussion from './components/Discussion';
+import ThreadViewer from './components/ThreadViewer';
 import ReactMarkdown from 'react-markdown';
 import './Wallet.css';
 import { getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
@@ -53,6 +54,8 @@ function Proposal() {
     const [isDiscussionExpanded, setIsDiscussionExpanded] = useState(true);
     const [proposalThreadId, setProposalThreadId] = useState(null);
     const [threadLinkLoading, setThreadLinkLoading] = useState(false);
+    const [discussionThread, setDiscussionThread] = useState(null);
+    const [loadingThread, setLoadingThread] = useState(false);
 
     // Get naming context
     const { getNeuronDisplayName } = useNaming();
@@ -81,6 +84,13 @@ function Proposal() {
             fetchProposalData();
         }
     }, [currentProposalId, selectedSnsRoot]);
+
+    // Fetch discussion thread when forum actor and proposal are ready
+    useEffect(() => {
+        if (forumActor && currentProposalId && selectedSnsRoot) {
+            fetchDiscussionThread();
+        }
+    }, [forumActor, currentProposalId, selectedSnsRoot]);
 
     const fetchProposalData = async () => {
         setLoading(true);
@@ -198,6 +208,39 @@ function Proposal() {
 
     const formatE8s = (e8s) => {
         return (Number(e8s) / 100000000).toFixed(8);
+    };
+
+    // Fetch discussion thread for the proposal
+    const fetchDiscussionThread = async () => {
+        if (!forumActor || !currentProposalId || !selectedSnsRoot) return;
+        
+        setLoadingThread(true);
+        try {
+            // Check if a thread exists for this proposal
+            const threadResult = await forumActor.get_proposal_thread(
+                Principal.fromText(selectedSnsRoot), 
+                Number(currentProposalId)
+            );
+            
+            if (threadResult && threadResult.length > 0) {
+                // Motoko optional returns as array
+                const thread = threadResult[0];
+                setDiscussionThread(thread);
+                setProposalThreadId(Number(thread.thread_id));
+                console.log('Found existing thread for proposal:', thread.thread_id);
+            } else {
+                // No thread exists yet
+                setDiscussionThread(null);
+                setProposalThreadId(null);
+                console.log('No thread exists for this proposal yet');
+            }
+        } catch (err) {
+            console.error('Error fetching discussion thread:', err);
+            setDiscussionThread(null);
+            setProposalThreadId(null);
+        } finally {
+            setLoadingThread(false);
+        }
     };
 
     // Function to fetch neurons directly from SNS using global context
@@ -1003,13 +1046,39 @@ function Proposal() {
                             </div>
                             
                             {isDiscussionExpanded && (
-                                <Discussion
-                                    forumActor={forumActor}
-                                    currentProposalId={currentProposalId}
-                                    selectedSnsRoot={selectedSnsRoot}
-                                    isAuthenticated={isAuthenticated}
-                                    onError={setError}
-                                />
+                                <>
+                                    {loadingThread ? (
+                                        <div style={{ 
+                                            padding: '20px', 
+                                            textAlign: 'center', 
+                                            color: '#888' 
+                                        }}>
+                                            Loading discussion...
+                                        </div>
+                                    ) : discussionThread ? (
+                                        /* Thread exists - use ThreadViewer */
+                                        <ThreadViewer
+                                            forumActor={forumActor}
+                                            threadId={proposalThreadId.toString()}
+                                            mode="thread"
+                                            selectedSnsRoot={selectedSnsRoot}
+                                            isAuthenticated={isAuthenticated}
+                                            onError={setError}
+                                            showCreatePost={true}
+                                            title={`Discussion for Proposal #${currentProposalId}`}
+                                        />
+                                    ) : (
+                                        /* No thread exists - show create thread UI */
+                                        <Discussion
+                                            forumActor={forumActor}
+                                            currentProposalId={currentProposalId}
+                                            selectedSnsRoot={selectedSnsRoot}
+                                            isAuthenticated={isAuthenticated}
+                                            onError={setError}
+                                            onThreadCreated={fetchDiscussionThread}
+                                        />
+                                    )}
+                                </>
                             )}
                         </div>
                     )}
