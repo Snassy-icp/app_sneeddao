@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
@@ -23,6 +23,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const { newTipCount } = useTipNotifications();
     const { newReplyCount } = useReplyNotifications();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const menuRef = useRef(null);
     const [activeSection, setActiveSection] = useState(() => {
@@ -206,6 +207,10 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         setIsMenuOpen(!isMenuOpen);
     };
 
+    const toggleHeaderCollapse = () => {
+        setIsHeaderCollapsed(!isHeaderCollapsed);
+    };
+
     const handleSectionClick = (section) => {
         setActiveSection(section);
         toggleMenu();
@@ -268,7 +273,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         display: 'flex',
                         alignItems: 'center',
                         cursor: 'pointer',
-                        flex: 1
+                        flex: 1,
+                        gap: '10px'
                     }}
                     onClick={() => {
                         setIsMenuOpen(true);
@@ -283,6 +289,35 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             {menuSections[activeSection]?.displayName?.replace('Sneed ', '')}
                         </>
                     )}
+                    
+                    {/* Divot toggle button */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation(); // Prevent triggering the menu open
+                            toggleHeaderCollapse();
+                        }}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#888',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            fontSize: '16px',
+                            transition: 'color 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.color = '#fff';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.color = '#888';
+                        }}
+                        title={isHeaderCollapsed ? "Expand header sections" : "Collapse header sections"}
+                    >
+                        {isHeaderCollapsed ? <FaChevronDown size={14} /> : <FaChevronUp size={14} />}
+                    </button>
                 </div>
 
                 {/* SNS Dropdown and Login on same row */}
@@ -332,6 +367,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             </div>
 
             {/* Submenu Row: Full-width navigation links */}
+            {!isHeaderCollapsed && (
             <div style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
@@ -401,9 +437,10 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     )}
                 </div>
             </div>
+            )}
 
             {/* Bottom Row: VP Display */}
-            {showSnsDropdown && isAuthenticated && (
+            {!isHeaderCollapsed && showSnsDropdown && isAuthenticated && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -514,7 +551,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             )}
 
             {/* Notifications Row: Only shows when there are notifications */}
-            {isAuthenticated && (newReplyCount > 0 || newTipCount > 0) && (
+            {!isHeaderCollapsed && isAuthenticated && (newReplyCount > 0 || newTipCount > 0) && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
