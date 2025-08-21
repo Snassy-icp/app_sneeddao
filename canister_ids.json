@@ -5,6 +5,9 @@
   "app_sneeddao_frontend": {
     "ic": "2icdp-6qaaa-aaaal-qjt6a-cai"
   },
+  "sneed_sms": {
+    "ic": "v33jy-4qaaa-aaaad-absna-cai"
+  },
   "sneed_sns_forum": {
     "ic": "nrtf2-wiaaa-aaaad-aankq-cai"
   }

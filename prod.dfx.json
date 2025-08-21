@@ -8,6 +8,10 @@
       "main": "src/sneed_sns_forum/main.mo",
       "type": "motoko"
     },
+    "sneed_sms": {
+      "main": "src/sneed_sms/main.mo",
+      "type": "motoko"
+    },
     "app_sneeddao_frontend": {
       "dependencies": [
         "app_sneeddao_backend"
