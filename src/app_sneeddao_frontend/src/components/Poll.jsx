@@ -250,6 +250,26 @@ const Poll = ({
         return new Date(Number(timestampBigInt / 1000000n)).toLocaleString();
     };
 
+    // Format voting power for display (same as ThreadViewer)
+    const formatVotingPowerDisplay = (votingPower) => {
+        if (votingPower === 0) return '0';
+        
+        // Convert from e8s to display units
+        const displayValue = votingPower / 100_000_000;
+        
+        if (displayValue >= 1) {
+            return displayValue.toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            });
+        } else {
+            return displayValue.toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 8
+            });
+        }
+    };
+
     const getOptionVotePercentage = (option) => {
         if (!poll || !poll.options || !Array.isArray(poll.options)) return 0;
         const totalVotes = poll.options.reduce((sum, opt) => sum + Number(opt.total_voting_power || 0), 0);
@@ -667,7 +687,7 @@ const Poll = ({
                                     <span style={{ color: '#888', fontSize: '12px', minWidth: '60px', textAlign: 'right' }}>
                                         {option.vote_count} votes
                                         <br />
-                                        {Number(option.total_voting_power).toLocaleString()} VP
+                                        {formatVotingPowerDisplay(Number(option.total_voting_power))} VP
                                     </span>
                                     {userVoteCount > 0 && (
                                         <span style={{
@@ -749,7 +769,7 @@ const Poll = ({
                     border: '1px solid #333'
                 }}>
                     💡 Voting with {selectedNeurons ? selectedNeurons.length : 0} neuron{selectedNeurons && selectedNeurons.length !== 1 ? 's' : ''} 
-                    ({Number(totalVotingPower || 0).toLocaleString()} total VP)
+                    ({formatVotingPowerDisplay(Number(totalVotingPower || 0))} total VP)
                 </div>
             )}
         </div>
