@@ -10,6 +10,8 @@ import { useTokens } from '../hooks/useTokens';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { formatError } from '../utils/errorUtils';
 import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
+import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { getSnsById } from '../utils/SnsUtils';
 import { Principal } from '@dfinity/principal';
 import { 
     getTipsByPost, 
@@ -301,6 +303,7 @@ function ThreadViewer({
     
     // State for discussion
     const [threadDetails, setThreadDetails] = useState(null);
+    const [proposalInfo, setProposalInfo] = useState(null); // {proposalId, snsRoot, proposalData}
     const [discussionPosts, setDiscussionPosts] = useState([]);
     const [loadingDiscussion, setLoadingDiscussion] = useState(false);
     const [commentText, setCommentText] = useState('');
@@ -885,6 +888,168 @@ function ThreadViewer({
         }
     }, [forumActor, getSelectedNeurons, fetchPosts, refreshPostVotes]);
 
+    // Check if thread is linked to a proposal and fetch proposal info
+    const checkProposalLink = useCallback(async () => {
+        if (!forumActor || !threadId || !identity) return;
+
+        try {
+            console.log('Checking if thread is linked to proposal:', threadId);
+            const proposalLink = await forumActor.get_thread_proposal_id(Number(threadId));
+            console.log('get_thread_proposal_id result:', proposalLink, 'type:', typeof proposalLink, 'keys:', Object.keys(proposalLink || {}));
+            
+            // Handle Motoko optional tuple serialization
+            // Motoko ?(Nat32, Nat) becomes [[snsRootIndex, proposalId]] in JavaScript
+            if (proposalLink && Array.isArray(proposalLink) && proposalLink.length > 0) {
+                let snsRootIndex, proposalId;
+                
+                // Extract the tuple from the optional wrapper
+                const tuple = proposalLink[0];
+                
+                if (Array.isArray(tuple) && tuple.length === 2) {
+                    [snsRootIndex, proposalId] = tuple;
+                    
+                    // Convert BigInt to Number if needed
+                    snsRootIndex = Number(snsRootIndex);
+                    proposalId = Number(proposalId);
+                    
+                    console.log('Parsed proposal data:', { snsRootIndex, proposalId });
+                } else {
+                    console.warn('Unexpected tuple format:', tuple);
+                    setProposalInfo(null);
+                    return;
+                }
+                
+                if (snsRootIndex !== undefined && proposalId !== undefined) {
+                    console.log('Thread is linked to proposal:', { snsRootIndex, proposalId });
+                    
+                    // We need to get the SNS root Principal. Since we have selectedSnsRoot in context,
+                    // let's use that as it should match the current thread's SNS
+                    const snsRoot = selectedSnsRoot;
+                    if (!snsRoot) {
+                        console.warn('No SNS root available to fetch proposal data');
+                        setProposalInfo({
+                            proposalId: Number(proposalId),
+                            snsRoot: null,
+                            proposalData: null
+                        });
+                        return;
+                    }
+
+                    // Fetch proposal data from governance canister
+                    try {
+                        const selectedSns = getSnsById(snsRoot);
+                        if (!selectedSns) {
+                            console.error('Selected SNS not found');
+                            setProposalInfo({
+                                proposalId: Number(proposalId),
+                                snsRoot: snsRoot,
+                                proposalData: null
+                            });
+                            return;
+                        }
+
+                        const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                            agentOptions: {
+                                identity,
+                            },
+                        });
+
+                        const proposalIdArg = {
+                            proposal_id: [{ id: BigInt(proposalId) }]
+                        };
+
+                        const response = await snsGovActor.get_proposal(proposalIdArg);
+                        let proposalData = null;
+                        
+                        if (response?.result?.[0]?.Proposal) {
+                            proposalData = response.result[0].Proposal;
+                            console.log('Fetched proposal data:', proposalData);
+                        } else {
+                            console.warn('Proposal not found or error:', response?.result?.[0]);
+                        }
+
+                        setProposalInfo({
+                            proposalId: Number(proposalId),
+                            snsRoot: snsRoot,
+                            proposalData: proposalData
+                        });
+
+                    } catch (govError) {
+                        console.error('Error fetching proposal from governance:', govError);
+                        setProposalInfo({
+                            proposalId: Number(proposalId),
+                            snsRoot: snsRoot,
+                            proposalData: null
+                        });
+                    }
+                } else {
+                    console.log('Could not parse proposal link data:', proposalLink);
+                    setProposalInfo(null);
+                }
+            } else {
+                console.log('Thread is not linked to any proposal via get_thread_proposal_id');
+                
+                // Alternative approach: Check if this thread was created as a proposal thread
+                // by examining the thread title/body for proposal patterns
+                if (threadDetails && selectedSnsRoot) {
+                    console.log('Checking thread details for proposal patterns:', {
+                        title: threadDetails.title,
+                        body: threadDetails.body
+                    });
+                    
+                    // Look for proposal patterns in thread title/body
+                    const titleStr = Array.isArray(threadDetails.title) && threadDetails.title.length > 0 
+                        ? threadDetails.title[0] 
+                        : (threadDetails.title || '');
+                    const bodyStr = threadDetails.body || '';
+                    
+                    // Check if title matches proposal thread pattern: "SNS Name Proposal #123"
+                    const proposalTitleMatch = titleStr.match(/Proposal #(\d+)/i);
+                    const proposalBodyMatch = bodyStr.match(/Discussion thread for .* Proposal #(\d+)/i);
+                    
+                    if (proposalTitleMatch || proposalBodyMatch) {
+                        const proposalId = proposalTitleMatch?.[1] || proposalBodyMatch?.[1];
+                        console.log('Found proposal pattern, proposalId:', proposalId);
+                        
+                        if (proposalId) {
+                            // Try to verify this proposal exists and fetch its data
+                            try {
+                                const selectedSns = getSnsById(selectedSnsRoot);
+                                if (selectedSns) {
+                                    const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                                        agentOptions: { identity },
+                                    });
+
+                                    const proposalIdArg = {
+                                        proposal_id: [{ id: BigInt(proposalId) }]
+                                    };
+
+                                    const response = await snsGovActor.get_proposal(proposalIdArg);
+                                    if (response?.result?.[0]?.Proposal) {
+                                        console.log('Confirmed proposal exists, setting proposal info');
+                                        setProposalInfo({
+                                            proposalId: Number(proposalId),
+                                            snsRoot: selectedSnsRoot,
+                                            proposalData: response.result[0].Proposal
+                                        });
+                                        return; // Exit early since we found it
+                                    }
+                                }
+                            } catch (govError) {
+                                console.warn('Could not verify proposal exists:', govError);
+                            }
+                        }
+                    }
+                }
+                
+                setProposalInfo(null);
+            }
+        } catch (error) {
+            console.error('Error checking proposal link:', error);
+            setProposalInfo(null);
+        }
+    }, [forumActor, threadId, identity, selectedSnsRoot]);
+
     const submitReply = useCallback(async (parentPostId, replyText) => {
         if (!replyText.trim() || !forumActor || !threadId) return;
         
@@ -1434,6 +1599,11 @@ function ThreadViewer({
 
             const uniquePrincipals = new Set();
             
+            // Add thread creator principal
+            if (threadDetails && threadDetails.created_by) {
+                uniquePrincipals.add(threadDetails.created_by.toString());
+            }
+            
             // Add principals from discussion posts
             discussionPosts.forEach(post => {
                 if (post.created_by) {
@@ -1471,7 +1641,14 @@ function ThreadViewer({
         };
 
         fetchPrincipalInfo();
-    }, [discussionPosts, postTips, principalNames, principalNicknames]);
+    }, [discussionPosts, postTips, principalNames, principalNicknames, threadDetails]);
+
+    // Check for proposal link when thread details are loaded
+    useEffect(() => {
+        if (threadDetails && threadId) {
+            checkProposalLink();
+        }
+    }, [threadDetails, threadId, checkProposalLink]);
 
     // Get display title
     const getDisplayTitle = () => {
@@ -1540,8 +1717,8 @@ function ThreadViewer({
                         <span>Created by: </span>
                         <PrincipalDisplay 
                             principal={threadDetails.created_by}
-                            principalNames={principalNames}
-                            principalNicknames={principalNicknames}
+                            displayInfo={principalDisplayInfo.get(threadDetails.created_by.toString())}
+                            showCopyButton={false}
                             style={{ color: '#3498db', fontWeight: '500' }}
                         />
                         {threadDetails.created_at && (
@@ -1549,6 +1726,50 @@ function ThreadViewer({
                                 {new Date(Number(threadDetails.created_at / 1000000n)).toLocaleDateString()}
                             </span>
                         )}
+                    </div>
+                )}
+                {proposalInfo && (
+                    <div className="proposal-info" style={{
+                        marginTop: '10px',
+                        padding: '12px',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        border: '1px solid rgba(52, 152, 219, 0.3)',
+                        borderRadius: '6px',
+                        fontSize: '0.9rem'
+                    }}>
+                        <div style={{ 
+                            color: '#3498db',
+                            fontWeight: '600',
+                            marginBottom: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                        }}>
+                            <span>📋</span>
+                            <span>Proposal Discussion</span>
+                        </div>
+                        <div style={{ color: '#ccc' }}>
+                            This thread is discussing{' '}
+                            <a 
+                                href={`/proposal?proposalid=${proposalInfo.proposalId}&sns=${proposalInfo.snsRoot || selectedSnsRoot || ''}`}
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none',
+                                    fontWeight: '500'
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                Proposal #{proposalInfo.proposalId}
+                                {proposalInfo.proposalData?.proposal?.[0]?.title && 
+                                    `: ${proposalInfo.proposalData.proposal[0].title}`}
+                            </a>
+                            {!proposalInfo.proposalData && (
+                                <span style={{ color: '#888', fontSize: '0.8rem', marginLeft: '8px' }}>
+                                    (Loading proposal details...)
+                                </span>
+                            )}
+                        </div>
                     </div>
                 )}
                 {mode === 'post' && focusedPostId && (
