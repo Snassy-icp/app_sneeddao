@@ -587,7 +587,12 @@ function ThreadViewer({
             // Fetch thread polls
             const threadPollsResult = await forumActor.get_polls_by_thread(Number(threadId));
             console.log('Thread polls result:', threadPollsResult);
-            setThreadPolls(threadPollsResult || []);
+            
+            // Validate thread polls data
+            const validThreadPolls = Array.isArray(threadPollsResult) ? 
+                threadPollsResult.filter(poll => poll && typeof poll === 'object') : [];
+            console.log('Valid thread polls:', validThreadPolls);
+            setThreadPolls(validThreadPolls);
             
             // Fetch post polls if we have posts
             if (discussionPosts.length > 0) {
@@ -598,7 +603,11 @@ function ThreadViewer({
                     try {
                         const postPollsResult = await forumActor.get_polls_by_post(Number(post.id));
                         if (postPollsResult && postPollsResult.length > 0) {
-                            postPollsMap.set(Number(post.id), postPollsResult);
+                            // Validate post polls data
+                            const validPostPolls = postPollsResult.filter(poll => poll && typeof poll === 'object');
+                            if (validPostPolls.length > 0) {
+                                postPollsMap.set(Number(post.id), validPostPolls);
+                            }
                         }
                     } catch (error) {
                         console.warn(`Failed to fetch polls for post ${post.id}:`, error);
@@ -609,6 +618,9 @@ function ThreadViewer({
             }
         } catch (error) {
             console.error('Error fetching polls:', error);
+            // Set empty arrays on error to prevent crashes
+            setThreadPolls([]);
+            setPostPolls(new Map());
         } finally {
             setLoadingPolls(false);
         }
@@ -624,7 +636,7 @@ function ThreadViewer({
                 const poll = pollResult[0];
                 
                 // Update thread polls
-                if (poll.post_id.length === 0) {
+                if (!poll.post_id || poll.post_id.length === 0) {
                     setThreadPolls(prev => prev.map(p => p.id === pollId ? poll : p));
                 } else {
                     // Update post polls
@@ -1811,7 +1823,7 @@ function ThreadViewer({
                 
                 {/* Create Poll for Thread Button */}
                 {identity && threadDetails && threadDetails.created_by && 
-                 Principal.fromText(threadDetails.created_by).toString() === identity.getPrincipal().toString() && 
+                 threadDetails.created_by.toString() === identity.getPrincipal().toString() && 
                  threadPolls.length === 0 && !showPollForm.get('thread') && (
                     <button
                         onClick={() => setShowPollForm(prev => new Map(prev.set('thread', true)))}
