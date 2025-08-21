@@ -524,9 +524,19 @@ const TipModal = ({
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
+                <form onSubmit={handleSubmit} style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '24px', 
+                    width: '100%', 
+                    minWidth: '0',
+                    maxWidth: 'none', // Override global form max-width: 40vw
+                    margin: '0', // Override global form margin: auto
+                    alignItems: 'stretch', // Override global form align-items: baseline
+                    flexFlow: 'column nowrap' // Override global form flex-flow: row wrap
+                }}>
                     {/* Token Selection */}
-                    <div style={{ width: '100%' }}>
+                    <div style={{ width: '100%', minWidth: '0' }}>
                         <label style={{
                             display: 'block',
                             color: 'rgba(255, 255, 255, 0.9)',
@@ -542,7 +552,9 @@ const TipModal = ({
                             background: 'rgba(255, 255, 255, 0.05)',
                             borderRadius: '12px',
                             border: '1px solid rgba(255, 255, 255, 0.1)',
-                            overflow: 'hidden'
+                            overflow: 'hidden',
+                            width: '100%',
+                            minWidth: '0'
                         }}>
                             <select
                                 value={selectedToken}
@@ -578,7 +590,7 @@ const TipModal = ({
                     </div>
 
                     {/* Amount Input */}
-                    <div style={{ width: '100%' }}>
+                    <div style={{ width: '100%', minWidth: '0' }}>
                         <div style={{
                             display: 'flex',
                             justifyContent: 'space-between',
@@ -626,7 +638,9 @@ const TipModal = ({
                             background: 'rgba(255, 255, 255, 0.05)',
                             borderRadius: '12px',
                             border: '1px solid rgba(255, 255, 255, 0.1)',
-                            overflow: 'hidden'
+                            overflow: 'hidden',
+                            width: '100%',
+                            minWidth: '0'
                         }}>
                             <input
                                 type="number"
@@ -939,8 +953,8 @@ const TipModal = ({
                 border: '1px solid rgba(255, 215, 0, 0.2)',
                 borderRadius: '20px',
                 padding: '32px',
-                maxWidth: '420px',
-                width: '90%',
+                width: '420px',
+                maxWidth: 'calc(100vw - 40px)', // Only shrink if screen is smaller than 460px (420px + 40px margin)
                 maxHeight: '90vh',
                 overflow: 'auto',
                 boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
