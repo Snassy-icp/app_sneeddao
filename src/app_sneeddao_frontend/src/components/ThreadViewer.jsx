@@ -1814,7 +1814,7 @@ function ThreadViewer({
                     <Poll
                         key={poll.id}
                         poll={poll}
-                        onPollUpdate={() => refreshPoll(poll.id)}
+                        onPollUpdate={async () => await refreshPoll(poll.id)}
                         textLimits={textLimits}
                         selectedNeurons={getSelectedNeurons()}
                         allNeurons={allNeurons}
@@ -2542,7 +2542,7 @@ function ThreadViewer({
                                 <Poll
                                     key={poll.id}
                                     poll={poll}
-                                    onPollUpdate={() => refreshPoll(poll.id)}
+                                    onPollUpdate={async () => await refreshPoll(poll.id)}
                                     textLimits={textLimits}
                                     selectedNeurons={getSelectedNeurons()}
                                     allNeurons={allNeurons}

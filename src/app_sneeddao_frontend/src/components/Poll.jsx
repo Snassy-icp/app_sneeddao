@@ -22,6 +22,7 @@ const Poll = ({
     // Voting state
     const [votingStates, setVotingStates] = useState(new Map()); // optionId -> 'voting'|'success'|'error'
     const [userVotes, setUserVotes] = useState(new Map()); // neuronId -> optionId
+    const [isVoting, setIsVoting] = useState(false); // Track if any vote is in progress
     
     // Create poll state
     const [pollTitle, setPollTitle] = useState('');
@@ -140,6 +141,7 @@ const Poll = ({
         }
 
         setVotingStates(prev => new Map(prev.set(optionId, 'voting')));
+        setIsVoting(true);
 
         try {
             const neuronIds = selectedNeurons.map(neuron => ({
@@ -163,9 +165,9 @@ const Poll = ({
                 });
                 setUserVotes(newUserVotes);
                 
-                // Refresh poll data
+                // Refresh poll data and wait for it to complete
                 if (onPollUpdate) {
-                    onPollUpdate();
+                    await onPollUpdate();
                 }
                 
                 // Clear voting state after delay
@@ -175,6 +177,7 @@ const Poll = ({
                         newState.delete(optionId);
                         return newState;
                     });
+                    setIsVoting(false);
                 }, 2000);
             } else {
                 console.error('Vote failed:', result.err);
@@ -185,6 +188,7 @@ const Poll = ({
                         newState.delete(optionId);
                         return newState;
                     });
+                    setIsVoting(false);
                 }, 3000);
             }
         } catch (error) {
@@ -196,6 +200,7 @@ const Poll = ({
                     newState.delete(optionId);
                     return newState;
                 });
+                setIsVoting(false);
             }, 3000);
         }
     };
@@ -767,23 +772,24 @@ const Poll = ({
                                     {!poll.has_ended && identity && (
                                         <button
                                             onClick={() => handleVoteOnOption(option.id)}
-                                            disabled={votingState === 'voting' || !selectedNeurons || selectedNeurons.length === 0}
+                                            disabled={isVoting || !selectedNeurons || selectedNeurons.length === 0}
                                             style={{
                                                 backgroundColor: 
                                                     votingState === 'voting' ? '#666' :
                                                     votingState === 'success' ? '#27ae60' :
                                                     votingState === 'error' ? '#e74c3c' :
+                                                    isVoting ? '#666' :
                                                     userVoteCount > 0 ? '#3498db' : '#2980b9',
                                                 color: '#ffffff',
                                                 border: 'none',
                                                 borderRadius: '4px',
                                                 padding: '4px 8px',
-                                                cursor: (votingState === 'voting' || !selectedNeurons || selectedNeurons.length === 0) ? 'not-allowed' : 'pointer',
+                                                cursor: (isVoting || !selectedNeurons || selectedNeurons.length === 0) ? 'not-allowed' : 'pointer',
                                                 fontSize: '12px',
                                                 fontWeight: '500',
                                                 minWidth: '50px'
                                             }}
-                                            title={!selectedNeurons || selectedNeurons.length === 0 ? 'Select neurons to vote' : ''}
+                                            title={!selectedNeurons || selectedNeurons.length === 0 ? 'Select neurons to vote' : isVoting ? 'Vote in progress...' : ''}
                                         >
                                             {votingState === 'voting' ? '...' :
                                              votingState === 'success' ? '✓' :
