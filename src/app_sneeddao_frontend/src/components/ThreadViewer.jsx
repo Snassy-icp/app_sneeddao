@@ -2349,12 +2349,11 @@ function ThreadViewer({
                                 #{post.id.toString()}
                             </a>
                             {post.title && <h4 style={{ margin: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{post.title}</h4>}
-                            <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>By: <PrincipalDisplay 
+                            <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><PrincipalDisplay 
                                 principal={post.created_by} 
                                 displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
                                 showCopyButton={false} 
                             /></span>
-                            <span style={{ flexShrink: 0 }}>•</span>
                             <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
                         </div>
                         {viewMode === 'flat' && post.reply_to_post_id && post.reply_to_post_id.length > 0 && (() => {
