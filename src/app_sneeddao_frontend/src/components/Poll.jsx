@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
-import { useNeurons } from '../contexts/NeuronsContext';
+
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 import { formatError } from '../utils/errorUtils';
 
@@ -12,10 +12,12 @@ const Poll = ({
     onCancelCreate,
     threadId,
     postId = null,
-    textLimits
+    textLimits,
+    selectedNeurons = [],
+    allNeurons = [],
+    totalVotingPower = 0
 }) => {
     const { identity } = useAuth();
-    const { neurons, selectedNeurons, totalVotingPower } = useNeurons();
     
     // Voting state
     const [votingStates, setVotingStates] = useState(new Map()); // optionId -> 'voting'|'success'|'error'
@@ -73,10 +75,10 @@ const Poll = ({
 
     // Load user votes for existing poll
     useEffect(() => {
-        if (poll && forumActor && neurons && neurons.length > 0) {
+        if (poll && forumActor && allNeurons && allNeurons.length > 0) {
             loadUserVotes();
         }
-    }, [poll, forumActor, neurons]);
+    }, [poll, forumActor, allNeurons]);
 
     const loadUserVotes = async () => {
         if (!poll || !forumActor) return;
@@ -88,7 +90,7 @@ const Poll = ({
             // Map user's neuron votes
             votes.forEach(vote => {
                 const neuronIdStr = Array.from(vote.neuron_id.id).toString();
-                const hasNeuron = neurons.some(n => 
+                const hasNeuron = allNeurons.some(n => 
                     Array.from(n.id[0].id).toString() === neuronIdStr
                 );
                 
