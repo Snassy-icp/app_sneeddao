@@ -88,7 +88,7 @@ const Message = () => {
         }
     };
 
-    // Load parent of a specific message
+    // Load parent of a specific message and its siblings
     const loadParentMessage = async (messageId) => {
         const message = messageTree.get(messageId);
         if (!message || !message.reply_to || message.reply_to.length === 0) return;
@@ -139,12 +139,139 @@ const Message = () => {
             // Expand parent message
             setExpandedMessages(prev => new Set([...prev, parentId]));
             
+            // Load siblings of this message (collapsed)
+            await loadReplies(parentId); // This will load all children of parent (including siblings)
+            
         } catch (err) {
             console.error('Error loading parent message:', err);
         } finally {
             // Clear loading state
             setLoadingStates(prev => new Map(prev.set(messageId, { 
                 ...prev.get(messageId), 
+                loadingParent: false 
+            })));
+        }
+    };
+
+    // Load all parents up to the root (with collapsed siblings)
+    const loadAllParents = async (startMessageId) => {
+        if (!startMessageId) return;
+        
+        setLoadingStates(prev => new Map(prev.set(startMessageId, { 
+            ...prev.get(startMessageId), 
+            loadingParent: true 
+        })));
+        
+        try {
+            const actor = getSmsActor();
+            if (!actor) return;
+
+            console.log('Loading all parents starting from message:', startMessageId);
+            
+            // Get all messages once to avoid multiple API calls
+            const allMessages = await actor.get_all_messages();
+            console.log('All messages loaded for parent chain:', allMessages.length);
+            
+            // Create lookup maps for efficiency
+            const messageMap = new Map();
+            const childrenMap = new Map();
+            
+            allMessages.forEach(msg => {
+                const msgId = Number(msg.id);
+                messageMap.set(msgId, msg);
+                
+                // Build children map
+                if (msg.reply_to && msg.reply_to.length > 0) {
+                    const parentId = Number(msg.reply_to[0]);
+                    if (!childrenMap.has(parentId)) {
+                        childrenMap.set(parentId, []);
+                    }
+                    childrenMap.get(parentId).push(msgId);
+                }
+            });
+            
+            // Sort children by creation time
+            childrenMap.forEach(children => {
+                children.sort((a, b) => {
+                    const msgA = messageMap.get(a);
+                    const msgB = messageMap.get(b);
+                    return Number(msgA.created_at) - Number(msgB.created_at);
+                });
+            });
+
+            const newMessageTree = new Map(messageTree);
+            const newMessageChildren = new Map(messageChildren);
+            const newExpandedMessages = new Set(expandedMessages);
+            const newCollapsedMessages = new Set(collapsedMessages);
+
+            // Load all parents upward (expanded) and their siblings (collapsed)
+            let currentId = startMessageId;
+            const ancestorPath = [currentId]; // Track the direct ancestor path
+            
+            while (true) {
+                const currentMsg = messageMap.get(currentId);
+                if (!currentMsg || !currentMsg.reply_to || currentMsg.reply_to.length === 0) break;
+                
+                const parentId = Number(currentMsg.reply_to[0]);
+                const parentMsg = messageMap.get(parentId);
+                if (!parentMsg) break;
+                
+                console.log('Loading parent:', parentId);
+                
+                // Add parent to tree (expanded)
+                newMessageTree.set(parentId, parentMsg);
+                newExpandedMessages.add(parentId);
+                
+                // Add current message as child of parent
+                const parentChildren = newMessageChildren.get(parentId) || [];
+                if (!parentChildren.includes(currentId)) {
+                    parentChildren.push(currentId);
+                    newMessageChildren.set(parentId, parentChildren);
+                }
+                
+                // Load all siblings of current message (collapsed, no recursion)
+                const siblings = childrenMap.get(parentId) || [];
+                siblings.forEach(siblingId => {
+                    if (siblingId !== currentId && !ancestorPath.includes(siblingId)) {
+                        const siblingMsg = messageMap.get(siblingId);
+                        if (siblingMsg) {
+                            console.log('Loading sibling (collapsed):', siblingId);
+                            newMessageTree.set(siblingId, siblingMsg);
+                            newCollapsedMessages.add(siblingId); // Siblings start collapsed
+                            
+                            // Add sibling to parent's children
+                            if (!parentChildren.includes(siblingId)) {
+                                parentChildren.push(siblingId);
+                            }
+                        }
+                    }
+                });
+                
+                // Sort parent's children by creation time
+                parentChildren.sort((a, b) => {
+                    const msgA = newMessageTree.get(a);
+                    const msgB = newMessageTree.get(b);
+                    if (!msgA || !msgB) return 0;
+                    return Number(msgA.created_at) - Number(msgB.created_at);
+                });
+                newMessageChildren.set(parentId, parentChildren);
+                
+                ancestorPath.push(parentId);
+                currentId = parentId;
+            }
+
+            // Update all states
+            setMessageTree(newMessageTree);
+            setMessageChildren(newMessageChildren);
+            setExpandedMessages(newExpandedMessages);
+            setCollapsedMessages(newCollapsedMessages);
+            
+        } catch (err) {
+            console.error('Error loading all parents:', err);
+        } finally {
+            // Clear loading state
+            setLoadingStates(prev => new Map(prev.set(startMessageId, { 
+                ...prev.get(startMessageId), 
                 loadingParent: false 
             })));
         }
@@ -439,9 +566,9 @@ const Message = () => {
 
         return (
             <div key={messageId} style={{ marginLeft: depth * 20 + 'px' }}>
-                {/* Load Parent Button */}
+                {/* Load Parent Buttons */}
                 {canLoadParent && (
-                    <div style={{ marginBottom: '10px' }}>
+                    <div style={{ marginBottom: '10px', display: 'flex', gap: '8px' }}>
                         <button
                             onClick={() => loadParentMessage(messageId)}
                             disabled={loadingState.loadingParent}
@@ -457,6 +584,22 @@ const Message = () => {
                             }}
                         >
                             {loadingState.loadingParent ? '⏳ Loading...' : '⬆️ Load Parent'}
+                        </button>
+                        <button
+                            onClick={() => loadAllParents(messageId)}
+                            disabled={loadingState.loadingParent}
+                            style={{
+                                backgroundColor: '#8e44ad',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '6px 12px',
+                                cursor: loadingState.loadingParent ? 'not-allowed' : 'pointer',
+                                opacity: loadingState.loadingParent ? 0.6 : 1,
+                                fontSize: '12px'
+                            }}
+                        >
+                            {loadingState.loadingParent ? '⏳ Loading...' : '⬆️⬆️ All Parents'}
                         </button>
                     </div>
                 )}
