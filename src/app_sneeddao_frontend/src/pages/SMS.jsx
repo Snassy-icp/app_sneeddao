@@ -15,7 +15,7 @@ const SMS = () => {
     const [selectedTab, setSelectedTab] = useState('all'); // 'all', 'sent', 'received'
     const [showComposeModal, setShowComposeModal] = useState(false);
     const [composeForm, setComposeForm] = useState({
-        recipients: '',
+        recipients: [{ value: '', isValid: false, name: '', error: '' }], // Array of recipient objects
         subject: '',
         body: '',
         replyTo: null
@@ -125,8 +125,11 @@ const SMS = () => {
 
     // Send message
     const sendMessage = async () => {
-        if (!identity || !composeForm.subject.trim() || !composeForm.body.trim() || !composeForm.recipients.trim()) {
-            setError('Please fill in all required fields');
+        // Check if we have valid recipients
+        const validRecipients = composeForm.recipients.filter(r => r.isValid && r.value.trim());
+        
+        if (!identity || !composeForm.subject.trim() || !composeForm.body.trim() || validRecipients.length === 0) {
+            setError('Please fill in all required fields and ensure at least one recipient is valid');
             return;
         }
 
@@ -137,24 +140,8 @@ const SMS = () => {
             const actor = getSmsActor();
             if (!actor) return;
 
-            // Parse recipients (comma or space separated) and convert to Principal objects
-            const recipientStrings = composeForm.recipients
-                .split(/[,\s]+/)
-                .map(r => r.trim())
-                .filter(r => r.length > 0);
-
-            // Validate and convert to Principal objects
-            const recipientPrincipals = [];
-            for (const recipientStr of recipientStrings) {
-                try {
-                    const principal = Principal.fromText(recipientStr);
-                    recipientPrincipals.push(principal);
-                } catch (principalError) {
-                    setError(`Invalid principal format: ${recipientStr}. Please check the principal ID.`);
-                    setSubmitting(false);
-                    return;
-                }
-            }
+            // Convert valid recipients to Principal objects
+            const recipientPrincipals = validRecipients.map(r => Principal.fromText(r.value));
 
             const messageInput = {
                 recipients: recipientPrincipals,
@@ -167,7 +154,7 @@ const SMS = () => {
             
             if ('ok' in result) {
                 setShowComposeModal(false);
-                setComposeForm({ recipients: '', subject: '', body: '', replyTo: null });
+                setComposeForm({ recipients: [{ value: '', isValid: false, name: '', error: '' }], subject: '', body: '', replyTo: null });
                 setRecipientValidation('');
                 await fetchMessages();
                 await fetchStats();
@@ -214,36 +201,57 @@ const SMS = () => {
     };
 
     // Validate recipients input
-    const validateRecipients = (recipientsText) => {
-        if (!recipientsText.trim()) {
-            setRecipientValidation('');
-            return;
-        }
+    // Add a new recipient input
+    const addRecipient = () => {
+        setComposeForm(prev => ({
+            ...prev,
+            recipients: [...prev.recipients, { value: '', isValid: false, name: '', error: '' }]
+        }));
+    };
 
-        const recipientStrings = recipientsText
-            .split(/[,\s]+/)
-            .map(r => r.trim())
-            .filter(r => r.length > 0);
+    // Remove a recipient input
+    const removeRecipient = (index) => {
+        setComposeForm(prev => ({
+            ...prev,
+            recipients: prev.recipients.length > 1 ? prev.recipients.filter((_, i) => i !== index) : prev.recipients
+        }));
+    };
 
-        const invalidPrincipals = [];
-        const validPrincipals = [];
-
-        for (const recipientStr of recipientStrings) {
+    // Update and validate a specific recipient
+    const updateRecipient = async (index, value) => {
+        const newRecipients = [...composeForm.recipients];
+        newRecipients[index].value = value.trim();
+        
+        if (!value.trim()) {
+            newRecipients[index].isValid = false;
+            newRecipients[index].name = '';
+            newRecipients[index].error = '';
+        } else {
             try {
-                Principal.fromText(recipientStr);
-                validPrincipals.push(recipientStr);
-            } catch (error) {
-                invalidPrincipals.push(recipientStr);
+                Principal.fromText(value.trim());
+                newRecipients[index].isValid = true;
+                newRecipients[index].error = '';
+                
+                // Try to get the name for this principal
+                const displayInfo = getPrincipalDisplayInfoFromContext(value.trim(), principalNames, principalNicknames);
+                newRecipients[index].name = displayInfo.displayName !== value.trim() ? displayInfo.displayName : '';
+            } catch (e) {
+                newRecipients[index].isValid = false;
+                newRecipients[index].name = '';
+                newRecipients[index].error = 'Invalid principal format';
             }
         }
+        
+        setComposeForm(prev => ({
+            ...prev,
+            recipients: newRecipients
+        }));
+    };
 
-        if (invalidPrincipals.length > 0) {
-            setRecipientValidation(`Invalid principals: ${invalidPrincipals.join(', ')}`);
-        } else if (validPrincipals.length > 0) {
-            setRecipientValidation(`✓ ${validPrincipals.length} valid principal${validPrincipals.length > 1 ? 's' : ''}`);
-        } else {
-            setRecipientValidation('');
-        }
+    // Legacy validation function - kept for compatibility
+    const validateRecipients = (recipientString) => {
+        // This is now handled by updateRecipient, but keeping for any remaining uses
+        setRecipientValidation('');
     };
 
     // Reply to message
@@ -252,16 +260,21 @@ const SMS = () => {
         setShowMessageModal(false);
         setSelectedMessage(null);
         
-        // Set up the reply form
+        // Set up the reply form with the sender as recipient
+        const senderPrincipal = message.sender.toString();
+        const displayInfo = getPrincipalDisplayInfoFromContext(senderPrincipal, principalNames, principalNicknames);
+        
         setComposeForm({
-            recipients: message.sender.toString(),
+            recipients: [{ 
+                value: senderPrincipal, 
+                isValid: true, 
+                name: displayInfo.displayName !== senderPrincipal ? displayInfo.displayName : '', 
+                error: '' 
+            }],
             subject: message.subject.startsWith('Re: ') ? message.subject : `Re: ${message.subject}`,
             body: '',
             replyTo: Number(message.id)
         });
-        
-        // Validate the recipient (should be valid since it's from an existing message)
-        validateRecipients(message.sender.toString());
         
         // Open compose modal
         setShowComposeModal(true);
@@ -572,7 +585,7 @@ const SMS = () => {
                                 <button
                                     onClick={() => {
                                         setShowComposeModal(false);
-                                        setComposeForm({ recipients: '', subject: '', body: '', replyTo: null });
+                                        setComposeForm({ recipients: [{ value: '', isValid: false, name: '', error: '' }], subject: '', body: '', replyTo: null });
                                         setRecipientValidation('');
                                         setError(null);
                                     }}
@@ -590,36 +603,87 @@ const SMS = () => {
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                 <div>
-                                    <label style={{ color: '#ffffff', display: 'block', marginBottom: '5px' }}>
-                                        Recipients (comma or space separated):
+                                    <label style={{ color: '#ffffff', display: 'block', marginBottom: '10px', fontSize: '16px' }}>
+                                        Recipients:
                                     </label>
-                                    <input
-                                        type="text"
-                                        value={composeForm.recipients}
-                                        onChange={(e) => {
-                                            const newValue = e.target.value;
-                                            setComposeForm(prev => ({ ...prev, recipients: newValue }));
-                                            validateRecipients(newValue);
-                                        }}
-                                        placeholder="rdmx6-jaaaa-aaaah-qcaiq-cai, abc12-defgh-..."
+                                    {composeForm.recipients.map((recipient, index) => (
+                                        <div key={index} style={{ marginBottom: '10px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                                                <div style={{ flex: 1 }}>
+                                                    <input
+                                                        type="text"
+                                                        value={recipient.value}
+                                                        onChange={(e) => updateRecipient(index, e.target.value)}
+                                                        placeholder="Enter principal ID (e.g., rdmx6-jaaaa-aaaah-qcaiq-cai)"
+                                                        style={{
+                                                            width: '100%',
+                                                            padding: '10px',
+                                                            borderRadius: '4px',
+                                                            border: `1px solid ${recipient.error ? '#e74c3c' : recipient.isValid ? '#2ecc71' : '#4a4a4a'}`,
+                                                            backgroundColor: '#3a3a3a',
+                                                            color: '#ffffff',
+                                                            fontSize: '14px'
+                                                        }}
+                                                    />
+                                                    {recipient.isValid && recipient.name && (
+                                                        <div style={{ 
+                                                            marginTop: '5px', 
+                                                            fontSize: '12px', 
+                                                            color: '#2ecc71',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '5px'
+                                                        }}>
+                                                            ✓ {recipient.name}
+                                                        </div>
+                                                    )}
+                                                    {recipient.error && (
+                                                        <div style={{ 
+                                                            marginTop: '5px', 
+                                                            fontSize: '12px', 
+                                                            color: '#e74c3c' 
+                                                        }}>
+                                                            {recipient.error}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {composeForm.recipients.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeRecipient(index)}
+                                                        style={{
+                                                            padding: '10px 12px',
+                                                            backgroundColor: '#e74c3c',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '14px'
+                                                        }}
+                                                        title="Remove recipient"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <button
+                                        type="button"
+                                        onClick={addRecipient}
                                         style={{
-                                            width: '100%',
-                                            padding: '10px',
-                                            backgroundColor: '#3a3a3a',
-                                            border: `1px solid ${recipientValidation.startsWith('Invalid') ? '#e74c3c' : '#4a4a4a'}`,
+                                            padding: '8px 16px',
+                                            backgroundColor: '#2ecc71',
+                                            color: 'white',
+                                            border: 'none',
                                             borderRadius: '4px',
-                                            color: '#ffffff',
-                                            fontSize: '14px'
+                                            cursor: 'pointer',
+                                            fontSize: '14px',
+                                            marginBottom: '15px'
                                         }}
-                                    />
-                                    <div style={{
-                                        color: recipientValidation.startsWith('✓') ? '#2ecc71' : 
-                                               recipientValidation.startsWith('Invalid') ? '#e74c3c' : '#888',
-                                        fontSize: '12px',
-                                        marginTop: '5px'
-                                    }}>
-                                        {recipientValidation || 'Enter valid IC principal IDs (format: xxxxx-xxxxx-xxxxx-xxxxx-xxx)'}
-                                    </div>
+                                    >
+                                        + Add Recipient
+                                    </button>
                                 </div>
 
                                 <div>
@@ -676,7 +740,7 @@ const SMS = () => {
                                     <button
                                         onClick={() => {
                                             setShowComposeModal(false);
-                                            setComposeForm({ recipients: '', subject: '', body: '', replyTo: null });
+                                            setComposeForm({ recipients: [{ value: '', isValid: false, name: '', error: '' }], subject: '', body: '', replyTo: null });
                                             setRecipientValidation('');
                                             setError(null);
                                         }}
@@ -695,15 +759,15 @@ const SMS = () => {
                                     </button>
                                     <button
                                         onClick={sendMessage}
-                                        disabled={submitting || !composeForm.recipients.trim() || !composeForm.subject.trim() || !composeForm.body.trim()}
+                                        disabled={submitting || composeForm.recipients.filter(r => r.isValid && r.value.trim()).length === 0 || !composeForm.subject.trim() || !composeForm.body.trim()}
                                         style={{
                                             backgroundColor: '#3498db',
                                             color: '#ffffff',
                                             border: 'none',
                                             borderRadius: '6px',
                                             padding: '10px 20px',
-                                            cursor: (submitting || !composeForm.recipients.trim() || !composeForm.subject.trim() || !composeForm.body.trim()) ? 'not-allowed' : 'pointer',
-                                            opacity: (submitting || !composeForm.recipients.trim() || !composeForm.subject.trim() || !composeForm.body.trim()) ? 0.6 : 1,
+                                            cursor: (submitting || composeForm.recipients.filter(r => r.isValid && r.value.trim()).length === 0 || !composeForm.subject.trim() || !composeForm.body.trim()) ? 'not-allowed' : 'pointer',
+                                            opacity: (submitting || composeForm.recipients.filter(r => r.isValid && r.value.trim()).length === 0 || !composeForm.subject.trim() || !composeForm.body.trim()) ? 0.6 : 1,
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '8px'
