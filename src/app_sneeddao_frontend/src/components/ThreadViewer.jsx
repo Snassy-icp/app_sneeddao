@@ -2700,6 +2700,7 @@ function ThreadViewer({
                                     alignItems: 'center',
                                     gap: '4px'
                                 }}
+                                title={replyingTo === Number(post.id) ? 'Cancel reply' : 'Reply to this post'}
                             >
                                 💬 {isNarrowScreen ? '' : (replyingTo === Number(post.id) ? ' Cancel Reply' : ' Reply')}
                             </button>
@@ -2720,6 +2721,7 @@ function ThreadViewer({
                                         alignItems: 'center',
                                         gap: '4px'
                                     }}
+                                    title="Send a tip to the post author"
                                 >
                                     💰{isNarrowScreen ? '' : ' Tip'}
                                 </button>
@@ -2744,6 +2746,7 @@ function ThreadViewer({
                                         alignItems: 'center',
                                         gap: '4px'
                                     }}
+                                    title="Send a private message to the post author"
                                 >
                                     📨{isNarrowScreen ? '' : ' Message'}
                                 </button>
@@ -2765,6 +2768,7 @@ function ThreadViewer({
                                         alignItems: 'center',
                                         gap: '4px'
                                     }}
+                                    title="Edit this post"
                                 >
                                     ✏️{isNarrowScreen ? '' : ' Edit'}
                                 </button>
@@ -2787,6 +2791,7 @@ function ThreadViewer({
                                         alignItems: 'center',
                                         gap: '4px'
                                     }}
+                                    title={deletingPost === Number(post.id) ? 'Deleting post...' : 'Delete this post'}
                                 >
                                     🗑️{isNarrowScreen ? '' : ` ${deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}`}
                                 </button>
@@ -2809,6 +2814,7 @@ function ThreadViewer({
                                         alignItems: 'center',
                                         gap: '4px'
                                     }}
+                                    title="Add a poll to this post"
                                 >
                                     📊{isNarrowScreen ? '' : ' Add Poll'}
                                 </button>
