@@ -32,6 +32,13 @@ const SMS = () => {
     const [showMessageModal, setShowMessageModal] = useState(false);
     const [recipientValidation, setRecipientValidation] = useState('');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    const [showMessageDetails, setShowMessageDetails] = useState(false);
+
+    // Helper function to truncate subject for header display
+    const truncateSubject = (subject, maxLength = 50) => {
+        if (subject.length <= maxLength) return subject;
+        return subject.substring(0, maxLength) + '...';
+    };
 
     // Create SMS actor
     const getSmsActor = () => {
@@ -973,7 +980,7 @@ const SMS = () => {
                             }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, marginRight: '15px' }}>
                                     <h2 style={{ color: '#ffffff', margin: 0, fontSize: '20px' }}>
-                                        {selectedMessage.subject}
+                                        {truncateSubject(selectedMessage.subject)}
                                     </h2>
                                     <button
                                         onClick={() => navigate(`/msg/${selectedMessage.id}`)}
@@ -1011,47 +1018,83 @@ const SMS = () => {
                                 </button>
                             </div>
 
+                            {/* Collapsible Message Details */}
                             <div style={{ marginBottom: '20px' }}>
-                                <div style={{ marginBottom: '15px' }}>
-                                    <strong style={{ color: '#888' }}>Subject:</strong>
-                                    <div style={{ color: '#ffffff', fontSize: '18px', marginTop: '5px' }}>
-                                        {selectedMessage.subject}
-                                    </div>
-                                </div>
+                                <button
+                                    onClick={() => setShowMessageDetails(!showMessageDetails)}
+                                    style={{
+                                        background: 'none',
+                                        border: '1px solid #3a3a3a',
+                                        color: '#888',
+                                        cursor: 'pointer',
+                                        fontSize: '14px',
+                                        padding: '8px 12px',
+                                        borderRadius: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        marginBottom: '10px',
+                                        width: '100%',
+                                        justifyContent: 'space-between'
+                                    }}
+                                    onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(58, 58, 58, 0.3)'}
+                                    onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                                >
+                                    <span>Message Details</span>
+                                    <span style={{ fontSize: '12px' }}>
+                                        {showMessageDetails ? '▼' : '▶'}
+                                    </span>
+                                </button>
 
-                                <div style={{ marginBottom: '15px' }}>
-                                    <strong style={{ color: '#888' }}>From:</strong>
-                                    <div style={{ marginTop: '8px' }}>
-                                        <PrincipalDisplay 
-                                            principal={selectedMessage.sender}
-                                            displayInfo={principalDisplayInfo.get(selectedMessage.sender.toString())}
-                                            showCopyButton={true}
-                                            style={{ color: '#3498db', fontSize: '14px' }}
-                                        />
-                                    </div>
-                                </div>
+                                {showMessageDetails && (
+                                    <div style={{ 
+                                        backgroundColor: '#1a1a1a',
+                                        padding: '15px',
+                                        borderRadius: '6px',
+                                        border: '1px solid #3a3a3a'
+                                    }}>
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <strong style={{ color: '#888' }}>Subject:</strong>
+                                            <div style={{ color: '#ffffff', fontSize: '16px', marginTop: '5px' }}>
+                                                {selectedMessage.subject}
+                                            </div>
+                                        </div>
 
-                                <div style={{ marginBottom: '15px' }}>
-                                    <strong style={{ color: '#888' }}>To:</strong>
-                                    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                        {selectedMessage.recipients.map((recipient, index) => (
-                                            <PrincipalDisplay 
-                                                key={recipient.toString()}
-                                                principal={recipient}
-                                                displayInfo={principalDisplayInfo.get(recipient.toString())}
-                                                showCopyButton={true}
-                                                style={{ color: '#3498db', fontSize: '14px' }}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <strong style={{ color: '#888' }}>From:</strong>
+                                            <div style={{ marginTop: '8px' }}>
+                                                <PrincipalDisplay 
+                                                    principal={selectedMessage.sender}
+                                                    displayInfo={principalDisplayInfo.get(selectedMessage.sender.toString())}
+                                                    showCopyButton={true}
+                                                    style={{ color: '#3498db', fontSize: '14px' }}
+                                                />
+                                            </div>
+                                        </div>
 
-                                <div style={{ marginBottom: '15px' }}>
-                                    <strong style={{ color: '#888' }}>Date:</strong>
-                                    <div style={{ color: '#ffffff', marginTop: '5px' }}>
-                                        {formatDate(selectedMessage.created_at)}
+                                        <div style={{ marginBottom: '15px' }}>
+                                            <strong style={{ color: '#888' }}>To:</strong>
+                                            <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                {selectedMessage.recipients.map((recipient, index) => (
+                                                    <PrincipalDisplay 
+                                                        key={recipient.toString()}
+                                                        principal={recipient}
+                                                        displayInfo={principalDisplayInfo.get(recipient.toString())}
+                                                        showCopyButton={true}
+                                                        style={{ color: '#3498db', fontSize: '14px' }}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div style={{ marginBottom: '0' }}>
+                                            <strong style={{ color: '#888' }}>Date:</strong>
+                                            <div style={{ color: '#ffffff', marginTop: '5px' }}>
+                                                {formatDate(selectedMessage.created_at)}
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
 
                                 <div style={{ marginBottom: '20px' }}>
                                     <strong style={{ color: '#888' }}>Message:</strong>
