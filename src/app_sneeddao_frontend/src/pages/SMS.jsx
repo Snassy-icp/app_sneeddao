@@ -17,7 +17,7 @@ const SMS = () => {
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [selectedTab, setSelectedTab] = useState('all'); // 'all', 'sent', 'received'
+    const [selectedTab, setSelectedTab] = useState('received'); // 'received', 'sent', 'all'
     const [showComposeModal, setShowComposeModal] = useState(false);
     const [composeForm, setComposeForm] = useState({
         recipients: [{ value: '', isValid: false, name: '', error: '' }], // Array of recipient objects
@@ -494,9 +494,9 @@ const SMS = () => {
                     borderBottom: '1px solid #3a3a3a'
                 }}>
                     {[
-                        { key: 'all', label: 'All Messages' },
+                        { key: 'received', label: 'Received' },
                         { key: 'sent', label: 'Sent' },
-                        { key: 'received', label: 'Received' }
+                        { key: 'all', label: 'All Messages' }
                     ].map(tab => (
                         <button
                             key={tab.key}
@@ -933,19 +933,29 @@ const SMS = () => {
 
                 {/* Message Detail Modal */}
                 {showMessageModal && selectedMessage && (
-                    <div style={{
-                        position: 'fixed',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        zIndex: 1000
-                    }}>
-                        <div style={{
+                    <div 
+                        style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            zIndex: 1000
+                        }}
+                        onClick={(e) => {
+                            // Close modal when clicking on backdrop
+                            if (e.target === e.currentTarget) {
+                                setShowMessageModal(false);
+                                setSelectedMessage(null);
+                            }
+                        }}
+                    >
+                        <div 
+                            style={{
                             backgroundColor: '#2a2a2a',
                             borderRadius: '8px',
                             padding: '30px',
