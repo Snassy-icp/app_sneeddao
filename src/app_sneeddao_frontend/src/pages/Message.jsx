@@ -223,7 +223,10 @@ const Message = () => {
     };
 
     // Toggle message collapse state (hide/show entire message content)
-    const toggleMessageCollapse = (messageId) => {
+    const toggleMessageCollapse = async (messageId) => {
+        const wasCollapsed = collapsedMessages.has(messageId);
+        
+        // Toggle collapse state
         setCollapsedMessages(prev => {
             const newSet = new Set(prev);
             if (newSet.has(messageId)) {
@@ -233,6 +236,12 @@ const Message = () => {
             }
             return newSet;
         });
+        
+        // If we're expanding (was collapsed) and no replies loaded yet, auto-load them
+        if (wasCollapsed && !messageChildren.has(messageId)) {
+            console.log('Auto-loading replies for expanded message:', messageId);
+            await loadReplies(messageId);
+        }
     };
 
     // Get loading state for a message
