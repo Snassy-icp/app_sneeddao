@@ -621,7 +621,9 @@ const SMS = () => {
                         {messages.map((message) => {
                             // Check if this is a received message (user is recipient, not sender)
                             const userPrincipal = identity?.getPrincipal();
-                            const isReceivedMessage = userPrincipal && !message.sender.equals(userPrincipal);
+                            const userPrincipalString = userPrincipal?.toString();
+                            const messageSenderString = message.sender.toString();
+                            const isReceivedMessage = userPrincipalString && messageSenderString !== userPrincipalString;
                             
                             // Check if this received message is new (only highlight received messages)
                             const isNew = isReceivedMessage && isMessageNew(message.created_at);
