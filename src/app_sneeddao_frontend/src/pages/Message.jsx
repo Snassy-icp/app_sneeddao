@@ -106,8 +106,11 @@ const Message = () => {
                             return newChildren;
                         });
                         
-                        // Expand parent message
-                        setExpandedMessages(prev => new Set([...prev, parentId]));
+                        // Start parent message collapsed (but never collapse the focus message)
+                        if (parentId !== messageId) {
+                            setCollapsedMessages(prev => new Set([...prev, parentId]));
+                        }
+                        setExpandedMessages(prev => new Set([...prev, parentId])); // Expand content but collapsed structurally
                         
                         // Load siblings (replies of the parent)
                         await loadReplies(parentId);
@@ -356,7 +359,11 @@ const Message = () => {
             setMessageChildren(prev => new Map(prev.set(messageId, replyIds)));
             
             // Start all reply messages in collapsed state (they will auto-load their replies when expanded)
-            setCollapsedMessages(prev => new Set([...prev, ...replyIds]));
+            // But never collapse the focus message
+            const replyIdsToCollapse = replyIds.filter(id => id !== focusMessageId);
+            if (replyIdsToCollapse.length > 0) {
+                setCollapsedMessages(prev => new Set([...prev, ...replyIdsToCollapse]));
+            }
             
             // Expand the message content for replies (so the text is readable, but they're structurally collapsed)
             setExpandedMessages(prev => new Set([...prev, ...replyIds]));
@@ -454,25 +461,9 @@ const Message = () => {
 
         return (
             <div key={messageId} style={{ marginLeft: depth * 20 + 'px' }}>
-                {/* Load Parent Buttons */}
+                {/* Load Full Context Button */}
                 {canLoadParent && (
-                    <div style={{ marginBottom: '10px', display: 'flex', gap: '8px' }}>
-                        <button
-                            onClick={() => loadParentMessage(messageId)}
-                            disabled={loadingState.loadingParent}
-                            style={{
-                                backgroundColor: '#9b59b6',
-                                color: '#ffffff',
-                                border: 'none',
-                                borderRadius: '4px',
-                                padding: '6px 12px',
-                                cursor: loadingState.loadingParent ? 'not-allowed' : 'pointer',
-                                opacity: loadingState.loadingParent ? 0.6 : 1,
-                                fontSize: '12px'
-                            }}
-                        >
-                            {loadingState.loadingParent ? '⏳ Loading...' : '⬆️ Load Parent'}
-                        </button>
+                    <div style={{ marginBottom: '10px' }}>
                         <button
                             onClick={() => loadAllParents(messageId)}
                             disabled={loadingState.loadingParent}
@@ -487,7 +478,7 @@ const Message = () => {
                                 fontSize: '12px'
                             }}
                         >
-                            {loadingState.loadingParent ? '⏳ Loading...' : '⬆️⬆️ All Parents'}
+                            {loadingState.loadingParent ? '⏳ Loading...' : '📖 Load Full Context'}
                         </button>
                     </div>
                 )}
