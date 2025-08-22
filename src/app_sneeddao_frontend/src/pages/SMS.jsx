@@ -3,9 +3,12 @@ import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
 import { Principal } from '@dfinity/principal';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { useNaming } from '../NamingContext';
 
 const SMS = () => {
     const { identity, isAuthenticated } = useAuth();
+    const { principalNames, principalNicknames } = useNaming();
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -23,6 +26,7 @@ const SMS = () => {
     const [selectedMessage, setSelectedMessage] = useState(null);
     const [showMessageModal, setShowMessageModal] = useState(false);
     const [recipientValidation, setRecipientValidation] = useState('');
+    const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
 
     // Create SMS actor
     const getSmsActor = () => {
@@ -95,6 +99,29 @@ const SMS = () => {
             fetchStats();
         }
     }, [isAuthenticated, selectedTab]);
+
+    // Fetch principal display info for all unique principals in messages
+    useEffect(() => {
+        if (!messages.length || !principalNames || !principalNicknames) return;
+
+        const uniquePrincipals = new Set();
+        messages.forEach(message => {
+            // Add sender
+            uniquePrincipals.add(message.sender.toString());
+            // Add recipients
+            message.recipients.forEach(recipient => {
+                uniquePrincipals.add(recipient.toString());
+            });
+        });
+
+        const displayInfoMap = new Map();
+        Array.from(uniquePrincipals).forEach(principal => {
+            const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames);
+            displayInfoMap.set(principal, displayInfo);
+        });
+
+        setPrincipalDisplayInfo(displayInfoMap);
+    }, [messages, principalNames, principalNicknames]);
 
     // Send message
     const sendMessage = async () => {
@@ -186,12 +213,6 @@ const SMS = () => {
         return date.toLocaleString();
     };
 
-    // Format principal
-    const formatPrincipal = (principal) => {
-        const principalStr = principal.toString();
-        return `${principalStr.slice(0, 6)}...${principalStr.slice(-6)}`;
-    };
-
     // Validate recipients input
     const validateRecipients = (recipientsText) => {
         if (!recipientsText.trim()) {
@@ -227,12 +248,22 @@ const SMS = () => {
 
     // Reply to message
     const replyToMessage = (message) => {
+        // Close the message modal first
+        setShowMessageModal(false);
+        setSelectedMessage(null);
+        
+        // Set up the reply form
         setComposeForm({
             recipients: message.sender.toString(),
             subject: message.subject.startsWith('Re: ') ? message.subject : `Re: ${message.subject}`,
             body: '',
             replyTo: Number(message.id)
         });
+        
+        // Validate the recipient (should be valid since it's from an existing message)
+        validateRecipients(message.sender.toString());
+        
+        // Open compose modal
         setShowComposeModal(true);
     };
 
@@ -448,15 +479,39 @@ const SMS = () => {
                                         <div style={{ 
                                             color: '#888', 
                                             fontSize: '14px',
-                                            marginBottom: '5px'
+                                            marginBottom: '5px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px'
                                         }}>
-                                            From: {formatPrincipal(message.sender)}
+                                            <span>From:</span>
+                                            <PrincipalDisplay 
+                                                principal={message.sender}
+                                                displayInfo={principalDisplayInfo.get(message.sender.toString())}
+                                                showCopyButton={false}
+                                                style={{ color: '#888', fontSize: '14px' }}
+                                            />
                                         </div>
                                         <div style={{ 
                                             color: '#888', 
-                                            fontSize: '14px'
+                                            fontSize: '14px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            flexWrap: 'wrap'
                                         }}>
-                                            To: {message.recipients.map(r => formatPrincipal(r)).join(', ')}
+                                            <span>To:</span>
+                                            {message.recipients.map((recipient, index) => (
+                                                <React.Fragment key={recipient.toString()}>
+                                                    <PrincipalDisplay 
+                                                        principal={recipient}
+                                                        displayInfo={principalDisplayInfo.get(recipient.toString())}
+                                                        showCopyButton={false}
+                                                        style={{ color: '#888', fontSize: '14px' }}
+                                                    />
+                                                    {index < message.recipients.length - 1 && <span>,</span>}
+                                                </React.Fragment>
+                                            ))}
                                         </div>
                                     </div>
                                     <div style={{ 
@@ -493,7 +548,7 @@ const SMS = () => {
                         display: 'flex',
                         justifyContent: 'center',
                         alignItems: 'center',
-                        zIndex: 1000
+                        zIndex: 1100
                     }}>
                         <div style={{
                             backgroundColor: '#2a2a2a',
@@ -733,18 +788,27 @@ const SMS = () => {
 
                                 <div style={{ marginBottom: '15px' }}>
                                     <strong style={{ color: '#888' }}>From:</strong>
-                                    <div style={{ color: '#3498db', fontFamily: 'monospace', marginTop: '5px' }}>
-                                        {selectedMessage.sender.toString()}
+                                    <div style={{ marginTop: '8px' }}>
+                                        <PrincipalDisplay 
+                                            principal={selectedMessage.sender}
+                                            displayInfo={principalDisplayInfo.get(selectedMessage.sender.toString())}
+                                            showCopyButton={true}
+                                            style={{ color: '#3498db', fontSize: '14px' }}
+                                        />
                                     </div>
                                 </div>
 
                                 <div style={{ marginBottom: '15px' }}>
                                     <strong style={{ color: '#888' }}>To:</strong>
-                                    <div style={{ marginTop: '5px' }}>
+                                    <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         {selectedMessage.recipients.map((recipient, index) => (
-                                            <div key={index} style={{ color: '#3498db', fontFamily: 'monospace', marginBottom: '2px' }}>
-                                                {recipient.toString()}
-                                            </div>
+                                            <PrincipalDisplay 
+                                                key={recipient.toString()}
+                                                principal={recipient}
+                                                displayInfo={principalDisplayInfo.get(recipient.toString())}
+                                                showCopyButton={true}
+                                                style={{ color: '#3498db', fontSize: '14px' }}
+                                            />
                                         ))}
                                     </div>
                                 </div>
