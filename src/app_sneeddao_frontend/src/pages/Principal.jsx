@@ -4,6 +4,7 @@ import { useSns } from '../contexts/SnsContext';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname } from '../utils/BackendUtils';
+import PrincipalInput from '../components/PrincipalInput';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import ConfirmationModal from '../ConfirmationModal';
@@ -499,121 +500,55 @@ export default function PrincipalPage() {
                                 </button>
                             )}
                         </div>
-                        <form onSubmit={handleSearchSubmit} style={{ position: 'relative' }}>
-                            <div style={{ 
-                                display: 'flex', 
-                                gap: '8px',
-                                alignItems: 'center'
-                            }}>
-                                <input
-                                    type="text"
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                            <div style={{ flex: '1' }}>
+                                <PrincipalInput
                                     value={searchInput}
-                                    onChange={(e) => setSearchInput(e.target.value)}
-                                    placeholder="Enter principal ID, name, or nickname..."
-                                    style={{
-                                        backgroundColor: '#3a3a3a',
-                                        border: '1px solid #4a4a4a',
-                                        borderRadius: '4px',
-                                        color: '#ffffff',
-                                        padding: '12px 16px',
-                                        flex: '1',
-                                        fontSize: '14px'
+                                    onChange={(value) => {
+                                        setSearchInput(value);
+                                        if (value.trim()) {
+                                            try {
+                                                Principal.fromText(value.trim());
+                                                // Valid principal, navigate immediately
+                                                setSearchParams({ id: value.trim() });
+                                                setShowSearchResults(false);
+                                            } catch (e) {
+                                                // Invalid principal, let user continue typing or use dropdown
+                                            }
+                                        }
                                     }}
+                                    placeholder="Enter principal ID or search by name"
                                 />
-                                <button
-                                    type="submit"
-                                    style={{
-                                        backgroundColor: '#3498db',
-                                        color: '#ffffff',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '12px 16px',
-                                        cursor: 'pointer',
-                                        fontSize: '14px',
-                                        whiteSpace: 'nowrap'
-                                    }}
-                                >
-                                    {searchLoading ? '...' : 'Go'}
-                                </button>
                             </div>
-                            
-                            {/* Search Results Dropdown */}
-                            {showSearchResults && searchResults.length > 0 && (
-                                <div style={{
-                                    position: 'absolute',
-                                    top: '100%',
-                                    left: '0',
-                                    right: '0',
-                                    backgroundColor: '#2a2a2a',
-                                    border: '1px solid #4a4a4a',
+                            <button
+                                onClick={() => {
+                                    if (searchInput.trim()) {
+                                        try {
+                                            Principal.fromText(searchInput.trim());
+                                            setSearchParams({ id: searchInput.trim() });
+                                            setShowSearchResults(false);
+                                        } catch (e) {
+                                            // Invalid principal, do nothing
+                                        }
+                                    }
+                                }}
+                                style={{
+                                    backgroundColor: '#3498db',
+                                    color: '#ffffff',
+                                    border: 'none',
                                     borderRadius: '4px',
-                                    marginTop: '4px',
-                                    maxHeight: '200px',
-                                    overflowY: 'auto',
-                                    zIndex: 1000,
-                                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-                                }}>
-                                    {searchResults.map((result, index) => (
-                                        <div
-                                            key={index}
-                                            onClick={() => handleSearchResultSelect(result)}
-                                            style={{
-                                                padding: '12px 16px',
-                                                cursor: 'pointer',
-                                                borderBottom: index < searchResults.length - 1 ? '1px solid #3a3a3a' : 'none',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                e.target.style.backgroundColor = '#3a3a3a';
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                e.target.style.backgroundColor = 'transparent';
-                                            }}
-                                        >
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{ color: '#ffffff', fontSize: '14px' }}>
-                                                    {result.displayText}
-                                                </div>
-                                                <div style={{ 
-                                                    color: '#888', 
-                                                    fontSize: '12px',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '4px',
-                                                    marginTop: '2px'
-                                                }}>
-                                                    {result.type === 'name' && (
-                                                        <>
-                                                            <span style={{ color: '#3498db' }}>📛</span>
-                                                            Public Name
-                                                        </>
-                                                    )}
-                                                    {result.type === 'nickname' && (
-                                                        <>
-                                                            <span style={{ color: '#f39c12' }}>🏷️</span>
-                                                            Your Nickname
-                                                        </>
-                                                    )}
-                                                    {result.type === 'direct' && (
-                                                        <>
-                                                            <span style={{ color: '#95a5a6' }}>🔗</span>
-                                                            Principal ID
-                                                        </>
-                                                    )}
-                                                    {result.name && result.nickname && result.type !== 'direct' && (
-                                                        <span style={{ color: '#2ecc71', marginLeft: '8px' }}>
-                                                            • Has both name & nickname
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </form>
+                                    padding: '12px 16px',
+                                    cursor: 'pointer',
+                                    fontSize: '14px',
+                                    whiteSpace: 'nowrap',
+                                    flexShrink: 0,
+                                    alignSelf: 'flex-start'
+                                }}
+                            >
+                                Go
+                            </button>
+                        </div>
+
                     </div>
 
                     <div style={{ textAlign: 'center', padding: '40px 20px' }}>
@@ -680,121 +615,55 @@ export default function PrincipalPage() {
                             </button>
                         )}
                     </div>
-                    <form onSubmit={handleSearchSubmit} style={{ position: 'relative' }}>
-                        <div style={{ 
-                            display: 'flex', 
-                            gap: '8px',
-                            alignItems: 'center'
-                        }}>
-                            <input
-                                type="text"
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                        <div style={{ flex: '1' }}>
+                            <PrincipalInput
                                 value={searchInput}
-                                onChange={(e) => setSearchInput(e.target.value)}
-                                placeholder="Enter principal ID, name, or nickname..."
-                                style={{
-                                    backgroundColor: '#3a3a3a',
-                                    border: '1px solid #4a4a4a',
-                                    borderRadius: '4px',
-                                    color: '#ffffff',
-                                    padding: '12px 16px',
-                                    flex: '1',
-                                    fontSize: '14px'
+                                onChange={(value) => {
+                                    setSearchInput(value);
+                                    if (value.trim()) {
+                                        try {
+                                            Principal.fromText(value.trim());
+                                            // Valid principal, navigate immediately
+                                            setSearchParams({ id: value.trim() });
+                                            setShowSearchResults(false);
+                                        } catch (e) {
+                                            // Invalid principal, let user continue typing or use dropdown
+                                        }
+                                    }
                                 }}
+                                placeholder="Enter principal ID or search by name"
                             />
-                            <button
-                                type="submit"
-                                style={{
-                                    backgroundColor: '#3498db',
-                                    color: '#ffffff',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '12px 16px',
-                                    cursor: 'pointer',
-                                    fontSize: '14px',
-                                    whiteSpace: 'nowrap'
-                                }}
-                            >
-                                {searchLoading ? '...' : 'Go'}
-                            </button>
                         </div>
-                        
-                        {/* Search Results Dropdown */}
-                        {showSearchResults && searchResults.length > 0 && (
-                            <div style={{
-                                position: 'absolute',
-                                top: '100%',
-                                left: '0',
-                                right: '0',
-                                backgroundColor: '#2a2a2a',
-                                border: '1px solid #4a4a4a',
+                        <button
+                            onClick={() => {
+                                if (searchInput.trim()) {
+                                    try {
+                                        Principal.fromText(searchInput.trim());
+                                        setSearchParams({ id: searchInput.trim() });
+                                        setShowSearchResults(false);
+                                    } catch (e) {
+                                        // Invalid principal, do nothing
+                                    }
+                                }
+                            }}
+                            style={{
+                                backgroundColor: '#3498db',
+                                color: '#ffffff',
+                                border: 'none',
                                 borderRadius: '4px',
-                                marginTop: '4px',
-                                maxHeight: '200px',
-                                overflowY: 'auto',
-                                zIndex: 1000,
-                                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-                            }}>
-                                {searchResults.map((result, index) => (
-                                    <div
-                                        key={index}
-                                        onClick={() => handleSearchResultSelect(result)}
-                                        style={{
-                                            padding: '12px 16px',
-                                            cursor: 'pointer',
-                                            borderBottom: index < searchResults.length - 1 ? '1px solid #3a3a3a' : 'none',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            e.target.style.backgroundColor = '#3a3a3a';
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.target.style.backgroundColor = 'transparent';
-                                        }}
-                                    >
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ color: '#ffffff', fontSize: '14px' }}>
-                                                {result.displayText}
-                                            </div>
-                                            <div style={{ 
-                                                color: '#888', 
-                                                fontSize: '12px',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '4px',
-                                                marginTop: '2px'
-                                            }}>
-                                                {result.type === 'name' && (
-                                                    <>
-                                                        <span style={{ color: '#3498db' }}>📛</span>
-                                                        Public Name
-                                                    </>
-                                                )}
-                                                {result.type === 'nickname' && (
-                                                    <>
-                                                        <span style={{ color: '#f39c12' }}>🏷️</span>
-                                                        Your Nickname
-                                                    </>
-                                                )}
-                                                {result.type === 'direct' && (
-                                                    <>
-                                                        <span style={{ color: '#95a5a6' }}>🔗</span>
-                                                        Principal ID
-                                                    </>
-                                                )}
-                                                {result.name && result.nickname && result.type !== 'direct' && (
-                                                    <span style={{ color: '#2ecc71', marginLeft: '8px' }}>
-                                                        • Has both name & nickname
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </form>
+                                padding: '12px 16px',
+                                cursor: 'pointer',
+                                fontSize: '14px',
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0,
+                                alignSelf: 'flex-start'
+                            }}
+                        >
+                            Go
+                        </button>
+                    </div>
+
                 </div>
 
                 {!stablePrincipalId.current ? (
