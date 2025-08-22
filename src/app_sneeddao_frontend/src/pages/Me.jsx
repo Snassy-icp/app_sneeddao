@@ -452,44 +452,22 @@ export default function Me() {
                         border: '1px solid #3a3a3a',
                         flex: '1'
                     }}>
-                        <div style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'flex-start',
-                            marginBottom: '15px'
-                        }}>
-                            <div>
-                                <h2 style={{ 
-                                    color: '#ffffff',
-                                    margin: '0 0 5px 0',
-                                    fontSize: '18px',
-                                    fontWeight: '500'
-                                }}>
-                                    Your Principal ID
-                                </h2>
-                                <div style={{ 
-                                    fontFamily: 'monospace',
-                                    color: '#888',
-                                    fontSize: '14px'
-                                }}>
-                                    {identity?.getPrincipal().toString()}
-                                </div>
+                        <div style={{ marginBottom: '15px' }}>
+                            <h2 style={{ 
+                                color: '#ffffff',
+                                margin: '0 0 5px 0',
+                                fontSize: '18px',
+                                fontWeight: '500'
+                            }}>
+                                Your Principal ID
+                            </h2>
+                            <div style={{ 
+                                fontFamily: 'monospace',
+                                color: '#888',
+                                fontSize: '14px'
+                            }}>
+                                {identity?.getPrincipal().toString()}
                             </div>
-                            {!editingPrincipalName && (
-                                <button
-                                    onClick={() => setEditingPrincipalName(true)}
-                                    style={{
-                                        backgroundColor: '#3498db',
-                                        color: '#ffffff',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '8px 12px',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    {principalName ? 'Change Name' : 'Set Name'}
-                                </button>
-                            )}
                         </div>
 
                         {principalName && !editingPrincipalName && (
@@ -499,7 +477,8 @@ export default function Me() {
                                 fontWeight: 'bold',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '4px'
+                                gap: '4px',
+                                marginBottom: '10px'
                             }}>
                                 {principalName}
                                 {isVerified && (
@@ -514,6 +493,23 @@ export default function Me() {
                                     </span>
                                 )}
                             </div>
+                        )}
+
+                        {!editingPrincipalName && (
+                            <button
+                                onClick={() => setEditingPrincipalName(true)}
+                                style={{
+                                    backgroundColor: '#3498db',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    marginBottom: '15px'
+                                }}
+                            >
+                                {principalName ? 'Change Name' : 'Set Name'}
+                            </button>
                         )}
 
                         {editingPrincipalName && (
