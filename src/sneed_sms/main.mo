@@ -85,6 +85,9 @@ actor SneedSMS {
         
         // Rate limiting
         user_last_message_time: Map.Map<Nat32, Int>; // user_index -> last_message_timestamp
+        
+        // Notification tracking
+        user_last_seen_messages_timestamp: Map.Map<Nat32, Int>; // user_index -> last_seen_timestamp
     };
 
     // Stable storage
@@ -95,6 +98,7 @@ actor SneedSMS {
     let stable_sender_messages = Map.new<Nat32, Vector.Vector<Nat>>();
     let stable_recipient_messages = Map.new<Nat32, Vector.Vector<Nat>>();
     let stable_user_last_message_time = Map.new<Nat32, Int>();
+    let stable_user_last_seen_messages_timestamp = Map.new<Nat32, Int>();
     var stable_config : SMSConfig = {
         var rate_limit_minutes = 10;
         var max_subject_length = 200;
@@ -112,6 +116,7 @@ actor SneedSMS {
         sender_messages = stable_sender_messages;
         recipient_messages = stable_recipient_messages;
         user_last_message_time = stable_user_last_message_time;
+        user_last_seen_messages_timestamp = stable_user_last_seen_messages_timestamp;
     };
 
     // System functions
@@ -694,5 +699,60 @@ actor SneedSMS {
         };
 
         Buffer.toArray(results)
+    };
+
+    // Notification functions
+    public query func get_recent_messages_count(user_principal: Principal) : async Nat {
+        let user_index_opt = Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal);
+        let user_index = switch (user_index_opt) {
+            case (?index) index;
+            case null return 0;
+        };
+
+        let last_seen_opt = Map.get(state.user_last_seen_messages_timestamp, Map.n32hash, user_index);
+        let last_seen = switch (last_seen_opt) {
+            case (?timestamp) timestamp;
+            case null 0;
+        };
+
+        let recipient_messages_opt = Map.get(state.recipient_messages, Map.n32hash, user_index);
+        let recipient_messages = switch (recipient_messages_opt) {
+            case (?messages) messages;
+            case null return 0;
+        };
+
+        var count = 0;
+        for (message_id in Vector.vals(recipient_messages)) {
+            switch (Map.get(state.messages, Map.nhash, message_id)) {
+                case (?message) {
+                    if (message.created_at > last_seen) {
+                        count += 1;
+                    };
+                };
+                case null {};
+            };
+        };
+
+        count
+    };
+
+    public shared ({ caller }) func mark_messages_seen_up_to(timestamp: Int) : async () {
+        let user_index_opt = Dedup.getIndexForPrincipal(state.principal_dedup_state, caller);
+        let user_index = switch (user_index_opt) {
+            case (?index) index;
+            case null return;
+        };
+
+        ignore Map.put(state.user_last_seen_messages_timestamp, Map.n32hash, user_index, timestamp);
+    };
+
+    public query func get_last_seen_messages_timestamp(user_principal: Principal) : async ?Int {
+        let user_index_opt = Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal);
+        let user_index = switch (user_index_opt) {
+            case (?index) index;
+            case null return null;
+        };
+
+        Map.get(state.user_last_seen_messages_timestamp, Map.n32hash, user_index)
     };
 }
