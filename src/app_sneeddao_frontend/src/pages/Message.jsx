@@ -13,12 +13,12 @@ const Message = () => {
     const { identity, isAuthenticated } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
     
-    const [message, setMessage] = useState(null);
-    const [parentMessage, setParentMessage] = useState(null);
-    const [replies, setReplies] = useState([]);
+    const [messageTree, setMessageTree] = useState(new Map()); // Map of messageId -> message object
+    const [messageChildren, setMessageChildren] = useState(new Map()); // Map of messageId -> array of child message IDs
+    const [focusMessageId, setFocusMessageId] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [loadingParent, setLoadingParent] = useState(false);
-    const [loadingReplies, setLoadingReplies] = useState(false);
+    const [loadingStates, setLoadingStates] = useState(new Map()); // Map of messageId -> {loadingParent: bool, loadingReplies: bool}
+    const [expandedMessages, setExpandedMessages] = useState(new Set()); // Set of message IDs with expanded content
     const [error, setError] = useState(null);
 
     // Create SMS actor
@@ -36,9 +36,9 @@ const Message = () => {
         return date.toLocaleString();
     };
 
-    // Fetch the main message
-    const fetchMessage = async () => {
-        console.log('fetchMessage called with id:', id, 'identity:', identity);
+    // Fetch the focus message and initialize the tree
+    const fetchFocusMessage = async () => {
+        console.log('fetchFocusMessage called with id:', id);
         if (!identity || !id) {
             console.log('Missing identity or id, returning');
             return;
@@ -49,29 +49,31 @@ const Message = () => {
         
         try {
             const actor = getSmsActor();
-            console.log('SMS actor created:', actor);
             if (!actor) {
                 console.log('No actor, returning');
                 return;
             }
 
             console.log('Calling get_message with id:', BigInt(id));
-            // Fetch the specific message
             const messageResult = await actor.get_message(BigInt(id));
             console.log('Message result:', messageResult);
             
-            // get_message returns ?MessageResponse (optional), not Result
-            if (messageResult === null || messageResult === undefined || messageResult.length === 0) {
+            if (messageResult === null || messageResult === undefined) {
                 const errorMsg = `Message not found or access denied`;
                 console.log('Error: message not found or no access');
                 setError(errorMsg);
                 return;
             }
 
-            // If it's an array, get the first message, otherwise use directly
             const targetMessage = Array.isArray(messageResult) ? messageResult[0] : messageResult;
-            console.log('Successfully loaded message:', targetMessage);
-            setMessage(targetMessage);
+            console.log('Successfully loaded focus message:', targetMessage);
+            
+            // Initialize the tree with just the focus message
+            const messageId = Number(targetMessage.id);
+            setMessageTree(new Map([[messageId, targetMessage]]));
+            setMessageChildren(new Map());
+            setFocusMessageId(messageId);
+            setExpandedMessages(new Set([messageId])); // Focus message starts expanded
 
         } catch (err) {
             console.error('Error fetching message:', err);
@@ -81,78 +83,356 @@ const Message = () => {
         }
     };
 
-    // Load parent message (if current message is a reply)
-    const loadParentMessage = async () => {
+    // Load parent of a specific message
+    const loadParentMessage = async (messageId) => {
+        const message = messageTree.get(messageId);
         if (!message || !message.reply_to || message.reply_to.length === 0) return;
         
-        setLoadingParent(true);
+        // Set loading state for this message
+        setLoadingStates(prev => new Map(prev.set(messageId, { 
+            ...prev.get(messageId), 
+            loadingParent: true 
+        })));
+        
         try {
             const actor = getSmsActor();
             if (!actor) return;
 
-            const parentId = message.reply_to[0];
-            console.log('Loading parent message with ID:', parentId);
+            const parentId = Number(message.reply_to[0]);
+            console.log('Loading parent message with ID:', parentId, 'for message:', messageId);
+            
+            // Check if parent is already loaded
+            if (messageTree.has(parentId)) {
+                console.log('Parent already loaded');
+                return;
+            }
+            
             const parentResult = await actor.get_message(BigInt(parentId));
             console.log('Parent message result:', parentResult);
             
-            // get_message returns ?MessageResponse (optional), not Result
             if (parentResult === null || parentResult === undefined) {
                 console.log('Parent message not found or no access');
                 return;
             }
 
-            // If it's an array, get the first message, otherwise use directly
             const parentMsg = Array.isArray(parentResult) ? parentResult[0] : parentResult;
-            console.log('Setting parent message:', parentMsg);
-            setParentMessage(parentMsg);
+            console.log('Adding parent message to tree:', parentMsg);
+            
+            // Add parent to tree
+            setMessageTree(prev => new Map(prev.set(parentId, parentMsg)));
+            
+            // Add this message as a child of the parent
+            setMessageChildren(prev => {
+                const newChildren = new Map(prev);
+                const parentChildren = newChildren.get(parentId) || [];
+                if (!parentChildren.includes(messageId)) {
+                    newChildren.set(parentId, [...parentChildren, messageId]);
+                }
+                return newChildren;
+            });
+            
+            // Expand parent message
+            setExpandedMessages(prev => new Set([...prev, parentId]));
+            
         } catch (err) {
             console.error('Error loading parent message:', err);
         } finally {
-            setLoadingParent(false);
+            // Clear loading state
+            setLoadingStates(prev => new Map(prev.set(messageId, { 
+                ...prev.get(messageId), 
+                loadingParent: false 
+            })));
         }
     };
 
-    // Load replies to current message
-    const loadReplies = async () => {
-        if (!message) return;
+    // Load replies for a specific message
+    const loadReplies = async (messageId) => {
+        // Set loading state for this message
+        setLoadingStates(prev => new Map(prev.set(messageId, { 
+            ...prev.get(messageId), 
+            loadingReplies: true 
+        })));
         
-        setLoadingReplies(true);
         try {
             const actor = getSmsActor();
             if (!actor) return;
 
-            console.log('Loading all messages to find replies...');
+            console.log('Loading replies for message:', messageId);
             const allMessages = await actor.get_all_messages();
             console.log('All messages result:', allMessages);
             
-            // Find messages that reply to the current message
+            // Find messages that reply to this message
             const messageReplies = allMessages.filter(msg => 
                 msg.reply_to && 
                 msg.reply_to.length > 0 && 
-                Number(msg.reply_to[0]) === Number(message.id)
+                Number(msg.reply_to[0]) === messageId
             );
             
             console.log('Found replies:', messageReplies);
             
             // Sort by creation time
             messageReplies.sort((a, b) => Number(a.created_at) - Number(b.created_at));
-            setReplies(messageReplies);
+            
+            // Add replies to tree
+            setMessageTree(prev => {
+                const newTree = new Map(prev);
+                messageReplies.forEach(reply => {
+                    newTree.set(Number(reply.id), reply);
+                });
+                return newTree;
+            });
+            
+            // Set children for this message
+            const replyIds = messageReplies.map(reply => Number(reply.id));
+            setMessageChildren(prev => new Map(prev.set(messageId, replyIds)));
+            
+            // Expand all reply messages
+            setExpandedMessages(prev => new Set([...prev, ...replyIds]));
+            
         } catch (err) {
             console.error('Error loading replies:', err);
         } finally {
-            setLoadingReplies(false);
+            // Clear loading state
+            setLoadingStates(prev => new Map(prev.set(messageId, { 
+                ...prev.get(messageId), 
+                loadingReplies: false 
+            })));
         }
     };
 
     useEffect(() => {
         console.log('useEffect triggered with isAuthenticated:', isAuthenticated, 'id:', id);
         if (isAuthenticated) {
-            fetchMessage();
+            fetchFocusMessage();
         }
     }, [isAuthenticated, id]);
 
-    // Debug logging
-    console.log('Component state - loading:', loading, 'error:', error, 'message:', message, 'isAuthenticated:', isAuthenticated);
+    // Toggle message content expansion
+    const toggleMessageExpansion = (messageId) => {
+        setExpandedMessages(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(messageId)) {
+                newSet.delete(messageId);
+            } else {
+                newSet.add(messageId);
+            }
+            return newSet;
+        });
+    };
+
+    // Get loading state for a message
+    const getLoadingState = (messageId) => {
+        return loadingStates.get(messageId) || { loadingParent: false, loadingReplies: false };
+    };
+
+    // Find the root of the current tree (message with no loaded parent)
+    const findTreeRoot = () => {
+        for (const [messageId, message] of messageTree) {
+            const hasParentInTree = message.reply_to && 
+                message.reply_to.length > 0 && 
+                messageTree.has(Number(message.reply_to[0]));
+            if (!hasParentInTree) {
+                return messageId;
+            }
+        }
+        return focusMessageId; // Fallback to focus message
+    };
+
+    // Render a single message in the tree
+    const renderMessage = (messageId, depth = 0) => {
+        const message = messageTree.get(messageId);
+        if (!message) return null;
+
+        const isFocused = messageId === focusMessageId;
+        const isExpanded = expandedMessages.has(messageId);
+        const loadingState = getLoadingState(messageId);
+        const children = messageChildren.get(messageId) || [];
+        const hasParent = message.reply_to && message.reply_to.length > 0;
+        const canLoadParent = hasParent && !messageTree.has(Number(message.reply_to[0]));
+        const canLoadReplies = !children.length; // Can load replies if no children loaded yet
+
+        // Truncate long messages
+        const isLongMessage = message.body.length > 300;
+        const displayBody = isExpanded || !isLongMessage ? message.body : message.body.substring(0, 300) + '...';
+
+        return (
+            <div key={messageId} style={{ marginLeft: depth * 20 + 'px' }}>
+                {/* Load Parent Button */}
+                {canLoadParent && (
+                    <div style={{ marginBottom: '10px' }}>
+                        <button
+                            onClick={() => loadParentMessage(messageId)}
+                            disabled={loadingState.loadingParent}
+                            style={{
+                                backgroundColor: '#9b59b6',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '6px 12px',
+                                cursor: loadingState.loadingParent ? 'not-allowed' : 'pointer',
+                                opacity: loadingState.loadingParent ? 0.6 : 1,
+                                fontSize: '12px'
+                            }}
+                        >
+                            {loadingState.loadingParent ? '⏳ Loading...' : '⬆️ Load Parent'}
+                        </button>
+                    </div>
+                )}
+
+                {/* Message Container */}
+                <div
+                    style={{
+                        backgroundColor: isFocused ? 'rgba(52, 152, 219, 0.1)' : '#2a2a2a',
+                        border: isFocused ? '2px solid #3498db' : '1px solid #3a3a3a',
+                        borderRadius: '8px',
+                        padding: '15px',
+                        marginBottom: '10px',
+                        position: 'relative'
+                    }}
+                >
+                    {isFocused && (
+                        <div style={{
+                            position: 'absolute',
+                            top: '-10px',
+                            left: '15px',
+                            backgroundColor: '#3498db',
+                            color: 'white',
+                            padding: '4px 12px',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            fontWeight: 'bold'
+                        }}>
+                            Focus Message
+                        </div>
+                    )}
+
+                    {/* Message Header */}
+                    <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'flex-start',
+                        marginBottom: '10px',
+                        flexWrap: 'wrap',
+                        gap: '10px'
+                    }}>
+                        <div style={{ flex: 1, minWidth: '200px' }}>
+                            <div style={{ marginBottom: '5px' }}>
+                                <span style={{ color: '#888', fontSize: '12px' }}>From: </span>
+                                <PrincipalDisplay 
+                                    principal={message.sender} 
+                                    maxLength={20}
+                                    style={{ color: '#ffffff', fontSize: '14px' }}
+                                />
+                            </div>
+                            <div style={{ marginBottom: '5px' }}>
+                                <span style={{ color: '#888', fontSize: '12px' }}>To: </span>
+                                {message.recipients.map((recipient, idx) => (
+                                    <span key={idx}>
+                                        <PrincipalDisplay 
+                                            principal={recipient} 
+                                            maxLength={15}
+                                            style={{ color: '#ffffff', fontSize: '14px' }}
+                                        />
+                                        {idx < message.recipients.length - 1 && ', '}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                        <div style={{ color: '#888', fontSize: '12px', textAlign: 'right' }}>
+                            <div 
+                                style={{ cursor: 'pointer', color: '#3498db' }}
+                                onClick={() => navigate(`/msg/${message.id}`)}
+                                title="Click to focus this message"
+                            >
+                                #{message.id.toString()}
+                            </div>
+                            <div>{formatTimestamp(message.created_at)}</div>
+                        </div>
+                    </div>
+
+                    {/* Message Content */}
+                    <div style={{ marginBottom: '10px' }}>
+                        <h4 style={{ color: '#ffffff', margin: '0 0 8px 0', fontSize: '16px' }}>
+                            {message.subject}
+                        </h4>
+                        <div style={{ 
+                            color: '#cccccc', 
+                            lineHeight: '1.5',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            fontSize: '14px'
+                        }}>
+                            {displayBody}
+                        </div>
+                        {isLongMessage && (
+                            <button
+                                onClick={() => toggleMessageExpansion(messageId)}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#3498db',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    marginTop: '5px'
+                                }}
+                            >
+                                {isExpanded ? 'Show Less' : 'Show More'}
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div style={{ 
+                        display: 'flex', 
+                        gap: '8px', 
+                        borderTop: '1px solid #3a3a3a', 
+                        paddingTop: '10px',
+                        flexWrap: 'wrap'
+                    }}>
+                        <button
+                            onClick={() => navigate(`/sms?reply=${message.id}`)}
+                            style={{
+                                backgroundColor: '#3498db',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '6px 12px',
+                                cursor: 'pointer',
+                                fontSize: '12px'
+                            }}
+                        >
+                            ↩️ Reply
+                        </button>
+                    </div>
+                </div>
+
+                {/* Load Replies Button */}
+                {canLoadReplies && (
+                    <div style={{ marginBottom: '10px', marginLeft: '20px' }}>
+                        <button
+                            onClick={() => loadReplies(messageId)}
+                            disabled={loadingState.loadingReplies}
+                            style={{
+                                backgroundColor: '#e67e22',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '6px 12px',
+                                cursor: loadingState.loadingReplies ? 'not-allowed' : 'pointer',
+                                opacity: loadingState.loadingReplies ? 0.6 : 1,
+                                fontSize: '12px'
+                            }}
+                        >
+                            {loadingState.loadingReplies ? '⏳ Loading...' : '⬇️ Load Replies'}
+                        </button>
+                    </div>
+                )}
+
+                {/* Render Children */}
+                {children.map(childId => renderMessage(childId, depth + 1))}
+            </div>
+        );
+    };
 
     if (!isAuthenticated) {
         return (
@@ -212,7 +492,7 @@ const Message = () => {
     return (
         <div className='page-container'>
             <Header />
-            <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
+            <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto' }}>
                 {/* Navigation */}
                 <div style={{ marginBottom: '20px' }}>
                     <button 
@@ -229,272 +509,18 @@ const Message = () => {
                     >
                         ← Back to Messages
                     </button>
-                    <span style={{ color: '#888' }}>Message Chain</span>
+                    <span style={{ color: '#888' }}>Message Thread</span>
                 </div>
 
-                {/* Parent Message (if loaded) */}
-                {parentMessage && (
-                    <div style={{ marginBottom: '20px' }}>
-                        <h3 style={{ color: '#888', marginBottom: '10px', fontSize: '16px' }}>
-                            ↩️ Parent Message
-                        </h3>
-                        <div
-                            style={{
-                                backgroundColor: '#2a2a2a',
-                                border: '1px solid #3a3a3a',
-                                borderRadius: '8px',
-                                padding: '20px',
-                                cursor: 'pointer'
-                            }}
-                            onClick={() => navigate(`/msg/${parentMessage.id}`)}
-                        >
-                            <div style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
-                                alignItems: 'flex-start',
-                                marginBottom: '15px',
-                                flexWrap: 'wrap',
-                                gap: '10px'
-                            }}>
-                                <div style={{ flex: 1, minWidth: '200px' }}>
-                                    <div style={{ marginBottom: '8px' }}>
-                                        <span style={{ color: '#888', fontSize: '14px' }}>From: </span>
-                                        <PrincipalDisplay 
-                                            principal={parentMessage.sender} 
-                                            maxLength={20}
-                                            style={{ color: '#ffffff' }}
-                                        />
-                                    </div>
-                                </div>
-                                <div style={{ color: '#888', fontSize: '12px', textAlign: 'right' }}>
-                                    <div>#{parentMessage.id.toString()}</div>
-                                    <div>{formatTimestamp(parentMessage.created_at)}</div>
-                                </div>
-                            </div>
-                            <h4 style={{ color: '#ffffff', margin: '0 0 10px 0', fontSize: '16px' }}>
-                                {parentMessage.subject}
-                            </h4>
-                            <div style={{ 
-                                color: '#cccccc', 
-                                lineHeight: '1.6',
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word'
-                            }}>
-                                {parentMessage.body}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Current Message */}
-                {message && (
-                    <div style={{ marginBottom: '20px' }}>
-                        <div
-                            style={{
-                                backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                                border: '2px solid #3498db',
-                                borderRadius: '8px',
-                                padding: '20px',
-                                position: 'relative'
-                            }}
-                        >
-                            <div style={{
-                                position: 'absolute',
-                                top: '-10px',
-                                left: '20px',
-                                backgroundColor: '#3498db',
-                                color: 'white',
-                                padding: '4px 12px',
-                                borderRadius: '12px',
-                                fontSize: '12px',
-                                fontWeight: 'bold'
-                            }}>
-                                Current Message
-                            </div>
-
-                            {/* Message Header */}
-                            <div style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
-                                alignItems: 'flex-start',
-                                marginBottom: '15px',
-                                flexWrap: 'wrap',
-                                gap: '10px'
-                            }}>
-                                <div style={{ flex: 1, minWidth: '200px' }}>
-                                    <div style={{ marginBottom: '8px' }}>
-                                        <span style={{ color: '#888', fontSize: '14px' }}>From: </span>
-                                        <PrincipalDisplay 
-                                            principal={message.sender} 
-                                            maxLength={20}
-                                            style={{ color: '#ffffff' }}
-                                        />
-                                    </div>
-                                    <div style={{ marginBottom: '8px' }}>
-                                        <span style={{ color: '#888', fontSize: '14px' }}>To: </span>
-                                        {message.recipients.map((recipient, idx) => (
-                                            <span key={idx}>
-                                                <PrincipalDisplay 
-                                                    principal={recipient} 
-                                                    maxLength={20}
-                                                    style={{ color: '#ffffff' }}
-                                                />
-                                                {idx < message.recipients.length - 1 && ', '}
-                                            </span>
-                                        ))}
-                                    </div>
-                                    {message.reply_to && message.reply_to.length > 0 && (
-                                        <div style={{ marginBottom: '8px' }}>
-                                            <span style={{ color: '#888', fontSize: '14px' }}>
-                                                ↩️ Reply to message #{message.reply_to[0].toString()}
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-                                <div style={{ color: '#888', fontSize: '12px', textAlign: 'right' }}>
-                                    <div>#{message.id.toString()}</div>
-                                    <div>{formatTimestamp(message.created_at)}</div>
-                                </div>
-                            </div>
-
-                            {/* Message Content */}
-                            <div style={{ marginBottom: '15px' }}>
-                                <h3 style={{ color: '#ffffff', margin: '0 0 10px 0', fontSize: '18px' }}>
-                                    {message.subject}
-                                </h3>
-                                <div style={{ 
-                                    color: '#cccccc', 
-                                    lineHeight: '1.6',
-                                    whiteSpace: 'pre-wrap',
-                                    wordBreak: 'break-word'
-                                }}>
-                                    {message.body}
-                                </div>
-                            </div>
-
-                            {/* Navigation and Action buttons */}
-                            <div style={{ 
-                                display: 'flex', 
-                                gap: '10px', 
-                                borderTop: '1px solid #3a3a3a', 
-                                paddingTop: '15px',
-                                flexWrap: 'wrap'
-                            }}>
-                                {/* Load Parent Button */}
-                                {message.reply_to && message.reply_to.length > 0 && !parentMessage && (
-                                    <button
-                                        onClick={loadParentMessage}
-                                        disabled={loadingParent}
-                                        style={{
-                                            backgroundColor: '#9b59b6',
-                                            color: '#ffffff',
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            padding: '8px 16px',
-                                            cursor: loadingParent ? 'not-allowed' : 'pointer',
-                                            opacity: loadingParent ? 0.6 : 1
-                                        }}
-                                    >
-                                        {loadingParent ? '⏳ Loading...' : '⬆️ Load Parent'}
-                                    </button>
-                                )}
-
-                                {/* Load Replies Button */}
-                                {replies.length === 0 && (
-                                    <button
-                                        onClick={loadReplies}
-                                        disabled={loadingReplies}
-                                        style={{
-                                            backgroundColor: '#e67e22',
-                                            color: '#ffffff',
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            padding: '8px 16px',
-                                            cursor: loadingReplies ? 'not-allowed' : 'pointer',
-                                            opacity: loadingReplies ? 0.6 : 1
-                                        }}
-                                    >
-                                        {loadingReplies ? '⏳ Loading...' : '⬇️ Load Replies'}
-                                    </button>
-                                )}
-
-                                {/* Reply Button */}
-                                <button
-                                    onClick={() => {
-                                        navigate(`/sms?reply=${message.id}`);
-                                    }}
-                                    style={{
-                                        backgroundColor: '#3498db',
-                                        color: '#ffffff',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '8px 16px',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    ↩️ Reply
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Replies (if loaded) */}
-                {replies.length > 0 && (
-                    <div>
-                        <h3 style={{ color: '#888', marginBottom: '10px', fontSize: '16px' }}>
-                            ⬇️ Replies ({replies.length})
-                        </h3>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                            {replies.map((reply) => (
-                                <div
-                                    key={reply.id}
-                                    style={{
-                                        backgroundColor: '#2a2a2a',
-                                        border: '1px solid #3a3a3a',
-                                        borderRadius: '8px',
-                                        padding: '20px',
-                                        cursor: 'pointer'
-                                    }}
-                                    onClick={() => navigate(`/msg/${reply.id}`)}
-                                >
-                                    <div style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between', 
-                                        alignItems: 'flex-start',
-                                        marginBottom: '15px',
-                                        flexWrap: 'wrap',
-                                        gap: '10px'
-                                    }}>
-                                        <div style={{ flex: 1, minWidth: '200px' }}>
-                                            <div style={{ marginBottom: '8px' }}>
-                                                <span style={{ color: '#888', fontSize: '14px' }}>From: </span>
-                                                <PrincipalDisplay 
-                                                    principal={reply.sender} 
-                                                    maxLength={20}
-                                                    style={{ color: '#ffffff' }}
-                                                />
-                                            </div>
-                                        </div>
-                                        <div style={{ color: '#888', fontSize: '12px', textAlign: 'right' }}>
-                                            <div>#{reply.id.toString()}</div>
-                                            <div>{formatTimestamp(reply.created_at)}</div>
-                                        </div>
-                                    </div>
-                                    <h4 style={{ color: '#ffffff', margin: '0 0 10px 0', fontSize: '16px' }}>
-                                        {reply.subject}
-                                    </h4>
-                                    <div style={{ 
-                                        color: '#cccccc', 
-                                        lineHeight: '1.6',
-                                        whiteSpace: 'pre-wrap',
-                                        wordBreak: 'break-word'
-                                    }}>
-                                        {reply.body}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                {/* Message Tree */}
+                {focusMessageId && messageTree.size > 0 && (
+                    <div style={{ 
+                        backgroundColor: '#1a1a1a',
+                        borderRadius: '8px',
+                        padding: '20px',
+                        border: '1px solid #333'
+                    }}>
+                        {renderMessage(findTreeRoot())}
                     </div>
                 )}
             </div>
