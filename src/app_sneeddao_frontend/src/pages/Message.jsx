@@ -77,6 +77,9 @@ const Message = () => {
             setFocusMessageId(messageId);
             setExpandedMessages(new Set([messageId])); // Focus message starts expanded
 
+            // Auto-load replies for the focused message (they will start collapsed)
+            await loadReplies(messageId);
+
         } catch (err) {
             console.error('Error fetching message:', err);
             setError('Failed to load message: ' + (err.message || err.toString()));
