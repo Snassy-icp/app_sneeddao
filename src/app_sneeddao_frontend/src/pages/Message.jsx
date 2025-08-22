@@ -38,24 +38,39 @@ const Message = () => {
 
     // Fetch the main message
     const fetchMessage = async () => {
-        if (!identity || !id) return;
+        console.log('fetchMessage called with id:', id, 'identity:', identity);
+        if (!identity || !id) {
+            console.log('Missing identity or id, returning');
+            return;
+        }
         
         setLoading(true);
         setError(null);
         
         try {
             const actor = getSmsActor();
-            if (!actor) return;
-
-            // Fetch the specific message
-            const messageResult = await actor.get_message(BigInt(id));
-            
-            if ('err' in messageResult) {
-                setError(`Message not found: ${messageResult.err.NotFound || messageResult.err.Unauthorized || 'Access denied'}`);
+            console.log('SMS actor created:', actor);
+            if (!actor) {
+                console.log('No actor, returning');
                 return;
             }
 
-            const targetMessage = messageResult.ok;
+            console.log('Calling get_message with id:', BigInt(id));
+            // Fetch the specific message
+            const messageResult = await actor.get_message(BigInt(id));
+            console.log('Message result:', messageResult);
+            
+            // get_message returns ?MessageResponse (optional), not Result
+            if (messageResult === null || messageResult === undefined || messageResult.length === 0) {
+                const errorMsg = `Message not found or access denied`;
+                console.log('Error: message not found or no access');
+                setError(errorMsg);
+                return;
+            }
+
+            // If it's an array, get the first message, otherwise use directly
+            const targetMessage = Array.isArray(messageResult) ? messageResult[0] : messageResult;
+            console.log('Successfully loaded message:', targetMessage);
             setMessage(targetMessage);
 
         } catch (err) {
@@ -120,8 +135,14 @@ const Message = () => {
     };
 
     useEffect(() => {
-        fetchMessage();
-    }, [identity, id]);
+        console.log('useEffect triggered with isAuthenticated:', isAuthenticated, 'id:', id);
+        if (isAuthenticated) {
+            fetchMessage();
+        }
+    }, [isAuthenticated, id]);
+
+    // Debug logging
+    console.log('Component state - loading:', loading, 'error:', error, 'message:', message, 'isAuthenticated:', isAuthenticated);
 
     if (!isAuthenticated) {
         return (
