@@ -497,58 +497,24 @@ const Message = () => {
         return (
             <div key={messageId} style={{ marginLeft: depth * 20 + 'px' }}>
                 {/* Action Buttons */}
-                {(canLoadParent || messageTree.size > 1) && (
+                {canLoadParent && (
                     <div style={{ marginBottom: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        {canLoadParent && (
-                            <button
-                                onClick={() => loadAllParents(messageId)}
-                                disabled={loadingState.loadingParent}
-                                style={{
-                                    backgroundColor: '#8e44ad',
-                                    color: '#ffffff',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '6px 12px',
-                                    cursor: loadingState.loadingParent ? 'not-allowed' : 'pointer',
-                                    opacity: loadingState.loadingParent ? 0.6 : 1,
-                                    fontSize: '12px'
-                                }}
-                            >
-                                {loadingState.loadingParent ? '⏳ Loading...' : '📖 Load Full Context'}
-                            </button>
-                        )}
-                        {messageTree.size > 1 && (
-                            <>
-                                <button
-                                    onClick={expandAll}
-                                    style={{
-                                        backgroundColor: '#27ae60',
-                                        color: '#ffffff',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '6px 12px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px'
-                                    }}
-                                >
-                                    ▼ Expand All
-                                </button>
-                                <button
-                                    onClick={collapseAll}
-                                    style={{
-                                        backgroundColor: '#e67e22',
-                                        color: '#ffffff',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '6px 12px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px'
-                                    }}
-                                >
-                                    ▶ Collapse All
-                                </button>
-                            </>
-                        )}
+                        <button
+                            onClick={() => loadAllParents(messageId)}
+                            disabled={loadingState.loadingParent}
+                            style={{
+                                backgroundColor: '#8e44ad',
+                                color: '#ffffff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '6px 12px',
+                                cursor: loadingState.loadingParent ? 'not-allowed' : 'pointer',
+                                opacity: loadingState.loadingParent ? 0.6 : 1,
+                                fontSize: '12px'
+                            }}
+                        >
+                            {loadingState.loadingParent ? '⏳ Loading...' : '📖 Load Full Context'}
+                        </button>
                     </div>
                 )}
 
@@ -815,9 +781,41 @@ const Message = () => {
                         ← Back to Messages
                     </button>
                     
-
-                    
                     <span style={{ color: '#888' }}>Message Thread</span>
+                    
+                    {/* Global Expand/Collapse Controls */}
+                    {messageTree.size > 1 && (
+                        <>
+                            <button
+                                onClick={expandAll}
+                                style={{
+                                    backgroundColor: '#27ae60',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '6px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px'
+                                }}
+                            >
+                                ▼ Expand All
+                            </button>
+                            <button
+                                onClick={collapseAll}
+                                style={{
+                                    backgroundColor: '#e67e22',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '6px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px'
+                                }}
+                            >
+                                ▶ Collapse All
+                            </button>
+                        </>
+                    )}
                 </div>
 
                 {/* Message Tree */}
