@@ -2509,7 +2509,7 @@ function ThreadViewer({
                             onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
                             onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
                         >
-                            #{post.id.toString()}
+                            #{isNarrowScreen ? '' : post.id.toString()}
                         </a>
                         {post.title && <h4 style={{ margin: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{post.title}</h4>}
                         <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><PrincipalDisplay 
@@ -2517,7 +2517,12 @@ function ThreadViewer({
                             displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
                             showCopyButton={false} 
                         /></span>
-                        <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>
+                        <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                            {isNarrowScreen 
+                                ? new Date(Number(post.created_at) / 1000000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                                : new Date(Number(post.created_at) / 1000000).toLocaleString()
+                            }
+                        </span>
                         {viewMode === 'flat' && post.reply_to_post_id && post.reply_to_post_id.length > 0 && (() => {
                             const parentPost = findPostById(discussionPosts, post.reply_to_post_id[0]);
                             if (parentPost) {
@@ -2575,6 +2580,7 @@ function ThreadViewer({
                                 <TipDisplay 
                                     tips={postTips[Number(post.id)]}
                                     principalDisplayInfo={principalDisplayInfo}
+                                    isNarrowScreen={isNarrowScreen}
                                 />
                             )}
 
@@ -2614,9 +2620,9 @@ function ThreadViewer({
                                     style={getVoteButtonStyles(post.id, 'up')}
                                     title={getVoteButtonTooltip(post.id, 'up')}
                                 >
-                                    ▲ {votingStates.get(post.id.toString()) === 'voting' ? '...' : 
+                                    ▲{isNarrowScreen ? '' : ` ${votingStates.get(post.id.toString()) === 'voting' ? '...' : 
                                         totalVotingPower === 0 ? 'No VP' : 
-                                        `${formatVotingPowerDisplay(totalVotingPower)}`}
+                                        `${formatVotingPowerDisplay(totalVotingPower)}`}`}
                                 </button>
 
                                 {/* Score Display - Shows total post score */}
@@ -2666,9 +2672,9 @@ function ThreadViewer({
                                     style={getVoteButtonStyles(post.id, 'down')}
                                     title={getVoteButtonTooltip(post.id, 'down')}
                                 >
-                                    ▼ {votingStates.get(post.id.toString()) === 'voting' ? '...' : 
+                                    ▼{isNarrowScreen ? '' : ` ${votingStates.get(post.id.toString()) === 'voting' ? '...' : 
                                         totalVotingPower === 0 ? 'No VP' : 
-                                        `${formatVotingPowerDisplay(totalVotingPower)}`}
+                                        `${formatVotingPowerDisplay(totalVotingPower)}`}`}
                                 </button>
                             </div>
 

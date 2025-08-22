@@ -4,7 +4,7 @@ import { Principal } from '@dfinity/principal';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { formatPrincipal } from '../utils/PrincipalUtils';
 
-const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map() }) => {
+const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map(), isNarrowScreen = false }) => {
     const [hoveredToken, setHoveredToken] = useState(null);
     const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
     
@@ -209,9 +209,11 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         ) : null}
                         {/* Fallback diamond - hidden by default if logo exists */}
                         <span style={{ display: logo && !isLoading ? 'none' : 'inline' }}>💎</span>
-                        <span>
-                            {formatAmount(tokenData.totalAmount, decimals)} {symbol}
-                        </span>
+                        {!isNarrowScreen && (
+                            <span>
+                                {formatAmount(tokenData.totalAmount, decimals)} {symbol}
+                            </span>
+                        )}
                         <span style={{ 
                             backgroundColor: isLoading ? '#666' : '#f39c12',
                             color: isLoading ? '#ccc' : '#000',
