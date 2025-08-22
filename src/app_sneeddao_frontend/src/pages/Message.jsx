@@ -188,7 +188,10 @@ const Message = () => {
             const replyIds = messageReplies.map(reply => Number(reply.id));
             setMessageChildren(prev => new Map(prev.set(messageId, replyIds)));
             
-            // Expand all reply messages
+            // Start all reply messages in collapsed state (they will auto-load their replies when expanded)
+            setCollapsedMessages(prev => new Set([...prev, ...replyIds]));
+            
+            // Expand the message content for replies (so the text is readable, but they're structurally collapsed)
             setExpandedMessages(prev => new Set([...prev, ...replyIds]));
             
         } catch (err) {
