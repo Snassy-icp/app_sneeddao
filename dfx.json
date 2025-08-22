@@ -15,7 +15,8 @@
     "app_sneeddao_frontend": {
       "dependencies": [
         "app_sneeddao_backend",
-        "sneed_sns_forum"
+        "sneed_sns_forum",
+        "sneed_sms"
       ],
       "source": [
         "src/app_sneeddao_frontend/dist"

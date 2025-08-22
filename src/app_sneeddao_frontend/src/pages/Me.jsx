@@ -703,6 +703,27 @@ export default function Me() {
                                 <span>💰 My Tips</span>
                             </Link>
 
+                            {/* My Messages */}
+                            <Link
+                                to="/sms"
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '8px',
+                                    borderRadius: '4px',
+                                    transition: 'background-color 0.2s',
+                                    fontSize: '14px',
+                                    width: '100%'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            >
+                                <span>💬 My Messages</span>
+                            </Link>
+
                             {/* My Rewards */}
                             <Link
                                 to="/rewards"
