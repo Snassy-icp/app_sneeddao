@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
@@ -9,6 +9,7 @@ import { useNaming } from '../NamingContext';
 
 const SMS = () => {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { identity, isAuthenticated } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
     
@@ -103,6 +104,38 @@ const SMS = () => {
             fetchStats();
         }
     }, [isAuthenticated, selectedTab]);
+
+    // Handle reply parameter from URL
+    useEffect(() => {
+        const replyId = searchParams.get('reply');
+        if (replyId && messages.length > 0 && isAuthenticated) {
+            const replyToMessage = messages.find(msg => Number(msg.id) === Number(replyId));
+            if (replyToMessage) {
+                console.log('Auto-opening reply for message:', replyId);
+                // Set up the reply form
+                const senderPrincipal = replyToMessage.sender.toString();
+                const displayInfo = getPrincipalDisplayInfoFromContext(senderPrincipal, principalNames, principalNicknames);
+                
+                setComposeForm({
+                    recipients: [{ 
+                        value: senderPrincipal, 
+                        isValid: true, 
+                        name: displayInfo.name && displayInfo.name !== senderPrincipal ? displayInfo.name : '', 
+                        error: '' 
+                    }],
+                    subject: replyToMessage.subject.startsWith('Re: ') ? replyToMessage.subject : `Re: ${replyToMessage.subject}`,
+                    body: '',
+                    replyTo: Number(replyToMessage.id)
+                });
+                
+                // Open compose modal
+                setShowComposeModal(true);
+                
+                // Clear the reply parameter from URL
+                setSearchParams({});
+            }
+        }
+    }, [searchParams, messages, isAuthenticated, principalNames, principalNicknames]);
 
     // Fetch principal display info for all unique principals in messages
     useEffect(() => {
