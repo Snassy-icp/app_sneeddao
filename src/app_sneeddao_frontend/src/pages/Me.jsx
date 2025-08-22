@@ -661,7 +661,7 @@ export default function Me() {
                                 <span>💼 My Wallet</span>
                             </Link>
 
-                            {/* My Posts */}
+                            {/* Posts */}
                             <Link
                                 to="/posts"
                                 style={{
@@ -679,10 +679,10 @@ export default function Me() {
                                 onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
                                 onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                             >
-                                <span>📝 My Posts</span>
+                                <span>📝 Posts</span>
                             </Link>
 
-                            {/* My Tips */}
+                            {/* Tips */}
                             <Link
                                 to="/tips"
                                 style={{
@@ -700,10 +700,10 @@ export default function Me() {
                                 onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
                                 onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                             >
-                                <span>💰 My Tips</span>
+                                <span>💰 Tips</span>
                             </Link>
 
-                            {/* My Messages */}
+                            {/* Messages */}
                             <Link
                                 to="/sms"
                                 style={{
@@ -721,10 +721,10 @@ export default function Me() {
                                 onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
                                 onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                             >
-                                <span>💬 My Messages</span>
+                                <span>💬 Messages</span>
                             </Link>
 
-                            {/* My Rewards */}
+                            {/* Rewards */}
                             <Link
                                 to="/rewards"
                                 style={{
@@ -742,7 +742,7 @@ export default function Me() {
                                 onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
                                 onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                             >
-                                <span>🎁 My Rewards</span>
+                                <span>🎁 Rewards</span>
                             </Link>
 
                             {/* My Locks */}

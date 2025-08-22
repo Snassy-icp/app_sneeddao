@@ -33,7 +33,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
         if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
         if (['/wallet'].includes(path)) return 'Wallet';
-        if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path)) return 'Me';
+        if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path) || path.startsWith('/msg/')) return 'Me';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
@@ -71,7 +71,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Hub');
         } else if (['/wallet'].includes(path)) {
             setActiveSection('Wallet');
-        } else if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path)) {
+        } else if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path) || path.startsWith('/msg/')) {
             setActiveSection('Me');
         } else if (['/sneedlock', '/sneedlock_info'].includes(path)) {
             setActiveSection('Locks');
@@ -137,10 +137,10 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/me',
             subMenu: [
                 { name: 'Me', path: '/me' },
-                { name: 'My Posts', path: '/posts' },
-                { name: 'My Tips', path: '/tips' },
-                { name: 'My Msgs', path: '/sms' },
-                { name: 'My Rewards', path: '/rewards' }
+                { name: 'Posts', path: '/posts' },
+                { name: 'Tips', path: '/tips' },
+                { name: 'Messages', path: '/sms' },
+                { name: 'Rewards', path: '/rewards' }
             ]
         },
         'Hub': {
