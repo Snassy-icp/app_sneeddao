@@ -569,12 +569,32 @@ const Message = () => {
                                 color: '#ffffff', 
                                 margin: '0', 
                                 fontSize: '16px',
-                                cursor: isCollapsed ? 'pointer' : 'default'
+                                cursor: isCollapsed ? 'pointer' : 'default',
+                                display: 'inline',
+                                lineHeight: '1.4'
                             }}
                             onClick={isCollapsed ? () => toggleMessageCollapse(messageId) : undefined}
                             >
                                 {message.subject}
                             </h4>
+                            <span style={{ 
+                                color: '#3498db', 
+                                fontSize: '12px', 
+                                marginLeft: '8px',
+                                cursor: 'pointer'
+                            }}
+                            onClick={() => navigate(`/msg/${message.id}`)}
+                            title="Click to focus this message"
+                            >
+                                #{message.id.toString()}
+                            </span>
+                            <span style={{ 
+                                color: '#888', 
+                                fontSize: '12px', 
+                                marginLeft: '8px'
+                            }}>
+                                {formatTimestamp(message.created_at)}
+                            </span>
                             {!isCollapsed && (
                                 <>
                                     <div style={{ marginTop: '5px', marginBottom: '3px' }}>
@@ -600,16 +620,6 @@ const Message = () => {
                                     </div>
                                 </>
                             )}
-                        </div>
-                        <div style={{ color: '#888', fontSize: '12px', textAlign: 'right' }}>
-                            <div 
-                                style={{ cursor: 'pointer', color: '#3498db' }}
-                                onClick={() => navigate(`/msg/${message.id}`)}
-                                title="Click to focus this message"
-                            >
-                                #{message.id.toString()}
-                            </div>
-                            <div>{formatTimestamp(message.created_at)}</div>
                         </div>
                     </div>
 
