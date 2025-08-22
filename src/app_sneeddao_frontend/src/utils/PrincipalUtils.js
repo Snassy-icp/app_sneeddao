@@ -76,7 +76,7 @@ export const formatPrincipal = (principal, displayInfo = null) => {
 };
 
 // React component for displaying a principal
-export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, showCopyButton = true, style = {} }) => {
+export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, showCopyButton = true, style = {}, short = false }) => {
     const formatted = formatPrincipal(principal, displayInfo);
     const principalColor = getPrincipalColor(principal);
     
@@ -200,7 +200,8 @@ export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, sho
                     },
                     formatted.nickname
                 ),
-                React.createElement('span',
+                // Only show truncated ID if not in short mode, or if there's no name/nickname
+                (!short || (!formatted.name && !formatted.nickname)) && React.createElement('span',
                     {
                         style: {
                             marginLeft: '4px',
