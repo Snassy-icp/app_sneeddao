@@ -134,8 +134,11 @@ const PrincipalInput = ({
                 } else {
                     setResolvedInfo(null);
                 }
+            } else {
+                setResolvedInfo(null);
             }
         } catch (e) {
+            // Invalid principal - no green border, no resolved info
             setIsValid(false);
             setResolvedInfo(null);
         }
@@ -221,19 +224,27 @@ const PrincipalInput = ({
             />
             
             {/* Resolved name display */}
-            {resolvedInfo && (
+            {resolvedInfo && isValid && (
                 <div style={{
                     marginTop: '4px',
                     fontSize: '12px',
                     color: '#888'
                 }}>
-                    <PrincipalDisplay
-                        principal={Principal.fromText(inputValue.trim())}
-                        displayInfo={resolvedInfo}
-                        showCopyButton={false}
-                        style={{ fontSize: '12px' }}
-                        noLink={true}
-                    />
+                    {(() => {
+                        try {
+                            return (
+                                <PrincipalDisplay
+                                    principal={Principal.fromText(inputValue.trim())}
+                                    displayInfo={resolvedInfo}
+                                    showCopyButton={false}
+                                    style={{ fontSize: '12px' }}
+                                    noLink={true}
+                                />
+                            );
+                        } catch (e) {
+                            return null;
+                        }
+                    })()}
                 </div>
             )}
             

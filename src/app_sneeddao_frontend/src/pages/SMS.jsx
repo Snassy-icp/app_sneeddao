@@ -821,12 +821,15 @@ const SMS = () => {
                                     {composeForm.recipients.map((recipient, index) => (
                                         <div key={index} style={{ marginBottom: '10px' }}>
                                             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                                                <div style={{ flex: 1 }}>
+                                                <div style={{ flex: '1', minWidth: '0' }}>
                                                     <PrincipalInput
                                                         value={recipient}
                                                         onChange={(value) => updateRecipient(index, value)}
                                                         placeholder="Enter principal ID or search by name"
-                                                        style={{ marginBottom: '0' }}
+                                                        style={{ 
+                                                            marginBottom: '0',
+                                                            width: composeForm.recipients.length > 1 ? 'calc(100% - 10px)' : '100%'
+                                                        }}
                                                     />
                                                 </div>
                                                 {composeForm.recipients.length > 1 && (
@@ -834,16 +837,21 @@ const SMS = () => {
                                                         type="button"
                                                         onClick={() => removeRecipient(index)}
                                                         style={{
-                                                            padding: '10px 12px',
+                                                            padding: '8px 10px',
                                                             backgroundColor: '#e74c3c',
                                                             color: 'white',
                                                             border: 'none',
                                                             borderRadius: '4px',
                                                             cursor: 'pointer',
-                                                            fontSize: '14px',
+                                                            fontSize: '16px',
                                                             flexShrink: 0,
                                                             alignSelf: 'flex-start',
-                                                            marginTop: '0'
+                                                            marginTop: '0',
+                                                            width: '36px',
+                                                            height: '36px',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center'
                                                         }}
                                                         title="Remove recipient"
                                                     >
