@@ -74,7 +74,14 @@ const Message = () => {
             setMessageTree(new Map([[messageId, targetMessage]]));
             setMessageChildren(new Map());
             setFocusMessageId(messageId);
+            
+            // Ensure focus message is always expanded and never collapsed
             setExpandedMessages(new Set([messageId])); // Focus message starts expanded
+            setCollapsedMessages(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(messageId); // Remove focus message from collapsed state if it was there
+                return newSet;
+            });
 
             // Auto-load replies for the focused message (they will start collapsed)
             await loadReplies(messageId);
@@ -114,6 +121,14 @@ const Message = () => {
                         
                         // Load siblings (replies of the parent)
                         await loadReplies(parentId);
+                        
+                        // Ensure focus message is still not collapsed after loading siblings
+                        setCollapsedMessages(prev => {
+                            const newSet = new Set(prev);
+                            newSet.delete(messageId); // Remove focus message from collapsed state
+                            return newSet;
+                        });
+                        setExpandedMessages(prev => new Set([...prev, messageId])); // Ensure focus message is expanded
                     }
                 } catch (parentErr) {
                     console.error('Error auto-loading parent:', parentErr);
@@ -360,7 +375,9 @@ const Message = () => {
             
             // Start all reply messages in collapsed state (they will auto-load their replies when expanded)
             // But never collapse the focus message
+            console.log('loadReplies: messageId=', messageId, 'focusMessageId=', focusMessageId, 'replyIds=', replyIds);
             const replyIdsToCollapse = replyIds.filter(id => id !== focusMessageId);
+            console.log('replyIdsToCollapse (after filtering focus):', replyIdsToCollapse);
             if (replyIdsToCollapse.length > 0) {
                 setCollapsedMessages(prev => new Set([...prev, ...replyIdsToCollapse]));
             }
