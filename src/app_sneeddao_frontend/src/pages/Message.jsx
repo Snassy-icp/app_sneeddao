@@ -249,7 +249,8 @@ const Message = () => {
         const children = messageChildren.get(messageId) || [];
         const hasParent = message.reply_to && message.reply_to.length > 0;
         const canLoadParent = hasParent && !messageTree.has(Number(message.reply_to[0]));
-        const canLoadReplies = !children.length; // Can load replies if no children loaded yet
+        const hasLoadedReplies = children.length > 0;
+        const canLoadReplies = true; // All messages can potentially have replies
 
         // Truncate long messages
         const isLongMessage = message.body.length > 300;
@@ -423,7 +424,8 @@ const Message = () => {
                                 fontSize: '12px'
                             }}
                         >
-                            {loadingState.loadingReplies ? '⏳ Loading...' : '⬇️ Load Replies'}
+                            {loadingState.loadingReplies ? '⏳ Loading...' : 
+                             hasLoadedReplies ? '🔄 Refresh Replies' : '⬇️ Load Replies'}
                         </button>
                     </div>
                 )}
