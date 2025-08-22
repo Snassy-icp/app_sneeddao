@@ -971,7 +971,29 @@ const SMS = () => {
                                 alignItems: 'center',
                                 marginBottom: '20px'
                             }}>
-                                <h2 style={{ color: '#ffffff', margin: 0 }}>Message Details</h2>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, marginRight: '15px' }}>
+                                    <h2 style={{ color: '#ffffff', margin: 0, fontSize: '20px' }}>
+                                        {selectedMessage.subject}
+                                    </h2>
+                                    <button
+                                        onClick={() => navigate(`/msg/${selectedMessage.id}`)}
+                                        style={{
+                                            background: 'none',
+                                            border: '1px solid #3498db',
+                                            color: '#3498db',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                            padding: '4px 8px',
+                                            borderRadius: '4px',
+                                            alignSelf: 'flex-start',
+                                            textDecoration: 'none'
+                                        }}
+                                        onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(52, 152, 219, 0.1)'}
+                                        onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                                    >
+                                        🔗 View Thread
+                                    </button>
+                                </div>
                                 <button
                                     onClick={() => {
                                         setShowMessageModal(false);
@@ -1049,6 +1071,7 @@ const SMS = () => {
 
                             <div style={{ 
                                 display: 'flex', 
+                                flexWrap: 'wrap',
                                 justifyContent: 'flex-end', 
                                 gap: '10px',
                                 borderTop: '1px solid #3a3a3a',
@@ -1108,6 +1131,25 @@ const SMS = () => {
                                         🗑️ Remove
                                     </button>
                                 )}
+                                <button
+                                    onClick={() => {
+                                        setShowMessageModal(false);
+                                        setSelectedMessage(null);
+                                    }}
+                                    style={{
+                                        backgroundColor: '#6c757d',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '10px 20px',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}
+                                >
+                                    ✕ Close
+                                </button>
                             </div>
                         </div>
                     </div>
