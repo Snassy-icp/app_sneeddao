@@ -76,13 +76,25 @@ export const formatPrincipal = (principal, displayInfo = null) => {
 };
 
 // React component for displaying a principal
-export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, showCopyButton = true, style = {}, short = false }) => {
+export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, showCopyButton = true, style = {}, short = false, noLink = false }) => {
     const formatted = formatPrincipal(principal, displayInfo);
     const principalColor = getPrincipalColor(principal);
     
     // Create a link wrapper component
     const LinkWrapper = React.useMemo(() => {
         return ({ children }) => {
+            if (noLink) {
+                // Return a simple span when links are disabled
+                return React.createElement('span', 
+                    {
+                        style: {
+                            color: 'inherit'
+                        }
+                    },
+                    children
+                );
+            }
+            
             const href = `/principal?id=${principal?.toString()}`;
             return React.createElement('a', 
                 {
@@ -97,7 +109,7 @@ export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, sho
                 children
             );
         };
-    }, [principal]);
+    }, [principal, noLink]);
     
     console.log('PrincipalDisplay rendered with:', {
         principal: principal?.toString(),

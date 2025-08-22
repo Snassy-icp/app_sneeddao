@@ -45,6 +45,8 @@ const PrincipalInput = ({
         }
 
         allPrincipals.forEach(principalStr => {
+            if (!principalStr || !principalStr.trim()) return; // Skip empty principals
+            
             try {
                 const principal = Principal.fromText(principalStr);
                 const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames);
@@ -230,6 +232,7 @@ const PrincipalInput = ({
                         displayInfo={resolvedInfo}
                         showCopyButton={false}
                         style={{ fontSize: '12px' }}
+                        noLink={true}
                     />
                 </div>
             )}
@@ -272,6 +275,7 @@ const PrincipalInput = ({
                                 displayInfo={item.displayInfo}
                                 showCopyButton={false}
                                 style={{ fontSize: '14px' }}
+                                noLink={true}
                             />
                         </div>
                     ))}
