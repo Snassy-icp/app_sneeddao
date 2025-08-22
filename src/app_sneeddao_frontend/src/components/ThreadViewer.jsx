@@ -310,6 +310,9 @@ function ThreadViewer({
     const [discussionPosts, setDiscussionPosts] = useState([]);
     const [loadingDiscussion, setLoadingDiscussion] = useState(false);
     const [commentText, setCommentText] = useState('');
+    
+    // Responsive state for narrow screens
+    const [isNarrowScreen, setIsNarrowScreen] = useState(false);
     const [showCommentForm, setShowCommentForm] = useState(false);
     
     // Poll state
@@ -1390,6 +1393,22 @@ function ThreadViewer({
             fetchPolls();
         }
     }, [fetchPolls, threadId, discussionPosts]);
+
+    // Effect to handle responsive screen width
+    useEffect(() => {
+        const handleResize = () => {
+            setIsNarrowScreen(window.innerWidth < 768); // Breakpoint at 768px
+        };
+        
+        // Set initial value
+        handleResize();
+        
+        // Add event listener
+        window.addEventListener('resize', handleResize);
+        
+        // Cleanup
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // Effect to fetch thread votes when neurons become available
     useEffect(() => {
@@ -2569,32 +2588,6 @@ function ThreadViewer({
                             borderTop: '1px solid #333',
                             flexWrap: 'wrap'
                         }}>
-                            {/* Reply Button */}
-                            <button
-                                onClick={() => {
-                                    const isReplying = replyingTo === Number(post.id);
-                                    if (isReplying) {
-                                        setReplyingTo(null);
-                                    } else {
-                                        setReplyingTo(Number(post.id));
-                                    }
-                                }}
-                                style={{
-                                    backgroundColor: 'transparent',
-                                    border: 'none',
-                                    color: '#6b8eb8',
-                                    borderRadius: '4px',
-                                    padding: '4px 8px',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}
-                            >
-                                💬 {replyingTo === Number(post.id) ? 'Cancel Reply' : 'Reply'}
-                            </button>
-
                             {/* Voting Section - Layout like Discussion.jsx */}
                             <div style={{ 
                                 display: 'flex', 
@@ -2679,6 +2672,32 @@ function ThreadViewer({
                                 </button>
                             </div>
 
+                            {/* Reply Button */}
+                            <button
+                                onClick={() => {
+                                    const isReplying = replyingTo === Number(post.id);
+                                    if (isReplying) {
+                                        setReplyingTo(null);
+                                    } else {
+                                        setReplyingTo(Number(post.id));
+                                    }
+                                }}
+                                style={{
+                                    backgroundColor: 'transparent',
+                                    border: 'none',
+                                    color: '#6b8eb8',
+                                    borderRadius: '4px',
+                                    padding: '4px 8px',
+                                    cursor: 'pointer',
+                                    fontSize: '12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}
+                            >
+                                💬 {isNarrowScreen ? '' : (replyingTo === Number(post.id) ? ' Cancel Reply' : ' Reply')}
+                            </button>
+
                             {/* Tip Button - Only show for posts by other users */}
                             {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
                                 <button
@@ -2696,7 +2715,7 @@ function ThreadViewer({
                                         gap: '4px'
                                     }}
                                 >
-                                    💰 Tip
+                                    💰{isNarrowScreen ? '' : ' Tip'}
                                 </button>
                             )}
 
@@ -2720,7 +2739,7 @@ function ThreadViewer({
                                         gap: '4px'
                                     }}
                                 >
-                                    💬 Message
+                                    💬{isNarrowScreen ? '' : ' Message'}
                                 </button>
                             )}
 
@@ -2741,7 +2760,7 @@ function ThreadViewer({
                                         gap: '4px'
                                     }}
                                 >
-                                    ✏️ Edit
+                                    ✏️{isNarrowScreen ? '' : ' Edit'}
                                 </button>
                             )}
 
@@ -2763,7 +2782,7 @@ function ThreadViewer({
                                         gap: '4px'
                                     }}
                                 >
-                                    🗑️ {deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}
+                                    🗑️{isNarrowScreen ? '' : ` ${deletingPost === Number(post.id) ? 'Deleting...' : 'Delete'}`}
                                 </button>
                             )}
 
@@ -2785,7 +2804,7 @@ function ThreadViewer({
                                         gap: '4px'
                                     }}
                                 >
-                                    📊 Add Poll
+                                    📊{isNarrowScreen ? '' : ' Add Poll'}
                                 </button>
                             )}
                         </div>
