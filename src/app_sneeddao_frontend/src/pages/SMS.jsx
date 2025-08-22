@@ -821,14 +821,13 @@ const SMS = () => {
                                     {composeForm.recipients.map((recipient, index) => (
                                         <div key={index} style={{ marginBottom: '10px' }}>
                                             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                                                <div style={{ flex: '1', minWidth: '0' }}>
+                                                <div style={{ flex: '1', minWidth: '0', maxWidth: composeForm.recipients.length > 1 ? 'calc(100% - 56px)' : '100%' }}>
                                                     <PrincipalInput
                                                         value={recipient}
                                                         onChange={(value) => updateRecipient(index, value)}
                                                         placeholder="Enter principal ID or search by name"
                                                         style={{ 
-                                                            marginBottom: '0',
-                                                            width: composeForm.recipients.length > 1 ? 'calc(100% - 10px)' : '100%'
+                                                            marginBottom: '0'
                                                         }}
                                                     />
                                                 </div>
