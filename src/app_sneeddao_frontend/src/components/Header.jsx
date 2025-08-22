@@ -30,10 +30,12 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const menuRef = useRef(null);
     const [activeSection, setActiveSection] = useState(() => {
         const path = location.pathname;
+        // Check /msg paths first to avoid conflicts
+        if (path.startsWith('/msg')) return 'Me';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
         if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
         if (['/wallet'].includes(path)) return 'Wallet';
-        if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path) || path.startsWith('/msg')) return 'Me';
+        if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path)) return 'Me';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
@@ -65,13 +67,16 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     // Update active section when location changes
     useEffect(() => {
         const path = location.pathname;
-        if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
+        // Check /msg paths first to avoid conflicts
+        if (path.startsWith('/msg')) {
+            setActiveSection('Me');
+        } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
         } else if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal'].includes(path)) {
             setActiveSection('Hub');
         } else if (['/wallet'].includes(path)) {
             setActiveSection('Wallet');
-        } else if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path) || path.startsWith('/msg')) {
+        } else if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path)) {
             setActiveSection('Me');
         } else if (['/sneedlock', '/sneedlock_info'].includes(path)) {
             setActiveSection('Locks');
@@ -240,11 +245,17 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             '/proposals': ['/proposal'],
             '/neurons': ['/neuron'],
             '/transactions': ['/transaction'],
-            '/forum': ['/thread', '/post']
+            '/forum': ['/thread', '/post'],
+            '/sms': ['/msg']
         };
         
-        // Special handling for topic routes (dynamic paths)
+        // Special handling for dynamic paths
         if (itemPath === '/forum' && currentPath.startsWith('/topic/')) {
+            return true;
+        }
+        
+        // Special handling for message routes (dynamic paths)
+        if (itemPath === '/sms' && currentPath.startsWith('/msg')) {
             return true;
         }
         
