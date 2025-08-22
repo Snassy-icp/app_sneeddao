@@ -20,6 +20,7 @@ const Message = () => {
     const [loadingStates, setLoadingStates] = useState(new Map()); // Map of messageId -> {loadingParent: bool, loadingReplies: bool}
     const [expandedMessages, setExpandedMessages] = useState(new Set()); // Set of message IDs with expanded content
     const [collapsedMessages, setCollapsedMessages] = useState(new Set()); // Set of message IDs that are collapsed
+    const [loadingFullTree, setLoadingFullTree] = useState(false);
     const [error, setError] = useState(null);
 
     // Create SMS actor
@@ -250,6 +251,156 @@ const Message = () => {
             }
         }
         return focusMessageId; // Fallback to focus message
+    };
+
+    // Load full tree recursively
+    const loadFullTree = async () => {
+        if (!focusMessageId) return;
+        
+        setLoadingFullTree(true);
+        try {
+            const actor = getSmsActor();
+            if (!actor) return;
+
+            console.log('Loading full tree starting from focus message:', focusMessageId);
+            
+            // Get all messages once to avoid multiple API calls
+            const allMessages = await actor.get_all_messages();
+            console.log('All messages loaded:', allMessages.length);
+            
+            // Create lookup maps for efficiency
+            const messageMap = new Map();
+            const childrenMap = new Map();
+            
+            allMessages.forEach(msg => {
+                const msgId = Number(msg.id);
+                messageMap.set(msgId, msg);
+                
+                // Build children map
+                if (msg.reply_to && msg.reply_to.length > 0) {
+                    const parentId = Number(msg.reply_to[0]);
+                    if (!childrenMap.has(parentId)) {
+                        childrenMap.set(parentId, []);
+                    }
+                    childrenMap.get(parentId).push(msgId);
+                }
+            });
+            
+            // Sort children by creation time
+            childrenMap.forEach(children => {
+                children.sort((a, b) => {
+                    const msgA = messageMap.get(a);
+                    const msgB = messageMap.get(b);
+                    return Number(msgA.created_at) - Number(msgB.created_at);
+                });
+            });
+
+            const newMessageTree = new Map(messageTree);
+            const newMessageChildren = new Map(messageChildren);
+            const newExpandedMessages = new Set(expandedMessages);
+            const newCollapsedMessages = new Set(collapsedMessages);
+
+            // 1. Load all parents upward (expanded) and their siblings (collapsed)
+            let currentId = focusMessageId;
+            const ancestorPath = [currentId]; // Track the direct ancestor path
+            
+            while (true) {
+                const currentMsg = messageMap.get(currentId);
+                if (!currentMsg || !currentMsg.reply_to || currentMsg.reply_to.length === 0) break;
+                
+                const parentId = Number(currentMsg.reply_to[0]);
+                const parentMsg = messageMap.get(parentId);
+                if (!parentMsg) break;
+                
+                console.log('Loading parent:', parentId);
+                
+                // Add parent to tree (expanded)
+                newMessageTree.set(parentId, parentMsg);
+                newExpandedMessages.add(parentId);
+                
+                // Add current message as child of parent
+                const parentChildren = newMessageChildren.get(parentId) || [];
+                if (!parentChildren.includes(currentId)) {
+                    parentChildren.push(currentId);
+                    newMessageChildren.set(parentId, parentChildren);
+                }
+                
+                // Load all siblings of current message (collapsed, no recursion)
+                const siblings = childrenMap.get(parentId) || [];
+                siblings.forEach(siblingId => {
+                    if (siblingId !== currentId && !ancestorPath.includes(siblingId)) {
+                        const siblingMsg = messageMap.get(siblingId);
+                        if (siblingMsg) {
+                            console.log('Loading sibling (collapsed):', siblingId);
+                            newMessageTree.set(siblingId, siblingMsg);
+                            newCollapsedMessages.add(siblingId); // Siblings start collapsed
+                            
+                            // Add sibling to parent's children
+                            if (!parentChildren.includes(siblingId)) {
+                                parentChildren.push(siblingId);
+                            }
+                        }
+                    }
+                });
+                
+                // Sort parent's children by creation time
+                parentChildren.sort((a, b) => {
+                    const msgA = newMessageTree.get(a);
+                    const msgB = newMessageTree.get(b);
+                    return Number(msgA.created_at) - Number(msgB.created_at);
+                });
+                newMessageChildren.set(parentId, parentChildren);
+                
+                ancestorPath.push(parentId);
+                currentId = parentId;
+            }
+
+            // 2. Load all descendants recursively (expanded)
+            const loadDescendants = (parentId) => {
+                const children = childrenMap.get(parentId) || [];
+                if (children.length === 0) return;
+                
+                console.log('Loading descendants of:', parentId, children);
+                
+                const childrenToAdd = [];
+                children.forEach(childId => {
+                    const childMsg = messageMap.get(childId);
+                    if (childMsg) {
+                        newMessageTree.set(childId, childMsg);
+                        newExpandedMessages.add(childId); // Descendants are expanded
+                        childrenToAdd.push(childId);
+                        
+                        // Recursively load their children
+                        loadDescendants(childId);
+                    }
+                });
+                
+                // Sort children by creation time
+                childrenToAdd.sort((a, b) => {
+                    const msgA = newMessageTree.get(a);
+                    const msgB = newMessageTree.get(b);
+                    return Number(msgA.created_at) - Number(msgB.created_at);
+                });
+                
+                newMessageChildren.set(parentId, childrenToAdd);
+            };
+            
+            loadDescendants(focusMessageId);
+
+            // Update state
+            setMessageTree(newMessageTree);
+            setMessageChildren(newMessageChildren);
+            setExpandedMessages(newExpandedMessages);
+            setCollapsedMessages(newCollapsedMessages);
+            
+            console.log('Full tree loaded. Total messages:', newMessageTree.size);
+            
+        } catch (err) {
+            console.error('Error loading full tree:', err);
+            setError('Failed to load full tree: ' + (err.message || err.toString()));
+        } finally {
+            setLoadingFullTree(false);
+        }
     };
 
     // Render a single message in the tree
@@ -553,7 +704,7 @@ const Message = () => {
             <Header />
             <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto' }}>
                 {/* Navigation */}
-                <div style={{ marginBottom: '20px' }}>
+                <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                     <button 
                         onClick={() => navigate('/sms')}
                         style={{
@@ -562,12 +713,35 @@ const Message = () => {
                             border: 'none',
                             borderRadius: '6px',
                             padding: '8px 16px',
-                            cursor: 'pointer',
-                            marginRight: '10px'
+                            cursor: 'pointer'
                         }}
                     >
                         ← Back to Messages
                     </button>
+                    
+                    <button
+                        onClick={loadFullTree}
+                        disabled={loadingFullTree}
+                        style={{
+                            backgroundColor: '#27ae60',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '8px 16px',
+                            cursor: loadingFullTree ? 'not-allowed' : 'pointer',
+                            opacity: loadingFullTree ? 0.6 : 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                        }}
+                    >
+                        {loadingFullTree ? (
+                            <>⏳ Loading Full Tree...</>
+                        ) : (
+                            <>🌳 Load Full Tree</>
+                        )}
+                    </button>
+                    
                     <span style={{ color: '#888' }}>Message Thread</span>
                 </div>
 
