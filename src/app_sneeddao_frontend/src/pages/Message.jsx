@@ -91,11 +91,20 @@ const Message = () => {
             if (!actor) return;
 
             const parentId = message.reply_to[0];
+            console.log('Loading parent message with ID:', parentId);
             const parentResult = await actor.get_message(BigInt(parentId));
+            console.log('Parent message result:', parentResult);
             
-            if ('ok' in parentResult) {
-                setParentMessage(parentResult.ok);
+            // get_message returns ?MessageResponse (optional), not Result
+            if (parentResult === null || parentResult === undefined) {
+                console.log('Parent message not found or no access');
+                return;
             }
+
+            // If it's an array, get the first message, otherwise use directly
+            const parentMsg = Array.isArray(parentResult) ? parentResult[0] : parentResult;
+            console.log('Setting parent message:', parentMsg);
+            setParentMessage(parentMsg);
         } catch (err) {
             console.error('Error loading parent message:', err);
         } finally {
@@ -112,21 +121,22 @@ const Message = () => {
             const actor = getSmsActor();
             if (!actor) return;
 
-            const allMessagesResult = await actor.get_messages();
-            if ('ok' in allMessagesResult) {
-                const allMessages = allMessagesResult.ok;
-                
-                // Find messages that reply to the current message
-                const messageReplies = allMessages.filter(msg => 
-                    msg.reply_to && 
-                    msg.reply_to.length > 0 && 
-                    Number(msg.reply_to[0]) === Number(message.id)
-                );
-                
-                // Sort by creation time
-                messageReplies.sort((a, b) => Number(a.created_at) - Number(b.created_at));
-                setReplies(messageReplies);
-            }
+            console.log('Loading all messages to find replies...');
+            const allMessages = await actor.get_all_messages();
+            console.log('All messages result:', allMessages);
+            
+            // Find messages that reply to the current message
+            const messageReplies = allMessages.filter(msg => 
+                msg.reply_to && 
+                msg.reply_to.length > 0 && 
+                Number(msg.reply_to[0]) === Number(message.id)
+            );
+            
+            console.log('Found replies:', messageReplies);
+            
+            // Sort by creation time
+            messageReplies.sort((a, b) => Number(a.created_at) - Number(b.created_at));
+            setReplies(messageReplies);
         } catch (err) {
             console.error('Error loading replies:', err);
         } finally {
