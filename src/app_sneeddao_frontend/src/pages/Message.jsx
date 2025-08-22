@@ -78,6 +78,44 @@ const Message = () => {
 
             // Auto-load replies for the focused message (they will start collapsed)
             await loadReplies(messageId);
+            
+            // Auto-load the first parent and its siblings (siblings will be collapsed)
+            if (targetMessage.reply_to && targetMessage.reply_to.length > 0) {
+                console.log('Auto-loading parent for focus message. Parent ID should be:', Number(targetMessage.reply_to[0]));
+                
+                // Load parent directly using the targetMessage data
+                const parentId = Number(targetMessage.reply_to[0]);
+                try {
+                    const parentResult = await actor.get_message(BigInt(parentId));
+                    console.log('Parent message result for auto-load:', parentResult);
+                    
+                    if (parentResult && parentResult !== null && parentResult !== undefined) {
+                        const parentMsg = Array.isArray(parentResult) ? parentResult[0] : parentResult;
+                        console.log('Auto-loading parent message:', parentMsg);
+                        
+                        // Add parent to tree
+                        setMessageTree(prev => new Map(prev.set(parentId, parentMsg)));
+                        
+                        // Add focus message as child of parent
+                        setMessageChildren(prev => {
+                            const newChildren = new Map(prev);
+                            const parentChildren = newChildren.get(parentId) || [];
+                            if (!parentChildren.includes(messageId)) {
+                                newChildren.set(parentId, [...parentChildren, messageId]);
+                            }
+                            return newChildren;
+                        });
+                        
+                        // Expand parent message
+                        setExpandedMessages(prev => new Set([...prev, parentId]));
+                        
+                        // Load siblings (replies of the parent)
+                        await loadReplies(parentId);
+                    }
+                } catch (parentErr) {
+                    console.error('Error auto-loading parent:', parentErr);
+                }
+            }
 
         } catch (err) {
             console.error('Error fetching message:', err);
