@@ -500,53 +500,24 @@ export default function PrincipalPage() {
                                 </button>
                             )}
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                            <div style={{ flex: '1' }}>
-                                <PrincipalInput
-                                    value={searchInput}
-                                    onChange={(value) => {
-                                        setSearchInput(value);
-                                        if (value.trim()) {
-                                            try {
-                                                Principal.fromText(value.trim());
-                                                // Valid principal, navigate immediately
-                                                setSearchParams({ id: value.trim() });
-                                                setShowSearchResults(false);
-                                            } catch (e) {
-                                                // Invalid principal, let user continue typing or use dropdown
-                                            }
-                                        }
-                                    }}
-                                    placeholder="Enter principal ID or search by name"
-                                />
-                            </div>
-                            <button
-                                onClick={() => {
-                                    if (searchInput.trim()) {
+                        <div style={{ maxWidth: '600px' }}>
+                            <PrincipalInput
+                                value={searchInput}
+                                onChange={(value) => {
+                                    setSearchInput(value);
+                                    if (value.trim()) {
                                         try {
-                                            Principal.fromText(searchInput.trim());
-                                            setSearchParams({ id: searchInput.trim() });
+                                            Principal.fromText(value.trim());
+                                            // Valid principal, navigate immediately
+                                            setSearchParams({ id: value.trim() });
                                             setShowSearchResults(false);
                                         } catch (e) {
-                                            // Invalid principal, do nothing
+                                            // Invalid principal, let user continue typing or use dropdown
                                         }
                                     }
                                 }}
-                                style={{
-                                    backgroundColor: '#3498db',
-                                    color: '#ffffff',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '12px 16px',
-                                    cursor: 'pointer',
-                                    fontSize: '14px',
-                                    whiteSpace: 'nowrap',
-                                    flexShrink: 0,
-                                    alignSelf: 'flex-start'
-                                }}
-                            >
-                                Go
-                            </button>
+                                placeholder="Enter principal ID or search by name"
+                            />
                         </div>
 
                     </div>
@@ -615,53 +586,24 @@ export default function PrincipalPage() {
                             </button>
                         )}
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                        <div style={{ flex: '1' }}>
-                            <PrincipalInput
-                                value={searchInput}
-                                onChange={(value) => {
-                                    setSearchInput(value);
-                                    if (value.trim()) {
-                                        try {
-                                            Principal.fromText(value.trim());
-                                            // Valid principal, navigate immediately
-                                            setSearchParams({ id: value.trim() });
-                                            setShowSearchResults(false);
-                                        } catch (e) {
-                                            // Invalid principal, let user continue typing or use dropdown
-                                        }
-                                    }
-                                }}
-                                placeholder="Enter principal ID or search by name"
-                            />
-                        </div>
-                        <button
-                            onClick={() => {
-                                if (searchInput.trim()) {
+                    <div style={{ maxWidth: '600px' }}>
+                        <PrincipalInput
+                            value={searchInput}
+                            onChange={(value) => {
+                                setSearchInput(value);
+                                if (value.trim()) {
                                     try {
-                                        Principal.fromText(searchInput.trim());
-                                        setSearchParams({ id: searchInput.trim() });
+                                        Principal.fromText(value.trim());
+                                        // Valid principal, navigate immediately
+                                        setSearchParams({ id: value.trim() });
                                         setShowSearchResults(false);
                                     } catch (e) {
-                                        // Invalid principal, do nothing
+                                        // Invalid principal, let user continue typing or use dropdown
                                     }
                                 }
                             }}
-                            style={{
-                                backgroundColor: '#3498db',
-                                color: '#ffffff',
-                                border: 'none',
-                                borderRadius: '4px',
-                                padding: '12px 16px',
-                                cursor: 'pointer',
-                                fontSize: '14px',
-                                whiteSpace: 'nowrap',
-                                flexShrink: 0,
-                                alignSelf: 'flex-start'
-                            }}
-                        >
-                            Go
-                        </button>
+                            placeholder="Enter principal ID or search by name"
+                        />
                     </div>
 
                 </div>
