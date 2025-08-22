@@ -6,6 +6,11 @@ import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
+import { 
+    getRecentMessagesCount,
+    markMessagesSeenUpTo,
+    getLastSeenMessagesTimestamp
+} from '../utils/BackendUtils';
 
 const SMS = () => {
     const navigate = useNavigate();
@@ -33,11 +38,22 @@ const SMS = () => {
     const [recipientValidation, setRecipientValidation] = useState('');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [showMessageDetails, setShowMessageDetails] = useState(false);
+    
+    // Message highlighting state (using single-execution pattern like Posts)
+    const [capturedOldMessagesTimestamp, setCapturedOldMessagesTimestamp] = useState(0);
+    const [messagesTimestampProcessed, setMessagesTimestampProcessed] = useState(false);
 
     // Helper function to truncate subject for header display
     const truncateSubject = (subject, maxLength = 50) => {
         if (subject.length <= maxLength) return subject;
         return subject.substring(0, maxLength) + '...';
+    };
+
+    // Helper function to check if a message is new (for highlighting)
+    const isMessageNew = (messageTimestamp) => {
+        const isNew = Number(messageTimestamp) > capturedOldMessagesTimestamp;
+        console.log(`🔥 MESSAGE NEW CHECK: messageTimestamp=${messageTimestamp}, capturedOldMessagesTimestamp=${capturedOldMessagesTimestamp}, isNew=${isNew}`);
+        return isNew;
     };
 
     // Create SMS actor
@@ -111,6 +127,55 @@ const SMS = () => {
             fetchStats();
         }
     }, [isAuthenticated, selectedTab]);
+
+    // ONE-TIME messages timestamp processing - executes ONCE per page load
+    useEffect(() => {
+        const processMessagesTimestamp = async () => {
+            if (!isAuthenticated || !identity || messagesTimestampProcessed) {
+                return;
+            }
+
+            try {
+                const actor = getSmsActor();
+                if (!actor) return;
+
+                const userPrincipal = identity.getPrincipal();
+
+                // Step 1: Get old timestamp ONCE
+                const oldTimestampResult = await getLastSeenMessagesTimestamp(actor, userPrincipal);
+                const currentOldTimestamp = oldTimestampResult || 0;
+                setCapturedOldMessagesTimestamp(currentOldTimestamp);
+                
+                console.log(`🔥 SMS: CAPTURED OLD TIMESTAMP: ${currentOldTimestamp}`);
+
+                // Step 2: Check if we have new messages
+                const newMessagesCount = await getRecentMessagesCount(actor, userPrincipal);
+                console.log(`🔥 SMS: NEW MESSAGES COUNT: ${newMessagesCount}`);
+
+                // Step 3: Update backend timestamp ONCE if we have new messages
+                if (Number(newMessagesCount) > 0) {
+                    const currentTimestamp = Date.now() * 1_000_000;
+                    await markMessagesSeenUpTo(actor, currentTimestamp);
+                    console.log(`🔥 SMS: UPDATED BACKEND TIMESTAMP ONCE: ${currentTimestamp}`);
+                    
+                    // Step 4: Default to received tab if new messages > 0
+                    setSelectedTab('received');
+                    console.log(`🔥 SMS: DEFAULTED TO RECEIVED TAB (${newMessagesCount} new messages)`);
+                } else {
+                    console.log('🔥 SMS: NO NEW MESSAGES - NO BACKEND UPDATE');
+                }
+
+                // Mark as processed to prevent re-execution
+                setMessagesTimestampProcessed(true);
+
+            } catch (err) {
+                console.error('Error processing messages timestamp:', err);
+                setMessagesTimestampProcessed(true); // Still mark as processed to avoid loops
+            }
+        };
+
+        processMessagesTimestamp();
+    }, [isAuthenticated, identity, messagesTimestampProcessed]);
 
     // Handle reply parameter from URL
     useEffect(() => {
@@ -553,28 +618,36 @@ const SMS = () => {
                         flexDirection: 'column',
                         gap: '15px'
                     }}>
-                        {messages.map((message) => (
-                            <div
-                                key={Number(message.id)}
-                                onClick={() => {
-                                    setSelectedMessage(message);
-                                    setShowMessageModal(true);
-                                }}
-                                style={{
-                                    backgroundColor: '#2a2a2a',
-                                    borderRadius: '8px',
-                                    padding: '20px',
-                                    border: '1px solid #3a3a3a',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s ease'
-                                }}
+                        {messages.map((message) => {
+                            // Check if this is a received message (user is recipient, not sender)
+                            const userPrincipal = identity?.getPrincipal();
+                            const isReceivedMessage = userPrincipal && !message.sender.equals(userPrincipal);
+                            
+                            // Check if this received message is new (only highlight received messages)
+                            const isNew = isReceivedMessage && isMessageNew(message.created_at);
+                            
+                            return (
+                                <div
+                                    key={Number(message.id)}
+                                    onClick={() => {
+                                        setSelectedMessage(message);
+                                        setShowMessageModal(true);
+                                    }}
+                                    style={{
+                                        backgroundColor: isNew ? 'rgba(0, 191, 255, 0.1)' : '#2a2a2a',
+                                        borderRadius: '8px',
+                                        padding: '20px',
+                                        border: isNew ? '1px solid #00BFFF' : '1px solid #3a3a3a',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease'
+                                    }}
                                 onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = '#333333';
+                                    e.currentTarget.style.backgroundColor = isNew ? 'rgba(0, 191, 255, 0.2)' : '#333333';
                                     e.currentTarget.style.borderColor = '#3498db';
                                 }}
                                 onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = '#2a2a2a';
-                                    e.currentTarget.style.borderColor = '#3a3a3a';
+                                    e.currentTarget.style.backgroundColor = isNew ? 'rgba(0, 191, 255, 0.1)' : '#2a2a2a';
+                                    e.currentTarget.style.borderColor = isNew ? '#00BFFF' : '#3a3a3a';
                                 }}
                             >
                                 <div style={{ 
@@ -674,7 +747,8 @@ const SMS = () => {
                                     </button>
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
 

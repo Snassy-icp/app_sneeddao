@@ -619,6 +619,37 @@ export const getLastSeenRepliesTimestamp = async (forumActor, userPrincipal) => 
     }
 };
 
+// SMS notification methods
+export const getRecentMessagesCount = async (smsActor, userPrincipal) => {
+    try {
+        const result = await smsActor.get_recent_messages_count(userPrincipal);
+        return result;
+    } catch (error) {
+        console.error('Error getting recent messages count:', error);
+        throw error;
+    }
+};
+
+export const markMessagesSeenUpTo = async (smsActor, timestamp) => {
+    try {
+        const result = await smsActor.mark_messages_seen_up_to(timestamp);
+        return result;
+    } catch (error) {
+        console.error('Error marking messages as seen:', error);
+        throw error;
+    }
+};
+
+export const getLastSeenMessagesTimestamp = async (smsActor, userPrincipal) => {
+    try {
+        const result = await smsActor.get_last_seen_messages_timestamp(userPrincipal);
+        return result;
+    } catch (error) {
+        console.error('Error getting last seen messages timestamp:', error);
+        throw error;
+    }
+};
+
 // Update a post
 export const updatePost = async (forumActor, postId, title, body) => {
     try {

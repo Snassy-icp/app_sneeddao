@@ -10,6 +10,7 @@ import { useNeurons } from '../contexts/NeuronsContext';
 import { useSns } from '../contexts/SnsContext';
 import { useTipNotifications } from '../hooks/useTipNotifications';
 import { useReplyNotifications } from '../hooks/useReplyNotifications';
+import { useSmsNotifications } from '../hooks/useSmsNotifications';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { getSnsById } from '../utils/SnsUtils';
@@ -22,6 +23,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const { getAllNeurons, getHotkeyNeurons, loading: neuronsLoading } = useNeurons();
     const { newTipCount } = useTipNotifications();
     const { newReplyCount } = useReplyNotifications();
+    const { newMessageCount } = useSmsNotifications();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
@@ -552,7 +554,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             )}
 
             {/* Notifications Row: Only shows when there are notifications */}
-            {!isHeaderCollapsed && isAuthenticated && (newReplyCount > 0 || newTipCount > 0) && (
+            {!isHeaderCollapsed && isAuthenticated && (newReplyCount > 0 || newTipCount > 0 || newMessageCount > 0) && (
                 <div style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -586,6 +588,28 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 title={`You have ${newReplyCount} new ${newReplyCount === 1 ? 'reply' : 'replies'}`}
                             >
                                 💬 {newReplyCount}
+                            </div>
+                        )}
+                        
+                        {/* SMS Notifications */}
+                        {newMessageCount > 0 && (
+                            <div 
+                                onClick={() => navigate('/sms')}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '4px 8px',
+                                    backgroundColor: 'rgba(0, 191, 255, 0.1)',
+                                    border: '1px solid #00BFFF',
+                                    borderRadius: '12px',
+                                    cursor: 'pointer',
+                                    fontSize: '11px',
+                                    color: '#00BFFF'
+                                }}
+                                title={`You have ${newMessageCount} new ${newMessageCount === 1 ? 'message' : 'messages'}`}
+                            >
+                                📨 {newMessageCount}
                             </div>
                         )}
                         
