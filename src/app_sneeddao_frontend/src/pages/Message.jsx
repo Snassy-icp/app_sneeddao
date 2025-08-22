@@ -404,31 +404,28 @@ const Message = () => {
                         >
                             ↩️ Reply
                         </button>
+                        
+                        {canLoadReplies && (
+                            <button
+                                onClick={() => loadReplies(messageId)}
+                                disabled={loadingState.loadingReplies}
+                                style={{
+                                    backgroundColor: '#e67e22',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '6px 12px',
+                                    cursor: loadingState.loadingReplies ? 'not-allowed' : 'pointer',
+                                    opacity: loadingState.loadingReplies ? 0.6 : 1,
+                                    fontSize: '12px'
+                                }}
+                            >
+                                {loadingState.loadingReplies ? '⏳ Loading...' : 
+                                 hasLoadedReplies ? '🔄 Refresh Replies' : '⬇️ Load Replies'}
+                            </button>
+                        )}
                     </div>
                 </div>
-
-                {/* Load Replies Button */}
-                {canLoadReplies && (
-                    <div style={{ marginBottom: '10px', marginLeft: '20px' }}>
-                        <button
-                            onClick={() => loadReplies(messageId)}
-                            disabled={loadingState.loadingReplies}
-                            style={{
-                                backgroundColor: '#e67e22',
-                                color: '#ffffff',
-                                border: 'none',
-                                borderRadius: '4px',
-                                padding: '6px 12px',
-                                cursor: loadingState.loadingReplies ? 'not-allowed' : 'pointer',
-                                opacity: loadingState.loadingReplies ? 0.6 : 1,
-                                fontSize: '12px'
-                            }}
-                        >
-                            {loadingState.loadingReplies ? '⏳ Loading...' : 
-                             hasLoadedReplies ? '🔄 Refresh Replies' : '⬇️ Load Replies'}
-                        </button>
-                    </div>
-                )}
 
                 {/* Render Children */}
                 {children.map(childId => renderMessage(childId, depth + 1))}
