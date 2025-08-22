@@ -19,6 +19,7 @@ const Message = () => {
     const [loading, setLoading] = useState(true);
     const [loadingStates, setLoadingStates] = useState(new Map()); // Map of messageId -> {loadingParent: bool, loadingReplies: bool}
     const [expandedMessages, setExpandedMessages] = useState(new Set()); // Set of message IDs with expanded content
+    const [collapsedMessages, setCollapsedMessages] = useState(new Set()); // Set of message IDs that are collapsed
     const [error, setError] = useState(null);
 
     // Create SMS actor
@@ -207,9 +208,22 @@ const Message = () => {
         }
     }, [isAuthenticated, id]);
 
-    // Toggle message content expansion
+    // Toggle message content expansion (for long messages)
     const toggleMessageExpansion = (messageId) => {
         setExpandedMessages(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(messageId)) {
+                newSet.delete(messageId);
+            } else {
+                newSet.add(messageId);
+            }
+            return newSet;
+        });
+    };
+
+    // Toggle message collapse state (hide/show entire message content)
+    const toggleMessageCollapse = (messageId) => {
+        setCollapsedMessages(prev => {
             const newSet = new Set(prev);
             if (newSet.has(messageId)) {
                 newSet.delete(messageId);
@@ -245,6 +259,7 @@ const Message = () => {
 
         const isFocused = messageId === focusMessageId;
         const isExpanded = expandedMessages.has(messageId);
+        const isCollapsed = collapsedMessages.has(messageId);
         const loadingState = getLoadingState(messageId);
         const children = messageChildren.get(messageId) || [];
         const hasParent = message.reply_to && message.reply_to.length > 0;
@@ -291,11 +306,38 @@ const Message = () => {
                         position: 'relative'
                     }}
                 >
+                    {/* Collapse/Expand Arrow */}
+                    <div
+                        onClick={() => toggleMessageCollapse(messageId)}
+                        style={{
+                            position: 'absolute',
+                            top: '8px',
+                            left: '8px',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            color: '#888',
+                            userSelect: 'none',
+                            zIndex: 10,
+                            width: '20px',
+                            height: '20px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: '3px',
+                            transition: 'background-color 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.target.style.backgroundColor = '#444'}
+                        onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                        title={isCollapsed ? 'Expand message' : 'Collapse message'}
+                    >
+                        {isCollapsed ? '▶' : '▼'}
+                    </div>
+
                     {isFocused && (
                         <div style={{
                             position: 'absolute',
                             top: '-10px',
-                            left: '15px',
+                            left: '35px', // Moved right to avoid arrow
                             backgroundColor: '#3498db',
                             color: 'white',
                             padding: '4px 12px',
@@ -307,37 +349,52 @@ const Message = () => {
                         </div>
                     )}
 
-                    {/* Message Header */}
+                    {/* Always visible header (even when collapsed) */}
                     <div style={{ 
                         display: 'flex', 
                         justifyContent: 'space-between', 
-                        alignItems: 'flex-start',
-                        marginBottom: '10px',
+                        alignItems: 'center',
+                        marginBottom: isCollapsed ? '0' : '10px',
                         flexWrap: 'wrap',
-                        gap: '10px'
+                        gap: '10px',
+                        paddingLeft: '25px' // Make room for arrow
                     }}>
                         <div style={{ flex: 1, minWidth: '200px' }}>
-                            <div style={{ marginBottom: '5px' }}>
-                                <span style={{ color: '#888', fontSize: '12px' }}>From: </span>
-                                <PrincipalDisplay 
-                                    principal={message.sender} 
-                                    maxLength={20}
-                                    style={{ color: '#ffffff', fontSize: '14px' }}
-                                />
-                            </div>
-                            <div style={{ marginBottom: '5px' }}>
-                                <span style={{ color: '#888', fontSize: '12px' }}>To: </span>
-                                {message.recipients.map((recipient, idx) => (
-                                    <span key={idx}>
+                            <h4 style={{ 
+                                color: '#ffffff', 
+                                margin: '0', 
+                                fontSize: '16px',
+                                cursor: isCollapsed ? 'pointer' : 'default'
+                            }}
+                            onClick={isCollapsed ? () => toggleMessageCollapse(messageId) : undefined}
+                            >
+                                {message.subject}
+                            </h4>
+                            {!isCollapsed && (
+                                <>
+                                    <div style={{ marginTop: '5px', marginBottom: '3px' }}>
+                                        <span style={{ color: '#888', fontSize: '12px' }}>From: </span>
                                         <PrincipalDisplay 
-                                            principal={recipient} 
-                                            maxLength={15}
+                                            principal={message.sender} 
+                                            maxLength={20}
                                             style={{ color: '#ffffff', fontSize: '14px' }}
                                         />
-                                        {idx < message.recipients.length - 1 && ', '}
-                                    </span>
-                                ))}
-                            </div>
+                                    </div>
+                                    <div style={{ marginBottom: '5px' }}>
+                                        <span style={{ color: '#888', fontSize: '12px' }}>To: </span>
+                                        {message.recipients.map((recipient, idx) => (
+                                            <span key={idx}>
+                                                <PrincipalDisplay 
+                                                    principal={recipient} 
+                                                    maxLength={15}
+                                                    style={{ color: '#ffffff', fontSize: '14px' }}
+                                                />
+                                                {idx < message.recipients.length - 1 && ', '}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
                         </div>
                         <div style={{ color: '#888', fontSize: '12px', textAlign: 'right' }}>
                             <div 
@@ -351,80 +408,83 @@ const Message = () => {
                         </div>
                     </div>
 
-                    {/* Message Content */}
-                    <div style={{ marginBottom: '10px' }}>
-                        <h4 style={{ color: '#ffffff', margin: '0 0 8px 0', fontSize: '16px' }}>
-                            {message.subject}
-                        </h4>
-                        <div style={{ 
-                            color: '#cccccc', 
-                            lineHeight: '1.5',
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                            fontSize: '14px'
-                        }}>
-                            {displayBody}
-                        </div>
-                        {isLongMessage && (
-                            <button
-                                onClick={() => toggleMessageExpansion(messageId)}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    color: '#3498db',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    marginTop: '5px'
-                                }}
-                            >
-                                {isExpanded ? 'Show Less' : 'Show More'}
-                            </button>
-                        )}
-                    </div>
+                    {/* Collapsible Content */}
+                    {!isCollapsed && (
+                        <>
+                            {/* Message Body */}
+                            <div style={{ marginBottom: '10px', paddingLeft: '25px' }}>
+                                <div style={{ 
+                                    color: '#cccccc', 
+                                    lineHeight: '1.5',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word',
+                                    fontSize: '14px'
+                                }}>
+                                    {displayBody}
+                                </div>
+                                {isLongMessage && (
+                                    <button
+                                        onClick={() => toggleMessageExpansion(messageId)}
+                                        style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            color: '#3498db',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                            marginTop: '5px'
+                                        }}
+                                    >
+                                        {isExpanded ? 'Show Less' : 'Show More'}
+                                    </button>
+                                )}
+                            </div>
 
-                    {/* Action Buttons */}
-                    <div style={{ 
-                        display: 'flex', 
-                        gap: '8px', 
-                        borderTop: '1px solid #3a3a3a', 
-                        paddingTop: '10px',
-                        flexWrap: 'wrap'
-                    }}>
-                        <button
-                            onClick={() => navigate(`/sms?reply=${message.id}`)}
-                            style={{
-                                backgroundColor: '#3498db',
-                                color: '#ffffff',
-                                border: 'none',
-                                borderRadius: '4px',
-                                padding: '6px 12px',
-                                cursor: 'pointer',
-                                fontSize: '12px'
-                            }}
-                        >
-                            ↩️ Reply
-                        </button>
-                        
-                        {canLoadReplies && (
-                            <button
-                                onClick={() => loadReplies(messageId)}
-                                disabled={loadingState.loadingReplies}
-                                style={{
-                                    backgroundColor: '#e67e22',
-                                    color: '#ffffff',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '6px 12px',
-                                    cursor: loadingState.loadingReplies ? 'not-allowed' : 'pointer',
-                                    opacity: loadingState.loadingReplies ? 0.6 : 1,
-                                    fontSize: '12px'
-                                }}
-                            >
-                                {loadingState.loadingReplies ? '⏳ Loading...' : 
-                                 hasLoadedReplies ? '🔄 Refresh Replies' : '⬇️ Load Replies'}
-                            </button>
-                        )}
-                    </div>
+                            {/* Action Buttons */}
+                            <div style={{ 
+                                display: 'flex', 
+                                gap: '8px', 
+                                borderTop: '1px solid #3a3a3a', 
+                                paddingTop: '10px',
+                                paddingLeft: '25px',
+                                flexWrap: 'wrap'
+                            }}>
+                                <button
+                                    onClick={() => navigate(`/sms?reply=${message.id}`)}
+                                    style={{
+                                        backgroundColor: '#3498db',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px'
+                                    }}
+                                >
+                                    ↩️ Reply
+                                </button>
+                                
+                                {canLoadReplies && (
+                                    <button
+                                        onClick={() => loadReplies(messageId)}
+                                        disabled={loadingState.loadingReplies}
+                                        style={{
+                                            backgroundColor: '#e67e22',
+                                            color: '#ffffff',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '6px 12px',
+                                            cursor: loadingState.loadingReplies ? 'not-allowed' : 'pointer',
+                                            opacity: loadingState.loadingReplies ? 0.6 : 1,
+                                            fontSize: '12px'
+                                        }}
+                                    >
+                                        {loadingState.loadingReplies ? '⏳ Loading...' : 
+                                         hasLoadedReplies ? '🔄 Refresh Replies' : '⬇️ Load Replies'}
+                                    </button>
+                                )}
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Render Children */}
