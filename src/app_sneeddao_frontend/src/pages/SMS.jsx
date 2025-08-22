@@ -149,7 +149,7 @@ const SMS = () => {
                 recipients: recipientPrincipals,
                 subject: composeForm.subject.trim(),
                 body: composeForm.body.trim(),
-                reply_to: composeForm.replyTo ? [BigInt(composeForm.replyTo)] : []
+                reply_to: composeForm.replyTo ? [[BigInt(composeForm.replyTo)]] : [] // Optional array containing array of BigInt
             };
 
             const result = await actor.send_message(messageInput);
