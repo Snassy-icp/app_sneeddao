@@ -512,7 +512,7 @@ const SMS = () => {
                             textAlign: 'center'
                         }}>
                             <div style={{ color: '#3498db', fontSize: '32px', fontWeight: 'bold' }}>
-                                {stats.total_messages}
+                                {Number(stats.total_messages)}
                             </div>
                             <div style={{ color: '#888', fontSize: '14px' }}>Total Messages</div>
                         </div>
@@ -524,7 +524,7 @@ const SMS = () => {
                             textAlign: 'center'
                         }}>
                             <div style={{ color: '#2ecc71', fontSize: '32px', fontWeight: 'bold' }}>
-                                {stats.total_users}
+                                {Number(stats.total_users)}
                             </div>
                             <div style={{ color: '#888', fontSize: '14px' }}>Total Users</div>
                         </div>
@@ -537,7 +537,7 @@ const SMS = () => {
                                 textAlign: 'center'
                             }}>
                                 <div style={{ color: '#f39c12', fontSize: '32px', fontWeight: 'bold' }}>
-                                    {config.rate_limit_minutes}
+                                    {Number(config.rate_limit_minutes)}
                                 </div>
                                 <div style={{ color: '#888', fontSize: '14px' }}>Minutes Between Messages</div>
                             </div>

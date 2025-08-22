@@ -158,7 +158,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Proposals', path: '/proposals' },
                 { name: 'Neurons', path: '/neurons' },
                 { name: 'Transactions', path: '/transactions' },
-                { name: 'Holders', path: '/principal' }
+                { name: 'Users', path: '/principal' }
             ]
         },
         'Wallet': {
