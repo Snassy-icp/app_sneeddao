@@ -209,6 +209,38 @@ const SMS = () => {
         }
     }, [searchParams, messages, isAuthenticated, principalNames, principalNicknames]);
 
+    // Handle recipient parameter from URL (for direct messaging)
+    useEffect(() => {
+        const recipientParam = searchParams.get('recipient');
+        if (recipientParam && isAuthenticated && principalNames && principalNicknames) {
+            try {
+                // Validate that it's a valid principal
+                Principal.fromText(recipientParam);
+                
+                console.log('Auto-opening compose for recipient:', recipientParam);
+                const displayInfo = getPrincipalDisplayInfoFromContext(recipientParam, principalNames, principalNicknames);
+                
+                setComposeForm({
+                    recipients: [{ 
+                        value: recipientParam, 
+                        isValid: true, 
+                        name: displayInfo.name && displayInfo.name !== recipientParam ? displayInfo.name : '', 
+                        error: '' 
+                    }],
+                    subject: '',
+                    body: '',
+                    replyTo: null
+                });
+                setShowComposeModal(true);
+                
+                // Clear the recipient parameter from URL
+                setSearchParams({});
+            } catch (e) {
+                console.error('Invalid recipient principal from URL:', e);
+            }
+        }
+    }, [searchParams, isAuthenticated, principalNames, principalNicknames]);
+
     // Fetch principal display info for all unique principals in messages
     useEffect(() => {
         if (!messages.length || !principalNames || !principalNicknames) return;

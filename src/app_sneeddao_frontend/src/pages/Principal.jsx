@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname } from '../utils/BackendUtils';
 import { Principal } from '@dfinity/principal';
@@ -38,6 +38,7 @@ export default function PrincipalPage() {
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
     const { principalNames, principalNicknames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
+    const navigate = useNavigate();
     const [principalInfo, setPrincipalInfo] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -840,7 +841,7 @@ export default function PrincipalPage() {
                                                 fontSize: '18px',
                                                 fontWeight: '500'
                                             }}>
-                                                Principal Details
+                                                User Details
                                             </h2>
                                             <PrincipalDisplay 
                                                 principal={stablePrincipalId.current}
@@ -870,7 +871,7 @@ export default function PrincipalPage() {
                                                     >
                                                         {principalInfo?.nickname ? 'Change Nickname' : 'Set Nickname'}
                                                     </button>
-                                                    {identity?.getPrincipal().toString() === stablePrincipalId.current.toString() && (
+                                                    {identity?.getPrincipal().toString() === stablePrincipalId.current.toString() ? (
                                                         <button
                                                             onClick={() => setEditingName(true)}
                                                             style={{
@@ -884,6 +885,26 @@ export default function PrincipalPage() {
                                                         >
                                                             {principalInfo?.name ? 'Change Name' : 'Set Name'}
                                                         </button>
+                                                    ) : (
+                                                        identity && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    // Navigate to SMS with recipient pre-filled
+                                                                    const recipientPrincipal = stablePrincipalId.current.toString();
+                                                                    navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
+                                                                }}
+                                                                style={{
+                                                                    backgroundColor: '#2ecc71',
+                                                                    color: '#ffffff',
+                                                                    border: 'none',
+                                                                    borderRadius: '4px',
+                                                                    padding: '8px 12px',
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                💬 Send Message
+                                                            </button>
+                                                        )
                                                     )}
                                                 </>
                                             )}
