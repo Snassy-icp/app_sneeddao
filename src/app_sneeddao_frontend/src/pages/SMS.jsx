@@ -9,6 +9,8 @@ import { useNaming } from '../NamingContext';
 const SMS = () => {
     const { identity, isAuthenticated } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
+    
+
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -159,7 +161,20 @@ const SMS = () => {
                 await fetchMessages();
                 await fetchStats();
             } else {
-                const errorMsg = result.err.InvalidInput || result.err.RateLimited || result.err.Unauthorized || result.err.NotFound || result.err.AlreadyExists || 'Failed to send message';
+                // Extract the specific error message from the backend response
+                let errorMsg = 'Failed to send message';
+                if (result.err.RateLimited) {
+                    errorMsg = `Rate Limited: ${result.err.RateLimited}`;
+                } else if (result.err.InvalidInput) {
+                    errorMsg = `Invalid Input: ${result.err.InvalidInput}`;
+                } else if (result.err.Unauthorized) {
+                    errorMsg = `Unauthorized: ${result.err.Unauthorized}`;
+                } else if (result.err.NotFound) {
+                    errorMsg = `Not Found: ${result.err.NotFound}`;
+                } else if (result.err.AlreadyExists) {
+                    errorMsg = `Already Exists: ${result.err.AlreadyExists}`;
+                }
+
                 setError(errorMsg);
             }
         } catch (err) {
@@ -234,7 +249,7 @@ const SMS = () => {
                 
                 // Try to get the name for this principal
                 const displayInfo = getPrincipalDisplayInfoFromContext(value.trim(), principalNames, principalNicknames);
-                newRecipients[index].name = displayInfo.displayName !== value.trim() ? displayInfo.displayName : '';
+                newRecipients[index].name = displayInfo.name && displayInfo.name !== value.trim() ? displayInfo.name : '';
             } catch (e) {
                 newRecipients[index].isValid = false;
                 newRecipients[index].name = '';
@@ -268,7 +283,7 @@ const SMS = () => {
             recipients: [{ 
                 value: senderPrincipal, 
                 isValid: true, 
-                name: displayInfo.displayName !== senderPrincipal ? displayInfo.displayName : '', 
+                name: displayInfo.name && displayInfo.name !== senderPrincipal ? displayInfo.name : '', 
                 error: '' 
             }],
             subject: message.subject.startsWith('Re: ') ? message.subject : `Re: ${message.subject}`,
@@ -730,6 +745,21 @@ const SMS = () => {
                                         }}
                                     />
                                 </div>
+
+                                {/* Error display in compose modal */}
+                                {error && (
+                                    <div style={{ 
+                                        backgroundColor: 'rgba(231, 76, 60, 0.2)', 
+                                        border: '1px solid #e74c3c',
+                                        color: '#e74c3c',
+                                        padding: '10px',
+                                        borderRadius: '4px',
+                                        marginTop: '15px',
+                                        fontSize: '14px'
+                                    }}>
+                                        {error}
+                                    </div>
+                                )}
 
                                 <div style={{ 
                                     display: 'flex', 
