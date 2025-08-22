@@ -437,6 +437,24 @@ const SMS = () => {
         setShowComposeModal(true);
     };
 
+    // Helper function to check if form is valid for submission
+    const isFormValid = () => {
+        const validRecipients = composeForm.recipients.filter(r => {
+            if (!r.trim()) return false;
+            try {
+                Principal.fromText(r.trim());
+                return true;
+            } catch (e) {
+                return false;
+            }
+        });
+        
+        return !submitting && 
+               validRecipients.length > 0 && 
+               composeForm.subject.trim() && 
+               composeForm.body.trim();
+    };
+
     if (!isAuthenticated) {
         return (
             <div className='page-container'>
@@ -822,7 +840,10 @@ const SMS = () => {
                                                             border: 'none',
                                                             borderRadius: '4px',
                                                             cursor: 'pointer',
-                                                            fontSize: '14px'
+                                                            fontSize: '14px',
+                                                            flexShrink: 0,
+                                                            alignSelf: 'flex-start',
+                                                            marginTop: '0'
                                                         }}
                                                         title="Remove recipient"
                                                     >
@@ -938,15 +959,15 @@ const SMS = () => {
                                     </button>
                                     <button
                                         onClick={sendMessage}
-                                        disabled={submitting || composeForm.recipients.filter(r => r.isValid && r.value.trim()).length === 0 || !composeForm.subject.trim() || !composeForm.body.trim()}
+                                        disabled={!isFormValid()}
                                         style={{
                                             backgroundColor: '#3498db',
                                             color: '#ffffff',
                                             border: 'none',
                                             borderRadius: '6px',
                                             padding: '10px 20px',
-                                            cursor: (submitting || composeForm.recipients.filter(r => r.isValid && r.value.trim()).length === 0 || !composeForm.subject.trim() || !composeForm.body.trim()) ? 'not-allowed' : 'pointer',
-                                            opacity: (submitting || composeForm.recipients.filter(r => r.isValid && r.value.trim()).length === 0 || !composeForm.subject.trim() || !composeForm.body.trim()) ? 0.6 : 1,
+                                            cursor: isFormValid() ? 'pointer' : 'not-allowed',
+                                            opacity: isFormValid() ? 1 : 0.6,
                                             display: 'flex',
                                             alignItems: 'center',
                                             gap: '8px'
