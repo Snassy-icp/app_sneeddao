@@ -2745,7 +2745,7 @@ function ThreadViewer({
                                         gap: '4px'
                                     }}
                                 >
-                                    💬{isNarrowScreen ? '' : ' Message'}
+                                    📨{isNarrowScreen ? '' : ' Message'}
                                 </button>
                             )}
 
