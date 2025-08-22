@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
@@ -7,6 +8,7 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import { useNaming } from '../NamingContext';
 
 const SMS = () => {
+    const navigate = useNavigate();
     const { identity, isAuthenticated } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
     
@@ -295,6 +297,52 @@ const SMS = () => {
         setShowComposeModal(true);
     };
 
+    // Reply to all (sender + all recipients)
+    const replyToAllMessage = (message) => {
+        // Close the message modal first
+        setShowMessageModal(false);
+        setSelectedMessage(null);
+        
+        // Get all unique recipients (sender + recipients, excluding current user)
+        const currentUserPrincipal = identity.getPrincipal().toString();
+        const allRecipients = new Set();
+        
+        // Add sender if it's not the current user
+        if (message.sender.toString() !== currentUserPrincipal) {
+            allRecipients.add(message.sender.toString());
+        }
+        
+        // Add all recipients except current user
+        message.recipients.forEach(recipient => {
+            const recipientStr = recipient.toString();
+            if (recipientStr !== currentUserPrincipal) {
+                allRecipients.add(recipientStr);
+            }
+        });
+        
+        // Convert to recipient objects with names
+        const recipientObjects = Array.from(allRecipients).map(principalStr => {
+            const displayInfo = getPrincipalDisplayInfoFromContext(principalStr, principalNames, principalNicknames);
+            return {
+                value: principalStr,
+                isValid: true,
+                name: displayInfo.name && displayInfo.name !== principalStr ? displayInfo.name : '',
+                error: ''
+            };
+        });
+        
+        // Set up the reply all form
+        setComposeForm({
+            recipients: recipientObjects.length > 0 ? recipientObjects : [{ value: '', isValid: false, name: '', error: '' }],
+            subject: message.subject.startsWith('Re: ') ? message.subject : `Re: ${message.subject}`,
+            body: '',
+            replyTo: Number(message.id)
+        });
+        
+        // Open compose modal
+        setShowComposeModal(true);
+    };
+
     if (!isAuthenticated) {
         return (
             <div className='page-container'>
@@ -558,6 +606,32 @@ const SMS = () => {
                                     whiteSpace: 'nowrap'
                                 }}>
                                     {message.body}
+                                </div>
+                                
+                                {/* Action buttons */}
+                                <div style={{ 
+                                    marginTop: '15px', 
+                                    display: 'flex', 
+                                    gap: '10px',
+                                    alignItems: 'center'
+                                }}>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation(); // Prevent triggering the message modal
+                                            navigate(`/msg/${message.id}`);
+                                        }}
+                                        style={{
+                                            backgroundColor: '#2ecc71',
+                                            color: '#ffffff',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '6px 12px',
+                                            cursor: 'pointer',
+                                            fontSize: '12px'
+                                        }}
+                                    >
+                                        🔗 View Thread
+                                    </button>
                                 </div>
                             </div>
                         ))}
@@ -952,6 +1026,22 @@ const SMS = () => {
                                     }}
                                 >
                                     ↩️ Reply
+                                </button>
+                                <button
+                                    onClick={() => replyToAllMessage(selectedMessage)}
+                                    style={{
+                                        backgroundColor: '#9b59b6',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '10px 20px',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}
+                                >
+                                    ↩️ Reply All
                                 </button>
                                 {selectedMessage.can_remove_self && (
                                     <button
