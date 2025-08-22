@@ -2700,6 +2700,30 @@ function ThreadViewer({
                                 </button>
                             )}
 
+                            {/* Send Message Button - Only show for posts by other users */}
+                            {identity && post.created_by.toString() !== identity.getPrincipal().toString() && (
+                                <button
+                                    onClick={() => {
+                                        const recipientPrincipal = post.created_by.toString();
+                                        navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
+                                    }}
+                                    style={{
+                                        backgroundColor: 'transparent',
+                                        border: 'none',
+                                        color: '#2ecc71',
+                                        borderRadius: '4px',
+                                        padding: '4px 8px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}
+                                >
+                                    💬 Message
+                                </button>
+                            )}
+
                             {/* Edit Button - Show for post owner or admin */}
                             {identity && (post.created_by.toString() === identity.getPrincipal().toString() || isAdmin) && (
                                 <button
