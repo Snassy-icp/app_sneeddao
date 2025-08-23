@@ -792,7 +792,13 @@ function Proposal() {
                                             {convertHtmlToMarkdown(proposalData.proposal?.[0]?.summary || 'No summary')}
                                         </ReactMarkdown>
                                     </div></p>
-                                    <p><strong>URL:</strong> <a href={proposalData.proposal?.[0]?.url} target="_blank" rel="noopener noreferrer" style={{ color: '#3498db' }}>{proposalData.proposal?.[0]?.url}</a></p>
+                                    <p><strong>URL:</strong> <a href={proposalData.proposal?.[0]?.url} target="_blank" rel="noopener noreferrer" style={{ 
+                                        color: '#3498db',
+                                        wordBreak: 'break-all',
+                                        overflowWrap: 'break-word',
+                                        display: 'inline-block',
+                                        maxWidth: '100%'
+                                    }}>{proposalData.proposal?.[0]?.url}</a></p>
                                     <p><strong>Status:</strong> {getProposalStatus(proposalData)}</p>
                                     <p><strong>Created:</strong> {new Date(Number(proposalData.proposal_creation_timestamp_seconds || 0) * 1000).toLocaleString()}</p>
                                     <p><strong>Voting Period:</strong> {Math.floor(Number(proposalData.initial_voting_period_seconds || 0) / (24 * 60 * 60))} days</p>
