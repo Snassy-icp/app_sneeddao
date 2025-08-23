@@ -141,7 +141,7 @@ const Posts = () => {
                     console.log(`🔥 REPLIES: UPDATED BACKEND TIMESTAMP ONCE: ${currentTimestamp}`);
                     
                     // Step 4: Default to replies tab if new replies > 0
-                    setActiveTab('replies');
+                    setActiveTab('replies-to-me');
                     console.log(`🔥 REPLIES: DEFAULTED TO REPLIES TAB (${newRepliesCount} new replies)`);
                 } else {
                     console.log('🔥 REPLIES: NO NEW REPLIES - NO BACKEND UPDATE');
