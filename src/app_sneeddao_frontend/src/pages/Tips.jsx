@@ -448,73 +448,38 @@ const Tips = () => {
         <div className="tips-page">
             <Header showSnsDropdown={false} />
             
-            {/* Tips Submenu Row - styled like Header submenu */}
+            {/* Tips Tabs - SMS style */}
             <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'flex-start',
-                width: '100%',
-                padding: '10px 20px',
-                backgroundColor: '#1a1a1a',
-                borderBottom: '1px solid rgba(255,255,255,0.1)'
+                padding: '20px 20px 0 20px'
             }}>
                 <div style={{ 
                     display: 'flex', 
-                    gap: '20px', 
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    rowGap: '10px'
+                    gap: '10px', 
+                    marginBottom: '20px',
+                    borderBottom: '1px solid #3a3a3a',
+                    paddingBottom: '0'
                 }}>
-                    <span
-                        onClick={() => setActiveTab('received')}
-                        style={{
-                            color: activeTab === 'received' ? '#3498db' : '#888',
-                            textDecoration: 'none',
-                            fontSize: '14px',
-                            fontWeight: activeTab === 'received' ? 'bold' : 'normal',
-                            position: 'relative',
-                            paddingBottom: '4px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        📥 Tips Received ({tipsReceived.length})
-                        {activeTab === 'received' && (
-                            <div style={{
-                                position: 'absolute',
-                                bottom: 0,
-                                left: 0,
-                                width: '100%',
-                                height: '2px',
-                                background: '#3498db',
-                                borderRadius: '2px'
-                            }} />
-                        )}
-                    </span>
-                    <span
-                        onClick={() => setActiveTab('given')}
-                        style={{
-                            color: activeTab === 'given' ? '#3498db' : '#888',
-                            textDecoration: 'none',
-                            fontSize: '14px',
-                            fontWeight: activeTab === 'given' ? 'bold' : 'normal',
-                            position: 'relative',
-                            paddingBottom: '4px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        📤 Tips Given ({tipsGiven.length})
-                        {activeTab === 'given' && (
-                            <div style={{
-                                position: 'absolute',
-                                bottom: 0,
-                                left: 0,
-                                width: '100%',
-                                height: '2px',
-                                background: '#3498db',
-                                borderRadius: '2px'
-                            }} />
-                        )}
-                    </span>
+                    {[
+                        { key: 'received', label: '📥 Tips Received', count: tipsReceived.length },
+                        { key: 'given', label: '📤 Tips Given', count: tipsGiven.length }
+                    ].map(tab => (
+                        <button
+                            key={tab.key}
+                            onClick={() => setActiveTab(tab.key)}
+                            style={{
+                                background: activeTab === tab.key ? '#3498db' : 'transparent',
+                                color: activeTab === tab.key ? '#ffffff' : '#888',
+                                border: 'none',
+                                borderRadius: '4px 4px 0 0',
+                                padding: '12px 20px',
+                                cursor: 'pointer',
+                                fontSize: '16px',
+                                borderBottom: activeTab === tab.key ? '2px solid #3498db' : '2px solid transparent'
+                            }}
+                        >
+                            {tab.label} ({tab.count})
+                        </button>
+                    ))}
                 </div>
             </div>
 

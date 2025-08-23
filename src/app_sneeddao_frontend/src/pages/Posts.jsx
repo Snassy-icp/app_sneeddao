@@ -454,98 +454,39 @@ const Posts = () => {
         <div className="posts-page">
             <Header />
             
-            {/* Posts Submenu Row - styled like Header submenu */}
+            {/* Posts Tabs - SMS style */}
             <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'flex-start',
-                width: '100%',
-                padding: '10px 20px',
-                backgroundColor: '#1a1a1a',
-                borderBottom: '1px solid rgba(255,255,255,0.1)'
+                padding: '20px 20px 0 20px'
             }}>
                 <div style={{ 
                     display: 'flex', 
-                    gap: '20px', 
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    rowGap: '10px'
+                    gap: '10px', 
+                    marginBottom: '20px',
+                    borderBottom: '1px solid #3a3a3a',
+                    paddingBottom: '0'
                 }}>
-                    <span
-                        onClick={() => setActiveTab('replies-to-me')}
-                        style={{
-                            color: activeTab === 'replies-to-me' ? '#3498db' : '#888',
-                            textDecoration: 'none',
-                            fontSize: '14px',
-                            fontWeight: activeTab === 'replies-to-me' ? 'bold' : 'normal',
-                            position: 'relative',
-                            paddingBottom: '4px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        Replies to Me ({repliesToMe.length})
-                        {activeTab === 'replies-to-me' && (
-                            <div style={{
-                                position: 'absolute',
-                                bottom: 0,
-                                left: 0,
-                                width: '100%',
-                                height: '2px',
-                                background: '#3498db',
-                                borderRadius: '2px'
-                            }} />
-                        )}
-                    </span>
-                    <span
-                        onClick={() => setActiveTab('my-posts')}
-                        style={{
-                            color: activeTab === 'my-posts' ? '#3498db' : '#888',
-                            textDecoration: 'none',
-                            fontSize: '14px',
-                            fontWeight: activeTab === 'my-posts' ? 'bold' : 'normal',
-                            position: 'relative',
-                            paddingBottom: '4px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        My Posts ({myPosts.length})
-                        {activeTab === 'my-posts' && (
-                            <div style={{
-                                position: 'absolute',
-                                bottom: 0,
-                                left: 0,
-                                width: '100%',
-                                height: '2px',
-                                background: '#3498db',
-                                borderRadius: '2px'
-                            }} />
-                        )}
-                    </span>
-                    <span
-                        onClick={() => setActiveTab('my-threads')}
-                        style={{
-                            color: activeTab === 'my-threads' ? '#3498db' : '#888',
-                            textDecoration: 'none',
-                            fontSize: '14px',
-                            fontWeight: activeTab === 'my-threads' ? 'bold' : 'normal',
-                            position: 'relative',
-                            paddingBottom: '4px',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        My Threads ({myThreads.length})
-                        {activeTab === 'my-threads' && (
-                            <div style={{
-                                position: 'absolute',
-                                bottom: 0,
-                                left: 0,
-                                width: '100%',
-                                height: '2px',
-                                background: '#3498db',
-                                borderRadius: '2px'
-                            }} />
-                        )}
-                    </span>
+                    {[
+                        { key: 'replies-to-me', label: 'Replies to Me', count: repliesToMe.length },
+                        { key: 'my-posts', label: 'My Posts', count: myPosts.length },
+                        { key: 'my-threads', label: 'My Threads', count: myThreads.length }
+                    ].map(tab => (
+                        <button
+                            key={tab.key}
+                            onClick={() => setActiveTab(tab.key)}
+                            style={{
+                                background: activeTab === tab.key ? '#3498db' : 'transparent',
+                                color: activeTab === tab.key ? '#ffffff' : '#888',
+                                border: 'none',
+                                borderRadius: '4px 4px 0 0',
+                                padding: '12px 20px',
+                                cursor: 'pointer',
+                                fontSize: '16px',
+                                borderBottom: activeTab === tab.key ? '2px solid #3498db' : '2px solid transparent'
+                            }}
+                        >
+                            {tab.label} ({tab.count})
+                        </button>
+                    ))}
                 </div>
             </div>
 
