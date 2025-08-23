@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
+import { useForum } from '../contexts/ForumContext';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
-import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname } from '../utils/BackendUtils';
+import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname, getPostsByUser, getRepliesToUser } from '../utils/BackendUtils';
 import PrincipalInput from '../components/PrincipalInput';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
@@ -38,6 +39,7 @@ export default function PrincipalPage() {
     const { identity } = useAuth();
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
     const { principalNames, principalNicknames } = useNaming();
+    const { createForumActor } = useForum();
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
     const [principalInfo, setPrincipalInfo] = useState(null);
@@ -61,6 +63,12 @@ export default function PrincipalPage() {
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [isNeuronsCollapsed, setIsNeuronsCollapsed] = useState(true);
     const [isTransactionsCollapsed, setIsTransactionsCollapsed] = useState(true);
+    const [isPostsCollapsed, setIsPostsCollapsed] = useState(true);
+    const [postsActiveTab, setPostsActiveTab] = useState('posts');
+    const [userPosts, setUserPosts] = useState([]);
+    const [userThreads, setUserThreads] = useState([]);
+    const [loadingPosts, setLoadingPosts] = useState(false);
+    const [postsError, setPostsError] = useState(null);
     
     // Add search state
     const [searchInput, setSearchInput] = useState('');
@@ -443,6 +451,44 @@ export default function PrincipalPage() {
             setNicknameInput('');
         }
     };
+
+    // Fetch posts and threads for the user
+    const fetchUserPosts = async () => {
+        if (!identity || !createForumActor || !stablePrincipalId.current) return;
+        
+        setLoadingPosts(true);
+        setPostsError(null);
+        
+        try {
+            const forumActor = createForumActor(identity);
+            const targetPrincipal = Principal.fromText(stablePrincipalId.current);
+            
+            // Fetch both posts and replies (threads)
+            const [postsData, repliesData] = await Promise.all([
+                getPostsByUser(forumActor, targetPrincipal),
+                getRepliesToUser(forumActor, targetPrincipal)
+            ]);
+            
+            console.log('User posts:', postsData);
+            console.log('User threads (replies):', repliesData);
+            
+            setUserPosts(postsData || []);
+            setUserThreads(repliesData || []);
+            
+        } catch (err) {
+            console.error('Error fetching user posts:', err);
+            setPostsError(err.message || 'Failed to load posts');
+        } finally {
+            setLoadingPosts(false);
+        }
+    };
+
+    // Auto-fetch posts when principal changes
+    useEffect(() => {
+        if (stablePrincipalId.current && identity && createForumActor) {
+            fetchUserPosts();
+        }
+    }, [stablePrincipalId.current, identity, createForumActor]);
 
     if (!stablePrincipalId.current) {
         return (
@@ -921,6 +967,202 @@ export default function PrincipalPage() {
                                                     Cancel
                                                 </button>
                                             </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        {/* Posts & Threads Section */}
+                        <div style={{ 
+                            backgroundColor: '#2a2a2a',
+                            borderRadius: '8px',
+                            padding: '20px',
+                            marginBottom: '30px',
+                            border: '1px solid #3a3a3a'
+                        }}>
+                            <div 
+                                style={{ 
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    cursor: 'pointer',
+                                    userSelect: 'none',
+                                    marginBottom: isPostsCollapsed ? 0 : '20px'
+                                }}
+                                onClick={() => setIsPostsCollapsed(!isPostsCollapsed)}
+                            >
+                                <span style={{
+                                    fontSize: '18px',
+                                    color: '#888',
+                                    transition: 'transform 0.2s',
+                                    transform: isPostsCollapsed ? 'rotate(-90deg)' : 'none'
+                                }}>
+                                    ▼
+                                </span>
+                                <h2 style={{ 
+                                    color: '#ffffff',
+                                    fontSize: '18px',
+                                    fontWeight: '500',
+                                    margin: 0
+                                }}>
+                                    Posts & Threads
+                                </h2>
+                            </div>
+
+                            {!isPostsCollapsed && (
+                                <>
+                                    {/* Tab Navigation */}
+                                    <div style={{
+                                        display: 'flex',
+                                        borderBottom: '1px solid #3a3a3a',
+                                        marginBottom: '20px'
+                                    }}>
+                                        <button
+                                            onClick={() => setPostsActiveTab('posts')}
+                                            style={{
+                                                backgroundColor: 'transparent',
+                                                border: 'none',
+                                                color: postsActiveTab === 'posts' ? '#3498db' : '#888',
+                                                fontSize: '16px',
+                                                fontWeight: '500',
+                                                padding: '10px 20px',
+                                                cursor: 'pointer',
+                                                borderBottom: postsActiveTab === 'posts' ? '2px solid #3498db' : '2px solid transparent',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            Posts ({userPosts.length})
+                                        </button>
+                                        <button
+                                            onClick={() => setPostsActiveTab('threads')}
+                                            style={{
+                                                backgroundColor: 'transparent',
+                                                border: 'none',
+                                                color: postsActiveTab === 'threads' ? '#3498db' : '#888',
+                                                fontSize: '16px',
+                                                fontWeight: '500',
+                                                padding: '10px 20px',
+                                                cursor: 'pointer',
+                                                borderBottom: postsActiveTab === 'threads' ? '2px solid #3498db' : '2px solid transparent',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            Threads ({userThreads.length})
+                                        </button>
+                                    </div>
+
+                                    {/* Content */}
+                                    {loadingPosts ? (
+                                        <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                            Loading posts...
+                                        </div>
+                                    ) : postsError ? (
+                                        <div style={{ 
+                                            backgroundColor: 'rgba(231, 76, 60, 0.2)', 
+                                            border: '1px solid #e74c3c',
+                                            color: '#e74c3c',
+                                            padding: '15px',
+                                            borderRadius: '6px',
+                                            marginBottom: '20px'
+                                        }}>
+                                            Error: {postsError}
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            {postsActiveTab === 'posts' ? (
+                                                userPosts.length === 0 ? (
+                                                    <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                                        No posts found
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                                        {userPosts.map((post) => (
+                                                            <div key={post.id} style={{
+                                                                backgroundColor: '#1a1a1a',
+                                                                border: '1px solid #3a3a3a',
+                                                                borderRadius: '6px',
+                                                                padding: '15px'
+                                                            }}>
+                                                                <Link 
+                                                                    to={`/thread/${post.thread_id}#post-${post.id}`}
+                                                                    style={{
+                                                                        color: '#3498db',
+                                                                        textDecoration: 'none',
+                                                                        fontSize: '16px',
+                                                                        fontWeight: '500',
+                                                                        display: 'block',
+                                                                        marginBottom: '8px'
+                                                                    }}
+                                                                >
+                                                                    {post.title}
+                                                                </Link>
+                                                                <div style={{ color: '#888', fontSize: '14px', marginBottom: '10px' }}>
+                                                                    {new Date(Number(post.created_at) / 1000000).toLocaleDateString()} • 
+                                                                    👍 {Number(post.upvote_score)} 👎 {Number(post.downvote_score)}
+                                                                </div>
+                                                                <div style={{ 
+                                                                    color: '#ccc', 
+                                                                    fontSize: '14px',
+                                                                    overflow: 'hidden',
+                                                                    textOverflow: 'ellipsis',
+                                                                    display: '-webkit-box',
+                                                                    WebkitLineClamp: 2,
+                                                                    WebkitBoxOrient: 'vertical'
+                                                                }}>
+                                                                    {post.content}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )
+                                            ) : (
+                                                userThreads.length === 0 ? (
+                                                    <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                                        No threads found
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                                        {userThreads.map((post) => (
+                                                            <div key={post.id} style={{
+                                                                backgroundColor: '#1a1a1a',
+                                                                border: '1px solid #3a3a3a',
+                                                                borderRadius: '6px',
+                                                                padding: '15px'
+                                                            }}>
+                                                                <Link 
+                                                                    to={`/thread/${post.thread_id}#post-${post.id}`}
+                                                                    style={{
+                                                                        color: '#3498db',
+                                                                        textDecoration: 'none',
+                                                                        fontSize: '16px',
+                                                                        fontWeight: '500',
+                                                                        display: 'block',
+                                                                        marginBottom: '8px'
+                                                                    }}
+                                                                >
+                                                                    Re: {post.title}
+                                                                </Link>
+                                                                <div style={{ color: '#888', fontSize: '14px', marginBottom: '10px' }}>
+                                                                    {new Date(Number(post.created_at) / 1000000).toLocaleDateString()} • 
+                                                                    👍 {Number(post.upvote_score)} 👎 {Number(post.downvote_score)}
+                                                                </div>
+                                                                <div style={{ 
+                                                                    color: '#ccc', 
+                                                                    fontSize: '14px',
+                                                                    overflow: 'hidden',
+                                                                    textOverflow: 'ellipsis',
+                                                                    display: '-webkit-box',
+                                                                    WebkitLineClamp: 2,
+                                                                    WebkitBoxOrient: 'vertical'
+                                                                }}>
+                                                                    {post.content}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )
+                                            )}
                                         </div>
                                     )}
                                 </>
