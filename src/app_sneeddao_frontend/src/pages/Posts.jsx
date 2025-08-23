@@ -7,6 +7,7 @@ import {
     getPostsByUser, 
     getRepliesToUser,
     getThreadsByUser,
+    getPostsByThread,
     getRecentRepliesCount,
     markRepliesSeenUpTo,
     getLastSeenRepliesTimestamp
@@ -24,6 +25,7 @@ const Posts = () => {
     const [myPosts, setMyPosts] = useState([]);
     const [repliesToMe, setRepliesToMe] = useState([]);
     const [myThreads, setMyThreads] = useState([]);
+    const [threadPostCounts, setThreadPostCounts] = useState(new Map());
     const [activeTab, setActiveTab] = useState('my-posts');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -69,6 +71,46 @@ const Posts = () => {
             setLoading(false);
         }
     }, [isAuthenticated, identity, createForumActor]);
+
+    // Fetch post counts for threads asynchronously (non-blocking)
+    const fetchThreadPostCounts = useCallback(async (threads) => {
+        if (!createForumActor || !identity || !threads.length) return;
+        
+        try {
+            const forumActor = createForumActor(identity);
+            
+            // Fetch post counts for each thread in parallel
+            const countPromises = threads.map(async (thread) => {
+                try {
+                    const posts = await getPostsByThread(forumActor, thread.id);
+                    return { threadId: thread.id, count: posts.length };
+                } catch (err) {
+                    console.error(`Error fetching posts for thread ${thread.id}:`, err);
+                    return { threadId: thread.id, count: 0 };
+                }
+            });
+            
+            const results = await Promise.all(countPromises);
+            
+            // Update the post counts map
+            const newCounts = new Map();
+            results.forEach(({ threadId, count }) => {
+                newCounts.set(threadId.toString(), count);
+            });
+            
+            setThreadPostCounts(newCounts);
+            
+        } catch (err) {
+            console.error('Error fetching thread post counts:', err);
+        }
+    }, [createForumActor, identity]);
+
+    // Fetch post counts when threads are loaded
+    useEffect(() => {
+        if (myThreads.length > 0) {
+            fetchThreadPostCounts(myThreads);
+        }
+    }, [myThreads, fetchThreadPostCounts]);
 
     // ONE-TIME replies timestamp processing - executes ONCE per page load
     useEffect(() => {
@@ -326,6 +368,7 @@ const Posts = () => {
 
     const renderThread = (thread) => {
         console.log('Rendering thread:', { id: thread.id, title: thread.title });
+        const postCount = threadPostCounts.get(thread.id.toString());
         
         return (
             <div 
@@ -367,7 +410,23 @@ const Posts = () => {
                         <span className="post-date">{formatDate(thread.created_at)}</span>
                     </div>
                     <div className="post-scores">
-                        {/* Threads don't have vote scores, so this area is left empty */}
+                        {postCount !== undefined ? (
+                            <span className="post-count" style={{ 
+                                color: '#888', 
+                                fontSize: '0.9rem',
+                                fontWeight: '500'
+                            }}>
+                                {postCount} post{postCount !== 1 ? 's' : ''}
+                            </span>
+                        ) : (
+                            <span className="post-count-loading" style={{ 
+                                color: '#666', 
+                                fontSize: '0.8rem',
+                                fontStyle: 'italic'
+                            }}>
+                                Loading...
+                            </span>
+                        )}
                     </div>
                 </div>
                 <div className="post-body">
