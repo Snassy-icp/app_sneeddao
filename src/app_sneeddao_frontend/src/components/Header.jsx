@@ -338,7 +338,31 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 {showSnsDropdown && (
                     <SnsDropdown onSnsChange={onSnsChange} />
                 )}
-{isAuthenticated ? (
+
+                {/* Wallet Link */}
+                <button
+                    onClick={() => navigate('/wallet')}
+                    style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        padding: '8px',
+                        borderRadius: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontSize: '18px',
+                        marginRight: '8px',
+                        transition: 'background-color 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                    title="Go to Wallet"
+                >
+                    <FaWallet size={16} />
+                </button>
+
+                {isAuthenticated ? (
                     <div style={{ position: 'relative' }}>
                         <PrincipalBox 
                             principalText={identity ? identity.getPrincipal().toText() : "Not logged in."}
