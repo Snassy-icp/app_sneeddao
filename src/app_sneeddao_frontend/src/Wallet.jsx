@@ -174,9 +174,12 @@ function Wallet() {
  
     useEffect(() => {
         if (!isAuthenticated) {
-            // Preserve URL parameters when redirecting unauthenticated users
+            // Preserve URL parameters and add 'from' parameter when redirecting unauthenticated users
             const currentSearch = location.search;
-            navigate(`/${currentSearch}`);
+            const urlParams = new URLSearchParams(currentSearch);
+            urlParams.set('from', location.pathname);
+            const searchWithFrom = urlParams.toString();
+            navigate(`/?${searchWithFrom}`);
             return;
         }
 

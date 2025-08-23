@@ -13,11 +13,22 @@ function Login() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      // Only redirect to dao if we're on the root login page
+      // Only redirect to dao if we're on the root login page AND there's no 'from' parameter
       // If user is trying to access a specific page, let that page handle authentication
       if (location.pathname === '/') {
         const currentSearch = location.search;
-        navigate(`/dao${currentSearch}`);
+        const urlParams = new URLSearchParams(currentSearch);
+        const fromParam = urlParams.get('from');
+        
+        // If there's a 'from' parameter, redirect back to that page instead of /dao
+        if (fromParam) {
+          urlParams.delete('from'); // Remove the 'from' parameter
+          const cleanSearch = urlParams.toString();
+          const redirectPath = cleanSearch ? `${fromParam}?${cleanSearch}` : fromParam;
+          navigate(redirectPath);
+        } else {
+          navigate(`/dao${currentSearch}`);
+        }
       }
     }
   }, [isAuthenticated, navigate, location.search, location.pathname]);

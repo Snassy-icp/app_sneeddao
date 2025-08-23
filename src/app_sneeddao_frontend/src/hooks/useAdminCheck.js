@@ -70,9 +70,12 @@ export function useAdminCheck({ identity, isAuthenticated, redirectPath = '/' })
                 if (redirectPath) {
                     setTimeout(() => {
                         if (mounted) {
-                            // Preserve URL parameters when redirecting
+                            // Preserve URL parameters and add 'from' parameter when redirecting
                             const currentSearch = location.search;
-                            navigate(`${redirectPath}${currentSearch}`);
+                            const urlParams = new URLSearchParams(currentSearch);
+                            urlParams.set('from', location.pathname);
+                            const searchWithFrom = urlParams.toString();
+                            navigate(`${redirectPath}?${searchWithFrom}`);
                         }
                     }, 2000);
                 }
@@ -89,9 +92,12 @@ export function useAdminCheck({ identity, isAuthenticated, redirectPath = '/' })
                     setError('Please connect your wallet first.');
                     setLoading(false);
                     if (redirectPath) {
-                        // Preserve URL parameters when redirecting
+                        // Preserve URL parameters and add 'from' parameter when redirecting
                         const currentSearch = location.search;
-                        navigate(`${redirectPath}${currentSearch}`);
+                        const urlParams = new URLSearchParams(currentSearch);
+                        urlParams.set('from', location.pathname);
+                        const searchWithFrom = urlParams.toString();
+                        navigate(`${redirectPath}?${searchWithFrom}`);
                     }
                 }, 1000);
             } else {
