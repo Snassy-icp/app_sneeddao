@@ -26,7 +26,7 @@ const Posts = () => {
     const [repliesToMe, setRepliesToMe] = useState([]);
     const [myThreads, setMyThreads] = useState([]);
     const [threadPostCounts, setThreadPostCounts] = useState(new Map());
-    const [activeTab, setActiveTab] = useState('my-posts');
+    const [activeTab, setActiveTab] = useState('replies-to-me');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
@@ -453,32 +453,103 @@ const Posts = () => {
     return (
         <div className="posts-page">
             <Header />
-            <div className="posts-container">
-                <div className="posts-header">
-                    <h1>My Posts</h1>
-                    <p>View your posts and replies to your content</p>
-                </div>
-
-                <div className="posts-tabs">
-                    <button
-                        className={`tab ${activeTab === 'my-posts' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('my-posts')}
-                    >
-                        My Posts ({myPosts.length})
-                    </button>
-                    <button
-                        className={`tab ${activeTab === 'my-threads' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('my-threads')}
-                    >
-                        My Threads ({myThreads.length})
-                    </button>
-                    <button
-                        className={`tab ${activeTab === 'replies-to-me' ? 'active' : ''}`}
+            
+            {/* Posts Submenu Row - styled like Header submenu */}
+            <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'flex-start',
+                width: '100%',
+                padding: '10px 20px',
+                backgroundColor: '#1a1a1a',
+                borderBottom: '1px solid rgba(255,255,255,0.1)'
+            }}>
+                <div style={{ 
+                    display: 'flex', 
+                    gap: '20px', 
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    rowGap: '10px'
+                }}>
+                    <span
                         onClick={() => setActiveTab('replies-to-me')}
+                        style={{
+                            color: activeTab === 'replies-to-me' ? '#3498db' : '#888',
+                            textDecoration: 'none',
+                            fontSize: '16px',
+                            fontWeight: activeTab === 'replies-to-me' ? 'bold' : 'normal',
+                            position: 'relative',
+                            paddingBottom: '4px',
+                            cursor: 'pointer'
+                        }}
                     >
                         Replies to Me ({repliesToMe.length})
-                    </button>
+                        {activeTab === 'replies-to-me' && (
+                            <div style={{
+                                position: 'absolute',
+                                bottom: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '2px',
+                                background: '#3498db',
+                                borderRadius: '2px'
+                            }} />
+                        )}
+                    </span>
+                    <span
+                        onClick={() => setActiveTab('my-posts')}
+                        style={{
+                            color: activeTab === 'my-posts' ? '#3498db' : '#888',
+                            textDecoration: 'none',
+                            fontSize: '16px',
+                            fontWeight: activeTab === 'my-posts' ? 'bold' : 'normal',
+                            position: 'relative',
+                            paddingBottom: '4px',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        My Posts ({myPosts.length})
+                        {activeTab === 'my-posts' && (
+                            <div style={{
+                                position: 'absolute',
+                                bottom: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '2px',
+                                background: '#3498db',
+                                borderRadius: '2px'
+                            }} />
+                        )}
+                    </span>
+                    <span
+                        onClick={() => setActiveTab('my-threads')}
+                        style={{
+                            color: activeTab === 'my-threads' ? '#3498db' : '#888',
+                            textDecoration: 'none',
+                            fontSize: '16px',
+                            fontWeight: activeTab === 'my-threads' ? 'bold' : 'normal',
+                            position: 'relative',
+                            paddingBottom: '4px',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        My Threads ({myThreads.length})
+                        {activeTab === 'my-threads' && (
+                            <div style={{
+                                position: 'absolute',
+                                bottom: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '2px',
+                                background: '#3498db',
+                                borderRadius: '2px'
+                            }} />
+                        )}
+                    </span>
                 </div>
+            </div>
+
+            <div className="posts-container">
 
                 <div className="posts-content">
                     {loading ? (
@@ -496,7 +567,16 @@ const Posts = () => {
                         </div>
                     ) : (
                         <div className="posts-list">
-                            {activeTab === 'my-posts' ? (
+                            {activeTab === 'replies-to-me' ? (
+                                repliesToMe.length === 0 ? (
+                                    <div className="empty-state">
+                                        <h3>No Replies Yet</h3>
+                                        <p>No one has replied to your posts or threads yet. Keep participating in discussions!</p>
+                                    </div>
+                                ) : (
+                                    repliesToMe.map(post => renderPost(post, true))
+                                )
+                            ) : activeTab === 'my-posts' ? (
                                 myPosts.length === 0 ? (
                                     <div className="empty-state">
                                         <h3>No Posts Yet</h3>
@@ -505,7 +585,7 @@ const Posts = () => {
                                 ) : (
                                     myPosts.map(post => renderPost(post, false))
                                 )
-                            ) : activeTab === 'my-threads' ? (
+                            ) : (
                                 myThreads.length === 0 ? (
                                     <div className="empty-state">
                                         <h3>No Threads Yet</h3>
@@ -513,15 +593,6 @@ const Posts = () => {
                                     </div>
                                 ) : (
                                     myThreads.map(thread => renderThread(thread))
-                                )
-                            ) : (
-                                repliesToMe.length === 0 ? (
-                                    <div className="empty-state">
-                                        <h3>No Replies Yet</h3>
-                                        <p>No one has replied to your posts yet. Keep participating in discussions!</p>
-                                    </div>
-                                ) : (
-                                    repliesToMe.map(post => renderPost(post, true))
                                 )
                             )}
                         </div>
