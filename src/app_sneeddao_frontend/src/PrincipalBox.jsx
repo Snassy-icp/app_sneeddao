@@ -1,13 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { FaCopy, FaCheck } from 'react-icons/fa';
 import { useAuth } from './AuthContext';
+import { useNaming } from './NamingContext';
 import './PrincipalBox.css';
 
 function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [showPopup, setShowPopup] = useState(false);
     const [copyFeedback, setCopyFeedback] = useState('');
-    const principalRef = useRef(null);
+    const [copied, setCopied] = useState(false);
     const popupRef = useRef(null);
-    const { login } = useAuth();
+    const { login, identity } = useAuth();
+    const { getPrincipalDisplayName } = useNaming();
+    const navigate = useNavigate();
 
     // Add click outside handler
     useEffect(() => {
@@ -25,8 +30,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
       fullStr,
       strLen = 28,
       separator = "...",
-      frontChars = 17,
-      backChars = 8) => {
+      frontChars = 6,
+      backChars = 6) => {
       if (fullStr.length <= strLen) return fullStr;
   
       return fullStr.substr(0, frontChars) +
@@ -34,24 +39,41 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
         fullStr.substr(fullStr.length - backChars);
     }
 
-    const handleCopy = () => {
-      if (principalRef.current) {
-          principalRef.current.select();
-          principalRef.current.setSelectionRange(0, 99999); // For mobile devices
-          
-          try {
-              document.execCommand('copy');
-              setCopyFeedback('Copied!');
-          } catch (err) {
-              setCopyFeedback('Failed to copy. Please copy manually.');
-          }
+    // Get user's display name
+    const userDisplayName = identity ? getPrincipalDisplayName(identity.getPrincipal()) : null;
+    const userName = userDisplayName?.name;
 
-          // Clear selection
-          window.getSelection().removeAllRanges();
-
-          // Clear feedback after 2 seconds
-          setTimeout(() => setCopyFeedback(''), 2000);
-      }
+    const handleCopy = async () => {
+        try {
+            await navigator.clipboard.writeText(principalText);
+            setCopied(true);
+            setCopyFeedback('Copied to clipboard!');
+            
+            // Reset after 2 seconds
+            setTimeout(() => {
+                setCopied(false);
+                setCopyFeedback('');
+            }, 2000);
+        } catch (err) {
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = principalText;
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+                document.execCommand('copy');
+                setCopied(true);
+                setCopyFeedback('Copied to clipboard!');
+                setTimeout(() => {
+                    setCopied(false);
+                    setCopyFeedback('');
+                }, 2000);
+            } catch (fallbackErr) {
+                setCopyFeedback('Failed to copy');
+                setTimeout(() => setCopyFeedback(''), 2000);
+            }
+            document.body.removeChild(textArea);
+        }
     };
 
     // If not logged in, show login button
@@ -91,96 +113,81 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       position: 'absolute',
                       top: '100%',
                       right: '0',
-                      backgroundColor: '#1e1e2e',
-                      border: '1px solid #3f3f5a',
-                      borderRadius: '8px',
+                      backgroundColor: '#2c2c2e',
+                      border: '1px solid #48484a',
+                      borderRadius: '12px',
                       padding: '16px',
                       zIndex: 1000,
-                      minWidth: '300px',
-                      width: 'auto'
+                      minWidth: '280px',
+                      maxWidth: '320px',
+                      width: 'calc(100vw - 32px)',
+                      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+                      '@media (max-width: 480px)': {
+                          right: '-16px',
+                          width: 'calc(100vw - 64px)'
+                      }
                   }}
               >
-                  <h3 style={{ marginTop: 0, color: 'white', marginBottom: '16px' }}>Your Principal ID</h3>
-                  <div style={{ marginBottom: '8px' }}>
-                      <textarea
-                          ref={principalRef}
-                          value={principalText}
-                          readOnly
-                          style={{
-                              width: '100%',
-                              backgroundColor: 'transparent',
-                              color: '#a0a0b8',
-                              border: 'none',
-                              padding: '6px 0',
-                              fontFamily: 'monospace',
-                              fontSize: '12px',
-                              overflowWrap: 'break-word',
-                              wordWrap: 'break-word',
-                              wordBreak: 'break-all',
-                              resize: 'none'
-                          }}
-                          rows={3}
-                      />
+                  {/* User Name Section */}
+                  {userName && (
+                      <div style={{ marginBottom: '12px' }}>
+                          <button
+                              className="user-name-link"
+                              onClick={() => {
+                                  navigate('/me');
+                                  setShowPopup(false);
+                              }}
+                          >
+                              {userName}
+                          </button>
+                      </div>
+                  )}
+                  
+                  {/* Principal ID Section */}
+                  <div style={{ marginBottom: '12px' }}>
+                      <div className="principal-id-container" onClick={handleCopy}>
+                          <span className="principal-id-text">
+                              {truncateString(principalText, 20, "...", 6, 6)}
+                          </span>
+                          <button
+                              className={`copy-button ${copied ? 'copied' : ''}`}
+                              onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCopy();
+                              }}
+                          >
+                              {copied ? <FaCheck size={12} /> : <FaCopy size={12} />}
+                          </button>
+                      </div>
+                      
+                      {/* Copy feedback */}
+                      {copyFeedback && (
+                          <div className="copy-feedback">
+                              {copyFeedback}
+                          </div>
+                      )}
                   </div>
-                  <div style={{ height: '20px', marginBottom: '16px' }}>
-                        <p style={{ 
-                            color: '#4CAF50',
-                            fontSize: '0.9em',
-                            margin: 0,
-                            lineHeight: '20px'
-                        }}>
-                            {copyFeedback || '\u00A0'}
-                        </p>
-                  </div>
-                  <div style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between' 
-                  }}>
-                    <button 
-                        onClick={handleCopy}
-                        style={{
-                            backgroundColor: '#3f3f5a',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '6px 12px',
-                            cursor: 'pointer',
-                            flex: 1,
-                            margin: '0 4px'
-                        }}
-                    >
-                        Copy
-                    </button>
-                    <button 
-                        onClick={onLogout}
-                        style={{
-                            backgroundColor: '#3f3f5a',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '6px 12px',
-                            cursor: 'pointer',
-                            flex: 1,
-                            margin: '0 4px'
-                        }}
-                    >
-                        Log Out
-                    </button>
-                    <button 
-                        onClick={() => setShowPopup(false)}
-                        style={{
-                            backgroundColor: '#3f3f5a',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '6px 12px',
-                            cursor: 'pointer',
-                            flex: 1,
-                            margin: '0 4px'
-                        }}
-                    >
-                        Close
-                    </button>
+
+                  {/* Action Buttons */}
+                  <div className="action-buttons">
+                      {!userName && (
+                          <button
+                              className="me-button"
+                              onClick={() => {
+                                  navigate('/me');
+                                  setShowPopup(false);
+                              }}
+                          >
+                              Me
+                          </button>
+                      )}
+                      
+                      <button 
+                          className="logout-button"
+                          onClick={onLogout}
+                      >
+                          Log Out
+                      </button>
                   </div>
               </div>
           )}
