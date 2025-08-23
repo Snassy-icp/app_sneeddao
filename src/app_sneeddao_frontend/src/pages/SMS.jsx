@@ -276,7 +276,6 @@ const SMS = () => {
                 setComposeForm({ recipients: [''], subject: '', body: '', replyTo: null });
                 setRecipientValidation('');
                 await fetchMessages();
-                await fetchStats();
             } else {
                 // Extract the specific error message from the backend response
                 let errorMsg = 'Failed to send message';
