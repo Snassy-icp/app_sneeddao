@@ -77,6 +77,60 @@ const EmptyPositionCard = ({ position, onRemove }) => {
     );
 };
 
+// Collapsible section header component
+const SectionHeader = ({ title, isExpanded, onToggle, onAdd, addButtonText }) => {
+    return (
+        <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '16px 0',
+            borderBottom: '1px solid #3a3a3a',
+            marginBottom: '20px',
+            cursor: 'pointer'
+        }} onClick={onToggle}>
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                fontSize: '1.5rem',
+                fontWeight: '600',
+                color: '#ffffff'
+            }}>
+                <span style={{
+                    fontSize: '1.2rem',
+                    color: '#bdc3c7',
+                    transition: 'transform 0.2s ease'
+                }}>
+                    {isExpanded ? '▼' : '▶'}
+                </span>
+                {title}
+            </div>
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onAdd();
+                }}
+                style={{
+                    backgroundColor: '#3498db',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    transition: 'background-color 0.2s ease'
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#2980b9'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = '#3498db'}
+            >
+                {addButtonText}
+            </button>
+        </div>
+    );
+};
+
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
 const SGLDT_CANISTER_ID = 'i2s4q-syaaa-aaaan-qz4sq-cai';
@@ -108,6 +162,8 @@ function Wallet() {
     const [showPositionsSpinner, setShowPositionsSpinner] = useState(true);
     const [showTokensSpinner, setShowTokensSpinner] = useState(true);
     const [lockDetailsLoading, setLockDetailsLoading] = useState({});
+    const [tokensExpanded, setTokensExpanded] = useState(true);
+    const [positionsExpanded, setPositionsExpanded] = useState(true);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [confirmAction, setConfirmAction] = useState(null);
     const [confirmMessage, setConfirmMessage] = useState('');
@@ -1323,8 +1379,15 @@ function Wallet() {
                         </div>
                     )}
                 </div>
-                <p>Tokens <b className="card add-ledger-card" onClick={() => setShowAddLedgerModal(true)}>&nbsp;&nbsp;+&nbsp;&nbsp;</b></p>
-                <div className="card-grid">
+                <SectionHeader 
+                    title="Tokens"
+                    isExpanded={tokensExpanded}
+                    onToggle={() => setTokensExpanded(!tokensExpanded)}
+                    onAdd={() => setShowAddLedgerModal(true)}
+                    addButtonText="Add Token"
+                />
+                {tokensExpanded && (
+                    <div className="card-grid">
                     {tokens.map((token, index) => {
                         // Debug logging for each token
                         console.log(`Wallet passing functions to TokenCard for ${token.symbol}:`, {
@@ -1359,8 +1422,16 @@ function Wallet() {
                         <div/>
                     )}
                 </div>
-                <p>Liquidity Positions <b className="card add-swap-card" onClick={() => setShowAddSwapModal(true)}>&nbsp;&nbsp;+&nbsp;&nbsp;</b></p>
-                <div className="card-grid">                
+                )}
+                <SectionHeader 
+                    title="Liquidity Positions"
+                    isExpanded={positionsExpanded}
+                    onToggle={() => setPositionsExpanded(!positionsExpanded)}
+                    onAdd={() => setShowAddSwapModal(true)}
+                    addButtonText="Add Swap Pair"
+                />
+                {positionsExpanded && (
+                    <div className="card-grid">                
                     {liquidityPositions.map((position, index) => (
                         position.positions.length < 1 
                         ? <EmptyPositionCard 
@@ -1390,6 +1461,7 @@ function Wallet() {
                         <div/>
                     )}
                 </div>
+                )}
                 <AddSwapCanisterModal
                     show={showAddSwapModal}
                     onClose={() => setShowAddSwapModal(false)}
