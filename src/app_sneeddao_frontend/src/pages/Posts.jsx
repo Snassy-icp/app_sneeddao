@@ -6,6 +6,7 @@ import { useNaming } from '../NamingContext';
 import { 
     getPostsByUser, 
     getRepliesToUser,
+    getThreadsByUser,
     getRecentRepliesCount,
     markRepliesSeenUpTo,
     getLastSeenRepliesTimestamp
@@ -22,6 +23,7 @@ const Posts = () => {
     
     const [myPosts, setMyPosts] = useState([]);
     const [repliesToMe, setRepliesToMe] = useState([]);
+    const [myThreads, setMyThreads] = useState([]);
     const [activeTab, setActiveTab] = useState('my-posts');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -45,17 +47,20 @@ const Posts = () => {
             const forumActor = createForumActor(identity);
             const userPrincipal = identity.getPrincipal();
 
-            // Fetch both my posts and replies to me
-            const [myPostsData, repliesToMeData] = await Promise.all([
+                        // Fetch posts, replies, and threads
+            const [myPostsData, repliesToMeData, myThreadsData] = await Promise.all([
                 getPostsByUser(forumActor, userPrincipal),
-                getRepliesToUser(forumActor, userPrincipal)
+                getRepliesToUser(forumActor, userPrincipal),
+                getThreadsByUser(forumActor, userPrincipal)
             ]);
-
+            
             console.log('My posts data:', myPostsData);
             console.log('Replies to me data:', repliesToMeData);
-
+            console.log('My threads data:', myThreadsData);
+            
             setMyPosts(myPostsData || []);
             setRepliesToMe(repliesToMeData || []);
+            setMyThreads(myThreadsData || []);
 
         } catch (err) {
             console.error('Error fetching posts data:', err);
@@ -231,6 +236,11 @@ const Posts = () => {
         navigate(`/post?postid=${post.id}`);
     };
 
+    const navigateToThread = (thread) => {
+        // Navigate to the thread
+        navigate(`/thread?threadid=${thread.id}`);
+    };
+
     const renderPost = (post, isReply = false) => {
         console.log('Rendering post:', { id: post.id, type: typeof post.id, reply_to: post.reply_to_post_id });
         const netScore = calculateNetScore(post);
@@ -314,6 +324,61 @@ const Posts = () => {
         );
     };
 
+    const renderThread = (thread) => {
+        console.log('Rendering thread:', { id: thread.id, title: thread.title });
+        
+        return (
+            <div 
+                key={thread.id} 
+                className="post-item thread-item"
+                onClick={() => navigateToThread(thread)}
+            >
+                <div className="post-header">
+                    <div className="post-meta">
+                        <a 
+                            href={`/thread?threadid=${thread.id}`}
+                            className="post-id-link"
+                            style={{
+                                color: '#27ae60 !important',
+                                textDecoration: 'none',
+                                fontWeight: '600',
+                                fontSize: '0.9rem',
+                                display: 'inline-block',
+                                padding: '2px 4px',
+                                borderRadius: '3px',
+                                backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                                border: '1px solid rgba(39, 174, 96, 0.3)'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.textDecoration = 'underline';
+                                e.target.style.backgroundColor = 'rgba(39, 174, 96, 0.2)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.textDecoration = 'none';
+                                e.target.style.backgroundColor = 'rgba(39, 174, 96, 0.1)';
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            Thread #{Number(thread.id)}
+                        </a>
+                        {thread.title && (
+                            <span className="post-title">{thread.title}</span>
+                        )}
+                        <span className="post-date">{formatDate(thread.created_at)}</span>
+                    </div>
+                    <div className="post-scores">
+                        <span className="thread-indicator" style={{ color: '#27ae60', fontSize: '0.8rem' }}>
+                            Thread Created
+                        </span>
+                    </div>
+                </div>
+                <div className="post-body">
+                    <p>{thread.body}</p>
+                </div>
+            </div>
+        );
+    };
+
     if (!isAuthenticated) {
         return (
             <div className="posts-page">
@@ -343,6 +408,12 @@ const Posts = () => {
                         onClick={() => setActiveTab('my-posts')}
                     >
                         My Posts ({myPosts.length})
+                    </button>
+                    <button
+                        className={`tab ${activeTab === 'my-threads' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('my-threads')}
+                    >
+                        My Threads ({myThreads.length})
                     </button>
                     <button
                         className={`tab ${activeTab === 'replies-to-me' ? 'active' : ''}`}
@@ -376,6 +447,15 @@ const Posts = () => {
                                     </div>
                                 ) : (
                                     myPosts.map(post => renderPost(post, false))
+                                )
+                            ) : activeTab === 'my-threads' ? (
+                                myThreads.length === 0 ? (
+                                    <div className="empty-state">
+                                        <h3>No Threads Yet</h3>
+                                        <p>You haven't created any threads yet. Start new discussions to see your threads here!</p>
+                                    </div>
+                                ) : (
+                                    myThreads.map(thread => renderThread(thread))
                                 )
                             ) : (
                                 repliesToMe.length === 0 ? (
