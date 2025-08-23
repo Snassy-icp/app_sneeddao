@@ -52,54 +52,54 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     </div>
                 </div>
             </div>
-            {!hideButtons && (
-                <div className="action-buttons">
-                    <div className="tooltip-wrapper">
-                        <a href={getIcpSwapLink(position)} target="_blank">
-                            <img src="icpswap.png" className="swap-link-button" alt="Position on ICPSwap" />
-                        </a>
-                        <span className="tooltip">View on ICPSwap</span>
-                    </div>
-                    <div className="tooltip-wrapper">
-                        <a className="link-button" href={getPositionLockUrl(position.swapCanisterId, positionDetails.positionId)} target="_blank">
-                            <img src="link-chain.png" alt="Lock Link" />
-                        </a>
-                        <span className="tooltip">View Lock Details</span>
-                    </div>
-                    {!isLockedPosition(positionDetails) && (
-                        <div className="tooltip-wrapper">
-                            <button
-                                className="send-button"
-                                onClick={() =>
-                                    openSendLiquidityPositionModal({
+            {isExpanded && (
+                <>
+                    {!hideButtons && (
+                        <div className="action-buttons">
+                            <div className="tooltip-wrapper">
+                                <a href={getIcpSwapLink(position)} target="_blank">
+                                    <img src="icpswap.png" className="swap-link-button" alt="Position on ICPSwap" />
+                                </a>
+                                <span className="tooltip">View on ICPSwap</span>
+                            </div>
+                            <div className="tooltip-wrapper">
+                                <a className="link-button" href={getPositionLockUrl(position.swapCanisterId, positionDetails.positionId)} target="_blank">
+                                    <img src="link-chain.png" alt="Lock Link" />
+                                </a>
+                                <span className="tooltip">View Lock Details</span>
+                            </div>
+                            {!isLockedPosition(positionDetails) && (
+                                <div className="tooltip-wrapper">
+                                    <button
+                                        className="send-button"
+                                        onClick={() =>
+                                            openSendLiquidityPositionModal({
+                                                swapCanisterId: position.swapCanisterId,
+                                                id: positionDetails.positionId,
+                                                frontendOwnership: positionDetails.frontendOwnership,
+                                                symbols: position.token0Symbol + '/' + position.token1Symbol})}
+                                    >
+                                        <img src="send-inverted.png" alt="Send" />
+                                    </button>
+                                    <span className="tooltip">Send Position</span>
+                                </div>
+                            )}
+                            <div className="tooltip-wrapper">
+                                <button className="lock-button" onClick={() => 
+                                    openLockPositionModal({
+                                        isLocked: isLockedPosition(positionDetails),
+                                        token0: position.token0,
+                                        token1: position.token1,
                                         swapCanisterId: position.swapCanisterId,
                                         id: positionDetails.positionId,
                                         frontendOwnership: positionDetails.frontendOwnership,
-                                        symbols: position.token0Symbol + '/' + position.token1Symbol})}
-                            >
-                                <img src="send-inverted.png" alt="Send" />
-                            </button>
-                            <span className="tooltip">Send Position</span>
+                                        symbols: position.token0Symbol + '/' + position.token1Symbol})}>
+                                    <img src="sneedlock-logo-cropped.png" alt="Lock Details" />
+                                </button>
+                                <span className="tooltip">Lock Position</span>
+                            </div>
                         </div>
                     )}
-                    <div className="tooltip-wrapper">
-                        <button className="lock-button" onClick={() => 
-                            openLockPositionModal({
-                                isLocked: isLockedPosition(positionDetails),
-                                token0: position.token0,
-                                token1: position.token1,
-                                swapCanisterId: position.swapCanisterId,
-                                id: positionDetails.positionId,
-                                frontendOwnership: positionDetails.frontendOwnership,
-                                symbols: position.token0Symbol + '/' + position.token1Symbol})}>
-                            <img src="sneedlock-logo-cropped.png" alt="Lock Details" />
-                        </button>
-                        <span className="tooltip">Lock Position</span>
-                    </div>
-                </div>
-            )}
-            {isExpanded && (
-                <>
                     <div className="balance-section">
                 <div className="balance-item">
                     <div className="token-amount">

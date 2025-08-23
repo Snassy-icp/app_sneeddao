@@ -33,6 +33,50 @@ import Header from './components/Header';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from './utils/BackendUtils';
 
+// Component for empty position cards (when no positions exist for a swap pair)
+const EmptyPositionCard = ({ position, onRemove }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    const handleHeaderClick = () => {
+        setIsExpanded(!isExpanded);
+    };
+
+    return (
+        <div className="card">
+            <div className="card-header" onClick={handleHeaderClick}>
+                <div className="header-logo-column">
+                    <img src={position.token0Logo} alt={position.token0Symbol} className="swap-token-logo1" />
+                    <img src={position.token1Logo} alt={position.token1Symbol} className="swap-token-logo2" />
+                </div>
+                <div className="header-content-column">
+                    <div className="header-row-1">
+                        <span className="token-name">{position.token0Symbol}/{position.token1Symbol}</span>
+                        <span className="token-usd-value"></span>
+                    </div>
+                    <div className="header-row-2">
+                        <div className="amount-symbol">
+                            <span className="token-amount">No Positions</span>
+                        </div>
+                        <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
+                    </div>
+                </div>
+            </div>
+            {isExpanded && (
+                <>
+                    <div className="action-buttons">
+                        <div className="tooltip-wrapper">
+                            <button className="remove-button" onClick={onRemove}>
+                                <img src="red-x-black.png" alt="Remove" />
+                            </button>
+                            <span className="tooltip">Remove Swap Pair</span>
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
+
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
 const SGLDT_CANISTER_ID = 'i2s4q-syaaa-aaaan-qz4sq-cai';
@@ -1319,24 +1363,11 @@ function Wallet() {
                 <div className="card-grid">                
                     {liquidityPositions.map((position, index) => (
                         position.positions.length < 1 
-                        ? <div key={index} className="card">
-
-                            <div className="card-header">
-                                <img src={position.token0Logo} alt={position.token0Symbol} className="swap-token-logo1" />
-                                <img src={position.token1Logo} alt={position.token1Symbol} className="swap-token-logo2" />
-                                <span className="token-symbol">{position.token0Symbol}/{position.token1Symbol}</span>
-                            </div>
-                            <br />
-                            <p>No Positions</p>
-                            <div className="action-buttons">
-                                <div className="tooltip-wrapper">
-                                    <button className="remove-button" onClick={() => handleUnregisterSwapCanister(position.swapCanisterId)}>
-                                        <img src="red-x-black.png" alt="Remove" />
-                                    </button>
-                                    <span className="tooltip">Remove Swap Pair</span>
-                                </div>
-                            </div>
-                        </div>
+                        ? <EmptyPositionCard 
+                            key={index} 
+                            position={position} 
+                            onRemove={() => handleUnregisterSwapCanister(position.swapCanisterId)}
+                          />
 
                         : position.positions.map((positionDetails, positionIndex) => (
                             <PositionCard
