@@ -52,9 +52,7 @@ const SMS = () => {
 
     // Helper function to check if a message is new (for highlighting)
     const isMessageNew = (messageTimestamp) => {
-        const isNew = Number(messageTimestamp) > capturedOldMessagesTimestamp;
-        console.log(`🔥 MESSAGE NEW CHECK: messageTimestamp=${messageTimestamp}, capturedOldMessagesTimestamp=${capturedOldMessagesTimestamp}, isNew=${isNew}`);
-        return isNew;
+        return Number(messageTimestamp) > capturedOldMessagesTimestamp;
     };
 
     // Create SMS actor
