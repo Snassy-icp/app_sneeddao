@@ -476,7 +476,7 @@ const Posts = () => {
                         style={{
                             color: activeTab === 'replies-to-me' ? '#3498db' : '#888',
                             textDecoration: 'none',
-                            fontSize: '16px',
+                            fontSize: '14px',
                             fontWeight: activeTab === 'replies-to-me' ? 'bold' : 'normal',
                             position: 'relative',
                             paddingBottom: '4px',
@@ -501,7 +501,7 @@ const Posts = () => {
                         style={{
                             color: activeTab === 'my-posts' ? '#3498db' : '#888',
                             textDecoration: 'none',
-                            fontSize: '16px',
+                            fontSize: '14px',
                             fontWeight: activeTab === 'my-posts' ? 'bold' : 'normal',
                             position: 'relative',
                             paddingBottom: '4px',
@@ -526,7 +526,7 @@ const Posts = () => {
                         style={{
                             color: activeTab === 'my-threads' ? '#3498db' : '#888',
                             textDecoration: 'none',
-                            fontSize: '16px',
+                            fontSize: '14px',
                             fontWeight: activeTab === 'my-threads' ? 'bold' : 'normal',
                             position: 'relative',
                             paddingBottom: '4px',

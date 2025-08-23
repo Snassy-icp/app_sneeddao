@@ -285,9 +285,6 @@ const Tips = () => {
             <div className="tips-page">
                 <Header showSnsDropdown={false} />
                 <div className="tips-container">
-                    <div className="tips-header">
-                        <h1>💰 My Tips</h1>
-                    </div>
                     <div className="tips-content">
                         <div className="auth-required">
                             <p>Please log in to view your tips.</p>
@@ -301,24 +298,78 @@ const Tips = () => {
     return (
         <div className="tips-page">
             <Header showSnsDropdown={false} />
-            <div className="tips-container">
-                <div className="tips-header">
-                    <h1>💰 My Tips</h1>
-                    <div className="tips-tabs">
-                        <button 
-                            className={`tab-button ${activeTab === 'received' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('received')}
-                        >
-                            📥 Tips Received ({tipsReceived.length})
-                        </button>
-                        <button 
-                            className={`tab-button ${activeTab === 'given' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('given')}
-                        >
-                            📤 Tips Given ({tipsGiven.length})
-                        </button>
-                    </div>
+            
+            {/* Tips Submenu Row - styled like Header submenu */}
+            <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'flex-start',
+                width: '100%',
+                padding: '10px 20px',
+                backgroundColor: '#1a1a1a',
+                borderBottom: '1px solid rgba(255,255,255,0.1)'
+            }}>
+                <div style={{ 
+                    display: 'flex', 
+                    gap: '20px', 
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    rowGap: '10px'
+                }}>
+                    <span
+                        onClick={() => setActiveTab('received')}
+                        style={{
+                            color: activeTab === 'received' ? '#3498db' : '#888',
+                            textDecoration: 'none',
+                            fontSize: '14px',
+                            fontWeight: activeTab === 'received' ? 'bold' : 'normal',
+                            position: 'relative',
+                            paddingBottom: '4px',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        📥 Tips Received ({tipsReceived.length})
+                        {activeTab === 'received' && (
+                            <div style={{
+                                position: 'absolute',
+                                bottom: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '2px',
+                                background: '#3498db',
+                                borderRadius: '2px'
+                            }} />
+                        )}
+                    </span>
+                    <span
+                        onClick={() => setActiveTab('given')}
+                        style={{
+                            color: activeTab === 'given' ? '#3498db' : '#888',
+                            textDecoration: 'none',
+                            fontSize: '14px',
+                            fontWeight: activeTab === 'given' ? 'bold' : 'normal',
+                            position: 'relative',
+                            paddingBottom: '4px',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        📤 Tips Given ({tipsGiven.length})
+                        {activeTab === 'given' && (
+                            <div style={{
+                                position: 'absolute',
+                                bottom: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '2px',
+                                background: '#3498db',
+                                borderRadius: '2px'
+                            }} />
+                        )}
+                    </span>
                 </div>
+            </div>
+
+            <div className="tips-container">
 
                 <div className="tips-content">
                     {loading ? (
