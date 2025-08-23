@@ -469,14 +469,17 @@ const SMS = () => {
                 <div style={{ 
                     display: 'flex', 
                     justifyContent: 'space-between',
-                    alignItems: 'center',
+                    alignItems: 'flex-end',
+                    flexWrap: 'wrap',
+                    gap: '15px',
                     marginBottom: '20px',
                     borderBottom: '1px solid #3a3a3a',
                     paddingBottom: '0'
                 }}>
                     <div style={{ 
                         display: 'flex', 
-                        gap: '10px'
+                        gap: '10px',
+                        flexWrap: 'wrap'
                     }}>
                         {[
                             { key: 'received', label: 'Received' },
@@ -502,7 +505,7 @@ const SMS = () => {
                         ))}
                     </div>
                     
-                    {/* Compose Button - Right Aligned */}
+                    {/* Compose Button - Responsive */}
                     <button
                         onClick={() => setShowComposeModal(true)}
                         style={{
@@ -517,7 +520,8 @@ const SMS = () => {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '8px',
-                            marginBottom: '2px' // Align with tab bottom border
+                            marginBottom: '2px', // Align with tab bottom border
+                            flexShrink: 0 // Prevent button from shrinking
                         }}
                     >
                         ✉️ Compose Message
