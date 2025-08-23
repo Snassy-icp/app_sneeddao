@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
@@ -17,6 +17,11 @@ const Post = () => {
     const { isAuthenticated, identity } = useAuth();
     const { selectedSnsRoot } = useSns();
     const { principalNames, principalNicknames } = useNaming();
+    const navigate = useNavigate();
+    
+    const handleSnsChange = () => {
+        navigate('/forum');
+    };
 
     const [threadId, setThreadId] = useState(null);
     const [postDetails, setPostDetails] = useState(null);
@@ -140,7 +145,7 @@ const Post = () => {
     if (!postId) {
         return (
             <div className="post-page">
-                <Header showSnsDropdown={true} />
+                <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                 <div className="post-container">
                     <div className="error-state">
                         <h2>Post Not Found</h2>
@@ -154,7 +159,7 @@ const Post = () => {
     if (loading) {
         return (
             <div className="post-page">
-                <Header showSnsDropdown={true} />
+                <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                 <div className="post-container">
                     <div className="loading-state">
                         <div className="spinner"></div>
@@ -168,7 +173,7 @@ const Post = () => {
     if (error) {
         return (
             <div className="post-page">
-                <Header showSnsDropdown={true} />
+                <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                 <div className="post-container">
                     <div className="error-state">
                         <h2>Error Loading Post</h2>
@@ -185,7 +190,7 @@ const Post = () => {
         if (!loading && !error) {
             return (
                 <div className="post-page">
-                    <Header showSnsDropdown={true} />
+                    <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                     <div className="post-container">
                         <div className="error-state">
                             <h2>Post Not Found</h2>
@@ -201,7 +206,7 @@ const Post = () => {
 
     return (
         <div className="post-page">
-            <Header showSnsDropdown={true} />
+                                <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             <div className="post-container">
                 {/* Breadcrumb */}
                 {!breadcrumbLoading && topicInfo && (
