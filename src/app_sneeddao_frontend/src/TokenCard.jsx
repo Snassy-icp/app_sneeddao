@@ -42,6 +42,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         <div className="card">
             <div className="card-header">
                 <img src={token.logo} alt={token.symbol} className="token-logo" />
+                <span className="token-amount">{formatAmount(token.available, token.decimals)}</span>
                 <span className="token-symbol">{token.symbol}</span>
             </div>
             {!hideButtons && (
