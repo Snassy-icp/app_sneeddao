@@ -4,7 +4,7 @@ import { useSns } from '../contexts/SnsContext';
 import { useForum } from '../contexts/ForumContext';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
-import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname, getPostsByUser, getRepliesToUser } from '../utils/BackendUtils';
+import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname, getPostsByUser, getRepliesToUser, getThreadsByUser } from '../utils/BackendUtils';
 import PrincipalInput from '../components/PrincipalInput';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
@@ -464,17 +464,17 @@ export default function PrincipalPage() {
             const forumActor = createForumActor(identity);
             const targetPrincipal = stablePrincipalId.current;
             
-            // Fetch both posts and replies (threads)
-            const [postsData, repliesData] = await Promise.all([
+            // Fetch posts and threads separately
+            const [postsData, threadsData] = await Promise.all([
                 getPostsByUser(forumActor, targetPrincipal),
-                getRepliesToUser(forumActor, targetPrincipal)
+                getThreadsByUser(forumActor, targetPrincipal)
             ]);
             
             console.log('User posts:', postsData);
-            console.log('User threads (replies):', repliesData);
+            console.log('User threads:', threadsData);
             
             setUserPosts(postsData || []);
-            setUserThreads(repliesData || []);
+            setUserThreads(threadsData || []);
             
         } catch (err) {
             console.error('Error fetching user posts:', err);
@@ -490,6 +490,27 @@ export default function PrincipalPage() {
             fetchUserPosts();
         }
     }, [searchParams.get('id'), fetchUserPosts]);
+
+    // Format vote scores (from e8s to tokens with up to 8 decimals)
+    const formatScore = (score) => {
+        // Convert BigInt to Number first, then convert from e8s (divide by 10^8)
+        const numericScore = typeof score === 'bigint' ? Number(score) : Number(score);
+        const scoreInTokens = numericScore / 100000000;
+        
+        if (scoreInTokens >= 1 || scoreInTokens <= -1) {
+            // For values >= 1 or <= -1, show up to 2 decimal places
+            return scoreInTokens.toLocaleString('en-US', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2
+            });
+        } else {
+            // For values < 1, show up to 8 decimal places, removing trailing zeros
+            return scoreInTokens.toLocaleString('en-US', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 8
+            });
+        }
+    };
 
     if (!stablePrincipalId.current) {
         return (
@@ -1132,11 +1153,11 @@ export default function PrincipalPage() {
                                                                             {new Date(Number(post.created_at) / 1000000).toLocaleDateString()}
                                                                             <br />
                                                                             <span style={{ color: Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? '#27ae60' : '#e74c3c' }}>
-                                                                                {Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? '+' : ''}{Number(post.upvote_score) - Number(post.downvote_score)}
+                                                                                {Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? '+' : ''}{formatScore(Number(post.upvote_score) - Number(post.downvote_score))}
                                                                             </span>
                                                                             {' '}
                                                                             <span style={{ color: '#666' }}>
-                                                                                (↑{Number(post.upvote_score)} ↓{Number(post.downvote_score)})
+                                                                                (↑{formatScore(post.upvote_score)} ↓{formatScore(post.downvote_score)})
                                                                             </span>
                                                                         </div>
                                                                     </div>
@@ -1181,27 +1202,27 @@ export default function PrincipalPage() {
                                                     </div>
                                                 ) : (
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                                        {userThreads.map((post) => {
-                                                            const isExpanded = expandedPosts.has(`thread-${post.id}`);
-                                                            const shouldTruncate = post.body && post.body.length > 300;
+                                                        {userThreads.map((thread) => {
+                                                            const isExpanded = expandedPosts.has(`thread-${thread.id}`);
+                                                            const shouldTruncate = thread.body && thread.body.length > 300;
                                                             const displayBody = shouldTruncate && !isExpanded 
-                                                                ? post.body.substring(0, 300) + '...' 
-                                                                : post.body;
+                                                                ? thread.body.substring(0, 300) + '...' 
+                                                                : thread.body;
 
-                                                            const toggleExpanded = (postId) => {
+                                                            const toggleExpanded = (threadId) => {
                                                                 setExpandedPosts(prev => {
                                                                     const newSet = new Set(prev);
-                                                                    if (newSet.has(postId)) {
-                                                                        newSet.delete(postId);
+                                                                    if (newSet.has(threadId)) {
+                                                                        newSet.delete(threadId);
                                                                     } else {
-                                                                        newSet.add(postId);
+                                                                        newSet.add(threadId);
                                                                     }
                                                                     return newSet;
                                                                 });
                                                             };
 
                                                             return (
-                                                                <div key={post.id} style={{
+                                                                <div key={thread.id} style={{
                                                                     backgroundColor: '#1a1a1a',
                                                                     border: '1px solid #3a3a3a',
                                                                     borderRadius: '6px',
@@ -1210,7 +1231,7 @@ export default function PrincipalPage() {
                                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                                             <Link 
-                                                                                to={`/post?postid=${post.id}`}
+                                                                                to={`/thread/${thread.id}`}
                                                                                 style={{
                                                                                     color: '#3c6382',
                                                                                     textDecoration: 'none',
@@ -1230,37 +1251,29 @@ export default function PrincipalPage() {
                                                                                     e.target.style.backgroundColor = 'rgba(60, 99, 130, 0.1)';
                                                                                 }}
                                                                             >
-                                                                                #{Number(post.id)}
+                                                                                Thread #{Number(thread.id)}
                                                                             </Link>
-                                                                            <span style={{ color: '#f39c12', fontSize: '12px' }}>Reply</span>
+                                                                            <span style={{ color: '#27ae60', fontSize: '12px' }}>Created</span>
                                                                         </div>
                                                                         <div style={{ color: '#888', fontSize: '12px', textAlign: 'right' }}>
-                                                                            {new Date(Number(post.created_at) / 1000000).toLocaleDateString()}
-                                                                            <br />
-                                                                            <span style={{ color: Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? '#27ae60' : '#e74c3c' }}>
-                                                                                {Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? '+' : ''}{Number(post.upvote_score) - Number(post.downvote_score)}
-                                                                            </span>
-                                                                            {' '}
-                                                                            <span style={{ color: '#666' }}>
-                                                                                (↑{Number(post.upvote_score)} ↓{Number(post.downvote_score)})
-                                                                            </span>
+                                                                            {new Date(Number(thread.created_at) / 1000000).toLocaleDateString()}
                                                                         </div>
                                                                     </div>
-                                                                    {post.title && post.title.length > 0 && (
+                                                                    {thread.title && (
                                                                         <div style={{ 
                                                                             color: '#fff', 
                                                                             fontSize: '16px',
                                                                             fontWeight: '500',
                                                                             marginBottom: '10px'
                                                                         }}>
-                                                                            Re: {post.title[0]}
+                                                                            {thread.title}
                                                                         </div>
                                                                     )}
                                                                     <div style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.5' }}>
                                                                         {displayBody}
                                                                         {shouldTruncate && (
                                                                             <button
-                                                                                onClick={() => toggleExpanded(`thread-${post.id}`)}
+                                                                                onClick={() => toggleExpanded(`thread-${thread.id}`)}
                                                                                 style={{
                                                                                     background: 'none',
                                                                                     border: 'none',

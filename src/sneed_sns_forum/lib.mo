@@ -2586,6 +2586,32 @@ module {
         sorted_replies
     };
 
+    public func get_threads_by_user(state: ForumState, user_principal: Principal) : [T.ThreadResponse] {
+        let user_index = switch (Dedup.getIndexForPrincipal(state.principal_dedup_state, user_principal)) {
+            case (?index) index;
+            case null return []; // User not found in dedup, so no threads
+        };
+        
+        let threads = Buffer.Buffer<T.ThreadResponse>(0);
+        for ((thread_id, thread) in Map.entries(state.threads)) {
+            if (thread.created_by == user_index and not thread.deleted) {
+                switch (get_thread(state, thread_id)) {
+                    case (?thread_response) threads.add(thread_response);
+                    case null {}; // Skip if thread not found
+                };
+            };
+        };
+        
+        // Sort by creation time (newest first)
+        let sorted_threads = Array.sort(Buffer.toArray(threads), func(a: T.ThreadResponse, b: T.ThreadResponse) : Order.Order {
+            if (a.created_at > b.created_at) #less
+            else if (a.created_at < b.created_at) #greater
+            else #equal
+        });
+        
+        sorted_threads
+    };
+
     // Soft delete operations
     public func soft_delete_forum(
         state: ForumState,
