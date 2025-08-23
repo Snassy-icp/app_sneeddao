@@ -2402,7 +2402,15 @@ module {
             };
         };
         
-        // Then count replies to the user's posts that are newer than since_timestamp
+        // Second, find all threads created by the user
+        let user_thread_ids = Buffer.Buffer<Nat>(0);
+        for ((thread_id, thread) in Map.entries(state.threads)) {
+            if (thread.created_by == user_index and not thread.deleted) {
+                user_thread_ids.add(thread_id);
+            };
+        };
+        
+        // Count replies to the user's posts that are newer than since_timestamp
         for ((reply_id, reply_post) in Map.entries(state.posts)) {
             if (not reply_post.deleted and reply_post.created_at > since_timestamp) {
                 switch (reply_post.reply_to_post_id) {
@@ -2416,6 +2424,26 @@ module {
                         };
                     };
                     case null {}; // Not a reply, skip
+                };
+            };
+        };
+        
+        // Count root-level posts in threads created by the user (these are "replies to the thread")
+        for ((post_id, post) in Map.entries(state.posts)) {
+            if (not post.deleted and post.created_at > since_timestamp) {
+                // Check if this is a root-level post (no reply_to_post_id) in one of the user's threads
+                switch (post.reply_to_post_id) {
+                    case null {
+                        // This is a root-level post, check if it's in one of the user's threads
+                        let user_thread_array = Buffer.toArray(user_thread_ids);
+                        for (user_thread_id in user_thread_array.vals()) {
+                            if (post.thread_id == user_thread_id and post.created_by != user_index) {
+                                // This is a root-level post in the user's thread by someone else
+                                count += 1;
+                            };
+                        };
+                    };
+                    case (?_) {}; // This is a reply to another post, not a root-level post
                 };
             };
         };
@@ -2555,7 +2583,15 @@ module {
             };
         };
         
-        // Then find all posts that reply to the user's posts
+        // Second, find all threads created by the user
+        let user_thread_ids = Buffer.Buffer<Nat>(0);
+        for ((thread_id, thread) in Map.entries(state.threads)) {
+            if (thread.created_by == user_index and not thread.deleted) {
+                user_thread_ids.add(thread_id);
+            };
+        };
+        
+        // Find all posts that reply to the user's posts
         for ((reply_id, reply_post) in Map.entries(state.posts)) {
             if (not reply_post.deleted) {
                 switch (reply_post.reply_to_post_id) {
@@ -2572,6 +2608,29 @@ module {
                         };
                     };
                     case null {}; // Not a reply, skip
+                };
+            };
+        };
+        
+        // Find root-level posts in threads created by the user (these are "replies to the thread")
+        for ((post_id, post) in Map.entries(state.posts)) {
+            if (not post.deleted) {
+                // Check if this is a root-level post (no reply_to_post_id) in one of the user's threads
+                switch (post.reply_to_post_id) {
+                    case null {
+                        // This is a root-level post, check if it's in one of the user's threads
+                        let user_thread_array = Buffer.toArray(user_thread_ids);
+                        for (user_thread_id in user_thread_array.vals()) {
+                            if (post.thread_id == user_thread_id and post.created_by != user_index) {
+                                // This is a root-level post in the user's thread by someone else
+                                switch (get_post(state, post_id)) {
+                                    case (?post_response) replies.add(post_response);
+                                    case null {}; // Skip if post not found
+                                };
+                            };
+                        };
+                    };
+                    case (?_) {}; // This is a reply to another post, not a root-level post
                 };
             };
         };
