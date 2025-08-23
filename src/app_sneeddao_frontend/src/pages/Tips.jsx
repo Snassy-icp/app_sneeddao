@@ -34,6 +34,17 @@ const Tips = () => {
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [capturedOldTimestamp, setCapturedOldTimestamp] = useState(0); // Captured ONCE for highlighting
     const [timestampProcessed, setTimestampProcessed] = useState(false); // Ensures single execution
+    const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth < 768);
+
+    // Handle window resize for responsive layout
+    useEffect(() => {
+        const handleResize = () => {
+            setIsNarrowScreen(window.innerWidth < 768);
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // Fetch tips data
     const fetchTipsData = useCallback(async () => {
@@ -280,6 +291,136 @@ const Tips = () => {
         );
     };
 
+    const renderTipCard = (tip, isReceived) => {
+        const tokenId = tip.token_ledger_principal.toString();
+        const otherPrincipal = isReceived ? tip.from_principal : tip.to_principal;
+        const otherPrincipalStr = otherPrincipal.toString();
+        const displayInfo = principalDisplayInfo.get(otherPrincipalStr);
+        const formattedPrincipal = formatPrincipal(otherPrincipal, displayInfo);
+        const isLoadingToken = loadingMetadata.has(tokenId);
+        const logo = getTokenLogo(tokenId);
+        
+        // Check if this tip is new (only highlight received tips)
+        const isNew = isReceived && isTipNew(tip.created_at);
+
+        return (
+            <div key={tip.id} className={`tip-card ${isNew ? 'tip-new' : ''}`} style={{
+                backgroundColor: '#2a2a2a',
+                border: isNew ? '2px solid #f39c12' : '1px solid #444',
+                borderRadius: '8px',
+                padding: '16px',
+                marginBottom: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px'
+            }}>
+                {/* Amount Row */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '18px',
+                    fontWeight: 'bold'
+                }}>
+                    {isLoadingToken ? (
+                        <span className="loading-indicator">⏳</span>
+                    ) : logo ? (
+                        <img src={logo} alt="" style={{ width: '24px', height: '24px', borderRadius: '50%' }} />
+                    ) : (
+                        <span style={{ fontSize: '20px' }}>💎</span>
+                    )}
+                    <span style={{ color: '#fff' }}>
+                        {isLoadingToken ? 'Loading...' : formatTokenAmount(tip.amount, tokenId)}
+                    </span>
+                </div>
+
+                {/* Principal Row */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '14px'
+                }}>
+                    <span style={{ color: '#888', minWidth: '40px' }}>
+                        {isReceived ? 'From:' : 'To:'}
+                    </span>
+                    <span style={{ color: '#fff' }}>
+                        {typeof formattedPrincipal === 'string' ? (
+                            formattedPrincipal
+                        ) : formattedPrincipal?.name || formattedPrincipal?.nickname ? (
+                            <div>
+                                {formattedPrincipal.name && (
+                                    <span style={{ color: '#3498db' }}>{formattedPrincipal.name}</span>
+                                )}
+                                {formattedPrincipal.nickname && (
+                                    <span style={{ color: '#e67e22', marginLeft: '4px' }}>"{formattedPrincipal.nickname}"</span>
+                                )}
+                            </div>
+                        ) : (
+                            otherPrincipalStr.slice(0, 12) + '...'
+                        )}
+                    </span>
+                </div>
+
+                {/* Post Links Row */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '14px'
+                }}>
+                    <span style={{ color: '#888', minWidth: '40px' }}>Post:</span>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button 
+                            onClick={() => navigate(`/post?postid=${tip.post_id}`)}
+                            style={{
+                                background: 'none',
+                                border: '1px solid #3498db',
+                                color: '#3498db',
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                fontSize: '12px',
+                                cursor: 'pointer'
+                            }}
+                            title="View this post"
+                        >
+                            📄 #{tip.post_id?.toString() || 'N/A'}
+                        </button>
+                        {tip.thread_id && (
+                            <button 
+                                onClick={() => navigate(`/thread?threadid=${tip.thread_id}`)}
+                                style={{
+                                    background: 'none',
+                                    border: '1px solid #27ae60',
+                                    color: '#27ae60',
+                                    padding: '4px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '12px',
+                                    cursor: 'pointer'
+                                }}
+                                title="View thread"
+                            >
+                                🧵 Thread
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Date Row */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '12px',
+                    color: '#888'
+                }}>
+                    <span style={{ minWidth: '40px' }}>Date:</span>
+                    <span>{formatDate(tip.created_at)}</span>
+                </div>
+            </div>
+        );
+    };
+
     if (!isAuthenticated) {
         return (
             <div className="tips-page">
@@ -392,6 +533,10 @@ const Tips = () => {
                                         <p>🎁 You haven't received any tips yet.</p>
                                         <p>Create great content in the forum to start receiving tips!</p>
                                     </div>
+                                ) : isNarrowScreen ? (
+                                    <div className="tips-cards-container">
+                                        {tipsReceived.map(tip => renderTipCard(tip, true))}
+                                    </div>
                                 ) : (
                                     <div className="tips-table-container">
                                         <table className="tips-table">
@@ -414,6 +559,10 @@ const Tips = () => {
                                     <div className="empty-state">
                                         <p>💸 You haven't given any tips yet.</p>
                                         <p>Support other users by tipping their great posts!</p>
+                                    </div>
+                                ) : isNarrowScreen ? (
+                                    <div className="tips-cards-container">
+                                        {tipsGiven.map(tip => renderTipCard(tip, false))}
                                     </div>
                                 ) : (
                                     <div className="tips-table-container">

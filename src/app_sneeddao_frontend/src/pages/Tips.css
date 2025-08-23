@@ -5,6 +5,14 @@
     color: #ffffff;
 }
 
+/* Tips Cards Container */
+.tips-cards-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 0 8px;
+}
+
 .tips-container {
     max-width: 1200px;
     margin: 0 auto;
