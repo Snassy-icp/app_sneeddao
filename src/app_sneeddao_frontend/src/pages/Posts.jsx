@@ -367,9 +367,7 @@ const Posts = () => {
                         <span className="post-date">{formatDate(thread.created_at)}</span>
                     </div>
                     <div className="post-scores">
-                        <span className="thread-indicator" style={{ color: '#27ae60', fontSize: '0.8rem' }}>
-                            Thread Created
-                        </span>
+                        {/* Threads don't have vote scores, so this area is left empty */}
                     </div>
                 </div>
                 <div className="post-body">
