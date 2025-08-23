@@ -82,7 +82,13 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
             const cachedData = getAllSnses();
             if (cachedData && cachedData.length > 0) {
                 console.log('SnsDropdown: Using cached SNS data:', cachedData); // Debug log
-                setSnsList(cachedData);
+                // Sort so Sneed always comes first
+                const sortedData = [...cachedData].sort((a, b) => {
+                    if (a.rootCanisterId === SNEED_SNS_ROOT) return -1;
+                    if (b.rootCanisterId === SNEED_SNS_ROOT) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+                setSnsList(sortedData);
                 setLoadingSnses(false);
                 
                 // Start loading logos for visible SNSes
@@ -98,7 +104,13 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
             console.log('SnsDropdown: No cached data, starting background fetch...'); // Debug log
             startBackgroundSnsFetch(identity, (data) => {
                 console.log('SnsDropdown: Background fetch completed:', data); // Debug log
-                setSnsList(data);
+                // Sort so Sneed always comes first
+                const sortedData = [...data].sort((a, b) => {
+                    if (a.rootCanisterId === SNEED_SNS_ROOT) return -1;
+                    if (b.rootCanisterId === SNEED_SNS_ROOT) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+                setSnsList(sortedData);
                 setLoadingSnses(false);
                 
                 // Start loading logos for visible SNSes
