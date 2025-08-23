@@ -537,6 +537,95 @@ function Forum() {
             <Header showSnsDropdown={true} />
             <main className="wallet-container">
                 <div style={styles.container}>
+                    {/* Welcome Section */}
+                    <div style={{
+                        backgroundColor: '#2a2a2a',
+                        borderRadius: '12px',
+                        padding: '2rem',
+                        marginBottom: '2rem',
+                        border: '1px solid #4a4a4a',
+                        textAlign: 'center'
+                    }}>
+                        <h1 style={{
+                            fontSize: '2.5rem',
+                            color: '#ffffff',
+                            marginBottom: '1rem',
+                            fontWeight: 'bold'
+                        }}>
+                            Welcome to the Sneed Hub SNS Forum
+                        </h1>
+                        <p style={{
+                            color: '#ccc',
+                            fontSize: '1.1rem',
+                            lineHeight: '1.6',
+                            maxWidth: '800px',
+                            margin: '0 auto 1rem auto'
+                        }}>
+                            This is your community space for discussions, governance participation, and connecting with other members. 
+                            Use the SNS dropdown in the header above to select which SNS forum you want to explore.
+                        </p>
+                        
+                        {!identity && (
+                            <p style={{
+                                color: '#f39c12',
+                                fontSize: '1rem',
+                                lineHeight: '1.6',
+                                maxWidth: '800px',
+                                margin: '0 auto 1rem auto',
+                                backgroundColor: 'rgba(243, 156, 18, 0.1)',
+                                padding: '0.75rem',
+                                borderRadius: '6px',
+                                border: '1px solid rgba(243, 156, 18, 0.3)'
+                            }}>
+                                📝 <strong>Please log in to participate:</strong> You need to be logged in to create posts, comment, and vote.
+                            </p>
+                        )}
+                        
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                            gap: '1rem',
+                            marginTop: '1.5rem',
+                            textAlign: 'left'
+                        }}>
+                            <div style={{
+                                backgroundColor: '#3a3a3a',
+                                padding: '1rem',
+                                borderRadius: '8px',
+                                border: '1px solid #4a4a4a'
+                            }}>
+                                <h3 style={{ color: '#3498db', marginBottom: '0.5rem', fontSize: '1.1rem' }}>🗳️ Voting Power</h3>
+                                <p style={{ color: '#ccc', fontSize: '0.9rem', lineHeight: '1.4', margin: 0 }}>
+                                    Hotkey your SNS neurons to gain voting power for upvoting/downvoting posts and participating in polls.
+                                </p>
+                            </div>
+                            
+                            <div style={{
+                                backgroundColor: '#3a3a3a',
+                                padding: '1rem',
+                                borderRadius: '8px',
+                                border: '1px solid #4a4a4a'
+                            }}>
+                                <h3 style={{ color: '#27ae60', marginBottom: '0.5rem', fontSize: '1.1rem' }}>💬 Direct Messages</h3>
+                                <p style={{ color: '#ccc', fontSize: '0.9rem', lineHeight: '1.4', margin: 0 }}>
+                                    Send private messages to other users to have one-on-one conversations.
+                                </p>
+                            </div>
+                            
+                            <div style={{
+                                backgroundColor: '#3a3a3a',
+                                padding: '1rem',
+                                borderRadius: '8px',
+                                border: '1px solid #4a4a4a'
+                            }}>
+                                <h3 style={{ color: '#9b59b6', marginBottom: '0.5rem', fontSize: '1.1rem' }}>🏛️ Governance</h3>
+                                <p style={{ color: '#ccc', fontSize: '0.9rem', lineHeight: '1.4', margin: 0 }}>
+                                    Discuss proposals, share insights, and participate in the democratic governance of your chosen SNS.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Forum Header */}
                     <div style={styles.header}>
                         <h1 style={styles.title}>{forum?.title || 'Forum'}</h1>
