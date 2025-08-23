@@ -202,18 +202,15 @@ body {
 .swap-token-logo1 {
     width: auto;
     height: 36px;
-    margin-right: 10px;
-    margin-left: 0px;
+    margin-right: -8px;
     border-radius: 50%;
-    align-self: center;
+    z-index: 2;
 }
 .swap-token-logo2 {
     width: auto;
     height: 36px;
-    margin-right: 5px;
-    margin-left: -20px;
     border-radius: 50%;
-    align-self: center;
+    z-index: 1;
 }
 
 .balance-section {
