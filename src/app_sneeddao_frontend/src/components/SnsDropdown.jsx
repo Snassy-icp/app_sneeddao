@@ -206,21 +206,19 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                         }} />
                     ) : (
                         <>
-                            {/* Show selected SNS logo or Sneed logo */}
+                            {/* Show selected SNS logo */}
                             {selectedSnsRoot === SNEED_SNS_ROOT ? (
-                                sneedLogo && (
-                                    <img 
-                                        src={sneedLogo} 
-                                        alt="Sneed"
-                                        style={{ 
-                                            width: '24px', 
-                                            height: '24px',
-                                            borderRadius: '50%',
-                                            objectFit: 'cover',
-                                            marginRight: '4px'
-                                        }} 
-                                    />
-                                )
+                                <img 
+                                    src="sneed_logo.png" 
+                                    alt="Sneed"
+                                    style={{ 
+                                        width: '24px', 
+                                        height: '24px',
+                                        borderRadius: '50%',
+                                        objectFit: 'cover',
+                                        marginRight: '4px'
+                                    }} 
+                                />
                             ) : (
                                 snsLogos.get(getSelectedSns()?.canisters?.governance) && (
                                     <img 
