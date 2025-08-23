@@ -14,7 +14,7 @@ console.log('TokenCard constants:', { GLDT_CANISTER_ID, SGLDT_CANISTER_ID });
 const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend }) => {
 
     const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(false);
-    const [isExpanded, setIsExpanded] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     // Debug logging for wrap/unwrap buttons
     console.log('TokenCard Debug:', {
