@@ -151,7 +151,10 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
         
         setIsOpen(false);
         if (onSnsChange) {
+            console.log('SnsDropdown: Calling onSnsChange with:', snsRoot);
             onSnsChange(snsRoot);
+        } else {
+            console.log('SnsDropdown: No onSnsChange callback provided');
         }
     };
 

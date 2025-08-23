@@ -324,6 +324,12 @@ function Topic() {
     const { identity } = useAuth();
     const { selectedSnsRoot } = useSns();
     const navigate = useNavigate();
+    
+    const handleSnsChange = (newSnsRoot) => {
+        console.log('Topic page: SNS change detected, navigating to forum. New SNS:', newSnsRoot);
+        navigate('/forum');
+    };
+    
     const [topic, setTopic] = useState(null);
     const [subtopics, setSubtopics] = useState([]);
     const [threads, setThreads] = useState([]);
@@ -792,7 +798,7 @@ function Topic() {
     if (loading) {
         return (
             <div className='page-container'>
-                <Header showSnsDropdown={true} />
+                <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                 <main className="wallet-container">
                     <div style={styles.loading}>Loading topic...</div>
                 </main>
@@ -803,7 +809,7 @@ function Topic() {
     if (error && !topic) {
         return (
             <div className='page-container'>
-                <Header showSnsDropdown={true} />
+                <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                 <main className="wallet-container">
                     <div style={styles.error}>{error}</div>
                 </main>
@@ -813,7 +819,7 @@ function Topic() {
 
     return (
         <div className='page-container'>
-            <Header showSnsDropdown={true} />
+            <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             <main className="wallet-container">
                 <div style={styles.container}>
                     {/* Breadcrumb */}
