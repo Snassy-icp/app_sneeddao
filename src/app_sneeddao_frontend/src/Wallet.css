@@ -104,20 +104,35 @@ body {
 
 .card-header {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
+    align-items: stretch;
     margin-bottom: 15px;
+    gap: 12px;
 }
 
-.header-left {
+.header-logo-column {
     display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.header-content-column {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    justify-content: space-between;
+}
+
+.header-row-1,
+.header-row-2 {
+    display: flex;
+    justify-content: space-between;
     align-items: center;
 }
 
-.header-right {
+.amount-symbol {
     display: flex;
-    align-items: flex-start;
-    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
 }
 
 .card h2 {
@@ -136,31 +151,40 @@ body {
     gap: 0.5rem; /* Space between the icon and text */
 }
 
+.token-name {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: #bdc3c7;
+}
+
 .token-symbol {
     font-size: 1.2rem;
+    color: #ffffff;
 }
 
 .token-amount {
     font-size: 1.2rem;
     font-weight: bold;
-    margin-right: 8px;
     color: #ffffff;
 }
 
 .token-usd-value {
-    font-size: 0.75rem;
+    font-size: 0.9rem;
     font-weight: 400;
     color: #bdc3c7;
     text-align: right;
 }
 
+.expand-indicator {
+    font-size: 0.8rem;
+    color: #888;
+    cursor: pointer;
+}
+
 .token-logo {
     width: auto;
     height: 36px;
-    margin-right: 10px;
-    margin-left: 0px;
     border-radius: 50%;
-    align-self: center;
 }
 
 .swap-token-logo1 {
