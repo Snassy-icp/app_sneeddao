@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
 import { useForum } from '../contexts/ForumContext';
@@ -453,7 +453,7 @@ export default function PrincipalPage() {
     };
 
     // Fetch posts and threads for the user
-    const fetchUserPosts = async () => {
+    const fetchUserPosts = useCallback(async () => {
         if (!identity || !createForumActor || !stablePrincipalId.current) return;
         
         setLoadingPosts(true);
@@ -461,7 +461,7 @@ export default function PrincipalPage() {
         
         try {
             const forumActor = createForumActor(identity);
-            const targetPrincipal = Principal.fromText(stablePrincipalId.current);
+            const targetPrincipal = stablePrincipalId.current;
             
             // Fetch both posts and replies (threads)
             const [postsData, repliesData] = await Promise.all([
@@ -481,14 +481,14 @@ export default function PrincipalPage() {
         } finally {
             setLoadingPosts(false);
         }
-    };
+    }, [identity, createForumActor]);
 
     // Auto-fetch posts when principal changes
     useEffect(() => {
         if (stablePrincipalId.current && identity && createForumActor) {
             fetchUserPosts();
         }
-    }, [stablePrincipalId.current, identity, createForumActor]);
+    }, [searchParams.get('id'), fetchUserPosts]);
 
     if (!stablePrincipalId.current) {
         return (
