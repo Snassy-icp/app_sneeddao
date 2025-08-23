@@ -334,21 +334,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     </button>
                 </div>
 
-                {/* SNS Dropdown and Login on same row */}
-                {showSnsDropdown ? (
+                {/* SNS Dropdown */}
+                {showSnsDropdown && (
                     <SnsDropdown onSnsChange={onSnsChange} />
-                ) : (
-                    <img
-                        src={"sneed_logo.png"}
-                        alt={"Sneed Logo"}
-                        style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '50%',
-                            objectFit: 'cover',
-                            marginRight: '16px'
-                        }}
-                    />
                 )}
 {isAuthenticated ? (
                     <div style={{ position: 'relative' }}>

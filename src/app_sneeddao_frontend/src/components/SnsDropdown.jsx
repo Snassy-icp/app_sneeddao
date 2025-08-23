@@ -159,14 +159,6 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
         return snsList.find(sns => sns.rootCanisterId === selectedSnsRoot) || { name: 'Select an SNS' };
     };
 
-    const handleSneedLogoClick = () => {
-        handleSnsChange(SNEED_SNS_ROOT);
-    };
-
-    // Find Sneed SNS data
-    const sneedSns = snsList.find(sns => sns.rootCanisterId === SNEED_SNS_ROOT) || { name: 'Sneed' };
-    const sneedLogo = snsLogos.get(sneedSns?.canisters?.governance);
-
     // If showSnsDropdown is false, return null (don't render anything)
     if (!showSnsDropdown) {
         return null;
@@ -174,41 +166,6 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
 
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* Sneed Logo Quick Link - Only show when Sneed is NOT selected */}
-            {selectedSnsRoot !== SNEED_SNS_ROOT && (
-                <div
-                    onClick={handleSneedLogoClick}
-                    style={{
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        padding: '2px',
-                        borderRadius: '4px',
-                        transition: 'background-color 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.target.style.backgroundColor = 'rgba(255,255,255,0.1)';
-                    }}
-                    onMouseLeave={(e) => {
-                        e.target.style.backgroundColor = 'transparent';
-                    }}
-                    title="Switch to Sneed SNS"
-                >
-                    {sneedLogo && (
-                        <img 
-                            src={sneedLogo} 
-                            alt="Sneed"
-                            style={{ 
-                                width: '24px', 
-                                height: '24px',
-                                borderRadius: '50%',
-                                objectFit: 'cover'
-                            }} 
-                        />
-                    )}
-                </div>
-            )}
-
             {/* Compact SNS Dropdown - Shows only selected logo and chevron */}
             <div 
                 ref={dropdownRef}
