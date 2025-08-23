@@ -752,6 +752,8 @@ export default function PrincipalPage() {
                                         display: 'flex', 
                                         justifyContent: 'space-between', 
                                         alignItems: 'flex-start',
+                                        flexWrap: 'wrap',
+                                        gap: '15px',
                                         marginBottom: '15px'
                                     }}>
                                         <div>
@@ -775,7 +777,12 @@ export default function PrincipalPage() {
                                                 }}
                                             />
                                         </div>
-                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            gap: '8px',
+                                            flexWrap: 'wrap',
+                                            alignItems: 'center'
+                                        }}>
                                             {!editingName && !editingNickname && (
                                                 <>
                                                     <button
