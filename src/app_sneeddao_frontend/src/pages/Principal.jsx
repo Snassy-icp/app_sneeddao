@@ -4,7 +4,7 @@ import { useSns } from '../contexts/SnsContext';
 import { useForum } from '../contexts/ForumContext';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
-import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname, getPostsByUser, getRepliesToUser, getThreadsByUser } from '../utils/BackendUtils';
+import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname, getPostsByUser, getRepliesToUser, getThreadsByUser, getPostsByThread } from '../utils/BackendUtils';
 import PrincipalInput from '../components/PrincipalInput';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalColor, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
@@ -70,6 +70,7 @@ export default function PrincipalPage() {
     const [loadingPosts, setLoadingPosts] = useState(false);
     const [postsError, setPostsError] = useState(null);
     const [expandedPosts, setExpandedPosts] = useState(new Set());
+    const [threadPostCounts, setThreadPostCounts] = useState(new Map());
     
     // Add search state
     const [searchInput, setSearchInput] = useState('');
@@ -484,12 +485,52 @@ export default function PrincipalPage() {
         }
     }, [identity, createForumActor]);
 
+    // Fetch post counts for threads asynchronously (non-blocking)
+    const fetchThreadPostCounts = useCallback(async (threads) => {
+        if (!identity || !createForumActor || !threads.length) return;
+        
+        try {
+            const forumActor = createForumActor(identity);
+            
+            // Fetch post counts for each thread in parallel
+            const countPromises = threads.map(async (thread) => {
+                try {
+                    const posts = await getPostsByThread(forumActor, thread.id);
+                    return { threadId: thread.id, count: posts.length };
+                } catch (err) {
+                    console.error(`Error fetching posts for thread ${thread.id}:`, err);
+                    return { threadId: thread.id, count: 0 };
+                }
+            });
+            
+            const results = await Promise.all(countPromises);
+            
+            // Update the post counts map
+            const newCounts = new Map();
+            results.forEach(({ threadId, count }) => {
+                newCounts.set(threadId.toString(), count);
+            });
+            
+            setThreadPostCounts(newCounts);
+            
+        } catch (err) {
+            console.error('Error fetching thread post counts:', err);
+        }
+    }, [identity, createForumActor]);
+
     // Auto-fetch posts when principal changes
     useEffect(() => {
         if (stablePrincipalId.current && identity && createForumActor) {
             fetchUserPosts();
         }
     }, [searchParams.get('id'), fetchUserPosts]);
+
+    // Fetch post counts when threads are loaded
+    useEffect(() => {
+        if (userThreads.length > 0) {
+            fetchThreadPostCounts(userThreads);
+        }
+    }, [userThreads, fetchThreadPostCounts]);
 
     // Format vote scores (from e8s to tokens with up to 8 decimals)
     const formatScore = (score) => {
@@ -1257,6 +1298,19 @@ export default function PrincipalPage() {
                                                                         </div>
                                                                         <div style={{ color: '#888', fontSize: '12px', textAlign: 'right' }}>
                                                                             {new Date(Number(thread.created_at) / 1000000).toLocaleDateString()}
+                                                                            <br />
+                                                                            {(() => {
+                                                                                const postCount = threadPostCounts.get(thread.id.toString());
+                                                                                return postCount !== undefined ? (
+                                                                                    <span style={{ color: '#888', fontSize: '11px' }}>
+                                                                                        {postCount} post{postCount !== 1 ? 's' : ''}
+                                                                                    </span>
+                                                                                ) : (
+                                                                                    <span style={{ color: '#666', fontSize: '10px', fontStyle: 'italic' }}>
+                                                                                        Loading...
+                                                                                    </span>
+                                                                                );
+                                                                            })()}
                                                                         </div>
                                                                     </div>
                                                                     {thread.title && (

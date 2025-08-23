@@ -9,6 +9,7 @@ import { useTextLimits } from '../hooks/useTextLimits';
 import { formatError } from '../utils/errorUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 import { getSnsById } from '../utils/SnsUtils';
+import { getPostsByThread } from '../utils/BackendUtils';
 
 const styles = {
     container: {
@@ -326,6 +327,7 @@ function Topic() {
     const [topic, setTopic] = useState(null);
     const [subtopics, setSubtopics] = useState([]);
     const [threads, setThreads] = useState([]);
+    const [threadPostCounts, setThreadPostCounts] = useState(new Map());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [hoveredCard, setHoveredCard] = useState(null);
@@ -450,6 +452,37 @@ function Topic() {
         }
     }, [forumActor, identity, selectedSnsRoot, topic?.title]);
 
+    // Fetch post counts for threads asynchronously (non-blocking)
+    const fetchThreadPostCounts = useCallback(async (threads) => {
+        if (!forumActor || !threads.length) return;
+        
+        try {
+            // Fetch post counts for each thread in parallel
+            const countPromises = threads.map(async (thread) => {
+                try {
+                    const posts = await getPostsByThread(forumActor, thread.id);
+                    return { threadId: thread.id, count: posts.length };
+                } catch (err) {
+                    console.error(`Error fetching posts for thread ${thread.id}:`, err);
+                    return { threadId: thread.id, count: 0 };
+                }
+            });
+            
+            const results = await Promise.all(countPromises);
+            
+            // Update the post counts map
+            const newCounts = new Map();
+            results.forEach(({ threadId, count }) => {
+                newCounts.set(threadId.toString(), count);
+            });
+            
+            setThreadPostCounts(newCounts);
+            
+        } catch (err) {
+            console.error('Error fetching thread post counts:', err);
+        }
+    }, [forumActor]);
+
     useEffect(() => {
         if (!topicId) {
             setError('Invalid topic ID');
@@ -467,6 +500,13 @@ function Topic() {
             fetchProposalDataForThreads(threads);
         }
     }, [threads, fetchProposalDataForThreads]);
+
+    // Fetch post counts for threads when threads are loaded (async, non-blocking)
+    useEffect(() => {
+        if (threads.length > 0) {
+            fetchThreadPostCounts(threads);
+        }
+    }, [threads, fetchThreadPostCounts]);
 
     const isRootGovernanceTopic = (topic) => {
         return topic && 
@@ -920,6 +960,18 @@ function Topic() {
                                         
                                         <div style={styles.threadMeta}>
                                             <span>Created {formatTimeAgo(thread.created_at)}</span>
+                                            {(() => {
+                                                const postCount = threadPostCounts.get(thread.id.toString());
+                                                return postCount !== undefined ? (
+                                                    <span style={{ color: '#888', fontSize: '0.9rem' }}>
+                                                        • {postCount} post{postCount !== 1 ? 's' : ''}
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: '#666', fontSize: '0.8rem', fontStyle: 'italic' }}>
+                                                        • Loading...
+                                                    </span>
+                                                );
+                                            })()}
                                             <span>→</span>
                                         </div>
                                     </div>
