@@ -21,6 +21,7 @@ const Message = () => {
     const [expandedMessages, setExpandedMessages] = useState(new Set()); // Set of message IDs with expanded content
     const [collapsedMessages, setCollapsedMessages] = useState(new Set()); // Set of message IDs that are collapsed
     const [error, setError] = useState(null);
+    const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
 
     // Create SMS actor
     const getSmsActor = () => {
@@ -403,6 +404,33 @@ const Message = () => {
         }
     }, [isAuthenticated, id]);
 
+    // Build principal display info map when messages change
+    useEffect(() => {
+        const uniquePrincipals = new Set();
+        
+        // Collect all principals from all messages in the tree
+        messageTree.forEach(message => {
+            // Add sender
+            if (message.sender) {
+                uniquePrincipals.add(message.sender.toString());
+            }
+            // Add recipients
+            if (message.recipients) {
+                message.recipients.forEach(recipient => {
+                    uniquePrincipals.add(recipient.toString());
+                });
+            }
+        });
+
+        const displayInfoMap = new Map();
+        Array.from(uniquePrincipals).forEach(principal => {
+            const displayInfo = getPrincipalDisplayInfoFromContext(principal, principalNames, principalNicknames);
+            displayInfoMap.set(principal, displayInfo);
+        });
+
+        setPrincipalDisplayInfo(displayInfoMap);
+    }, [messageTree, principalNames, principalNicknames]);
+
     // Toggle message content expansion (for long messages)
     const toggleMessageExpansion = (messageId) => {
         setExpandedMessages(prev => {
@@ -619,7 +647,8 @@ const Message = () => {
                                         <span style={{ color: '#888', fontSize: '12px' }}>From: </span>
                                         <PrincipalDisplay 
                                             principal={message.sender} 
-                                            maxLength={20}
+                                            displayInfo={principalDisplayInfo.get(message.sender.toString())}
+                                            showCopyButton={false}
                                             style={{ color: '#ffffff', fontSize: '14px' }}
                                         />
                                     </div>
@@ -629,7 +658,8 @@ const Message = () => {
                                             <span key={idx}>
                                                 <PrincipalDisplay 
                                                     principal={recipient} 
-                                                    maxLength={15}
+                                                    displayInfo={principalDisplayInfo.get(recipient.toString())}
+                                                    showCopyButton={false}
                                                     style={{ color: '#ffffff', fontSize: '14px' }}
                                                 />
                                                 {idx < message.recipients.length - 1 && ', '}
