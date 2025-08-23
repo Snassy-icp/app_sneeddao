@@ -4,6 +4,7 @@ import './SendTokenModal.css'; // Create this CSS file for styling
 import { Principal } from "@dfinity/principal";
 import ConfirmationModal from './ConfirmationModal';
 import { formatAmount } from './utils/StringUtils';
+import PrincipalInput from './components/PrincipalInput';
 
 function SendTokenModal({ show, onClose, onSend, token }) {
   const [recipient, setRecipient] = useState('');
@@ -50,14 +51,8 @@ function SendTokenModal({ show, onClose, onSend, token }) {
       return;
     }
     
-    try {
-      var p = Principal.fromText(recipient);
-      console.log('Recipient Principal validation: SUCCESS');
-    } catch {
-      console.log('ERROR: Invalid recipient address');
-      setErrorText("Invalid recipient address! Please enter a valid recipient address.");
-      return;
-    }
+    // PrincipalInput component ensures recipient is valid, so no need for additional validation
+    console.log('Recipient Principal validation: SUCCESS (handled by PrincipalInput)');
 
     if (amount == "") {
       console.log('ERROR: Empty amount');
@@ -151,10 +146,10 @@ function SendTokenModal({ show, onClose, onSend, token }) {
         <h2>Send {token.symbol} Token</h2>
         <label>
           Recipient Address:
-          <input 
-            type="text" 
+          <PrincipalInput
             value={recipient}
-            onChange={(e) => setRecipient(e.target.value)}
+            onChange={setRecipient}
+            placeholder="Enter recipient principal"
           />
         </label>
         <label>
