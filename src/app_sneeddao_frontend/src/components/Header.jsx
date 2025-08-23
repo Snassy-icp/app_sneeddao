@@ -32,14 +32,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         const path = location.pathname;
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) return 'Me';
-        if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
         if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
-        if (['/wallet'].includes(path)) return 'Wallet';
         if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path)) return 'Me';
+        if (['/wallet'].includes(path)) return 'Wallet';
+        if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
         if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
-        return 'DAO';
+        return 'Hub';
     });
 
     // Silent admin check - don't redirect, just check status
@@ -70,14 +70,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) {
             setActiveSection('Me');
-        } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
-            setActiveSection('DAO');
-        } else if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal'].includes(path)) {
+        } else if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
             setActiveSection('Hub');
-        } else if (['/wallet'].includes(path)) {
-            setActiveSection('Wallet');
         } else if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path)) {
             setActiveSection('Me');
+        } else if (['/wallet'].includes(path)) {
+            setActiveSection('Wallet');
+        } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
+            setActiveSection('DAO');
         } else if (['/sneedlock', '/sneedlock_info'].includes(path)) {
             setActiveSection('Locks');
         } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
@@ -89,7 +89,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     // But only if we're not on an admin page waiting for admin check
     useEffect(() => {
         if (!menuSections[activeSection] && !(isOnAdminPage && adminLoading)) {
-            setActiveSection('DAO'); // Fall back to DAO section
+            setActiveSection('Hub'); // Fall back to Hub section
         }
     }, [activeSection, isAdmin, isAuthenticated, isOnAdminPage, adminLoading]);
 
@@ -121,19 +121,17 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     }, [selectedSnsRoot, identity]);
 
     const menuSections = {
-        'DAO': {
-            icon: <FaBuilding size={18} />,
-            displayName: 'Sneed DAO',
-            defaultPath: '/dao',
+        'Hub': {
+            icon: <FaNetworkWired size={18} />,
+            displayName: 'Sneed Hub',
+            defaultPath: '/hub',
             subMenu: [
-                { name: 'DAO', path: '/dao' },
-                { name: 'Dashboard', path: '/dao_info' },
-                { name: 'Tokenomics', path: '/rll_info' },
-                { name: 'Rewards', path: '/rll' },
-                { name: 'Products', path: '/products' },
-                { name: 'Partners', path: '/partners' },
-                { name: 'Projects', path: '/projects' },
-                { name: 'Disclaimer', path: '/disclaimer' }
+                { name: 'Hub', path: '/hub' },
+                { name: 'Forum', path: '/forum' },
+                { name: 'Proposals', path: '/proposals' },
+                { name: 'Neurons', path: '/neurons' },
+                { name: 'Transactions', path: '/transactions' },
+                { name: 'Users', path: '/principal' }
             ]
         },
         'Me': {
@@ -148,25 +146,27 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Rewards', path: '/rewards' }
             ]
         },
-        'Hub': {
-            icon: <FaNetworkWired size={18} />,
-            displayName: 'Sneed Hub',
-            defaultPath: '/hub',
-            subMenu: [
-                { name: 'Hub', path: '/hub' },
-                { name: 'Forum', path: '/forum' },
-                { name: 'Proposals', path: '/proposals' },
-                { name: 'Neurons', path: '/neurons' },
-                { name: 'Transactions', path: '/transactions' },
-                { name: 'Users', path: '/principal' }
-            ]
-        },
         'Wallet': {
             icon: <FaWallet size={18} />,
             displayName: 'Sneed Wallet',
             defaultPath: '/wallet',
             subMenu: [
                 { name: 'Wallet', path: '/wallet' }
+            ]
+        },
+        'DAO': {
+            icon: <FaBuilding size={18} />,
+            displayName: 'Sneed DAO',
+            defaultPath: '/dao',
+            subMenu: [
+                { name: 'DAO', path: '/dao' },
+                { name: 'Dashboard', path: '/dao_info' },
+                { name: 'Tokenomics', path: '/rll_info' },
+                { name: 'Rewards', path: '/rll' },
+                { name: 'Products', path: '/products' },
+                { name: 'Partners', path: '/partners' },
+                { name: 'Projects', path: '/projects' },
+                { name: 'Disclaimer', path: '/disclaimer' }
             ]
         },
         'Locks': {
