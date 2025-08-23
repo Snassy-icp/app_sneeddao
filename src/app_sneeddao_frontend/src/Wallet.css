@@ -244,10 +244,11 @@ body {
 }
 
 .action-buttons {
-    position: absolute;
-    top: 20px;
-    right: 20px;
     display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-bottom: 15px;
+    padding: 0 5px;
 }
 
 .swap-link-button,
