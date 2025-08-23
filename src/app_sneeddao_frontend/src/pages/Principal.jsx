@@ -1231,7 +1231,7 @@ export default function PrincipalPage() {
                                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                                             <Link 
-                                                                                to={`/thread/${thread.id}`}
+                                                                                to={`/thread?threadid=${thread.id}`}
                                                                                 style={{
                                                                                     color: '#3c6382',
                                                                                     textDecoration: 'none',
