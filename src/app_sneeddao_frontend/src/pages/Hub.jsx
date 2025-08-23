@@ -314,19 +314,88 @@ function Hub() {
                         marginBottom: '1rem',
                         fontWeight: 'bold'
                     }}>
-                        Sneed DAO SNS Hub
+                        Welcome to Sneed DAO SNS Hub
                     </h1>
                     <p style={{
                         color: '#ccc',
                         fontSize: '1.1rem',
                         lineHeight: '1.6',
                         maxWidth: '800px',
-                        margin: '0 auto'
+                        margin: '0 auto 1.5rem auto'
                     }}>
                         Explore the Internet Computer's Service Nervous System (SNS) ecosystem. Browse decentralized projects, 
                         view their governance proposals, analyze token economics, participate in community discussions, 
                         and manage your neuron voting power across multiple DAOs.
                     </p>
+                    
+                    <p style={{
+                        color: '#bbb',
+                        fontSize: '1rem',
+                        lineHeight: '1.6',
+                        maxWidth: '800px',
+                        margin: '0 auto 1.5rem auto'
+                    }}>
+                        Use the SNS dropdown in the header above to pick which SNS you want to explore.
+                    </p>
+
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        gap: '1rem',
+                        flexWrap: 'wrap',
+                        marginTop: '1.5rem'
+                    }}>
+                        <Link 
+                            to="/forum" 
+                            style={{
+                                backgroundColor: '#3498db',
+                                color: 'white',
+                                padding: '0.75rem 1.5rem',
+                                borderRadius: '6px',
+                                textDecoration: 'none',
+                                fontWeight: '500',
+                                transition: 'background-color 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = '#2980b9'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = '#3498db'}
+                        >
+                            Visit Community Forum
+                        </Link>
+                        
+                        <Link 
+                            to="/dao" 
+                            style={{
+                                backgroundColor: '#27ae60',
+                                color: 'white',
+                                padding: '0.75rem 1.5rem',
+                                borderRadius: '6px',
+                                textDecoration: 'none',
+                                fontWeight: '500',
+                                transition: 'background-color 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = '#219a52'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = '#27ae60'}
+                        >
+                            Learn More About Sneed DAO
+                        </Link>
+                        
+                        <Link 
+                            to="/me" 
+                            style={{
+                                backgroundColor: '#9b59b6',
+                                color: 'white',
+                                padding: '0.75rem 1.5rem',
+                                borderRadius: '6px',
+                                textDecoration: 'none',
+                                fontWeight: '500',
+                                transition: 'background-color 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = '#8e44ad'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = '#9b59b6'}
+                        >
+                            Go to Your Profile
+                        </Link>
+                    </div>
                 </div>
 
                 {/* Content Section - Two columns */}
