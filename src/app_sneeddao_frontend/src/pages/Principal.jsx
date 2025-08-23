@@ -69,6 +69,7 @@ export default function PrincipalPage() {
     const [userThreads, setUserThreads] = useState([]);
     const [loadingPosts, setLoadingPosts] = useState(false);
     const [postsError, setPostsError] = useState(null);
+    const [expandedPosts, setExpandedPosts] = useState(new Set());
     
     // Add search state
     const [searchInput, setSearchInput] = useState('');
@@ -1077,43 +1078,100 @@ export default function PrincipalPage() {
                                                     </div>
                                                 ) : (
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                                        {userPosts.map((post) => (
-                                                            <div key={post.id} style={{
-                                                                backgroundColor: '#1a1a1a',
-                                                                border: '1px solid #3a3a3a',
-                                                                borderRadius: '6px',
-                                                                padding: '15px'
-                                                            }}>
-                                                                <Link 
-                                                                    to={`/thread/${post.thread_id}#post-${post.id}`}
-                                                                    style={{
-                                                                        color: '#3498db',
-                                                                        textDecoration: 'none',
-                                                                        fontSize: '16px',
-                                                                        fontWeight: '500',
-                                                                        display: 'block',
-                                                                        marginBottom: '8px'
-                                                                    }}
-                                                                >
-                                                                    {post.title}
-                                                                </Link>
-                                                                <div style={{ color: '#888', fontSize: '14px', marginBottom: '10px' }}>
-                                                                    {new Date(Number(post.created_at) / 1000000).toLocaleDateString()} • 
-                                                                    👍 {Number(post.upvote_score)} 👎 {Number(post.downvote_score)}
-                                                                </div>
-                                                                <div style={{ 
-                                                                    color: '#ccc', 
-                                                                    fontSize: '14px',
-                                                                    overflow: 'hidden',
-                                                                    textOverflow: 'ellipsis',
-                                                                    display: '-webkit-box',
-                                                                    WebkitLineClamp: 2,
-                                                                    WebkitBoxOrient: 'vertical'
+                                                        {userPosts.map((post) => {
+                                                            const isExpanded = expandedPosts.has(post.id);
+                                                            const shouldTruncate = post.body && post.body.length > 300;
+                                                            const displayBody = shouldTruncate && !isExpanded 
+                                                                ? post.body.substring(0, 300) + '...' 
+                                                                : post.body;
+
+                                                            const toggleExpanded = (postId) => {
+                                                                setExpandedPosts(prev => {
+                                                                    const newSet = new Set(prev);
+                                                                    if (newSet.has(postId)) {
+                                                                        newSet.delete(postId);
+                                                                    } else {
+                                                                        newSet.add(postId);
+                                                                    }
+                                                                    return newSet;
+                                                                });
+                                                            };
+
+                                                            return (
+                                                                <div key={post.id} style={{
+                                                                    backgroundColor: '#1a1a1a',
+                                                                    border: '1px solid #3a3a3a',
+                                                                    borderRadius: '6px',
+                                                                    padding: '15px'
                                                                 }}>
-                                                                    {post.content}
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                                                                        <Link 
+                                                                            to={`/post?postid=${post.id}`}
+                                                                            style={{
+                                                                                color: '#3c6382',
+                                                                                textDecoration: 'none',
+                                                                                fontWeight: '600',
+                                                                                fontSize: '14px',
+                                                                                padding: '2px 4px',
+                                                                                borderRadius: '3px',
+                                                                                backgroundColor: 'rgba(60, 99, 130, 0.1)',
+                                                                                border: '1px solid rgba(60, 99, 130, 0.3)'
+                                                                            }}
+                                                                            onMouseEnter={(e) => {
+                                                                                e.target.style.textDecoration = 'underline';
+                                                                                e.target.style.backgroundColor = 'rgba(60, 99, 130, 0.2)';
+                                                                            }}
+                                                                            onMouseLeave={(e) => {
+                                                                                e.target.style.textDecoration = 'none';
+                                                                                e.target.style.backgroundColor = 'rgba(60, 99, 130, 0.1)';
+                                                                            }}
+                                                                        >
+                                                                            #{Number(post.id)}
+                                                                        </Link>
+                                                                        <div style={{ color: '#888', fontSize: '12px', textAlign: 'right' }}>
+                                                                            {new Date(Number(post.created_at) / 1000000).toLocaleDateString()}
+                                                                            <br />
+                                                                            <span style={{ color: Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? '#27ae60' : '#e74c3c' }}>
+                                                                                {Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? '+' : ''}{Number(post.upvote_score) - Number(post.downvote_score)}
+                                                                            </span>
+                                                                            {' '}
+                                                                            <span style={{ color: '#666' }}>
+                                                                                (↑{Number(post.upvote_score)} ↓{Number(post.downvote_score)})
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    {post.title && post.title.length > 0 && (
+                                                                        <div style={{ 
+                                                                            color: '#fff', 
+                                                                            fontSize: '16px',
+                                                                            fontWeight: '500',
+                                                                            marginBottom: '10px'
+                                                                        }}>
+                                                                            {post.title[0]}
+                                                                        </div>
+                                                                    )}
+                                                                    <div style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.5' }}>
+                                                                        {displayBody}
+                                                                        {shouldTruncate && (
+                                                                            <button
+                                                                                onClick={() => toggleExpanded(post.id)}
+                                                                                style={{
+                                                                                    background: 'none',
+                                                                                    border: 'none',
+                                                                                    color: '#3498db',
+                                                                                    cursor: 'pointer',
+                                                                                    fontSize: '14px',
+                                                                                    marginLeft: '5px',
+                                                                                    textDecoration: 'underline'
+                                                                                }}
+                                                                            >
+                                                                                {isExpanded ? 'Show Less' : 'Show More'}
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        ))}
+                                                            );
+                                                        })}
                                                     </div>
                                                 )
                                             ) : (
@@ -1123,43 +1181,103 @@ export default function PrincipalPage() {
                                                     </div>
                                                 ) : (
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                                        {userThreads.map((post) => (
-                                                            <div key={post.id} style={{
-                                                                backgroundColor: '#1a1a1a',
-                                                                border: '1px solid #3a3a3a',
-                                                                borderRadius: '6px',
-                                                                padding: '15px'
-                                                            }}>
-                                                                <Link 
-                                                                    to={`/thread/${post.thread_id}#post-${post.id}`}
-                                                                    style={{
-                                                                        color: '#3498db',
-                                                                        textDecoration: 'none',
-                                                                        fontSize: '16px',
-                                                                        fontWeight: '500',
-                                                                        display: 'block',
-                                                                        marginBottom: '8px'
-                                                                    }}
-                                                                >
-                                                                    Re: {post.title}
-                                                                </Link>
-                                                                <div style={{ color: '#888', fontSize: '14px', marginBottom: '10px' }}>
-                                                                    {new Date(Number(post.created_at) / 1000000).toLocaleDateString()} • 
-                                                                    👍 {Number(post.upvote_score)} 👎 {Number(post.downvote_score)}
-                                                                </div>
-                                                                <div style={{ 
-                                                                    color: '#ccc', 
-                                                                    fontSize: '14px',
-                                                                    overflow: 'hidden',
-                                                                    textOverflow: 'ellipsis',
-                                                                    display: '-webkit-box',
-                                                                    WebkitLineClamp: 2,
-                                                                    WebkitBoxOrient: 'vertical'
+                                                        {userThreads.map((post) => {
+                                                            const isExpanded = expandedPosts.has(`thread-${post.id}`);
+                                                            const shouldTruncate = post.body && post.body.length > 300;
+                                                            const displayBody = shouldTruncate && !isExpanded 
+                                                                ? post.body.substring(0, 300) + '...' 
+                                                                : post.body;
+
+                                                            const toggleExpanded = (postId) => {
+                                                                setExpandedPosts(prev => {
+                                                                    const newSet = new Set(prev);
+                                                                    if (newSet.has(postId)) {
+                                                                        newSet.delete(postId);
+                                                                    } else {
+                                                                        newSet.add(postId);
+                                                                    }
+                                                                    return newSet;
+                                                                });
+                                                            };
+
+                                                            return (
+                                                                <div key={post.id} style={{
+                                                                    backgroundColor: '#1a1a1a',
+                                                                    border: '1px solid #3a3a3a',
+                                                                    borderRadius: '6px',
+                                                                    padding: '15px'
                                                                 }}>
-                                                                    {post.content}
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                            <Link 
+                                                                                to={`/post?postid=${post.id}`}
+                                                                                style={{
+                                                                                    color: '#3c6382',
+                                                                                    textDecoration: 'none',
+                                                                                    fontWeight: '600',
+                                                                                    fontSize: '14px',
+                                                                                    padding: '2px 4px',
+                                                                                    borderRadius: '3px',
+                                                                                    backgroundColor: 'rgba(60, 99, 130, 0.1)',
+                                                                                    border: '1px solid rgba(60, 99, 130, 0.3)'
+                                                                                }}
+                                                                                onMouseEnter={(e) => {
+                                                                                    e.target.style.textDecoration = 'underline';
+                                                                                    e.target.style.backgroundColor = 'rgba(60, 99, 130, 0.2)';
+                                                                                }}
+                                                                                onMouseLeave={(e) => {
+                                                                                    e.target.style.textDecoration = 'none';
+                                                                                    e.target.style.backgroundColor = 'rgba(60, 99, 130, 0.1)';
+                                                                                }}
+                                                                            >
+                                                                                #{Number(post.id)}
+                                                                            </Link>
+                                                                            <span style={{ color: '#f39c12', fontSize: '12px' }}>Reply</span>
+                                                                        </div>
+                                                                        <div style={{ color: '#888', fontSize: '12px', textAlign: 'right' }}>
+                                                                            {new Date(Number(post.created_at) / 1000000).toLocaleDateString()}
+                                                                            <br />
+                                                                            <span style={{ color: Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? '#27ae60' : '#e74c3c' }}>
+                                                                                {Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? '+' : ''}{Number(post.upvote_score) - Number(post.downvote_score)}
+                                                                            </span>
+                                                                            {' '}
+                                                                            <span style={{ color: '#666' }}>
+                                                                                (↑{Number(post.upvote_score)} ↓{Number(post.downvote_score)})
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    {post.title && post.title.length > 0 && (
+                                                                        <div style={{ 
+                                                                            color: '#fff', 
+                                                                            fontSize: '16px',
+                                                                            fontWeight: '500',
+                                                                            marginBottom: '10px'
+                                                                        }}>
+                                                                            Re: {post.title[0]}
+                                                                        </div>
+                                                                    )}
+                                                                    <div style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.5' }}>
+                                                                        {displayBody}
+                                                                        {shouldTruncate && (
+                                                                            <button
+                                                                                onClick={() => toggleExpanded(`thread-${post.id}`)}
+                                                                                style={{
+                                                                                    background: 'none',
+                                                                                    border: 'none',
+                                                                                    color: '#3498db',
+                                                                                    cursor: 'pointer',
+                                                                                    fontSize: '14px',
+                                                                                    marginLeft: '5px',
+                                                                                    textDecoration: 'underline'
+                                                                                }}
+                                                                            >
+                                                                                {isExpanded ? 'Show Less' : 'Show More'}
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
-                                                            </div>
-                                                        ))}
+                                                            );
+                                                        })}
                                                     </div>
                                                 )
                                             )}
