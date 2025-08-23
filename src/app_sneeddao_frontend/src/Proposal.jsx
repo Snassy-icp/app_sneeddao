@@ -799,9 +799,54 @@ function Proposal() {
                                         display: 'inline-block',
                                         maxWidth: '100%'
                                     }}>{proposalData.proposal?.[0]?.url}</a></p>
+                                    
+                                    {proposalData.payload_text_rendering?.[0] && (
+                                        <div style={{ marginTop: '15px' }}>
+                                            <p><strong>Proposal Payload:</strong></p>
+                                            <div style={{ 
+                                                backgroundColor: '#2a2a2a', 
+                                                padding: '15px', 
+                                                borderRadius: '6px',
+                                                marginTop: '8px',
+                                                border: '1px solid #3a3a3a',
+                                                fontFamily: 'monospace',
+                                                fontSize: '0.9rem',
+                                                lineHeight: '1.4',
+                                                color: '#e0e0e0',
+                                                whiteSpace: 'pre-wrap',
+                                                overflowWrap: 'break-word',
+                                                maxHeight: '400px',
+                                                overflowY: 'auto'
+                                            }}>
+                                                {proposalData.payload_text_rendering[0]}
+                                            </div>
+                                        </div>
+                                    )}
+                                    
                                     <p><strong>Status:</strong> {getProposalStatus(proposalData)}</p>
                                     <p><strong>Created:</strong> {new Date(Number(proposalData.proposal_creation_timestamp_seconds || 0) * 1000).toLocaleString()}</p>
                                     <p><strong>Voting Period:</strong> {Math.floor(Number(proposalData.initial_voting_period_seconds || 0) / (24 * 60 * 60))} days</p>
+                                    
+                                    {/* Additional proposal metadata */}
+                                    {proposalData.decided_timestamp_seconds && Number(proposalData.decided_timestamp_seconds) > 0 && (
+                                        <p><strong>Decided:</strong> {new Date(Number(proposalData.decided_timestamp_seconds) * 1000).toLocaleString()}</p>
+                                    )}
+                                    
+                                    {proposalData.executed_timestamp_seconds && Number(proposalData.executed_timestamp_seconds) > 0 && (
+                                        <p><strong>Executed:</strong> {new Date(Number(proposalData.executed_timestamp_seconds) * 1000).toLocaleString()}</p>
+                                    )}
+                                    
+                                    {proposalData.failed_timestamp_seconds && Number(proposalData.failed_timestamp_seconds) > 0 && (
+                                        <p><strong>Failed:</strong> {new Date(Number(proposalData.failed_timestamp_seconds) * 1000).toLocaleString()}</p>
+                                    )}
+                                    
+                                    {proposalData.reject_cost_e8s && Number(proposalData.reject_cost_e8s) > 0 && (
+                                        <p><strong>Reject Cost:</strong> {formatE8s(proposalData.reject_cost_e8s)} tokens</p>
+                                    )}
+                                    
+                                    {proposalData.is_eligible_for_rewards !== undefined && (
+                                        <p><strong>Eligible for Rewards:</strong> {proposalData.is_eligible_for_rewards ? 'Yes' : 'No'}</p>
+                                    )}
                                     
                                     {proposalData.latest_tally?.[0] && <VotingBar proposalData={proposalData} />}
                                     
