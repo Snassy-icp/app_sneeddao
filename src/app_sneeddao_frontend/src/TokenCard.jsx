@@ -41,9 +41,18 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     return (
         <div className="card">
             <div className="card-header">
-                <img src={token.logo} alt={token.symbol} className="token-logo" />
-                <span className="token-amount">{formatAmount(token.available, token.decimals)}</span>
-                <span className="token-symbol">{token.symbol}</span>
+                <div className="header-left">
+                    <img src={token.logo} alt={token.symbol} className="token-logo" />
+                    <span className="token-amount">{formatAmount(token.available, token.decimals)}</span>
+                    <span className="token-symbol">{token.symbol}</span>
+                </div>
+                <div className="header-right">
+                    {token.available > 0n && token.conversion_rate > 0 && (
+                        <span className="token-usd-value">
+                            ${formatAmountWithConversion(token.available, token.decimals, token.conversion_rate)}
+                        </span>
+                    )}
+                </div>
             </div>
             {!hideButtons && (
                 <div className="action-buttons">
