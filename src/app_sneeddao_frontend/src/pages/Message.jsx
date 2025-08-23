@@ -20,6 +20,7 @@ const Message = () => {
     const [loadingStates, setLoadingStates] = useState(new Map()); // Map of messageId -> {loadingParent: bool}
     const [expandedMessages, setExpandedMessages] = useState(new Set()); // Set of message IDs with expanded content
     const [collapsedMessages, setCollapsedMessages] = useState(new Set()); // Set of message IDs that are collapsed
+    const [collapsedHeaders, setCollapsedHeaders] = useState(new Set()); // Set of message IDs with collapsed headers (From/To info)
     const [error, setError] = useState(null);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
 
@@ -83,6 +84,8 @@ const Message = () => {
                 newSet.delete(messageId); // Remove focus message from collapsed state if it was there
                 return newSet;
             });
+            // Start all message headers as collapsed by default
+            setCollapsedHeaders(new Set([messageId]));
 
             // Auto-load replies for the focused message (they will start collapsed)
             await loadReplies(messageId);
@@ -119,6 +122,9 @@ const Message = () => {
                             setCollapsedMessages(prev => new Set([...prev, parentId]));
                         }
                         setExpandedMessages(prev => new Set([...prev, parentId])); // Expand content but collapsed structurally
+                        
+                        // Set parent header as collapsed
+                        setCollapsedHeaders(prev => new Set([...prev, parentId]));
                         
                         // Load siblings (replies of the parent)
                         await loadReplies(parentId);
@@ -194,6 +200,9 @@ const Message = () => {
             
             // Expand parent message
             setExpandedMessages(prev => new Set([...prev, parentId]));
+            
+            // Set parent header as collapsed
+            setCollapsedHeaders(prev => new Set([...prev, parentId]));
             
             // Load siblings of this message (collapsed)
             await loadReplies(parentId); // This will load all children of parent (including siblings)
@@ -321,6 +330,9 @@ const Message = () => {
             setMessageChildren(newMessageChildren);
             setExpandedMessages(newExpandedMessages);
             setCollapsedMessages(newCollapsedMessages);
+            // Set all newly loaded messages' headers as collapsed
+            const newlyLoadedIds = Array.from(newMessageTree.keys()).filter(id => !messageTree.has(id));
+            setCollapsedHeaders(prev => new Set([...prev, ...newlyLoadedIds]));
             
         } catch (err) {
             console.error('Error loading all parents:', err);
@@ -386,6 +398,9 @@ const Message = () => {
             // Expand the message content for replies (so the text is readable, but they're structurally collapsed)
             setExpandedMessages(prev => new Set([...prev, ...replyIds]));
             
+            // Start all reply headers as collapsed by default
+            setCollapsedHeaders(prev => new Set([...prev, ...replyIds]));
+            
         } catch (err) {
             console.error('Error loading replies:', err);
         } finally {
@@ -444,11 +459,25 @@ const Message = () => {
         });
     };
 
+    // Toggle header collapse (From/To info visibility)
+    const toggleHeaderCollapse = (messageId) => {
+        setCollapsedHeaders(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(messageId)) {
+                newSet.delete(messageId);
+            } else {
+                newSet.add(messageId);
+            }
+            return newSet;
+        });
+    };
+
     // Expand all messages in the current tree
     const expandAll = () => {
         const allMessageIds = Array.from(messageTree.keys());
         setCollapsedMessages(new Set()); // Clear all collapsed messages
         setExpandedMessages(new Set(allMessageIds)); // Expand all messages
+        setCollapsedHeaders(new Set()); // Expand all headers
     };
 
     // Collapse all messages except the focus message
@@ -456,6 +485,7 @@ const Message = () => {
         const allMessageIds = Array.from(messageTree.keys());
         const messagesToCollapse = allMessageIds.filter(id => id !== focusMessageId);
         setCollapsedMessages(new Set(messagesToCollapse));
+        setCollapsedHeaders(new Set(allMessageIds)); // Collapse all headers including focus message
         // Keep focus message expanded
         if (focusMessageId) {
             setExpandedMessages(new Set([focusMessageId]));
@@ -512,6 +542,7 @@ const Message = () => {
         const isFocused = messageId === focusMessageId;
         const isExpanded = expandedMessages.has(messageId);
         const isCollapsed = collapsedMessages.has(messageId);
+        const isHeaderCollapsed = collapsedHeaders.has(messageId);
         const loadingState = getLoadingState(messageId);
         const children = messageChildren.get(messageId) || [];
         const hasParent = message.reply_to && message.reply_to.length > 0;
@@ -641,7 +672,26 @@ const Message = () => {
                             }}>
                                 {formatTimestamp(message.created_at)}
                             </span>
-                            {!isCollapsed && (
+                            {/* Header collapse divot */}
+                            <span
+                                onClick={() => toggleHeaderCollapse(messageId)}
+                                style={{
+                                    color: '#888',
+                                    fontSize: '12px',
+                                    marginLeft: '8px',
+                                    cursor: 'pointer',
+                                    userSelect: 'none',
+                                    padding: '2px 4px',
+                                    borderRadius: '3px',
+                                    transition: 'background-color 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#444'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                                title={isHeaderCollapsed ? 'Show From/To info' : 'Hide From/To info'}
+                            >
+                                {isHeaderCollapsed ? '▶' : '▼'}
+                            </span>
+                            {!isCollapsed && !isHeaderCollapsed && (
                                 <>
                                     <div style={{ marginTop: '5px', marginBottom: '3px' }}>
                                         <span style={{ color: '#888', fontSize: '12px' }}>From: </span>
