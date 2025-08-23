@@ -101,8 +101,8 @@ function TokenLocksOverview() {
                     const tokenLocks = await sneedLockActor.get_ledger_token_locks(ledgerPrincipal);
                     const formattedTokenLocks = tokenLocks.map(lock => ({
                         lock_id: lock[2].lock_id,
-                        amount: BigInt(lock[2].amount.toString()),
-                        expiry: new Date(Number(BigInt(lock[2].expiry) / BigInt(1000000)))
+                        amount: BigInt((lock[2].amount || 0).toString()),
+                        expiry: new Date(Number(BigInt(lock[2].expiry || 0) / BigInt(1000000)))
                     }));
 
                     // Calculate total locked amount for the token
@@ -351,8 +351,8 @@ function TokenLocksOverview() {
                             <TokenCard
                                 token={token}
                                 locks={{ [token.ledger_canister_id]: tokenLocks.map(lock => ({
-                                    lock_id: BigInt(lock.lock_id.toString()),
-                                    amount: BigInt(lock.amount.toString()),
+                                    lock_id: BigInt((lock.lock_id || 0).toString()),
+                                    amount: BigInt((lock.amount || 0).toString()),
                                     expiry: lock.expiry
                                 })) }}
                                 lockDetailsLoading={{}}

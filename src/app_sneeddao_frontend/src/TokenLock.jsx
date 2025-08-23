@@ -85,7 +85,7 @@ function TokenLock() {
             const formattedLocks = filteredLocks.map(lock => ({
                 lock_id: lock[2].lock_id,
                 amount: lock[2].amount,
-                expiry: new Date(Number(BigInt(lock[2].expiry) / BigInt(1000000))),
+                expiry: new Date(Number(BigInt(lock[2].expiry || 0) / BigInt(1000000))),
                 owner: lock[0].toString() // Extract the lock owner from lock[0]
             }));
 
@@ -97,7 +97,7 @@ function TokenLock() {
                 symbol,
                 decimals,
                 logo: logo || "icp_symbol.svg",
-                locked: formattedLocks.reduce((sum, lock) => sum + BigInt(lock.amount), BigInt(0)),
+                locked: formattedLocks.reduce((sum, lock) => sum + BigInt(lock.amount || 0), BigInt(0)),
                 conversion_rate
             });
 

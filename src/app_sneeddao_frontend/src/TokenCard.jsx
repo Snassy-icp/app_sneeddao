@@ -53,14 +53,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     <div className="header-row-1">
                         <span className="token-name">{token.name || token.symbol}</span>
                         <span className="token-usd-value">
-                            {token.available > 0n && token.conversion_rate > 0 && 
-                                `$${formatAmountWithConversion(token.available, token.decimals, token.conversion_rate)}`
+                            {(token.available || 0n) > 0n && token.conversion_rate > 0 && 
+                                `$${formatAmountWithConversion(token.available || 0n, token.decimals, token.conversion_rate)}`
                             }
                         </span>
                     </div>
                     <div className="header-row-2">
                         <div className="amount-symbol">
-                            <span className="token-amount">{formatAmount(token.available, token.decimals)}</span>
+                            <span className="token-amount">{formatAmount(token.available || 0n, token.decimals)}</span>
                             <span className="token-symbol">{token.symbol}</span>
                         </div>
                         <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
@@ -116,7 +116,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             <div className="balance-label">
                                 Available {showBalanceBreakdown ? '▼' : '▶'}
                             </div>
-                            <div className="balance-value">{formatAmount(token.available, token.decimals)}{getUSD(token.available, token.decimals, token.conversion_rate)}</div>
+                            <div className="balance-value">{formatAmount(token.available || 0n, token.decimals)}{getUSD(token.available || 0n, token.decimals, token.conversion_rate)}</div>
                         </div>
                         
                         {showBalanceBreakdown && (
@@ -136,7 +136,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     <div>
                                         <div style={{ fontSize: '12px', color: '#bdc3c7' }}>Frontend Wallet</div>
                                         <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'white' }}>
-                                            {formatAmount(token.balance, token.decimals)} {token.symbol}
+                                            {formatAmount(token.balance || 0n, token.decimals)} {token.symbol}
                                         </div>
                                     </div>
                                 </div>
@@ -144,7 +144,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 <div className="balance-breakdown-item">
                                     <div style={{ fontSize: '12px', color: '#bdc3c7' }}>Backend Wallet</div>
                                     <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'white' }}>
-                                        {formatAmount(token.available_backend, token.decimals)} {token.symbol}
+                                        {formatAmount(token.available_backend || 0n, token.decimals)} {token.symbol}
                                     </div>
                                     {(() => {
                                         const shouldShowButton = token.available_backend > 0n && !hideButtons;
@@ -196,7 +196,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 )}
                 <div className="balance-item">
                     <div className="balance-label">Locked</div>
-                    <div className="balance-value">{formatAmount(token.locked, token.decimals)}{getUSD(token.locked, token.decimals, token.conversion_rate)}</div>
+                    <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate)}</div>
                 </div>    
                 {(!hideAvailable && (
                     (rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0) ? (
@@ -222,8 +222,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             </div>
             {showDebug && (
                 <div className="debug-section">
-                    <p>Frontend: {formatAmount(token.balance, token.decimals)}</p>
-                    <p>Backend: {formatAmount(token.balance_backend, token.decimals)}</p>
+                    <p>Frontend: {formatAmount(token.balance || 0n, token.decimals)}</p>
+                    <p>Backend: {formatAmount(token.balance_backend || 0n, token.decimals)}</p>
                 </div>
             )}
             {lockDetailsLoading[token.ledger_canister_id] ? (
@@ -238,7 +238,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             <div key={lockIndex} className="lock-item">
                                 <div className="lock-details">
                                     <span className="lock-label">Amount:</span>
-                                    <span className="lock-value">{formatAmount(lock.amount, token.decimals)}{getUSD(lock.amount, token.decimals, token.conversion_rate)}</span>
+                                    <span className="lock-value">{formatAmount(lock.amount || 0n, token.decimals)}{getUSD(lock.amount || 0n, token.decimals, token.conversion_rate)}</span>
                                 </div>
                                 <div className="lock-details">
                                     <span className="lock-label">Expires:</span>
