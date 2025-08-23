@@ -32,7 +32,7 @@ const SMS = () => {
         replyTo: null
     });
     const [submitting, setSubmitting] = useState(false);
-    const [stats, setStats] = useState(null);
+
     const [config, setConfig] = useState(null);
     const [selectedMessage, setSelectedMessage] = useState(null);
     const [showMessageModal, setShowMessageModal] = useState(false);
@@ -102,30 +102,9 @@ const SMS = () => {
         }
     };
 
-    // Fetch stats and config
-    const fetchStats = async () => {
-        if (!identity) return;
-        
-        try {
-            const actor = getSmsActor();
-            if (!actor) return;
-
-            const [statsData, configData] = await Promise.all([
-                actor.get_stats(),
-                actor.get_config()
-            ]);
-            
-            setStats(statsData);
-            setConfig(configData);
-        } catch (err) {
-            console.error('Error fetching stats:', err);
-        }
-    };
-
     useEffect(() => {
         if (isAuthenticated) {
             fetchMessages();
-            fetchStats();
         }
     }, [isAuthenticated, selectedTab]);
 
@@ -473,85 +452,6 @@ const SMS = () => {
         <div className='page-container'>
             <Header />
             <main className="wallet-container">
-                {/* Header Section */}
-                <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center', 
-                    marginBottom: '30px',
-                    flexWrap: 'wrap',
-                    gap: '15px'
-                }}>
-                    <h1 style={{ color: '#ffffff', margin: 0 }}>My Messages</h1>
-                    <button
-                        onClick={() => setShowComposeModal(true)}
-                        style={{
-                            backgroundColor: '#3498db',
-                            color: '#ffffff',
-                            border: 'none',
-                            borderRadius: '8px',
-                            padding: '12px 24px',
-                            cursor: 'pointer',
-                            fontSize: '16px',
-                            fontWeight: '500',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px'
-                        }}
-                    >
-                        ✉️ Compose Message
-                    </button>
-                </div>
-
-                {/* Stats Section */}
-                {stats && (
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                        gap: '20px',
-                        marginBottom: '30px'
-                    }}>
-                        <div style={{
-                            backgroundColor: '#2a2a2a',
-                            borderRadius: '8px',
-                            padding: '20px',
-                            border: '1px solid #3a3a3a',
-                            textAlign: 'center'
-                        }}>
-                            <div style={{ color: '#3498db', fontSize: '32px', fontWeight: 'bold' }}>
-                                {Number(stats.total_messages)}
-                            </div>
-                            <div style={{ color: '#888', fontSize: '14px' }}>Total Messages</div>
-                        </div>
-                        <div style={{
-                            backgroundColor: '#2a2a2a',
-                            borderRadius: '8px',
-                            padding: '20px',
-                            border: '1px solid #3a3a3a',
-                            textAlign: 'center'
-                        }}>
-                            <div style={{ color: '#2ecc71', fontSize: '32px', fontWeight: 'bold' }}>
-                                {Number(stats.total_users)}
-                            </div>
-                            <div style={{ color: '#888', fontSize: '14px' }}>Total Users</div>
-                        </div>
-                        {config && (
-                            <div style={{
-                                backgroundColor: '#2a2a2a',
-                                borderRadius: '8px',
-                                padding: '20px',
-                                border: '1px solid #3a3a3a',
-                                textAlign: 'center'
-                            }}>
-                                <div style={{ color: '#f39c12', fontSize: '32px', fontWeight: 'bold' }}>
-                                    {Number(config.rate_limit_minutes)}
-                                </div>
-                                <div style={{ color: '#888', fontSize: '14px' }}>Minutes Between Messages</div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
                 {error && (
                     <div style={{ 
                         backgroundColor: 'rgba(231, 76, 60, 0.2)', 
@@ -565,35 +465,63 @@ const SMS = () => {
                     </div>
                 )}
 
-                {/* Tabs */}
+                {/* Tabs with Compose Button */}
                 <div style={{ 
                     display: 'flex', 
-                    gap: '10px', 
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                     marginBottom: '20px',
-                    borderBottom: '1px solid #3a3a3a'
+                    borderBottom: '1px solid #3a3a3a',
+                    paddingBottom: '0'
                 }}>
-                    {[
-                        { key: 'received', label: 'Received' },
-                        { key: 'sent', label: 'Sent' },
-                        { key: 'all', label: 'All Messages' }
-                    ].map(tab => (
-                        <button
-                            key={tab.key}
-                            onClick={() => setSelectedTab(tab.key)}
-                            style={{
-                                background: selectedTab === tab.key ? '#3498db' : 'transparent',
-                                color: selectedTab === tab.key ? '#ffffff' : '#888',
-                                border: 'none',
-                                borderRadius: '4px 4px 0 0',
-                                padding: '12px 20px',
-                                cursor: 'pointer',
-                                fontSize: '16px',
-                                borderBottom: selectedTab === tab.key ? '2px solid #3498db' : '2px solid transparent'
-                            }}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
+                    <div style={{ 
+                        display: 'flex', 
+                        gap: '10px'
+                    }}>
+                        {[
+                            { key: 'received', label: 'Received' },
+                            { key: 'sent', label: 'Sent' },
+                            { key: 'all', label: 'All Messages' }
+                        ].map(tab => (
+                            <button
+                                key={tab.key}
+                                onClick={() => setSelectedTab(tab.key)}
+                                style={{
+                                    background: selectedTab === tab.key ? '#3498db' : 'transparent',
+                                    color: selectedTab === tab.key ? '#ffffff' : '#888',
+                                    border: 'none',
+                                    borderRadius: '4px 4px 0 0',
+                                    padding: '12px 20px',
+                                    cursor: 'pointer',
+                                    fontSize: '16px',
+                                    borderBottom: selectedTab === tab.key ? '2px solid #3498db' : '2px solid transparent'
+                                }}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+                    
+                    {/* Compose Button - Right Aligned */}
+                    <button
+                        onClick={() => setShowComposeModal(true)}
+                        style={{
+                            backgroundColor: '#3498db',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '12px 24px',
+                            cursor: 'pointer',
+                            fontSize: '16px',
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            marginBottom: '2px' // Align with tab bottom border
+                        }}
+                    >
+                        ✉️ Compose Message
+                    </button>
                 </div>
 
                 {/* Messages List */}
