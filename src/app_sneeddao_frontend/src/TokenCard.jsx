@@ -14,6 +14,7 @@ console.log('TokenCard constants:', { GLDT_CANISTER_ID, SGLDT_CANISTER_ID });
 const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend }) => {
 
     const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(true);
 
     // Debug logging for wrap/unwrap buttons
     console.log('TokenCard Debug:', {
@@ -38,9 +39,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         return url;
     }
 
+    const handleHeaderClick = () => {
+        setIsExpanded(!isExpanded);
+    };
+
     return (
         <div className="card">
-            <div className="card-header">
+            <div className="card-header" onClick={handleHeaderClick}>
                 <div className="header-logo-column">
                     <img src={token.logo} alt={token.symbol} className="token-logo" />
                 </div>
@@ -58,11 +63,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             <span className="token-amount">{formatAmount(token.available, token.decimals)}</span>
                             <span className="token-symbol">{token.symbol}</span>
                         </div>
-                        <span className="expand-indicator">▼</span>
+                        <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
                     </div>
                 </div>
             </div>
-            {!hideButtons && (
+            {isExpanded && (
+                <>
+                    {!hideButtons && (
                 <div className="action-buttons">
 
                     <div className="tooltip-wrapper">
@@ -322,6 +329,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 }
                 return null;
             })()}
+                </>
+            )}
         </div>
     );
 };

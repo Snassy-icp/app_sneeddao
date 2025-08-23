@@ -107,6 +107,14 @@ body {
     align-items: stretch;
     margin-bottom: 15px;
     gap: 12px;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.card-header:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
 }
 
 .header-logo-column {
@@ -176,9 +184,13 @@ body {
 }
 
 .expand-indicator {
-    font-size: 0.8rem;
-    color: #888;
-    cursor: pointer;
+    font-size: 0.9rem;
+    color: #bdc3c7;
+    transition: transform 0.2s ease;
+}
+
+.card-header:hover .expand-indicator {
+    color: #ffffff;
 }
 
 .token-logo {
