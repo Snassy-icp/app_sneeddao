@@ -319,19 +319,27 @@ const Tips = () => {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    fontSize: '18px',
-                    fontWeight: 'bold'
+                    fontSize: '14px'
                 }}>
-                    {isLoadingToken ? (
-                        <span className="loading-indicator">⏳</span>
-                    ) : logo ? (
-                        <img src={logo} alt="" style={{ width: '24px', height: '24px', borderRadius: '50%' }} />
-                    ) : (
-                        <span style={{ fontSize: '20px' }}>💎</span>
-                    )}
-                    <span style={{ color: '#fff' }}>
-                        {isLoadingToken ? 'Loading...' : formatTokenAmount(tip.amount, tokenId)}
-                    </span>
+                    <span style={{ color: '#888', minWidth: '40px' }}>Amount:</span>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '18px',
+                        fontWeight: 'bold'
+                    }}>
+                        {isLoadingToken ? (
+                            <span className="loading-indicator">⏳</span>
+                        ) : logo ? (
+                            <img src={logo} alt="" style={{ width: '24px', height: '24px', borderRadius: '50%' }} />
+                        ) : (
+                            <span style={{ fontSize: '20px' }}>💎</span>
+                        )}
+                        <span style={{ color: '#fff' }}>
+                            {isLoadingToken ? 'Loading...' : formatTokenAmount(tip.amount, tokenId)}
+                        </span>
+                    </div>
                 </div>
 
                 {/* Principal Row */}
