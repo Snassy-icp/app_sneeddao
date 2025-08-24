@@ -819,9 +819,34 @@ function Proposal() {
                                         backgroundColor: '#2a2a2a', 
                                         padding: '10px', 
                                         borderRadius: '4px',
-                                        marginTop: '5px'
+                                        marginTop: '5px',
+                                        wordBreak: 'break-word',
+                                        overflowWrap: 'anywhere',
+                                        overflow: 'hidden',
+                                        width: '100%',
+                                        boxSizing: 'border-box'
                                     }}>
-                                        <ReactMarkdown>
+                                        <ReactMarkdown
+                                            components={{
+                                                // Custom styling for links to handle long URLs
+                                                a: ({node, ...props}) => (
+                                                    <a {...props} style={{
+                                                        color: '#3498db',
+                                                        wordBreak: 'break-all',
+                                                        overflowWrap: 'break-word',
+                                                        textDecoration: 'underline'
+                                                    }} />
+                                                ),
+                                                // Custom styling for paragraphs
+                                                p: ({node, ...props}) => (
+                                                    <p {...props} style={{
+                                                        wordBreak: 'break-word',
+                                                        overflowWrap: 'anywhere',
+                                                        margin: '0 0 10px 0'
+                                                    }} />
+                                                )
+                                            }}
+                                        >
                                             {convertHtmlToMarkdown(proposalData.proposal?.[0]?.summary || 'No summary')}
                                         </ReactMarkdown>
                                     </div></p>
