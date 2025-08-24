@@ -595,6 +595,11 @@ persistent actor SneedSNSForum {
         Lib.remove_proposals_topic(state, caller, forum_id)
     };
 
+    // Feed endpoint
+    public query func get_feed(input: T.GetFeedInput) : async T.GetFeedResponse {
+        Lib.get_feed(state, input)
+    };
+
     // Text limits management endpoints
     public query func get_text_limits() : async T.TextLimits {
         Lib.get_text_limits(state)

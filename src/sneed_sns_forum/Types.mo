@@ -645,4 +645,49 @@ module {
         let h2 = key.1;
         h1 ^ h2
     };
+
+    // Feed types
+    public type FeedItemType = {
+        #forum;
+        #topic;
+        #thread;
+        #post;
+    };
+
+    public type FeedItem = {
+        id: Nat;
+        item_type: FeedItemType;
+        title: ?Text;
+        body: ?Text;
+        created_by: Principal;
+        created_at: Int;
+        
+        // Context information
+        sns_root_canister_id: ?Principal;
+        forum_id: ?Nat;
+        forum_title: ?Text;
+        topic_id: ?Nat;
+        topic_title: ?Text;
+        thread_id: ?Nat;
+        thread_title: ?Text;
+    };
+
+    public type FeedFilter = {
+        sns_root_canister_ids: ?[Principal]; // Filter by SNS root canister IDs
+        topic_ids: ?[Nat]; // Filter by topic IDs
+        creator_principals: ?[Principal]; // Filter by creator principals
+        search_text: ?Text; // Free text search in titles/bodies
+    };
+
+    public type GetFeedInput = {
+        start_id: ?Nat; // Start from this ID (exclusive), if null start from highest
+        length: Nat; // Number of items to return
+        filter: ?FeedFilter; // Optional filter
+    };
+
+    public type GetFeedResponse = {
+        items: [FeedItem];
+        has_more: Bool; // Whether there are more items available
+        next_start_id: ?Nat; // ID to use for next page
+    };
 }

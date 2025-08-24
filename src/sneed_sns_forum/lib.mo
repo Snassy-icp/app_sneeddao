@@ -13,6 +13,7 @@ import Order "mo:base/Order";
 import Vector "mo:vector";
 import Float "mo:base/Float";
 import Int "mo:base/Int";
+import Char "mo:base/Char";
 import SnsUtil "../SnsUtil";
 
 import T "Types";
@@ -3771,6 +3772,327 @@ module {
         switch (Map.remove(state.proposal_topics, Map.nhash, forum_id)) {
             case (?_) #ok();
             case null #err(#NotFound("No proposals topic set for this forum"));
+        }
+    };
+
+    // Feed functionality
+    private func build_feed_item_from_forum(state: ForumState, forum: Forum) : ?T.FeedItem {
+        let created_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, forum.created_by)) {
+            case (?p) p;
+            case null return null;
+        };
+
+        ?{
+            id = forum.id;
+            item_type = #forum;
+            title = ?forum.title;
+            body = ?forum.description;
+            created_by;
+            created_at = forum.created_at;
+            sns_root_canister_id = forum.sns_root_canister_id;
+            forum_id = null;
+            forum_title = null;
+            topic_id = null;
+            topic_title = null;
+            thread_id = null;
+            thread_title = null;
+        }
+    };
+
+    private func build_feed_item_from_topic(state: ForumState, topic: Topic) : ?T.FeedItem {
+        let created_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, topic.created_by)) {
+            case (?p) p;
+            case null return null;
+        };
+
+        let (forum_title, sns_root_canister_id) = switch (Map.get(state.forums, Map.nhash, topic.forum_id)) {
+            case (?forum) (forum.title, forum.sns_root_canister_id);
+            case null ("Unknown Forum", null);
+        };
+
+        ?{
+            id = topic.id;
+            item_type = #topic;
+            title = ?topic.title;
+            body = ?topic.description;
+            created_by;
+            created_at = topic.created_at;
+            sns_root_canister_id;
+            forum_id = ?topic.forum_id;
+            forum_title = ?forum_title;
+            topic_id = null;
+            topic_title = null;
+            thread_id = null;
+            thread_title = null;
+        }
+    };
+
+    private func build_feed_item_from_thread(state: ForumState, thread: Thread) : ?T.FeedItem {
+        let created_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, thread.created_by)) {
+            case (?p) p;
+            case null return null;
+        };
+
+        let (topic_title, forum_id, forum_title, sns_root_canister_id) = switch (Map.get(state.topics, Map.nhash, thread.topic_id)) {
+            case (?topic) {
+                let (f_title, sns_root) = switch (Map.get(state.forums, Map.nhash, topic.forum_id)) {
+                    case (?forum) (forum.title, forum.sns_root_canister_id);
+                    case null ("Unknown Forum", null);
+                };
+                (topic.title, topic.forum_id, f_title, sns_root)
+            };
+            case null ("Unknown Topic", 0, "Unknown Forum", null);
+        };
+
+        ?{
+            id = thread.id;
+            item_type = #thread;
+            title = thread.title;
+            body = ?thread.body;
+            created_by;
+            created_at = thread.created_at;
+            sns_root_canister_id;
+            forum_id = ?forum_id;
+            forum_title = ?forum_title;
+            topic_id = ?thread.topic_id;
+            topic_title = ?topic_title;
+            thread_id = null;
+            thread_title = null;
+        }
+    };
+
+    private func build_feed_item_from_post(state: ForumState, post: Post) : ?T.FeedItem {
+        let created_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, post.created_by)) {
+            case (?p) p;
+            case null return null;
+        };
+
+        let (thread_title, topic_id, topic_title, forum_id, forum_title, sns_root_canister_id) = switch (Map.get(state.threads, Map.nhash, post.thread_id)) {
+            case (?thread) {
+                let (t_title, f_id, f_title, sns_root) = switch (Map.get(state.topics, Map.nhash, thread.topic_id)) {
+                    case (?topic) {
+                        let (forum_t, sns_r) = switch (Map.get(state.forums, Map.nhash, topic.forum_id)) {
+                            case (?forum) (forum.title, forum.sns_root_canister_id);
+                            case null ("Unknown Forum", null);
+                        };
+                        (topic.title, topic.forum_id, forum_t, sns_r)
+                    };
+                    case null ("Unknown Topic", 0, "Unknown Forum", null);
+                };
+                (thread.title, thread.topic_id, t_title, f_id, f_title, sns_root)
+            };
+            case null (null, 0, "Unknown Topic", 0, "Unknown Forum", null);
+        };
+
+        ?{
+            id = post.id;
+            item_type = #post;
+            title = post.title;
+            body = ?post.body;
+            created_by;
+            created_at = post.created_at;
+            sns_root_canister_id;
+            forum_id = ?forum_id;
+            forum_title = ?forum_title;
+            topic_id = ?topic_id;
+            topic_title = ?topic_title;
+            thread_id = ?post.thread_id;
+            thread_title = thread_title;
+        }
+    };
+
+    private func matches_filter(item: T.FeedItem, filter: T.FeedFilter) : Bool {
+        // Check SNS root canister ID filter
+        switch (filter.sns_root_canister_ids) {
+            case (?sns_ids) {
+                switch (item.sns_root_canister_id) {
+                    case (?sns_root) {
+                        var found = false;
+                        for (sns_id in sns_ids.vals()) {
+                            if (Principal.equal(sns_root, sns_id)) {
+                                found := true;
+                            };
+                        };
+                        if (not found) return false;
+                    };
+                    case null return false;
+                };
+            };
+            case null {};
+        };
+
+        // Check topic ID filter
+        switch (filter.topic_ids) {
+            case (?topic_ids) {
+                switch (item.topic_id) {
+                    case (?topic_id) {
+                        var found = false;
+                        for (tid in topic_ids.vals()) {
+                            if (topic_id == tid) {
+                                found := true;
+                            };
+                        };
+                        if (not found) return false;
+                    };
+                    case null return false;
+                };
+            };
+            case null {};
+        };
+
+        // Check creator principals filter
+        switch (filter.creator_principals) {
+            case (?principals) {
+                var found = false;
+                for (principal in principals.vals()) {
+                    if (Principal.equal(item.created_by, principal)) {
+                        found := true;
+                    };
+                };
+                if (not found) return false;
+            };
+            case null {};
+        };
+
+        // Check search text filter
+        switch (filter.search_text) {
+            case (?search_text) {
+                let search_lower = Text.map(search_text, func (c: Char) : Char {
+                    if (c >= 'A' and c <= 'Z') {
+                        Char.fromNat32(Char.toNat32(c) + 32)
+                    } else {
+                        c
+                    }
+                });
+                
+                var text_match = false;
+                
+                // Check title
+                switch (item.title) {
+                    case (?title) {
+                        let title_lower = Text.map(title, func (c: Char) : Char {
+                            if (c >= 'A' and c <= 'Z') {
+                                Char.fromNat32(Char.toNat32(c) + 32)
+                            } else {
+                                c
+                            }
+                        });
+                        if (Text.contains(title_lower, #text search_lower)) {
+                            text_match := true;
+                        };
+                    };
+                    case null {};
+                };
+                
+                // Check body if title didn't match
+                if (not text_match) {
+                    switch (item.body) {
+                        case (?body) {
+                            let body_lower = Text.map(body, func (c: Char) : Char {
+                                if (c >= 'A' and c <= 'Z') {
+                                    Char.fromNat32(Char.toNat32(c) + 32)
+                                } else {
+                                    c
+                                }
+                            });
+                            if (Text.contains(body_lower, #text search_lower)) {
+                                text_match := true;
+                            };
+                        };
+                        case null {};
+                    };
+                };
+                
+                if (not text_match) return false;
+            };
+            case null {};
+        };
+
+        true
+    };
+
+    public func get_feed(state: ForumState, input: T.GetFeedInput) : T.GetFeedResponse {
+        let start_id = switch (input.start_id) {
+            case (?id) id;
+            case null if (state.next_id > 0) state.next_id - 1 else 0; // Start from highest ID
+        };
+
+        let items_buffer = Buffer.Buffer<T.FeedItem>(input.length);
+        var current_id = start_id;
+        var checked_count = 0;
+        let max_checks = input.length * 10; // Prevent infinite loops
+
+        while (items_buffer.size() < input.length and current_id > 0 and checked_count < max_checks) {
+            checked_count += 1;
+            
+            // Try to find an item with this ID
+            var feed_item : ?T.FeedItem = null;
+            
+            // Check if it's a forum
+            switch (Map.get(state.forums, Map.nhash, current_id)) {
+                case (?forum) {
+                    if (not forum.deleted) {
+                        feed_item := build_feed_item_from_forum(state, forum);
+                    };
+                };
+                case null {
+                    // Check if it's a topic
+                    switch (Map.get(state.topics, Map.nhash, current_id)) {
+                        case (?topic) {
+                            if (not topic.deleted) {
+                                feed_item := build_feed_item_from_topic(state, topic);
+                            };
+                        };
+                        case null {
+                            // Check if it's a thread
+                            switch (Map.get(state.threads, Map.nhash, current_id)) {
+                                case (?thread) {
+                                    if (not thread.deleted) {
+                                        feed_item := build_feed_item_from_thread(state, thread);
+                                    };
+                                };
+                                case null {
+                                    // Check if it's a post
+                                    switch (Map.get(state.posts, Map.nhash, current_id)) {
+                                        case (?post) {
+                                            if (not post.deleted) {
+                                                feed_item := build_feed_item_from_post(state, post);
+                                            };
+                                        };
+                                        case null {};
+                                    };
+                                };
+                            };
+                        };
+                    };
+                };
+            };
+
+            // If we found an item, check if it matches the filter
+            switch (feed_item) {
+                case (?item) {
+                    let matches = switch (input.filter) {
+                        case (?filter) matches_filter(item, filter);
+                        case null true;
+                    };
+                    
+                    if (matches) {
+                        items_buffer.add(item);
+                    };
+                };
+                case null {};
+            };
+
+            current_id -= 1;
+        };
+
+        let has_more = current_id > 0 and checked_count < max_checks;
+        let next_start_id = if (has_more) ?current_id else null;
+
+        {
+            items = Buffer.toArray(items_buffer);
+            has_more;
+            next_start_id;
         }
     };
 }
