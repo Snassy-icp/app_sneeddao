@@ -280,7 +280,30 @@ function Proposals() {
                         flexWrap: 'wrap',
                         gap: '15px'
                     }}>
-                        <h1 style={{ color: '#ffffff', margin: '0' }}>Proposals</h1>
+                        <div>
+                            <h1 style={{ color: '#ffffff', margin: '0 0 8px 0' }}>Proposals</h1>
+                            <p style={{ 
+                                color: '#888', 
+                                margin: '0', 
+                                fontSize: '14px',
+                                fontStyle: 'italic'
+                            }}>
+                                Want to create a proposal? Sneed DAO recommends{' '}
+                                <a 
+                                    href="https://ic-toolkit.app" 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    style={{ 
+                                        color: '#3498db', 
+                                        textDecoration: 'none' 
+                                    }}
+                                    onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                    onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                >
+                                    ic-toolkit.app
+                                </a>
+                            </p>
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <label style={{ color: '#ffffff', fontSize: '14px' }}>Items per page:</label>
                             <select
