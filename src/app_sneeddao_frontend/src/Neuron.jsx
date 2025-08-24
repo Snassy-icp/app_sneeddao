@@ -460,33 +460,38 @@ function Neuron() {
                                 <div style={{ marginBottom: '15px' }}>
                                     <div style={{ 
                                         display: 'flex', 
-                                        alignItems: 'center', 
+                                        alignItems: 'flex-start', 
                                         gap: '10px',
                                         marginBottom: '10px'
                                     }}>
                                         <div style={{ 
                                             fontFamily: 'monospace',
                                             fontSize: '16px',
-                                            color: '#888'
+                                            color: '#888',
+                                            wordBreak: 'break-all',
+                                            overflowWrap: 'anywhere',
+                                            lineHeight: '1.4',
+                                            flex: 1,
+                                            minWidth: 0
                                         }}>
                                             {currentNeuronId}
-                                            <button
-                                                onClick={() => navigator.clipboard.writeText(currentNeuronId)}
-                                                style={{
-                                                    background: 'none',
-                                                    border: 'none',
-                                                    padding: '4px',
-                                                    cursor: 'pointer',
-                                                    color: '#888',
-                                                    display: 'inline-flex',
-                                                    alignItems: 'center',
-                                                    marginLeft: '8px'
-                                                }}
-                                                title="Copy neuron ID to clipboard"
-                                            >
-                                                📋
-                                            </button>
                                         </div>
+                                        <button
+                                            onClick={() => navigator.clipboard.writeText(currentNeuronId)}
+                                            style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                padding: '4px',
+                                                cursor: 'pointer',
+                                                color: '#888',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                flexShrink: 0
+                                            }}
+                                            title="Copy neuron ID to clipboard"
+                                        >
+                                            📋
+                                        </button>
                                     </div>
                                     {(() => {
                                         const { name, nickname, isVerified } = getDisplayName(currentNeuronId);

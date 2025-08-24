@@ -517,7 +517,7 @@ export default function Me() {
                             fontSize: '14px',
                             lineHeight: '1.6'
                         }}>
-                            Quick access: {' '}
+
                             <Link
                                 to="/wallet"
                                 style={{
