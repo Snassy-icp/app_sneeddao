@@ -187,7 +187,7 @@ const MessageDialog = ({
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            zIndex: 1000
+            zIndex: 10001
         }}>
             <div style={{
                 backgroundColor: '#2a2a2a',

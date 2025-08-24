@@ -107,6 +107,7 @@ export const PrincipalDisplay = React.memo(({
         e.preventDefault();
         e.stopPropagation();
         
+        // Use clientX/clientY for fixed positioning
         setContextMenuPosition({ x: e.clientX, y: e.clientY });
         setContextMenuOpen(true);
     }, [enableContextMenu, principalId]);
@@ -115,13 +116,17 @@ export const PrincipalDisplay = React.memo(({
     const handleTouchStart = useCallback((e) => {
         if (!enableContextMenu || !principalId) return;
         
+        const touch = e.touches[0];
+        if (!touch) return;
+        
         const timer = setTimeout(() => {
-            const touch = e.touches[0];
-            if (touch) {
-                setContextMenuPosition({ x: touch.clientX, y: touch.clientY });
-                setContextMenuOpen(true);
-                // Prevent default to avoid text selection
-                e.preventDefault();
+            // Use clientX/clientY for fixed positioning
+            setContextMenuPosition({ x: touch.clientX, y: touch.clientY });
+            setContextMenuOpen(true);
+            
+            // Add haptic feedback on mobile if available
+            if (navigator.vibrate) {
+                navigator.vibrate(50);
             }
         }, 500); // 500ms long press
         
@@ -129,7 +134,15 @@ export const PrincipalDisplay = React.memo(({
     }, [enableContextMenu, principalId]);
 
     // Handle long press end (mobile)
-    const handleTouchEnd = useCallback(() => {
+    const handleTouchEnd = useCallback((e) => {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            setLongPressTimer(null);
+        }
+    }, [longPressTimer]);
+
+    // Handle touch move (cancel long press if user moves finger)
+    const handleTouchMove = useCallback(() => {
         if (longPressTimer) {
             clearTimeout(longPressTimer);
             setLongPressTimer(null);
@@ -170,7 +183,8 @@ export const PrincipalDisplay = React.memo(({
                         },
                         onContextMenu: handleContextMenu,
                         onTouchStart: handleTouchStart,
-                        onTouchEnd: handleTouchEnd
+                        onTouchEnd: handleTouchEnd,
+                        onTouchMove: handleTouchMove
                     },
                     children
                 );
@@ -188,12 +202,13 @@ export const PrincipalDisplay = React.memo(({
                     onMouseLeave: (e) => e.target.style.textDecoration = 'none',
                     onContextMenu: handleContextMenu,
                     onTouchStart: handleTouchStart,
-                    onTouchEnd: handleTouchEnd
+                    onTouchEnd: handleTouchEnd,
+                    onTouchMove: handleTouchMove
                 },
                 children
             );
         };
-    }, [principal, noLink, handleContextMenu, handleTouchStart, handleTouchEnd, principalId]);
+    }, [principal, noLink, handleContextMenu, handleTouchStart, handleTouchEnd, handleTouchMove, principalId]);
     
     console.log('PrincipalDisplay rendered with:', {
         principal: principalId,

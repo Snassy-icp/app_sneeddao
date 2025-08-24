@@ -74,7 +74,7 @@ const PrincipalContextMenu = ({
     // Calculate menu position to stay within viewport
     const getMenuStyle = () => {
         const menuWidth = 200;
-        const menuHeight = 160; // Approximate height
+        const menuHeight = 180; // Approximate height
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
 
@@ -83,16 +83,20 @@ const PrincipalContextMenu = ({
 
         // Adjust horizontal position if menu would go off screen
         if (left + menuWidth > viewportWidth) {
-            left = viewportWidth - menuWidth - 10;
+            left = position.x - menuWidth; // Show to the left of cursor
         }
+        
+        // Ensure menu doesn't go off the left edge
         if (left < 10) {
             left = 10;
         }
 
         // Adjust vertical position if menu would go off screen
         if (top + menuHeight > viewportHeight) {
-            top = viewportHeight - menuHeight - 10;
+            top = position.y - menuHeight; // Show above cursor
         }
+        
+        // Ensure menu doesn't go off the top edge
         if (top < 10) {
             top = 10;
         }
@@ -101,7 +105,7 @@ const PrincipalContextMenu = ({
             position: 'fixed',
             left: `${left}px`,
             top: `${top}px`,
-            zIndex: 1001
+            zIndex: 10000 // Much higher z-index
         };
     };
 
