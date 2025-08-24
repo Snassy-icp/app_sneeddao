@@ -249,15 +249,28 @@ function Feed() {
         return date.toLocaleString();
     };
 
+    // Helper function to extract variant value from Motoko variant
+    const extractVariant = (variant) => {
+        if (typeof variant === 'string') return variant;
+        if (typeof variant === 'object' && variant !== null) {
+            const keys = Object.keys(variant);
+            if (keys.length > 0) {
+                return keys[0]; // Return the first (and usually only) key
+            }
+        }
+        return String(variant);
+    };
+
     // Get type color
     const getTypeColor = (type) => {
+        const typeStr = extractVariant(type);
         const colors = {
             forum: '#e67e22',
             topic: '#9b59b6',
             thread: '#2ecc71',
             post: '#3498db'
         };
-        return colors[type] || '#3498db';
+        return colors[typeStr] || '#3498db';
     };
 
     // Load feed items
@@ -280,7 +293,11 @@ function Feed() {
                     filter.search_text = [appliedFilters.searchText];
                 }
                 if (appliedFilters.selectedSns) {
-                    filter.sns_root_canister_ids = [Principal.fromText(appliedFilters.selectedSns)];
+                    try {
+                        filter.sns_root_canister_ids = [Principal.fromText(appliedFilters.selectedSns)];
+                    } catch (e) {
+                        console.warn('Invalid SNS principal:', appliedFilters.selectedSns, e);
+                    }
                 }
                 // Note: We don't have topic_ids or creator_principals filters in the UI yet
             }
@@ -292,6 +309,11 @@ function Feed() {
             };
 
             const response = await forumActor.get_feed(input);
+            
+            // Debug log to see the structure of the response
+            if (response.items.length > 0) {
+                console.log('Feed item sample:', response.items[0]);
+            }
             
             if (isLoadMore) {
                 setFeedItems(prev => [...prev, ...response.items]);
@@ -345,67 +367,107 @@ function Feed() {
         }
     };
 
+    // Helper function to safely convert Principal to text
+    const principalToText = (principal) => {
+        if (!principal) return '';
+        
+        // If it's already a string
+        if (typeof principal === 'string') return principal;
+        
+        // If it has toText method
+        if (principal.toText && typeof principal.toText === 'function') {
+            return principal.toText();
+        }
+        
+        // If it's a Principal object with _arr property
+        if (principal._arr) {
+            try {
+                return Principal.fromUint8Array(principal._arr).toText();
+            } catch (e) {
+                console.warn('Failed to convert principal with _arr:', e);
+            }
+        }
+        
+        // If it's an array (Uint8Array representation)
+        if (Array.isArray(principal) || principal instanceof Uint8Array) {
+            try {
+                return Principal.fromUint8Array(principal).toText();
+            } catch (e) {
+                console.warn('Failed to convert principal array:', e);
+            }
+        }
+        
+        // Fallback - convert to string
+        return String(principal);
+    };
+
     // Render feed item
     const renderFeedItem = (item) => {
         const typeColor = getTypeColor(item.item_type);
+        const typeStr = extractVariant(item.item_type);
         
         return (
             <div key={item.id} style={styles.feedItem}>
                 <div style={styles.feedItemHeader}>
                     <span style={{...styles.feedItemType, backgroundColor: typeColor}}>
-                        {item.item_type}
+                        {typeStr}
                     </span>
                     <span style={styles.feedItemDate}>
                         {formatDate(item.created_at)}
                     </span>
                 </div>
                 
-                {item.title && (
-                    <h3 style={styles.feedItemTitle}>{item.title}</h3>
+                {item.title && item.title.length > 0 && (
+                    <h3 style={styles.feedItemTitle}>
+                        {Array.isArray(item.title) ? item.title[0] : item.title}
+                    </h3>
                 )}
                 
-                {item.body && (
+                {item.body && item.body.length > 0 && (
                     <div style={styles.feedItemBody}>
-                        {item.body.length > 300 ? `${item.body.substring(0, 300)}...` : item.body}
+                        {(() => {
+                            const bodyText = Array.isArray(item.body) ? item.body[0] : item.body;
+                            return bodyText.length > 300 ? `${bodyText.substring(0, 300)}...` : bodyText;
+                        })()}
                     </div>
                 )}
                 
                 <div style={styles.feedItemContext}>
-                    {item.sns_root_canister_id && (
+                    {item.sns_root_canister_id && (Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id.length > 0 : true) && (
                         <span style={styles.contextItem}>
-                            SNS: {item.sns_root_canister_id.toText().substring(0, 8)}...
+                            SNS: {principalToText(Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id[0] : item.sns_root_canister_id).substring(0, 8)}...
                         </span>
                     )}
                     
-                    {item.forum_title && (
+                    {item.forum_title && (Array.isArray(item.forum_title) ? item.forum_title.length > 0 : true) && (
                         <Link 
                             to={`/forum`} 
                             style={styles.contextLink}
                         >
-                            Forum: {item.forum_title}
+                            Forum: {Array.isArray(item.forum_title) ? item.forum_title[0] : item.forum_title}
                         </Link>
                     )}
                     
-                    {item.topic_title && (
+                    {item.topic_title && (Array.isArray(item.topic_title) ? item.topic_title.length > 0 : true) && (
                         <Link 
-                            to={`/topic/${item.topic_id}`} 
+                            to={`/topic/${Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id}`} 
                             style={styles.contextLink}
                         >
-                            Topic: {item.topic_title}
+                            Topic: {Array.isArray(item.topic_title) ? item.topic_title[0] : item.topic_title}
                         </Link>
                     )}
                     
-                    {item.thread_title && (
+                    {item.thread_title && (Array.isArray(item.thread_title) ? item.thread_title.length > 0 : true) && (
                         <Link 
-                            to={`/thread?id=${item.thread_id}`} 
+                            to={`/thread?id=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id}`} 
                             style={styles.contextLink}
                         >
-                            Thread: {item.thread_title}
+                            Thread: {Array.isArray(item.thread_title) ? item.thread_title[0] : item.thread_title}
                         </Link>
                     )}
                     
                     <span style={styles.contextItem}>
-                        By: {item.created_by.toText().substring(0, 8)}...
+                        By: {principalToText(item.created_by).substring(0, 8)}...
                     </span>
                 </div>
             </div>
@@ -417,7 +479,7 @@ function Feed() {
             <Header showSnsDropdown={true} />
             <div style={styles.container}>
                 <div style={styles.header}>
-                    <h1 style={styles.title}>Feed</h1>
+                    <h1 style={styles.title}>Sneed's Feed</h1>
                     <p style={styles.description}>
                         Latest activity across all SNS forums - see new forums, topics, threads, and posts as they happen.
                     </p>
