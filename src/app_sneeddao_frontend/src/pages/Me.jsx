@@ -438,19 +438,16 @@ export default function Me() {
         <div className='page-container'>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             <main className="wallet-container">
-                {/* Principal ID and Quick Links section */}
+                {/* Principal ID section */}
                 <div style={{
-                    display: 'flex',
-                    gap: '20px',
                     marginBottom: '30px'
-                }} className="principal-quick-links-container">
+                }}>
                     {/* Principal ID card */}
                     <div style={{ 
                         backgroundColor: '#2a2a2a',
                         borderRadius: '8px',
                         padding: '20px',
-                        border: '1px solid #3a3a3a',
-                        flex: '1'
+                        border: '1px solid #3a3a3a'
                     }}>
                         <div style={{ marginBottom: '15px' }}>
                             <h2 style={{ 
@@ -511,6 +508,88 @@ export default function Me() {
                                 {principalName ? 'Change Name' : 'Set Name'}
                             </button>
                         )}
+
+                        {/* Quick Links as flowing paragraph */}
+                        <div style={{
+                            marginTop: '15px',
+                            marginBottom: '15px',
+                            color: '#cccccc',
+                            fontSize: '14px',
+                            lineHeight: '1.6'
+                        }}>
+                            Quick access: {' '}
+                            <Link
+                                to="/wallet"
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none'
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                💼 My Wallet
+                            </Link>
+                            {' • '}
+                            <Link
+                                to="/posts"
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none'
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                📝 Posts
+                            </Link>
+                            {' • '}
+                            <Link
+                                to="/tips"
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none'
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                💰 Tips
+                            </Link>
+                            {' • '}
+                            <Link
+                                to="/sms"
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none'
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                💬 Messages
+                            </Link>
+                            {' • '}
+                            <Link
+                                to="/rewards"
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none'
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                🎁 Rewards
+                            </Link>
+                            {' • '}
+                            <Link
+                                to={`/sneedlock_info?owner=${identity?.getPrincipal().toString()}`}
+                                style={{
+                                    color: '#3498db',
+                                    textDecoration: 'none'
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                🔒 My Locks
+                            </Link>
+                        </div>
 
                         {editingPrincipalName && (
                             <div style={{ 
@@ -615,169 +694,7 @@ export default function Me() {
                         )}
                     </div>
 
-                    {/* Quick Links card */}
-                    <div style={{ 
-                        backgroundColor: '#2a2a2a',
-                        borderRadius: '8px',
-                        padding: '20px',
-                        border: '1px solid #3a3a3a',
-                        width: '200px'
-                    }}>
-                        <h2 style={{ 
-                            color: '#ffffff',
-                            margin: '0 0 15px 0',
-                            fontSize: '18px',
-                            fontWeight: '500'
-                        }}>
-                            Quick Links
-                        </h2>
-                        <div style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '10px'
-                        }}>
-                            {/* My Wallet */}
-                            <Link
-                                to="/wallet"
-                                style={{
-                                    color: '#3498db',
-                                    textDecoration: 'none',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px',
-                                    borderRadius: '4px',
-                                    transition: 'background-color 0.2s',
-                                    fontSize: '14px',
-                                    width: '100%'
-                                }}
-                                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
-                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                            >
-                                <span>💼 My Wallet</span>
-                            </Link>
 
-                            {/* Posts */}
-                            <Link
-                                to="/posts"
-                                style={{
-                                    color: '#3498db',
-                                    textDecoration: 'none',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px',
-                                    borderRadius: '4px',
-                                    transition: 'background-color 0.2s',
-                                    fontSize: '14px',
-                                    width: '100%'
-                                }}
-                                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
-                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                            >
-                                <span>📝 Posts</span>
-                            </Link>
-
-                            {/* Tips */}
-                            <Link
-                                to="/tips"
-                                style={{
-                                    color: '#3498db',
-                                    textDecoration: 'none',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px',
-                                    borderRadius: '4px',
-                                    transition: 'background-color 0.2s',
-                                    fontSize: '14px',
-                                    width: '100%'
-                                }}
-                                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
-                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                            >
-                                <span>💰 Tips</span>
-                            </Link>
-
-                            {/* Messages */}
-                            <Link
-                                to="/sms"
-                                style={{
-                                    color: '#3498db',
-                                    textDecoration: 'none',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px',
-                                    borderRadius: '4px',
-                                    transition: 'background-color 0.2s',
-                                    fontSize: '14px',
-                                    width: '100%'
-                                }}
-                                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
-                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                            >
-                                <span>💬 Messages</span>
-                            </Link>
-
-                            {/* Rewards */}
-                            <Link
-                                to="/rewards"
-                                style={{
-                                    color: '#3498db',
-                                    textDecoration: 'none',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px',
-                                    borderRadius: '4px',
-                                    transition: 'background-color 0.2s',
-                                    fontSize: '14px',
-                                    width: '100%'
-                                }}
-                                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
-                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                            >
-                                <span>🎁 Rewards</span>
-                            </Link>
-
-                            {/* My Locks */}
-                            <Link
-                                to={`/sneedlock_info?owner=${identity?.getPrincipal().toString()}`}
-                                style={{
-                                    color: '#3498db',
-                                    textDecoration: 'none',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
-                                    padding: '8px',
-                                    borderRadius: '4px',
-                                    transition: 'background-color 0.2s',
-                                    fontSize: '14px',
-                                    width: '100%'
-                                }}
-                                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
-                                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                            >
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px'
-                                }}>
-                                    <img 
-                                        src="/sneedlock-logo4.png" 
-                                        alt="Sneedlock"
-                                        style={{
-                                            width: '16px',
-                                            height: '16px',
-                                            objectFit: 'contain'
-                                        }}
-                                    /> 
-                                    <span>My Locks</span>
-                                </div>
-                            </Link>
-                        </div>
-                    </div>
                 </div>
 
                 <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>My Neurons</h1>
