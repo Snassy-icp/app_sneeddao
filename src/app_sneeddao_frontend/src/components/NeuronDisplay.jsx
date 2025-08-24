@@ -12,7 +12,8 @@ export const NeuronDisplay = React.memo(({
     showCopyButton = true,
     enableContextMenu = true,
     onNicknameUpdate = null,
-    style = {}
+    style = {},
+    noLink = false
 }) => {
     const [contextMenuOpen, setContextMenuOpen] = useState(false);
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
@@ -117,10 +118,10 @@ export const NeuronDisplay = React.memo(({
                 ...style
             }
         }, [
-            // Link with name and truncated ID
-            React.createElement(Link, {
+            // Link or div with name and truncated ID
+            React.createElement(noLink ? 'div' : Link, {
                 key: 'link',
-                to: `/neuron?neuronid=${displayId}&sns=${snsRoot}`,
+                ...(noLink ? {} : { to: `/neuron?neuronid=${displayId}&sns=${snsRoot}` }),
                 style: {
                     color: neuronColor,
                     textDecoration: 'none',
@@ -132,8 +133,10 @@ export const NeuronDisplay = React.memo(({
                     flex: '1'
                 },
                 title: displayId,
-                onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
-                onMouseLeave: (e) => e.target.style.textDecoration = 'none',
+                ...(noLink ? {} : {
+                    onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
+                    onMouseLeave: (e) => e.target.style.textDecoration = 'none'
+                }),
                 onContextMenu: handleContextMenu,
                 onTouchStart: handleTouchStart,
                 onTouchEnd: handleTouchEnd,
@@ -232,7 +235,8 @@ export const NeuronDisplay = React.memo(({
         JSON.stringify(prevProps.displayInfo) === JSON.stringify(nextProps.displayInfo) &&
         prevProps.showCopyButton === nextProps.showCopyButton &&
         prevProps.enableContextMenu === nextProps.enableContextMenu &&
-        JSON.stringify(prevProps.style) === JSON.stringify(nextProps.style)
+        JSON.stringify(prevProps.style) === JSON.stringify(nextProps.style) &&
+        prevProps.noLink === nextProps.noLink
     );
 });
 

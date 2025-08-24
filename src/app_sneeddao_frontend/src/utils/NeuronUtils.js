@@ -243,7 +243,8 @@ export const formatNeuronDisplayWithContext = (neuronId, snsRoot, displayInfo = 
         showCopyButton = true,
         enableContextMenu = true,
         onNicknameUpdate = null,
-        style = {}
+        style = {},
+        noLink = false
     } = options;
 
     return React.createElement(NeuronDisplay, {
@@ -253,7 +254,8 @@ export const formatNeuronDisplayWithContext = (neuronId, snsRoot, displayInfo = 
         showCopyButton,
         enableContextMenu,
         onNicknameUpdate,
-        style
+        style,
+        noLink
     });
 };
 
