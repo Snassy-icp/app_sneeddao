@@ -2,6 +2,7 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { Principal } from '@dfinity/principal';
 import React from 'react';
 import { Link } from 'react-router-dom';
+import NeuronDisplay from '../components/NeuronDisplay';
 import { HttpAgent } from '@dfinity/agent';
 
 // Helper function to convert Uint8Array to hex string
@@ -234,6 +235,26 @@ export const formatNeuronIdLink = (neuronId, snsRoot, getNeuronDisplayNameFn) =>
             title: 'Copy neuron ID to clipboard'
         }, '📋')
     ]);
+};
+
+// Enhanced neuron display with context menu support
+export const formatNeuronDisplayWithContext = (neuronId, snsRoot, displayInfo = null, options = {}) => {
+    const {
+        showCopyButton = true,
+        enableContextMenu = true,
+        onNicknameUpdate = null,
+        style = {}
+    } = options;
+
+    return React.createElement(NeuronDisplay, {
+        neuronId,
+        snsRoot,
+        displayInfo,
+        showCopyButton,
+        enableContextMenu,
+        onNicknameUpdate,
+        style
+    });
 };
 
 // Create a React link component for a proposal ID
