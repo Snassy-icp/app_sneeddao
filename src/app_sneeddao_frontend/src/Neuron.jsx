@@ -405,14 +405,20 @@ function Neuron() {
                 
                 <section style={{ backgroundColor: '#2a2a2a', borderRadius: '8px', padding: '20px', marginTop: '20px' }}>
                     <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                            <NeuronInput
-                                value={neuronIdInput}
-                                onChange={setNeuronIdInput}
-                                placeholder="Enter neuron ID or search by name/nickname"
-                                snsRoot={selectedSnsRoot}
-                                style={{ flex: 1 }}
-                            />
+                        <div style={{ 
+                            display: 'flex', 
+                            flexWrap: 'wrap',
+                            alignItems: 'flex-start', 
+                            gap: '10px'
+                        }}>
+                            <div style={{ flex: '1 1 300px', minWidth: '300px' }}>
+                                <NeuronInput
+                                    value={neuronIdInput}
+                                    onChange={setNeuronIdInput}
+                                    placeholder="Enter neuron ID or search by name/nickname"
+                                    snsRoot={selectedSnsRoot}
+                                />
+                            </div>
                             <button 
                                 type="submit" 
                                 style={{
@@ -420,11 +426,20 @@ function Neuron() {
                                     color: '#ffffff',
                                     border: 'none',
                                     borderRadius: '4px',
-                                    padding: '8px 16px',
+                                    padding: '10px 20px',
                                     cursor: 'pointer',
                                     fontSize: '14px',
-                                    whiteSpace: 'nowrap'
+                                    fontWeight: '500',
+                                    whiteSpace: 'nowrap',
+                                    minHeight: '42px', // Match input height including border
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                    transition: 'background-color 0.2s ease'
                                 }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#2980b9'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = '#3498db'}
                             >
                                 Search
                             </button>
