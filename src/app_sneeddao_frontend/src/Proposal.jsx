@@ -14,7 +14,7 @@ import ReactMarkdown from 'react-markdown';
 import './Wallet.css';
 import { getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
 import { useOptimizedSnsLoading } from './hooks/useOptimizedSnsLoading';
-import { formatNeuronIdLink } from './utils/NeuronUtils';
+import { formatNeuronDisplayWithContext, uint8ArrayToHex } from './utils/NeuronUtils';
 import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
 import { Principal } from '@dfinity/principal';
@@ -58,7 +58,29 @@ function Proposal() {
     const [loadingThread, setLoadingThread] = useState(false);
 
     // Get naming context
-    const { getNeuronDisplayName } = useNaming();
+    const { getNeuronDisplayName, neuronNames, neuronNicknames, verifiedNames } = useNaming();
+
+    // Helper function to get neuron display info
+    const getNeuronDisplayInfo = (neuronId) => {
+        if (!neuronId || !selectedSnsRoot) return null;
+        
+        const neuronIdHex = uint8ArrayToHex(neuronId);
+        if (!neuronIdHex) return null;
+        
+        const mapKey = `${selectedSnsRoot}:${neuronIdHex}`;
+        const name = neuronNames?.get(mapKey);
+        const nickname = neuronNicknames?.get(mapKey);
+        const isVerified = verifiedNames?.get(mapKey);
+        
+        return { name, nickname, isVerified };
+    };
+
+    // Handle nickname updates
+    const handleNicknameUpdate = (neuronId, snsRoot, newNickname) => {
+        // The naming context will be updated by the dialog's success callback
+        // which should trigger a re-render via the useNaming hook
+        console.log('Nickname updated for neuron:', neuronId, 'in SNS:', snsRoot, 'new nickname:', newNickname);
+    };
 
     // Initialize forum actor
     useEffect(() => {
@@ -732,7 +754,18 @@ function Proposal() {
                                     <p><strong>SNS:</strong> {selectedSns?.name || 'Unknown SNS'}</p>
                                     <p><strong>Topic:</strong> {getTopicName(proposalData)}</p>
                                     <p><strong>Title:</strong> {proposalData.proposal?.[0]?.title || 'No title'}</p>
-                                    <p><strong>Proposer Neuron:</strong> {proposalData.proposer?.[0]?.id ? formatNeuronIdLink(proposalData.proposer[0].id, selectedSnsRoot, getNeuronDisplayName) : 'Unknown'}</p>
+                                    <p style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                        <strong>Proposer Neuron:</strong> 
+                                        {proposalData.proposer?.[0]?.id ? 
+                                            formatNeuronDisplayWithContext(
+                                                proposalData.proposer[0].id, 
+                                                selectedSnsRoot, 
+                                                getNeuronDisplayInfo(proposalData.proposer[0].id),
+                                                { onNicknameUpdate: handleNicknameUpdate }
+                                            ) : 
+                                            <span>Unknown</span>
+                                        }
+                                    </p>
                                     <p><strong>External Links:</strong>{' '}
                                         <span style={{ display: 'inline-flex', gap: '10px', marginLeft: '10px' }}>
                                             <a 
@@ -984,7 +1017,12 @@ function Proposal() {
                                                                 marginBottom: '4px',
                                                                 fontFamily: 'monospace'
                                                             }}>
-                                                                {formatNeuronIdLink(neuronId, selectedSnsRoot, getNeuronDisplayName)}
+                                                                {formatNeuronDisplayWithContext(
+                                                                    neuronId, 
+                                                                    selectedSnsRoot, 
+                                                                    getNeuronDisplayInfo(neuronId),
+                                                                    { onNicknameUpdate: handleNicknameUpdate }
+                                                                )}
                                                             </div>
                                                             <div style={{ 
                                                                 display: 'flex',

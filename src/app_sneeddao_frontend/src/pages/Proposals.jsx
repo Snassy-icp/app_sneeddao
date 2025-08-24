@@ -7,7 +7,7 @@ import Header from '../components/Header';
 import ReactMarkdown from 'react-markdown';
 import { getSnsById } from '../utils/SnsUtils';
 import { useOptimizedSnsLoading } from '../hooks/useOptimizedSnsLoading';
-import { formatProposalIdLink, formatNeuronIdLink, uint8ArrayToHex } from '../utils/NeuronUtils';
+import { formatProposalIdLink, formatNeuronDisplayWithContext, uint8ArrayToHex } from '../utils/NeuronUtils';
 import { useNaming } from '../NamingContext';
 
 function Proposals() {
@@ -42,6 +42,28 @@ function Proposals() {
 
     // Add state to track expanded summaries
     const [expandedSummaries, setExpandedSummaries] = useState(new Set());
+
+    // Helper function to get neuron display info
+    const getNeuronDisplayInfo = (neuronId) => {
+        if (!neuronId || !selectedSnsRoot) return null;
+        
+        const neuronIdHex = uint8ArrayToHex(neuronId);
+        if (!neuronIdHex) return null;
+        
+        const mapKey = `${selectedSnsRoot}:${neuronIdHex}`;
+        const name = neuronNames?.get(mapKey);
+        const nickname = neuronNicknames?.get(mapKey);
+        const isVerified = verifiedNames?.get(mapKey);
+        
+        return { name, nickname, isVerified };
+    };
+
+    // Handle nickname updates
+    const handleNicknameUpdate = (neuronId, snsRoot, newNickname) => {
+        // The naming context will be updated by the dialog's success callback
+        // which should trigger a re-render via the useNaming hook
+        console.log('Nickname updated for neuron:', neuronId, 'in SNS:', snsRoot, 'new nickname:', newNickname);
+    };
 
     // Define available topic options based on SNS governance interface
     const topicOptions = [
@@ -463,8 +485,17 @@ function Proposals() {
                                                 return topicOption ? topicOption.label : actionType;
                                             })()}
                                         </div>
-                                        <div style={{ color: '#888', fontSize: '14px' }}>
-                                            Proposed by: {proposal.proposer?.[0]?.id ? formatNeuronIdLink(proposal.proposer[0].id, selectedSnsRoot) : 'Unknown'}
+                                        <div style={{ color: '#888', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            <span>Proposed by:</span>
+                                            {proposal.proposer?.[0]?.id ? 
+                                                formatNeuronDisplayWithContext(
+                                                    proposal.proposer[0].id, 
+                                                    selectedSnsRoot, 
+                                                    getNeuronDisplayInfo(proposal.proposer[0].id),
+                                                    { onNicknameUpdate: handleNicknameUpdate }
+                                                ) : 
+                                                <span style={{ color: '#888' }}>Unknown</span>
+                                            }
                                         </div>
                                     </div>
                                     
