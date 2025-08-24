@@ -58,6 +58,7 @@ import Message from './pages/Message';
 import Thread from './pages/Thread';
 import Post from './pages/Post';
 import Forum from './pages/Forum';
+import Feed from './pages/Feed';
 import Topic from './pages/Topic';
 
 // Component to set up global naming function
@@ -128,6 +129,7 @@ function App() {
 
                     {/* Forum routes */}
                     <Route path="/forum" element={<Forum />} />
+                    <Route path="/feed" element={<Feed />} />
                     <Route path="/topic/:topicId" element={<Topic />} />
 
                     {/* Tools routes */}
