@@ -13,6 +13,7 @@ import { setNeuronNickname } from './utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import { calculateVotingPower, formatVotingPower } from './utils/VotingPowerUtils';
+import NeuronInput from './components/NeuronInput';
 
 // Add keyframes for spin animation after imports
 const spinKeyframes = `
@@ -404,21 +405,13 @@ function Neuron() {
                 
                 <section style={{ backgroundColor: '#2a2a2a', borderRadius: '8px', padding: '20px', marginTop: '20px' }}>
                     <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <input
-                                type="text"
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                            <NeuronInput
                                 value={neuronIdInput}
-                                onChange={(e) => setNeuronIdInput(e.target.value)}
-                                placeholder="Enter Neuron ID"
-                                style={{
-                                    backgroundColor: '#3a3a3a',
-                                    border: '1px solid #4a4a4a',
-                                    borderRadius: '4px',
-                                    color: '#ffffff',
-                                    padding: '8px 12px',
-                                    width: '100%',
-                                    fontSize: '14px'
-                                }}
+                                onChange={setNeuronIdInput}
+                                placeholder="Enter neuron ID or search by name/nickname"
+                                snsRoot={selectedSnsRoot}
+                                style={{ flex: 1 }}
                             />
                             <button 
                                 type="submit" 
