@@ -579,16 +579,15 @@ function Feed() {
     // Get navigation URL for item type
     const getItemNavigationUrl = (item) => {
         const typeStr = extractVariant(item.item_type);
+        const snsRootId = Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id[0] : item.sns_root_canister_id;
+        const snsRootStr = principalToText(snsRootId);
         
         switch (typeStr) {
             case 'forum':
-                // Get SNS root ID for forum link
-                const snsRootId = Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id[0] : item.sns_root_canister_id;
-                const snsRootStr = principalToText(snsRootId);
                 return `/forum?sns=${snsRootStr}`;
             case 'topic':
                 const topicId = Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id;
-                return `/topic/${topicId || item.id}`;
+                return `/topic/${topicId || item.id}?sns=${snsRootStr}`;
             case 'thread':
                 const threadId = Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id;
                 return `/thread?threadid=${threadId || item.id}`;
