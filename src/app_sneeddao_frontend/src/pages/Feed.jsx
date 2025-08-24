@@ -8,6 +8,7 @@ import Header from '../components/Header';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 import { formatError } from '../utils/errorUtils';
 import { fetchSnsLogo, getAllSnses, getSnsById } from '../utils/SnsUtils';
+import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { HttpAgent } from '@dfinity/agent';
 
 const styles = {
@@ -121,7 +122,15 @@ const styles = {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        marginBottom: '15px'
+        marginBottom: '15px',
+        flexWrap: 'wrap',
+        gap: '10px'
+    },
+    feedItemHeaderLeft: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        flexWrap: 'wrap'
     },
     feedItemType: {
         display: 'inline-block',
@@ -206,17 +215,6 @@ const styles = {
     },
     feedItemContent: {
         marginLeft: '68px' // Make room for the logo
-    },
-    principalLink: {
-        color: '#3498db',
-        textDecoration: 'none',
-        fontSize: '0.9rem',
-        backgroundColor: '#1a1a1a',
-        padding: '4px 8px',
-        borderRadius: '4px',
-        border: '1px solid #333',
-        transition: 'all 0.2s ease',
-        cursor: 'pointer'
     },
     loadMoreButton: {
         backgroundColor: '#3498db',
@@ -367,6 +365,23 @@ function Feed() {
         return String(variant);
     };
 
+    // Get display text for type (NEW FORUM, NEW TOPIC, etc.)
+    const getTypeDisplayText = (type) => {
+        const typeStr = extractVariant(type);
+        switch (typeStr) {
+            case 'forum':
+                return 'NEW FORUM';
+            case 'topic':
+                return 'NEW TOPIC';
+            case 'thread':
+                return 'THREAD';
+            case 'post':
+                return 'POST';
+            default:
+                return typeStr.toUpperCase();
+        }
+    };
+
     // Get type color
     const getTypeColor = (type) => {
         const typeStr = extractVariant(type);
@@ -507,39 +522,31 @@ function Feed() {
         return String(principal);
     };
 
-    // Render principal with name and link
-    const renderPrincipal = (principal) => {
-        const principalStr = principalToText(principal);
-        let displayInfo = null;
-        
+    // Convert principal to Principal object for PrincipalDisplay component
+    const getPrincipalObject = (principal) => {
         try {
-            displayInfo = getPrincipalDisplayName(Principal.fromText(principalStr));
+            const principalStr = principalToText(principal);
+            return Principal.fromText(principalStr);
         } catch (e) {
-            console.warn('Failed to get display name for principal:', principalStr, e);
+            console.warn('Failed to convert principal:', principal, e);
+            return null;
         }
-        
-        const displayName = displayInfo?.name || `${principalStr.substring(0, 8)}...`;
-        
-        return (
-            <span
-                style={styles.principalLink}
-                onClick={() => navigate(`/principal?id=${principalStr}`)}
-            >
-                {displayName}
-            </span>
-        );
     };
 
     // Render feed item
     const renderFeedItem = (item) => {
         const typeColor = getTypeColor(item.item_type);
-        const typeStr = extractVariant(item.item_type);
+        const typeDisplayText = getTypeDisplayText(item.item_type);
         
         // Get SNS info and logo
         const snsRootId = Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id[0] : item.sns_root_canister_id;
         const snsInfo = getSnsInfo(snsRootId);
         const snsLogo = snsInfo ? snsLogos.get(snsInfo.canisters.governance) : null;
         const isLoadingLogo = snsInfo ? loadingLogos.has(snsInfo.canisters.governance) : false;
+        
+        // Get creator principal object
+        const creatorPrincipal = getPrincipalObject(item.created_by);
+        const creatorDisplayInfo = creatorPrincipal ? getPrincipalDisplayName(creatorPrincipal) : null;
         
         return (
             <div key={item.id} style={styles.feedItem}>
@@ -568,9 +575,19 @@ function Feed() {
                 {/* Content with margin for logo */}
                 <div style={styles.feedItemContent}>
                     <div style={styles.feedItemHeader}>
-                        <span style={{...styles.feedItemType, backgroundColor: typeColor}}>
-                            {typeStr}
-                        </span>
+                        <div style={styles.feedItemHeaderLeft}>
+                            <span style={{...styles.feedItemType, backgroundColor: typeColor}}>
+                                {typeDisplayText}
+                            </span>
+                            {creatorPrincipal && (
+                                <PrincipalDisplay
+                                    principal={creatorPrincipal}
+                                    displayInfo={creatorDisplayInfo}
+                                    short={true}
+                                    style={{ fontSize: '0.9rem' }}
+                                />
+                            )}
+                        </div>
                         <span style={styles.feedItemDate}>
                             {formatDate(item.created_at)}
                         </span>
@@ -618,10 +635,6 @@ function Feed() {
                                 Thread: {Array.isArray(item.thread_title) ? item.thread_title[0] : item.thread_title}
                             </Link>
                         )}
-                        
-                        <span style={styles.contextItem}>
-                            By: {renderPrincipal(item.created_by)}
-                        </span>
                     </div>
                 </div>
             </div>
