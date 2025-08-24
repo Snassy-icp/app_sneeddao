@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
+import { useNaming } from '../NamingContext';
 import Header from '../components/Header';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 import { formatError } from '../utils/errorUtils';
+import { fetchSnsLogo, getAllSnses, getSnsById } from '../utils/SnsUtils';
+import { HttpAgent } from '@dfinity/agent';
 
 const styles = {
     container: {
@@ -107,7 +110,8 @@ const styles = {
         borderRadius: '8px',
         padding: '20px',
         border: '1px solid #3a3a3a',
-        transition: 'all 0.2s ease'
+        transition: 'all 0.2s ease',
+        position: 'relative'
     },
     feedItemHover: {
         borderColor: '#3498db',
@@ -175,6 +179,45 @@ const styles = {
         border: '1px solid #333',
         transition: 'all 0.2s ease'
     },
+    snsLogo: {
+        position: 'absolute',
+        top: '20px',
+        left: '20px',
+        width: '48px',
+        height: '48px',
+        borderRadius: '50%',
+        objectFit: 'cover',
+        border: '2px solid #3a3a3a'
+    },
+    snsLogoPlaceholder: {
+        position: 'absolute',
+        top: '20px',
+        left: '20px',
+        width: '48px',
+        height: '48px',
+        borderRadius: '50%',
+        backgroundColor: '#4a4a4a',
+        border: '2px solid #3a3a3a',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '0.8rem',
+        color: '#888'
+    },
+    feedItemContent: {
+        marginLeft: '68px' // Make room for the logo
+    },
+    principalLink: {
+        color: '#3498db',
+        textDecoration: 'none',
+        fontSize: '0.9rem',
+        backgroundColor: '#1a1a1a',
+        padding: '4px 8px',
+        borderRadius: '4px',
+        border: '1px solid #333',
+        transition: 'all 0.2s ease',
+        cursor: 'pointer'
+    },
     loadMoreButton: {
         backgroundColor: '#3498db',
         color: 'white',
@@ -222,6 +265,8 @@ const styles = {
 function Feed() {
     const { identity } = useAuth();
     const { selectedSnsRoot, snsInstances } = useSns();
+    const { getPrincipalDisplayName } = useNaming();
+    const navigate = useNavigate();
     const [feedItems, setFeedItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -236,11 +281,72 @@ function Feed() {
     const [selectedType, setSelectedType] = useState('');
     const [appliedFilters, setAppliedFilters] = useState({});
 
+    // SNS logos state
+    const [snsLogos, setSnsLogos] = useState(new Map());
+    const [loadingLogos, setLoadingLogos] = useState(new Set());
+    const [allSnses, setAllSnses] = useState([]);
+
     // Create forum actor
     const createForumActor = () => {
         return createActor(canisterId, {
             agentOptions: { identity }
         });
+    };
+
+    // Load SNS data and logos
+    useEffect(() => {
+        const loadSnsData = () => {
+            const cachedData = getAllSnses();
+            if (cachedData && cachedData.length > 0) {
+                setAllSnses(cachedData);
+                
+                // Start loading logos for all SNSes
+                cachedData.forEach(sns => {
+                    if (sns.canisters.governance) {
+                        loadSnsLogo(sns.canisters.governance);
+                    }
+                });
+            }
+        };
+        
+        loadSnsData();
+    }, []);
+
+    // Function to load a single SNS logo
+    const loadSnsLogo = async (governanceId) => {
+        if (snsLogos.has(governanceId) || loadingLogos.has(governanceId)) return;
+        
+        setLoadingLogos(prev => new Set([...prev, governanceId]));
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943';
+            const agent = new HttpAgent({
+                host,
+                ...(identity && { identity })
+            });
+
+            if (process.env.DFX_NETWORK !== 'ic') {
+                await agent.fetchRootKey();
+            }
+
+            const logo = await fetchSnsLogo(governanceId, agent);
+            setSnsLogos(prev => new Map(prev).set(governanceId, logo));
+        } catch (error) {
+            console.error(`Error loading logo for SNS ${governanceId}:`, error);
+        } finally {
+            setLoadingLogos(prev => {
+                const next = new Set(prev);
+                next.delete(governanceId);
+                return next;
+            });
+        }
+    };
+
+    // Get SNS info by root canister ID
+    const getSnsInfo = (rootCanisterId) => {
+        if (!rootCanisterId) return null;
+        const rootStr = principalToText(rootCanisterId);
+        return allSnses.find(sns => sns.rootCanisterId === rootStr);
     };
 
     // Format date
@@ -401,74 +507,122 @@ function Feed() {
         return String(principal);
     };
 
+    // Render principal with name and link
+    const renderPrincipal = (principal) => {
+        const principalStr = principalToText(principal);
+        let displayInfo = null;
+        
+        try {
+            displayInfo = getPrincipalDisplayName(Principal.fromText(principalStr));
+        } catch (e) {
+            console.warn('Failed to get display name for principal:', principalStr, e);
+        }
+        
+        const displayName = displayInfo?.name || `${principalStr.substring(0, 8)}...`;
+        
+        return (
+            <span
+                style={styles.principalLink}
+                onClick={() => navigate(`/principal?id=${principalStr}`)}
+            >
+                {displayName}
+            </span>
+        );
+    };
+
     // Render feed item
     const renderFeedItem = (item) => {
         const typeColor = getTypeColor(item.item_type);
         const typeStr = extractVariant(item.item_type);
         
+        // Get SNS info and logo
+        const snsRootId = Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id[0] : item.sns_root_canister_id;
+        const snsInfo = getSnsInfo(snsRootId);
+        const snsLogo = snsInfo ? snsLogos.get(snsInfo.canisters.governance) : null;
+        const isLoadingLogo = snsInfo ? loadingLogos.has(snsInfo.canisters.governance) : false;
+        
         return (
             <div key={item.id} style={styles.feedItem}>
-                <div style={styles.feedItemHeader}>
-                    <span style={{...styles.feedItemType, backgroundColor: typeColor}}>
-                        {typeStr}
-                    </span>
-                    <span style={styles.feedItemDate}>
-                        {formatDate(item.created_at)}
-                    </span>
-                </div>
-                
-                {item.title && item.title.length > 0 && (
-                    <h3 style={styles.feedItemTitle}>
-                        {Array.isArray(item.title) ? item.title[0] : item.title}
-                    </h3>
+                {/* SNS Logo */}
+                {snsInfo && (
+                    <>
+                        {isLoadingLogo ? (
+                            <div style={styles.snsLogoPlaceholder}>
+                                ...
+                            </div>
+                        ) : snsLogo ? (
+                            <img
+                                src={snsLogo}
+                                alt={snsInfo.name}
+                                style={styles.snsLogo}
+                                title={snsInfo.name}
+                            />
+                        ) : (
+                            <div style={styles.snsLogoPlaceholder} title={snsInfo.name}>
+                                {snsInfo.name.substring(0, 2).toUpperCase()}
+                            </div>
+                        )}
+                    </>
                 )}
                 
-                {item.body && item.body.length > 0 && (
-                    <div style={styles.feedItemBody}>
-                        {(() => {
-                            const bodyText = Array.isArray(item.body) ? item.body[0] : item.body;
-                            return bodyText.length > 300 ? `${bodyText.substring(0, 300)}...` : bodyText;
-                        })()}
-                    </div>
-                )}
-                
-                <div style={styles.feedItemContext}>
-                    {item.sns_root_canister_id && (Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id.length > 0 : true) && (
-                        <span style={styles.contextItem}>
-                            SNS: {principalToText(Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id[0] : item.sns_root_canister_id).substring(0, 8)}...
+                {/* Content with margin for logo */}
+                <div style={styles.feedItemContent}>
+                    <div style={styles.feedItemHeader}>
+                        <span style={{...styles.feedItemType, backgroundColor: typeColor}}>
+                            {typeStr}
                         </span>
+                        <span style={styles.feedItemDate}>
+                            {formatDate(item.created_at)}
+                        </span>
+                    </div>
+                    
+                    {item.title && item.title.length > 0 && (
+                        <h3 style={styles.feedItemTitle}>
+                            {Array.isArray(item.title) ? item.title[0] : item.title}
+                        </h3>
                     )}
                     
-                    {item.forum_title && (Array.isArray(item.forum_title) ? item.forum_title.length > 0 : true) && (
-                        <Link 
-                            to={`/forum`} 
-                            style={styles.contextLink}
-                        >
-                            Forum: {Array.isArray(item.forum_title) ? item.forum_title[0] : item.forum_title}
-                        </Link>
+                    {item.body && item.body.length > 0 && (
+                        <div style={styles.feedItemBody}>
+                            {(() => {
+                                const bodyText = Array.isArray(item.body) ? item.body[0] : item.body;
+                                return bodyText.length > 300 ? `${bodyText.substring(0, 300)}...` : bodyText;
+                            })()}
+                        </div>
                     )}
                     
-                    {item.topic_title && (Array.isArray(item.topic_title) ? item.topic_title.length > 0 : true) && (
-                        <Link 
-                            to={`/topic/${Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id}`} 
-                            style={styles.contextLink}
-                        >
-                            Topic: {Array.isArray(item.topic_title) ? item.topic_title[0] : item.topic_title}
-                        </Link>
-                    )}
-                    
-                    {item.thread_title && (Array.isArray(item.thread_title) ? item.thread_title.length > 0 : true) && (
-                        <Link 
-                            to={`/thread?id=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id}`} 
-                            style={styles.contextLink}
-                        >
-                            Thread: {Array.isArray(item.thread_title) ? item.thread_title[0] : item.thread_title}
-                        </Link>
-                    )}
-                    
-                    <span style={styles.contextItem}>
-                        By: {principalToText(item.created_by).substring(0, 8)}...
-                    </span>
+                    <div style={styles.feedItemContext}>
+                        {item.forum_title && (Array.isArray(item.forum_title) ? item.forum_title.length > 0 : true) && (
+                            <Link 
+                                to={`/forum`} 
+                                style={styles.contextLink}
+                            >
+                                Forum: {Array.isArray(item.forum_title) ? item.forum_title[0] : item.forum_title}
+                            </Link>
+                        )}
+                        
+                        {item.topic_title && (Array.isArray(item.topic_title) ? item.topic_title.length > 0 : true) && (
+                            <Link 
+                                to={`/topic/${Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id}`} 
+                                style={styles.contextLink}
+                            >
+                                Topic: {Array.isArray(item.topic_title) ? item.topic_title[0] : item.topic_title}
+                            </Link>
+                        )}
+                        
+                        {item.thread_title && (Array.isArray(item.thread_title) ? item.thread_title.length > 0 : true) && (
+                            <Link 
+                                to={`/thread?id=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id}`} 
+                                style={styles.contextLink}
+                            >
+                                Thread: {Array.isArray(item.thread_title) ? item.thread_title[0] : item.thread_title}
+                            </Link>
+                        )}
+                        
+                        <span style={styles.contextItem}>
+                            By: {renderPrincipal(item.created_by)}
+                        </span>
+                    </div>
                 </div>
             </div>
         );
