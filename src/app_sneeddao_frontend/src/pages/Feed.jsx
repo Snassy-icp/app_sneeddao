@@ -140,7 +140,14 @@ const styles = {
         borderRadius: '4px',
         fontSize: '0.8rem',
         fontWeight: '500',
-        textTransform: 'uppercase'
+        textTransform: 'uppercase',
+        cursor: 'pointer',
+        textDecoration: 'none',
+        transition: 'all 0.2s ease'
+    },
+    feedItemTypeHover: {
+        backgroundColor: '#2980b9',
+        transform: 'translateY(-1px)'
     },
     feedItemDate: {
         color: '#888',
@@ -151,7 +158,13 @@ const styles = {
         fontSize: '1.3rem',
         fontWeight: '600',
         marginBottom: '10px',
-        lineHeight: '1.4'
+        lineHeight: '1.4',
+        cursor: 'pointer',
+        textDecoration: 'none',
+        transition: 'color 0.2s ease'
+    },
+    feedItemTitleHover: {
+        color: '#3498db'
     },
     feedItemBody: {
         color: '#ccc',
@@ -196,7 +209,13 @@ const styles = {
         height: '48px',
         borderRadius: '50%',
         objectFit: 'cover',
-        border: '2px solid #3a3a3a'
+        border: '2px solid #3a3a3a',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease'
+    },
+    snsLogoHover: {
+        border: '2px solid #3498db',
+        transform: 'scale(1.05)'
     },
     snsLogoPlaceholder: {
         position: 'absolute',
@@ -211,7 +230,9 @@ const styles = {
         alignItems: 'center',
         justifyContent: 'center',
         fontSize: '0.8rem',
-        color: '#888'
+        color: '#888',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease'
     },
     feedItemContent: {
         marginLeft: '68px' // Make room for the logo
@@ -461,6 +482,35 @@ function Feed() {
         }
     }, [identity, appliedFilters]);
 
+    // Infinite scroll effect
+    useEffect(() => {
+        const handleScroll = () => {
+            // Check if we're near the bottom of the page
+            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            const windowHeight = window.innerHeight;
+            const documentHeight = document.documentElement.scrollHeight;
+            
+            // Trigger load more when we're within 500px of the bottom
+            const isNearBottom = scrollTop + windowHeight >= documentHeight - 500;
+            
+            if (isNearBottom && hasMore && !loadingMore && !loading && nextStartId) {
+                loadFeed(nextStartId, true);
+            }
+        };
+
+        // Add scroll event listener
+        window.addEventListener('scroll', handleScroll);
+        
+        // Also check on resize in case content changes
+        window.addEventListener('resize', handleScroll);
+
+        // Cleanup
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+            window.removeEventListener('resize', handleScroll);
+        };
+    }, [hasMore, loadingMore, loading, nextStartId]);
+
     // Apply filters
     const applyFilters = () => {
         const filters = {};
@@ -479,13 +529,6 @@ function Feed() {
         setSelectedType('');
         setAppliedFilters({});
         setNextStartId(null);
-    };
-
-    // Load more items
-    const loadMore = () => {
-        if (nextStartId && !loadingMore) {
-            loadFeed(nextStartId, true);
-        }
     };
 
     // Helper function to safely convert Principal to text
@@ -533,6 +576,43 @@ function Feed() {
         }
     };
 
+    // Get navigation URL for item type
+    const getItemNavigationUrl = (item) => {
+        const typeStr = extractVariant(item.item_type);
+        
+        switch (typeStr) {
+            case 'forum':
+                return '/forum';
+            case 'topic':
+                const topicId = Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id;
+                return `/topic/${topicId || item.id}`;
+            case 'thread':
+                const threadId = Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id;
+                return `/thread?id=${threadId || item.id}`;
+            case 'post':
+                const postThreadId = Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id;
+                return `/post?id=${item.id}&thread=${postThreadId}`;
+            default:
+                return '#';
+        }
+    };
+
+    // Get fallback title for items without titles
+    const getFallbackTitle = (item) => {
+        const typeStr = extractVariant(item.item_type);
+        const capitalizedType = typeStr.charAt(0).toUpperCase() + typeStr.slice(1);
+        return `${capitalizedType} #${item.id}`;
+    };
+
+    // Get display title (actual title or fallback)
+    const getDisplayTitle = (item) => {
+        const actualTitle = Array.isArray(item.title) ? item.title[0] : item.title;
+        if (actualTitle && actualTitle.trim().length > 0) {
+            return actualTitle;
+        }
+        return getFallbackTitle(item);
+    };
+
     // Render feed item
     const renderFeedItem = (item) => {
         const typeColor = getTypeColor(item.item_type);
@@ -548,13 +628,31 @@ function Feed() {
         const creatorPrincipal = getPrincipalObject(item.created_by);
         const creatorDisplayInfo = creatorPrincipal ? getPrincipalDisplayName(creatorPrincipal) : null;
         
+        // Handle SNS logo click to navigate to forum
+        const handleSnsLogoClick = () => {
+            navigate('/forum');
+        };
+
+        // Get navigation URL and display title
+        const navigationUrl = getItemNavigationUrl(item);
+        const displayTitle = getDisplayTitle(item);
+
+        // Handle item navigation
+        const handleItemClick = () => {
+            navigate(navigationUrl);
+        };
+        
         return (
             <div key={item.id} style={styles.feedItem}>
-                {/* SNS Logo */}
+                {/* SNS Logo - Clickable link to forum */}
                 {snsInfo && (
                     <>
                         {isLoadingLogo ? (
-                            <div style={styles.snsLogoPlaceholder}>
+                            <div 
+                                style={styles.snsLogoPlaceholder}
+                                onClick={handleSnsLogoClick}
+                                title={`Go to ${snsInfo.name} Forum`}
+                            >
                                 ...
                             </div>
                         ) : snsLogo ? (
@@ -562,10 +660,31 @@ function Feed() {
                                 src={snsLogo}
                                 alt={snsInfo.name}
                                 style={styles.snsLogo}
-                                title={snsInfo.name}
+                                title={`Go to ${snsInfo.name} Forum`}
+                                onClick={handleSnsLogoClick}
+                                onMouseEnter={(e) => {
+                                    e.target.style.border = '2px solid #3498db';
+                                    e.target.style.transform = 'scale(1.05)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.border = '2px solid #3a3a3a';
+                                    e.target.style.transform = 'scale(1)';
+                                }}
                             />
                         ) : (
-                            <div style={styles.snsLogoPlaceholder} title={snsInfo.name}>
+                            <div 
+                                style={styles.snsLogoPlaceholder} 
+                                title={`Go to ${snsInfo.name} Forum`}
+                                onClick={handleSnsLogoClick}
+                                onMouseEnter={(e) => {
+                                    e.target.style.border = '2px solid #3498db';
+                                    e.target.style.transform = 'scale(1.05)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.border = '2px solid #3a3a3a';
+                                    e.target.style.transform = 'scale(1)';
+                                }}
+                            >
                                 {snsInfo.name.substring(0, 2).toUpperCase()}
                             </div>
                         )}
@@ -576,7 +695,19 @@ function Feed() {
                 <div style={styles.feedItemContent}>
                     <div style={styles.feedItemHeader}>
                         <div style={styles.feedItemHeaderLeft}>
-                            <span style={{...styles.feedItemType, backgroundColor: typeColor}}>
+                            <span 
+                                style={{...styles.feedItemType, backgroundColor: typeColor}}
+                                onClick={handleItemClick}
+                                onMouseEnter={(e) => {
+                                    e.target.style.backgroundColor = '#2980b9';
+                                    e.target.style.transform = 'translateY(-1px)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.backgroundColor = typeColor;
+                                    e.target.style.transform = 'translateY(0)';
+                                }}
+                                title={`Go to ${typeDisplayText.toLowerCase()}`}
+                            >
                                 {typeDisplayText}
                             </span>
                             {creatorPrincipal && (
@@ -593,11 +724,20 @@ function Feed() {
                         </span>
                     </div>
                     
-                    {item.title && item.title.length > 0 && (
-                        <h3 style={styles.feedItemTitle}>
-                            {Array.isArray(item.title) ? item.title[0] : item.title}
-                        </h3>
-                    )}
+                    {/* Always show title (actual or fallback) */}
+                    <h3 
+                        style={styles.feedItemTitle}
+                        onClick={handleItemClick}
+                        onMouseEnter={(e) => {
+                            e.target.style.color = '#3498db';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.target.style.color = '#ffffff';
+                        }}
+                        title={`Go to ${typeDisplayText.toLowerCase()}`}
+                    >
+                        {displayTitle}
+                    </h3>
                     
                     {item.body && item.body.length > 0 && (
                         <div style={styles.feedItemBody}>
@@ -609,15 +749,6 @@ function Feed() {
                     )}
                     
                     <div style={styles.feedItemContext}>
-                        {item.forum_title && (Array.isArray(item.forum_title) ? item.forum_title.length > 0 : true) && (
-                            <Link 
-                                to={`/forum`} 
-                                style={styles.contextLink}
-                            >
-                                Forum: {Array.isArray(item.forum_title) ? item.forum_title[0] : item.forum_title}
-                            </Link>
-                        )}
-                        
                         {item.topic_title && (Array.isArray(item.topic_title) ? item.topic_title.length > 0 : true) && (
                             <Link 
                                 to={`/topic/${Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id}`} 
@@ -743,17 +874,23 @@ function Feed() {
                             <>
                                 {feedItems.map(renderFeedItem)}
                                 
-                                {hasMore && (
-                                    <button 
-                                        onClick={loadMore} 
-                                        disabled={loadingMore}
-                                        style={{
-                                            ...styles.loadMoreButton,
-                                            backgroundColor: loadingMore ? '#666' : '#3498db'
-                                        }}
-                                    >
-                                        {loadingMore ? 'Loading...' : 'Load More'}
-                                    </button>
+                                {/* Loading indicator for infinite scroll */}
+                                {loadingMore && (
+                                    <div style={styles.loadingSpinner}>
+                                        Loading more items...
+                                    </div>
+                                )}
+                                
+                                {/* End of feed indicator */}
+                                {!hasMore && feedItems.length > 0 && (
+                                    <div style={{
+                                        textAlign: 'center',
+                                        padding: '40px 20px',
+                                        color: '#888',
+                                        fontSize: '1rem'
+                                    }}>
+                                        You've reached the end of the feed
+                                    </div>
                                 )}
                             </>
                         ) : (
