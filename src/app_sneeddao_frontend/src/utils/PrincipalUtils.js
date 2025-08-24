@@ -1,5 +1,8 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { getPrincipalName, getPrincipalNickname } from './BackendUtils';
+import PrincipalContextMenu from '../components/PrincipalContextMenu';
+import MessageDialog from '../components/MessageDialog';
+import NicknameDialog from '../components/NicknameDialog';
 
 // Truncate a principal ID for display
 export const truncatePrincipal = (principal) => {
@@ -75,11 +78,86 @@ export const formatPrincipal = (principal, displayInfo = null) => {
     };
 };
 
-// React component for displaying a principal
-export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, showCopyButton = true, style = {}, short = false, noLink = false }) => {
+// React component for displaying a principal with context menu
+export const PrincipalDisplay = React.memo(({ 
+    principal, 
+    displayInfo = null, 
+    showCopyButton = true, 
+    style = {}, 
+    short = false, 
+    noLink = false,
+    enableContextMenu = true,
+    onNicknameUpdate = null 
+}) => {
+    const [contextMenuOpen, setContextMenuOpen] = useState(false);
+    const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+    const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+    const [nicknameDialogOpen, setNicknameDialogOpen] = useState(false);
+    const [longPressTimer, setLongPressTimer] = useState(null);
+
     const formatted = formatPrincipal(principal, displayInfo);
     const principalColor = getPrincipalColor(principal);
-    
+    const principalId = principal?.toString();
+    const currentNickname = formatted?.nickname || displayInfo?.nickname || '';
+
+    // Handle right click (desktop)
+    const handleContextMenu = useCallback((e) => {
+        if (!enableContextMenu || !principalId) return;
+        
+        e.preventDefault();
+        e.stopPropagation();
+        
+        setContextMenuPosition({ x: e.clientX, y: e.clientY });
+        setContextMenuOpen(true);
+    }, [enableContextMenu, principalId]);
+
+    // Handle long press start (mobile)
+    const handleTouchStart = useCallback((e) => {
+        if (!enableContextMenu || !principalId) return;
+        
+        const timer = setTimeout(() => {
+            const touch = e.touches[0];
+            if (touch) {
+                setContextMenuPosition({ x: touch.clientX, y: touch.clientY });
+                setContextMenuOpen(true);
+                // Prevent default to avoid text selection
+                e.preventDefault();
+            }
+        }, 500); // 500ms long press
+        
+        setLongPressTimer(timer);
+    }, [enableContextMenu, principalId]);
+
+    // Handle long press end (mobile)
+    const handleTouchEnd = useCallback(() => {
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            setLongPressTimer(null);
+        }
+    }, [longPressTimer]);
+
+    // Handle context menu close
+    const handleContextMenuClose = useCallback(() => {
+        setContextMenuOpen(false);
+    }, []);
+
+    // Handle send message
+    const handleSendMessage = useCallback(() => {
+        setMessageDialogOpen(true);
+    }, []);
+
+    // Handle set nickname
+    const handleSetNickname = useCallback(() => {
+        setNicknameDialogOpen(true);
+    }, []);
+
+    // Handle nickname update success
+    const handleNicknameSuccess = useCallback((newNickname) => {
+        if (onNicknameUpdate) {
+            onNicknameUpdate(principalId, newNickname);
+        }
+    }, [principalId, onNicknameUpdate]);
+
     // Create a link wrapper component
     const LinkWrapper = React.useMemo(() => {
         return ({ children }) => {
@@ -89,13 +167,16 @@ export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, sho
                     {
                         style: {
                             color: 'inherit'
-                        }
+                        },
+                        onContextMenu: handleContextMenu,
+                        onTouchStart: handleTouchStart,
+                        onTouchEnd: handleTouchEnd
                     },
                     children
                 );
             }
             
-            const href = `/principal?id=${principal?.toString()}`;
+            const href = `/principal?id=${principalId}`;
             return React.createElement('a', 
                 {
                     href,
@@ -104,27 +185,95 @@ export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, sho
                         color: 'inherit'
                     },
                     onMouseEnter: (e) => e.target.style.textDecoration = 'underline',
-                    onMouseLeave: (e) => e.target.style.textDecoration = 'none'
+                    onMouseLeave: (e) => e.target.style.textDecoration = 'none',
+                    onContextMenu: handleContextMenu,
+                    onTouchStart: handleTouchStart,
+                    onTouchEnd: handleTouchEnd
                 },
                 children
             );
         };
-    }, [principal, noLink]);
+    }, [principal, noLink, handleContextMenu, handleTouchStart, handleTouchEnd, principalId]);
     
     console.log('PrincipalDisplay rendered with:', {
-        principal: principal?.toString(),
+        principal: principalId,
         displayInfo: displayInfo,
         showCopyButton: showCopyButton,
-        style: style
+        style: style,
+        enableContextMenu: enableContextMenu
     });
 
     // If no display info was provided, just show truncated ID
     if (typeof formatted === 'string') {
-        return React.createElement('div', 
-            { 
-                style: { 
-                    display: 'inline-flex', 
-                    alignItems: 'center', 
+        return React.createElement(React.Fragment, null,
+            React.createElement('div', 
+                { 
+                    style: { 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        color: principalColor,
+                        fontFamily: 'monospace',
+                        ...style
+                    }
+                },
+                React.createElement(LinkWrapper, null,
+                    React.createElement('span', 
+                        { title: principalId }, 
+                        formatted
+                    )
+                ),
+                showCopyButton && React.createElement('button',
+                    {
+                        onClick: () => navigator.clipboard.writeText(principalId),
+                        style: {
+                            background: 'none',
+                            border: 'none',
+                            padding: '4px',
+                            cursor: 'pointer',
+                            color: '#888',
+                            display: 'flex',
+                            alignItems: 'center'
+                        },
+                        title: "Copy principal ID to clipboard"
+                    },
+                    "📋"
+                )
+            ),
+            // Context menu
+            enableContextMenu && principalId && React.createElement(PrincipalContextMenu, {
+                isOpen: contextMenuOpen,
+                onClose: handleContextMenuClose,
+                position: contextMenuPosition,
+                principalId: principalId,
+                currentNickname: currentNickname,
+                onSendMessage: handleSendMessage,
+                onSetNickname: handleSetNickname
+            }),
+            // Message dialog
+            React.createElement(MessageDialog, {
+                isOpen: messageDialogOpen,
+                onClose: () => setMessageDialogOpen(false),
+                initialRecipient: principalId
+            }),
+            // Nickname dialog
+            React.createElement(NicknameDialog, {
+                isOpen: nicknameDialogOpen,
+                onClose: () => setNicknameDialogOpen(false),
+                principalId: principalId,
+                currentNickname: currentNickname,
+                onSuccess: handleNicknameSuccess
+            })
+        );
+    }
+
+    // Show compact display with name and/or nickname
+    return React.createElement(React.Fragment, null,
+        React.createElement('div',
+            {
+                style: {
+                    display: 'inline-flex',
+                    alignItems: 'center',
                     gap: '8px',
                     color: principalColor,
                     fontFamily: 'monospace',
@@ -132,14 +281,65 @@ export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, sho
                 }
             },
             React.createElement(LinkWrapper, null,
-                React.createElement('span', 
-                    { title: principal?.toString() }, 
-                    formatted
+                React.createElement('span',
+                    {
+                        style: {
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                        },
+                        title: formatted.fullId
+                    },
+                    formatted.name && React.createElement('span',
+                        {
+                            style: {
+                                fontWeight: 'bold',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                color: principalColor
+                            }
+                        },
+                        formatted.isVerified && React.createElement('span',
+                            {
+                                style: {
+                                    fontSize: '14px',
+                                    cursor: 'help',
+                                    color: '#2ecc71',
+                                    marginRight: '2px'
+                                },
+                                title: "Verified name"
+                            },
+                            "✓"
+                        ),
+                        formatted.name
+                    ),
+                    (formatted.name && formatted.nickname && formatted.name.length > 0 && formatted.nickname.length > 0) ? " • " : null,
+                    formatted.nickname && React.createElement('span',
+                        {
+                            style: {
+                                fontStyle: 'italic',
+                                color: principalColor
+                            }
+                        },
+                        formatted.nickname
+                    ),
+                    // Only show truncated ID if not in short mode, or if there's no name/nickname
+                    (!short || (!formatted.name && !formatted.nickname)) && React.createElement('span',
+                        {
+                            style: {
+                                marginLeft: '4px',
+                                color: principalColor,
+                                opacity: 0.7
+                            }
+                        },
+                        `(${formatted.truncatedId})`
+                    )
                 )
             ),
             showCopyButton && React.createElement('button',
                 {
-                    onClick: () => navigator.clipboard.writeText(principal?.toString()),
+                    onClick: () => navigator.clipboard.writeText(formatted.fullId),
                     style: {
                         background: 'none',
                         border: 'none',
@@ -153,94 +353,31 @@ export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, sho
                 },
                 "📋"
             )
-        );
-    }
-
-    // Show compact display with name and/or nickname
-    return React.createElement('div',
-        {
-            style: {
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                color: principalColor,
-                fontFamily: 'monospace',
-                ...style
-            }
-        },
-        React.createElement(LinkWrapper, null,
-            React.createElement('span',
-                {
-                    style: {
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                    },
-                    title: formatted.fullId
-                },
-                formatted.name && React.createElement('span',
-                    {
-                        style: {
-                            fontWeight: 'bold',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            color: principalColor
-                        }
-                    },
-                    formatted.isVerified && React.createElement('span',
-                        {
-                            style: {
-                                fontSize: '14px',
-                                cursor: 'help',
-                                color: '#2ecc71',
-                                marginRight: '2px'
-                            },
-                            title: "Verified name"
-                        },
-                        "✓"
-                    ),
-                    formatted.name
-                ),
-                (formatted.name && formatted.nickname && formatted.name.length > 0 && formatted.nickname.length > 0) ? " • " : null,
-                formatted.nickname && React.createElement('span',
-                    {
-                        style: {
-                            fontStyle: 'italic',
-                            color: principalColor
-                        }
-                    },
-                    formatted.nickname
-                ),
-                // Only show truncated ID if not in short mode, or if there's no name/nickname
-                (!short || (!formatted.name && !formatted.nickname)) && React.createElement('span',
-                    {
-                        style: {
-                            marginLeft: '4px',
-                            color: principalColor,
-                            opacity: 0.7
-                        }
-                    },
-                    `(${formatted.truncatedId})`
-                )
-            )
         ),
-        showCopyButton && React.createElement('button',
-            {
-                onClick: () => navigator.clipboard.writeText(formatted.fullId),
-                style: {
-                    background: 'none',
-                    border: 'none',
-                    padding: '4px',
-                    cursor: 'pointer',
-                    color: '#888',
-                    display: 'flex',
-                    alignItems: 'center'
-                },
-                title: "Copy principal ID to clipboard"
-            },
-            "📋"
-        )
+        // Context menu
+        enableContextMenu && principalId && React.createElement(PrincipalContextMenu, {
+            isOpen: contextMenuOpen,
+            onClose: handleContextMenuClose,
+            position: contextMenuPosition,
+            principalId: principalId,
+            currentNickname: currentNickname,
+            onSendMessage: handleSendMessage,
+            onSetNickname: handleSetNickname
+        }),
+        // Message dialog
+        React.createElement(MessageDialog, {
+            isOpen: messageDialogOpen,
+            onClose: () => setMessageDialogOpen(false),
+            initialRecipient: principalId
+        }),
+        // Nickname dialog
+        React.createElement(NicknameDialog, {
+            isOpen: nicknameDialogOpen,
+            onClose: () => setNicknameDialogOpen(false),
+            principalId: principalId,
+            currentNickname: currentNickname,
+            onSuccess: handleNicknameSuccess
+        })
     );
 }, (prevProps, nextProps) => {
     // Custom comparison function for React.memo
@@ -248,6 +385,9 @@ export const PrincipalDisplay = React.memo(({ principal, displayInfo = null, sho
         prevProps.principal?.toString() === nextProps.principal?.toString() &&
         JSON.stringify(prevProps.displayInfo) === JSON.stringify(nextProps.displayInfo) &&
         prevProps.showCopyButton === nextProps.showCopyButton &&
-        JSON.stringify(prevProps.style) === JSON.stringify(nextProps.style)
+        prevProps.enableContextMenu === nextProps.enableContextMenu &&
+        JSON.stringify(prevProps.style) === JSON.stringify(nextProps.style) &&
+        prevProps.short === nextProps.short &&
+        prevProps.noLink === nextProps.noLink
     );
 }); 
