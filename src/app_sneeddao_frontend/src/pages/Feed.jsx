@@ -582,16 +582,18 @@ function Feed() {
         
         switch (typeStr) {
             case 'forum':
-                return '/forum';
+                // Get SNS root ID for forum link
+                const snsRootId = Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id[0] : item.sns_root_canister_id;
+                const snsRootStr = principalToText(snsRootId);
+                return `/forum?sns=${snsRootStr}`;
             case 'topic':
                 const topicId = Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id;
                 return `/topic/${topicId || item.id}`;
             case 'thread':
                 const threadId = Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id;
-                return `/thread?id=${threadId || item.id}`;
+                return `/thread?threadid=${threadId || item.id}`;
             case 'post':
-                const postThreadId = Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id;
-                return `/post?id=${item.id}&thread=${postThreadId}`;
+                return `/post?postid=${item.id}`;
             default:
                 return '#';
         }
@@ -630,7 +632,9 @@ function Feed() {
         
         // Handle SNS logo click to navigate to forum
         const handleSnsLogoClick = () => {
-            navigate('/forum');
+            const snsRootId = Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id[0] : item.sns_root_canister_id;
+            const snsRootStr = principalToText(snsRootId);
+            navigate(`/forum?sns=${snsRootStr}`);
         };
 
         // Get navigation URL and display title
