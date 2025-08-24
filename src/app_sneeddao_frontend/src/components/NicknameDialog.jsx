@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../AuthContext';
 import { setPrincipalNickname, getPrincipalNickname } from '../utils/BackendUtils';
 
@@ -84,7 +85,7 @@ const NicknameDialog = ({
 
     if (!isOpen) return null;
 
-    return (
+    return createPortal(
         <div style={{
             position: 'fixed',
             top: 0,
@@ -240,7 +241,8 @@ const NicknameDialog = ({
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 
 const PrincipalContextMenu = ({ 
@@ -71,49 +72,43 @@ const PrincipalContextMenu = ({
 
     if (!isOpen) return null;
 
-    // Calculate menu position to stay within viewport
-    const getMenuStyle = () => {
+    // Calculate menu position to stay within viewport (same logic as TipDisplay)
+    const getMenuPosition = () => {
         const menuWidth = 200;
-        const menuHeight = 180; // Approximate height
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
+        const menuHeight = 180;
+        const margin = 10;
 
-        let left = position.x;
-        let top = position.y;
+        // Start with cursor position plus margin (like tooltip)
+        let x = position.x + margin;
+        let y = position.y + margin;
 
-        // Adjust horizontal position if menu would go off screen
-        if (left + menuWidth > viewportWidth) {
-            left = position.x - menuWidth; // Show to the left of cursor
-        }
-        
-        // Ensure menu doesn't go off the left edge
-        if (left < 10) {
-            left = 10;
+        // Adjust if menu would go off-screen to the right
+        if (x + menuWidth > window.innerWidth) {
+            x = position.x - menuWidth - margin;
         }
 
-        // Adjust vertical position if menu would go off screen
-        if (top + menuHeight > viewportHeight) {
-            top = position.y - menuHeight; // Show above cursor
-        }
-        
-        // Ensure menu doesn't go off the top edge
-        if (top < 10) {
-            top = 10;
+        // Adjust if menu would go off-screen at the bottom
+        if (y + menuHeight > window.innerHeight) {
+            y = position.y - menuHeight - margin;
         }
 
-        return {
-            position: 'fixed',
-            left: `${left}px`,
-            top: `${top}px`,
-            zIndex: 10000 // Much higher z-index
-        };
+        // Ensure menu doesn't go off-screen at the top or left
+        x = Math.max(margin, x);
+        y = Math.max(margin, y);
+
+        return { x, y };
     };
 
-    return (
+    const menuPosition = getMenuPosition();
+
+    return createPortal(
         <div
             ref={menuRef}
             style={{
-                ...getMenuStyle(),
+                position: 'fixed',
+                left: menuPosition.x,
+                top: menuPosition.y,
+                zIndex: 10000,
                 backgroundColor: '#2a2a2a',
                 border: '1px solid #3a3a3a',
                 borderRadius: '8px',
@@ -203,7 +198,8 @@ const PrincipalContextMenu = ({
                 <span>📋</span>
                 <span>Copy Principal ID</span>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 

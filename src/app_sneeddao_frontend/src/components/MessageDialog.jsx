@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../AuthContext';
 import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
 import { Principal } from '@dfinity/principal';
@@ -176,7 +177,7 @@ const MessageDialog = ({
 
     if (!isOpen) return null;
 
-    return (
+    return createPortal(
         <div style={{
             position: 'fixed',
             top: 0,
@@ -383,7 +384,8 @@ const MessageDialog = ({
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 
