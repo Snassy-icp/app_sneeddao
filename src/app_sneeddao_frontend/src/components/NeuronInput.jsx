@@ -188,7 +188,12 @@ const NeuronInput = ({
     };
 
     // Handle dropdown item selection
-    const handleSelect = (item) => {
+    const handleSelect = (item, event) => {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        
         setInputValue(item.neuronIdHex);
         setShowDropdown(false);
         
@@ -318,7 +323,7 @@ const NeuronInput = ({
                     {searchResults.map((item, index) => (
                         <div
                             key={item.neuronIdHex}
-                            onClick={() => handleSelect(item)}
+                            onClick={(e) => handleSelect(item, e)}
                             style={{
                                 padding: '8px 12px',
                                 cursor: 'pointer',
@@ -326,8 +331,14 @@ const NeuronInput = ({
                                 backgroundColor: 'transparent',
                                 transition: 'background-color 0.2s ease'
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                            onMouseEnter={(e) => {
+                                e.target.style.backgroundColor = '#3a3a3a';
+                                e.stopPropagation();
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.backgroundColor = 'transparent';
+                                e.stopPropagation();
+                            }}
                         >
                             {(() => {
                                 try {

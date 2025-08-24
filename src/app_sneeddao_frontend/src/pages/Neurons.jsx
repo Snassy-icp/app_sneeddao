@@ -10,6 +10,7 @@ import { formatNeuronIdLink, formatE8s, getDissolveState, uint8ArrayToHex } from
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { useNaming } from '../NamingContext';
+import NeuronInput from '../components/NeuronInput';
 
 function Neurons() {
     const { identity } = useAuth();
@@ -397,6 +398,13 @@ function Neurons() {
         return percentage.toFixed(2);
     };
 
+    // Helper function to format amounts as integers (no decimals)
+    const formatE8sAsInteger = (amount) => {
+        const formatted = formatE8s(amount);
+        // Remove decimal places by splitting at the decimal point and taking the integer part
+        return formatted.split('.')[0];
+    };
+
     // Calculate stakes by dissolve state
     const stakes = neurons.reduce((acc, neuron) => {
         const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
@@ -676,6 +684,90 @@ function Neurons() {
         <div className='page-container'>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             <main className="wallet-container">
+                {/* Stats boxes at the top */}
+                <div style={{ 
+                    backgroundColor: '#2a2a2a',
+                    borderRadius: '8px',
+                    padding: '20px',
+                    marginBottom: '20px'
+                }}>
+                    <div style={{ 
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: '20px',
+                        textAlign: 'center'
+                    }}>
+                        <div>
+                            <div style={{ color: '#888', marginBottom: '8px' }}>Total Active Stake</div>
+                            <div style={{ color: '#ffffff', fontSize: '24px', fontWeight: 'bold' }}>
+                                {formatE8sAsInteger(totalStake)} {tokenSymbol}
+                                {totalSupply && (
+                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
+                                        ({calculatePercentage(totalStake)}% of supply)
+                                    </div>
+                                )}
+                            </div>
+                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
+                                {totalCount} neurons total
+                            </div>
+                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
+                                ({totalWithStakeCount} with stake)
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ color: '#888', marginBottom: '8px' }}>Not Dissolving</div>
+                            <div style={{ color: '#2ecc71', fontSize: '24px', fontWeight: 'bold' }}>
+                                {formatE8sAsInteger(stakes.notDissolvingStake)} {tokenSymbol}
+                                {totalSupply && (
+                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
+                                        ({calculatePercentage(stakes.notDissolvingStake)}% of supply)
+                                    </div>
+                                )}
+                            </div>
+                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
+                                {stakes.notDissolvingCount} neurons
+                            </div>
+                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
+                                ({stakes.notDissolvingWithStakeCount} with stake)
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ color: '#888', marginBottom: '8px' }}>Dissolving</div>
+                            <div style={{ color: '#f1c40f', fontSize: '24px', fontWeight: 'bold' }}>
+                                {formatE8sAsInteger(stakes.dissolvingStake)} {tokenSymbol}
+                                {totalSupply && (
+                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
+                                        ({calculatePercentage(stakes.dissolvingStake)}% of supply)
+                                    </div>
+                                )}
+                            </div>
+                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
+                                {stakes.dissolvingCount} neurons
+                            </div>
+                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
+                                ({stakes.dissolvingWithStakeCount} with stake)
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ color: '#888', marginBottom: '8px' }}>Dissolved</div>
+                            <div style={{ color: '#e74c3c', fontSize: '24px', fontWeight: 'bold' }}>
+                                {formatE8sAsInteger(stakes.dissolvedStake)} {tokenSymbol}
+                                {totalSupply && (
+                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
+                                        ({calculatePercentage(stakes.dissolvedStake)}% of supply)
+                                    </div>
+                                )}
+                            </div>
+                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
+                                {stakes.dissolvedCount} neurons
+                            </div>
+                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
+                                ({stakes.dissolvedWithStakeCount} with stake)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div style={{ marginBottom: '20px' }}>
                     <div style={{ 
                         display: 'flex', 
@@ -738,21 +830,14 @@ function Neurons() {
                         flexWrap: 'wrap',
                         marginBottom: '15px'
                     }}>
-                        <input
-                            type="text"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            placeholder="Search by neuron ID, name, or nickname..."
-                            style={{
-                                backgroundColor: '#3a3a3a',
-                                color: '#ffffff',
-                                border: '1px solid #4a4a4a',
-                                borderRadius: '4px',
-                                padding: '8px 12px',
-                                flex: '1 1 250px',
-                                minWidth: '200px'
-                            }}
-                        />
+                        <div style={{ flex: '1 1 250px', minWidth: '200px' }}>
+                            <NeuronInput
+                                value={searchTerm}
+                                onChange={setSearchTerm}
+                                placeholder="Search by neuron ID, name, or nickname..."
+                                snsRoot={selectedSnsRoot}
+                            />
+                        </div>
                         <select
                             value={dissolveFilter}
                             onChange={(e) => setDissolveFilter(e.target.value)}
@@ -819,88 +904,7 @@ function Neurons() {
                 {error && <div style={{ color: '#e74c3c', marginBottom: '20px' }}>{error}</div>}
 
                 {/* Stakes Display */}
-                <div style={{ 
-                    backgroundColor: '#2a2a2a',
-                    borderRadius: '8px',
-                    padding: '20px',
-                    marginBottom: '20px'
-                }}>
-                    <div style={{ 
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                        gap: '20px',
-                        textAlign: 'center'
-                    }}>
-                        <div>
-                            <div style={{ color: '#888', marginBottom: '8px' }}>Total Active Stake</div>
-                            <div style={{ color: '#ffffff', fontSize: '24px', fontWeight: 'bold' }}>
-                                {formatE8s(totalStake)} {tokenSymbol}
-                                {totalSupply && (
-                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
-                                        ({calculatePercentage(totalStake)}% of supply)
-                                    </div>
-                                )}
-                            </div>
-                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
-                                {totalCount} neurons total
-                            </div>
-                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
-                                ({totalWithStakeCount} with stake)
-                            </div>
-                        </div>
-                        <div>
-                            <div style={{ color: '#888', marginBottom: '8px' }}>Not Dissolving</div>
-                            <div style={{ color: '#2ecc71', fontSize: '24px', fontWeight: 'bold' }}>
-                                {formatE8s(stakes.notDissolvingStake)} {tokenSymbol}
-                                {totalSupply && (
-                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
-                                        ({calculatePercentage(stakes.notDissolvingStake)}% of supply)
-                                    </div>
-                                )}
-                            </div>
-                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
-                                {stakes.notDissolvingCount} neurons
-                            </div>
-                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
-                                ({stakes.notDissolvingWithStakeCount} with stake)
-                            </div>
-                        </div>
-                        <div>
-                            <div style={{ color: '#888', marginBottom: '8px' }}>Dissolving</div>
-                            <div style={{ color: '#f1c40f', fontSize: '24px', fontWeight: 'bold' }}>
-                                {formatE8s(stakes.dissolvingStake)} {tokenSymbol}
-                                {totalSupply && (
-                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
-                                        ({calculatePercentage(stakes.dissolvingStake)}% of supply)
-                                    </div>
-                                )}
-                            </div>
-                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
-                                {stakes.dissolvingCount} neurons
-                            </div>
-                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
-                                ({stakes.dissolvingWithStakeCount} with stake)
-                            </div>
-                        </div>
-                        <div>
-                            <div style={{ color: '#888', marginBottom: '8px' }}>Dissolved</div>
-                            <div style={{ color: '#e74c3c', fontSize: '24px', fontWeight: 'bold' }}>
-                                {formatE8s(stakes.dissolvedStake)} {tokenSymbol}
-                                {totalSupply && (
-                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
-                                        ({calculatePercentage(stakes.dissolvedStake)}% of supply)
-                                    </div>
-                                )}
-                            </div>
-                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
-                                {stakes.dissolvedCount} neurons
-                            </div>
-                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
-                                ({stakes.dissolvedWithStakeCount} with stake)
-                            </div>
-                        </div>
-                    </div>
-                </div>
+
 
                 {/* Sortable Headers */}
                 <div style={{ 
