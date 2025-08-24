@@ -230,8 +230,23 @@ function Neuron() {
         }
     };
 
+    // Helper to validate neuron ID format (same as NeuronInput component)
+    const isValidNeuronId = (neuronIdStr) => {
+        if (!neuronIdStr || typeof neuronIdStr !== 'string') return false;
+        
+        // Check if it's a hex string (with or without 0x prefix)
+        const hexPattern = /^(0x)?[0-9a-fA-F]+$/;
+        if (hexPattern.test(neuronIdStr)) {
+            const cleanHex = neuronIdStr.replace(/^0x/, '');
+            // Should be even length and reasonable length (not too short or too long)
+            return cleanHex.length >= 16 && cleanHex.length <= 128 && cleanHex.length % 2 === 0;
+        }
+        
+        return false;
+    };
+
     const handleSearch = (e) => {
-        e.preventDefault();
+        if (e) e.preventDefault();
         setError('');
         
         if (!neuronIdInput.trim()) {
@@ -248,6 +263,22 @@ function Neuron() {
         setSearchParams({ neuronid: neuronIdInput, sns: selectedSnsRoot });
         setCurrentNeuronId(neuronIdInput);
     };
+
+    // Auto-search when valid neuron ID is entered
+    useEffect(() => {
+        const trimmedInput = neuronIdInput.trim();
+        
+        if (trimmedInput && selectedSnsRoot && isValidNeuronId(trimmedInput)) {
+            // Debounce the search to avoid too frequent calls
+            const timeoutId = setTimeout(() => {
+                setError('');
+                setSearchParams({ neuronid: trimmedInput, sns: selectedSnsRoot });
+                setCurrentNeuronId(trimmedInput);
+            }, 500);
+            
+            return () => clearTimeout(timeoutId);
+        }
+    }, [neuronIdInput, selectedSnsRoot, setSearchParams]);
 
     const handleSnsChange = (newSnsRoot) => {
         // Update global context
@@ -404,14 +435,12 @@ function Neuron() {
                 <h1 style={{ color: '#ffffff' }}>Neuron Details</h1>
                 
                 <section style={{ backgroundColor: '#2a2a2a', borderRadius: '8px', padding: '20px', marginTop: '20px' }}>
-                    <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                         <div style={{ 
                             display: 'flex', 
-                            flexWrap: 'wrap',
-                            alignItems: 'flex-start', 
-                            gap: '10px'
+                            justifyContent: 'flex-start'
                         }}>
-                            <div style={{ flex: '1 1 300px', minWidth: '300px' }}>
+                            <div style={{ width: '100%', maxWidth: '500px' }}>
                                 <NeuronInput
                                     value={neuronIdInput}
                                     onChange={setNeuronIdInput}
@@ -419,32 +448,8 @@ function Neuron() {
                                     snsRoot={selectedSnsRoot}
                                 />
                             </div>
-                            <button 
-                                type="submit" 
-                                style={{
-                                    backgroundColor: '#3498db',
-                                    color: '#ffffff',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '10px 20px',
-                                    cursor: 'pointer',
-                                    fontSize: '14px',
-                                    fontWeight: '500',
-                                    whiteSpace: 'nowrap',
-                                    minHeight: '42px', // Match input height including border
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    flexShrink: 0,
-                                    transition: 'background-color 0.2s ease'
-                                }}
-                                onMouseEnter={(e) => e.target.style.backgroundColor = '#2980b9'}
-                                onMouseLeave={(e) => e.target.style.backgroundColor = '#3498db'}
-                            >
-                                Search
-                            </button>
                         </div>
-                    </form>
+                    </div>
                     {error && <div style={{ color: '#e74c3c', marginTop: '10px' }}>{error}</div>}
 
                     {loading && (
