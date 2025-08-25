@@ -8,8 +8,9 @@ import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 import { useTextLimits } from '../hooks/useTextLimits';
 import { formatError } from '../utils/errorUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
-import { getSnsById } from '../utils/SnsUtils';
+import { getSnsById, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { getPostsByThread } from '../utils/BackendUtils';
+import { HttpAgent } from '@dfinity/agent';
 
 const styles = {
     container: {
@@ -340,6 +341,11 @@ function Topic() {
     const [subtopics, setSubtopics] = useState([]);
     const [threads, setThreads] = useState([]);
     const [threadPostCounts, setThreadPostCounts] = useState(new Map());
+    
+    // SNS logo state
+    const [snsLogo, setSnsLogo] = useState(null);
+    const [loadingLogo, setLoadingLogo] = useState(false);
+    const [snsInfo, setSnsInfo] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [breadcrumbLoading, setBreadcrumbLoading] = useState(true);
@@ -392,6 +398,59 @@ function Topic() {
     
     // Get text limits
     const { textLimits } = useTextLimits(forumActor);
+
+    // Load SNS information and logo
+    const loadSnsInfo = async () => {
+        if (!currentSnsRoot) return;
+
+        // Reset logo state when SNS changes
+        setSnsLogo(null);
+        setLoadingLogo(false);
+        setSnsInfo(null);
+
+        try {
+            // Get SNS info from cache
+            const allSnses = getAllSnses();
+            const currentSnsInfo = allSnses.find(sns => sns.rootCanisterId === currentSnsRoot);
+            
+            if (currentSnsInfo) {
+                setSnsInfo(currentSnsInfo);
+                
+                // Load logo if we have governance canister ID
+                if (currentSnsInfo.canisters.governance) {
+                    await loadSnsLogo(currentSnsInfo.canisters.governance, currentSnsInfo.name);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading SNS info:', error);
+        }
+    };
+
+    // Load SNS logo
+    const loadSnsLogo = async (governanceId, snsName) => {
+        if (loadingLogo) return;
+        
+        setLoadingLogo(true);
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943';
+            const agent = new HttpAgent({
+                host,
+                ...(identity && { identity })
+            });
+
+            if (process.env.DFX_NETWORK !== 'ic') {
+                await agent.fetchRootKey();
+            }
+
+            const logo = await fetchSnsLogo(governanceId, agent);
+            setSnsLogo(logo);
+        } catch (error) {
+            console.error(`Error loading logo for SNS ${snsName}:`, error);
+        } finally {
+            setLoadingLogo(false);
+        }
+    };
 
     // Sync URL parameters with global state
     useEffect(() => {
@@ -565,6 +624,13 @@ function Topic() {
 
         fetchForumInfo();
     }, [forumActor, topicId, selectedSnsRoot, updateSelectedSns, searchParams, setSearchParams]);
+
+    // Load SNS info and logo when SNS changes
+    useEffect(() => {
+        if (currentSnsRoot) {
+            loadSnsInfo();
+        }
+    }, [currentSnsRoot, identity]);
 
     useEffect(() => {
         if (!topicId) {
@@ -916,22 +982,52 @@ function Topic() {
                         alignItems: 'center',
                         gap: '15px'
                     }}>
-                        {/* SNS Logo Placeholder */}
-                        <div style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '50%',
-                            backgroundColor: '#4a4a4a',
-                            border: '2px solid #3a3a3a',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '0.8rem',
-                            color: '#888',
-                            fontWeight: '600'
-                        }}>
-                            SNS
-                        </div>
+                        {/* SNS Logo */}
+                        {loadingLogo ? (
+                            <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                backgroundColor: '#4a4a4a',
+                                border: '2px solid #3a3a3a',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.6rem',
+                                color: '#888',
+                                fontWeight: '600'
+                            }}>
+                                ...
+                            </div>
+                        ) : snsLogo ? (
+                            <img
+                                src={snsLogo}
+                                alt={snsInfo?.name || 'SNS Logo'}
+                                style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
+                                    border: '2px solid #3a3a3a'
+                                }}
+                            />
+                        ) : (
+                            <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                backgroundColor: '#4a4a4a',
+                                border: '2px solid #3a3a3a',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.6rem',
+                                color: '#888',
+                                fontWeight: '600'
+                            }}>
+                                {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
+                            </div>
+                        )}
                         
                         {/* Forum Title */}
                         <h1 style={{

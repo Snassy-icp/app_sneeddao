@@ -5,6 +5,8 @@ import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
 import ThreadViewer from '../components/ThreadViewer';
 import Header from '../components/Header';
+import { fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
+import { HttpAgent } from '@dfinity/agent';
 import './Thread.css';
 
 const Thread = () => {
@@ -17,6 +19,11 @@ const Thread = () => {
     const [topicInfo, setTopicInfo] = useState(null);
     const [forumInfo, setForumInfo] = useState(null);
     const [breadcrumbLoading, setBreadcrumbLoading] = useState(true);
+    
+    // SNS logo state
+    const [snsLogo, setSnsLogo] = useState(null);
+    const [loadingLogo, setLoadingLogo] = useState(false);
+    const [snsInfo, setSnsInfo] = useState(null);
 
     // Get SNS from URL params if provided
     const snsParam = searchParams.get('sns');
@@ -71,6 +78,66 @@ const Thread = () => {
         console.error('Thread page error:', error);
     }, []);
 
+    // Load SNS information and logo
+    const loadSnsInfo = async () => {
+        if (!currentSnsRoot) return;
+
+        // Reset logo state when SNS changes
+        setSnsLogo(null);
+        setLoadingLogo(false);
+        setSnsInfo(null);
+
+        try {
+            // Get SNS info from cache
+            const allSnses = getAllSnses();
+            const currentSnsInfo = allSnses.find(sns => sns.rootCanisterId === currentSnsRoot);
+            
+            if (currentSnsInfo) {
+                setSnsInfo(currentSnsInfo);
+                
+                // Load logo if we have governance canister ID
+                if (currentSnsInfo.canisters.governance) {
+                    await loadSnsLogo(currentSnsInfo.canisters.governance, currentSnsInfo.name);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading SNS info:', error);
+        }
+    };
+
+    // Load SNS logo
+    const loadSnsLogo = async (governanceId, snsName) => {
+        if (loadingLogo) return;
+        
+        setLoadingLogo(true);
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943';
+            const agent = new HttpAgent({
+                host,
+                ...(identity && { identity })
+            });
+
+            if (process.env.DFX_NETWORK !== 'ic') {
+                await agent.fetchRootKey();
+            }
+
+            const logo = await fetchSnsLogo(governanceId, agent);
+            setSnsLogo(logo);
+        } catch (error) {
+            console.error(`Error loading logo for SNS ${snsName}:`, error);
+        } finally {
+            setLoadingLogo(false);
+        }
+    };
+
+    // Load SNS info and logo when SNS changes
+    useEffect(() => {
+        if (currentSnsRoot) {
+            loadSnsInfo();
+        }
+    }, [currentSnsRoot, identity]);
+
     if (!threadId) {
         return (
             <div className="thread-page">
@@ -107,22 +174,52 @@ const Thread = () => {
                         alignItems: 'center',
                         gap: '15px'
                     }}>
-                        {/* SNS Logo Placeholder */}
-                        <div style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '50%',
-                            backgroundColor: '#4a4a4a',
-                            border: '2px solid #3a3a3a',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '0.8rem',
-                            color: '#888',
-                            fontWeight: '600'
-                        }}>
-                            SNS
-                        </div>
+                        {/* SNS Logo */}
+                        {loadingLogo ? (
+                            <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                backgroundColor: '#4a4a4a',
+                                border: '2px solid #3a3a3a',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.6rem',
+                                color: '#888',
+                                fontWeight: '600'
+                            }}>
+                                ...
+                            </div>
+                        ) : snsLogo ? (
+                            <img
+                                src={snsLogo}
+                                alt={snsInfo?.name || 'SNS Logo'}
+                                style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
+                                    border: '2px solid #3a3a3a'
+                                }}
+                            />
+                        ) : (
+                            <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                backgroundColor: '#4a4a4a',
+                                border: '2px solid #3a3a3a',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.6rem',
+                                color: '#888',
+                                fontWeight: '600'
+                            }}>
+                                {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
+                            </div>
+                        )}
                         
                         {/* Forum Title */}
                         <h1 style={{
