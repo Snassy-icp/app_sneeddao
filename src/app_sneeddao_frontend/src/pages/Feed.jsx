@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
@@ -286,6 +286,8 @@ function Feed() {
     const { selectedSnsRoot, snsInstances } = useSns();
     const { getPrincipalDisplayName } = useNaming();
     const navigate = useNavigate();
+    const location = useLocation();
+    const scrollContainerRef = useRef(null);
     const [feedItems, setFeedItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -482,6 +484,33 @@ function Feed() {
         }
     }, [identity, appliedFilters]);
 
+    // Scroll position restoration
+    useEffect(() => {
+        // Restore scroll position when returning to the page
+        const restoreScrollPosition = () => {
+            const savedPosition = sessionStorage.getItem('feedScrollPosition');
+            if (savedPosition && !loading) {
+                const position = parseInt(savedPosition, 10);
+                console.log('Restoring feed scroll position:', position);
+                
+                // Use a timeout to ensure the page content has rendered
+                setTimeout(() => {
+                    window.scrollTo({
+                        top: position,
+                        behavior: 'auto' // Use 'auto' instead of 'smooth' for immediate positioning
+                    });
+                    // Clear the saved position after restoring
+                    sessionStorage.removeItem('feedScrollPosition');
+                }, 200); // Increased timeout to ensure content is loaded
+            }
+        };
+
+        // Restore scroll position when component mounts and content is loaded
+        if (!loading && feedItems.length > 0) {
+            restoreScrollPosition();
+        }
+    }, [loading, feedItems.length]);
+
     // Infinite scroll effect
     useEffect(() => {
         const handleScroll = () => {
@@ -631,6 +660,11 @@ function Feed() {
         
         // Handle SNS logo click to navigate to forum
         const handleSnsLogoClick = () => {
+            // Save scroll position before navigating
+            const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+            sessionStorage.setItem('feedScrollPosition', scrollPosition.toString());
+            console.log('Saved feed scroll position before SNS logo click:', scrollPosition);
+            
             const snsRootId = Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id[0] : item.sns_root_canister_id;
             const snsRootStr = principalToText(snsRootId);
             navigate(`/forum?sns=${snsRootStr}`);
@@ -642,6 +676,11 @@ function Feed() {
 
         // Handle item navigation
         const handleItemClick = () => {
+            // Save scroll position before navigating
+            const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+            sessionStorage.setItem('feedScrollPosition', scrollPosition.toString());
+            console.log('Saved feed scroll position before item click:', scrollPosition);
+            
             navigate(navigationUrl);
         };
         
@@ -778,7 +817,7 @@ function Feed() {
     return (
         <div>
             <Header showSnsDropdown={true} />
-            <div style={styles.container}>
+            <div ref={scrollContainerRef} style={styles.container}>
                 <div style={styles.header}>
                     <h1 style={styles.title}>Sneed's Feed</h1>
                     <p style={styles.description}>
