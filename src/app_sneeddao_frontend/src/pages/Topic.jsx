@@ -897,6 +897,56 @@ function Topic() {
     return (
         <div className='page-container'>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
+            
+            {/* Header-like Forum Section - Looks like part of header but scrolls with page */}
+            {forumInfo && (
+                <div style={{
+                    backgroundColor: '#1a1a1a', // Match header background
+                    borderBottom: '1px solid rgba(255,255,255,0.1)',
+                    padding: '12px 0',
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 100
+                }}>
+                    <div style={{
+                        maxWidth: '1200px',
+                        margin: '0 auto',
+                        padding: '0 20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '15px'
+                    }}>
+                        {/* SNS Logo Placeholder */}
+                        <div style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '50%',
+                            backgroundColor: '#4a4a4a',
+                            border: '2px solid #3a3a3a',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.8rem',
+                            color: '#888',
+                            fontWeight: '600'
+                        }}>
+                            SNS
+                        </div>
+                        
+                        {/* Forum Title */}
+                        <h1 style={{
+                            color: '#ffffff',
+                            fontSize: '1.5rem',
+                            fontWeight: '600',
+                            margin: 0,
+                            flex: 1
+                        }}>
+                            {forumInfo.title}
+                        </h1>
+                    </div>
+                </div>
+            )}
+            
             <main className="wallet-container">
                 <div style={styles.container}>
                     {/* Breadcrumb */}
