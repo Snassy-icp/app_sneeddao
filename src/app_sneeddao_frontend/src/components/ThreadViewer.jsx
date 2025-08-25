@@ -318,7 +318,8 @@ function ThreadViewer({
     // Poll state
     const [threadPolls, setThreadPolls] = useState([]); // Polls for the thread
     const [lastReadPostId, setLastReadPostId] = useState(0); // Track last read post ID for highlighting
-    const [stashedLastReadPostId, setStashedLastReadPostId] = useState(0); // Stashed value for highlighting new posts
+    const [stashedLastReadPostId, setStashedLastReadPostId] = useState(0); // Stashed user's last read position
+    const [stashedHighestPostId, setStashedHighestPostId] = useState(0); // Stashed highest post ID before update
     const [postPolls, setPostPolls] = useState(new Map()); // Map<postId, Poll[]>
     const [showPollForm, setShowPollForm] = useState(new Map()); // Map<postId|'thread', boolean>
     const [loadingPolls, setLoadingPolls] = useState(false);
@@ -433,8 +434,14 @@ function ThreadViewer({
         
         try {
             const response = await forumActor.get_last_read_post({ thread_id: parseInt(currentThreadId) });
-            const lastRead = response.last_read_post_id ? Number(response.last_read_post_id[0]) : 0;
-            return lastRead;
+            
+            // Handle Motoko optional type: null/undefined means no record exists
+            if (!response.last_read_post_id || response.last_read_post_id.length === 0) {
+                return 0; // No previous read record, treat as never read
+            }
+            
+            const lastRead = Number(response.last_read_post_id[0]);
+            return isNaN(lastRead) ? 0 : lastRead; // Ensure we return 0 if conversion fails
         } catch (error) {
             console.warn('Failed to fetch last read post:', error);
             return 0;
@@ -457,7 +464,10 @@ function ThreadViewer({
     // Helper function to check if a post is unread (new since last visit)
     const isPostUnread = (post) => {
         const postId = Number(post.id);
-        return postId > stashedLastReadPostId;
+        // A post is unread if:
+        // 1. It's newer than the user's last read position, AND
+        // 2. It was present when we loaded the thread (not added during this session)
+        return postId > stashedLastReadPostId && postId <= stashedHighestPostId;
     };
 
     // Helper function to derive display title for presentation (from original Discussion.jsx)
@@ -1434,21 +1444,32 @@ function ThreadViewer({
         const handleReadTracking = async () => {
             if (!threadId || !identity || discussionPosts.length === 0) return;
             
-            // Fetch current read position and stash it for highlighting
-            const currentLastRead = await fetchLastReadPost(threadId);
-            setLastReadPostId(currentLastRead);
-            setStashedLastReadPostId(currentLastRead);
-            
-            // Find the highest post ID that the user can see
+            // Find the highest post ID that the user can see (current state of thread)
             const visiblePosts = discussionPosts.filter(post => !post.deleted || post.author === identity.getPrincipal().toText());
             if (visiblePosts.length === 0) return;
             
-            const highestPostId = Math.max(...visiblePosts.map(post => Number(post.id)));
+            const currentHighestPostId = Math.max(...visiblePosts.map(post => Number(post.id)));
             
-            // Update the read position to the highest visible post
-            if (highestPostId > currentLastRead) {
-                await updateLastReadPost(threadId, highestPostId);
-                setLastReadPostId(highestPostId);
+            // Fetch user's last read position and stash both values for highlighting
+            const userLastReadPostId = await fetchLastReadPost(threadId);
+            
+            // Stash both values BEFORE updating anything
+            setStashedLastReadPostId(userLastReadPostId);
+            setStashedHighestPostId(currentHighestPostId);
+            
+            console.log(`🔖 Read tracking for thread ${threadId}:`, {
+                userLastRead: userLastReadPostId,
+                currentHighest: currentHighestPostId,
+                isFirstVisit: userLastReadPostId === 0,
+                willHighlight: currentHighestPostId > userLastReadPostId ? `posts ${userLastReadPostId + 1}-${currentHighestPostId}` : 'no posts'
+            });
+            
+            // Update the user's read position to the current highest visible post
+            if (currentHighestPostId > userLastReadPostId) {
+                await updateLastReadPost(threadId, currentHighestPostId);
+                setLastReadPostId(currentHighestPostId);
+            } else {
+                setLastReadPostId(userLastReadPostId);
             }
         };
         
