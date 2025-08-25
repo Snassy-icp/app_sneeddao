@@ -552,24 +552,25 @@ function Feed() {
 
             const forumActor = createForumActor();
             
-            // Build filter object - must include all fields even if empty
+            // Build filter object - use Motoko optional format ([] for null, [value] for present)
             let filter = null;
             if (Object.keys(appliedFilters).length > 0) {
                 filter = {
-                    creator_principals: [],
-                    topic_ids: [],
-                    search_text: [],
-                    sns_root_canister_ids: []
+                    creator_principals: [], // Empty array means null/none
+                    topic_ids: [], // Empty array means null/none
+                    search_text: [], // Empty array means null/none
+                    sns_root_canister_ids: [] // Empty array means null/none
                 };
                 
                 if (appliedFilters.searchText) {
-                    filter.search_text = [appliedFilters.searchText];
+                    filter.search_text = [appliedFilters.searchText]; // Array with value
                 }
                 if (appliedFilters.selectedSnsList && appliedFilters.selectedSnsList.length > 0) {
                     try {
-                        filter.sns_root_canister_ids = appliedFilters.selectedSnsList.map(snsId => 
+                        const principalArray = appliedFilters.selectedSnsList.map(snsId => 
                             Principal.fromText(snsId)
                         );
+                        filter.sns_root_canister_ids = [principalArray]; // Wrap array in optional
                     } catch (e) {
                         console.warn('Invalid SNS principal(s):', appliedFilters.selectedSnsList, e);
                     }
