@@ -374,6 +374,7 @@ function Topic() {
     const [submitting, setSubmitting] = useState(false);
     const [showPreproposalsPrompt, setShowPreproposalsPrompt] = useState(false);
     const [creatingPreproposals, setCreatingPreproposals] = useState(false);
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
     
     // Poll creation state
     const [includePoll, setIncludePoll] = useState(false);
@@ -674,6 +675,16 @@ function Topic() {
             console.warn('Failed to save sortBy to localStorage:', e);
         }
     }, [sortBy]);
+
+    // Handle window resize for mobile detection
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth <= 768);
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // Fetch proposal data for threads when threads are loaded (async, non-blocking)
     useEffect(() => {
@@ -1213,101 +1224,224 @@ function Topic() {
                         {/* Filter Controls - Above threads */}
                         {(threads.length > 0 || totalThreads > 0) && (
                             <div style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
                                 padding: '15px 0',
                                 borderBottom: '1px solid #333',
                                 marginBottom: '20px'
                             }}>
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '20px',
-                                    fontSize: '14px',
-                                    color: '#ccc'
-                                }}>
+                                {!isMobile ? (
+                                    /* Desktop Layout */
                                     <div style={{
                                         display: 'flex',
+                                        justifyContent: 'space-between',
                                         alignItems: 'center',
-                                        gap: '10px'
+                                        gap: '20px'
                                     }}>
-                                        <span>Show:</span>
-                                        <select
-                                            value={threadsPerPage}
-                                            onChange={(e) => handleThreadsPerPageChange(Number(e.target.value))}
-                                            style={{
-                                                backgroundColor: '#2a2a2a',
-                                                color: '#ffffff',
-                                                border: '1px solid #444',
-                                                borderRadius: '4px',
-                                                padding: '4px 8px',
-                                                fontSize: '14px'
-                                            }}
-                                        >
-                                            <option value={5}>5 threads</option>
-                                            <option value={10}>10 threads</option>
-                                            <option value={20}>20 threads</option>
-                                            <option value={50}>50 threads</option>
-                                        </select>
-                                        <span>per page</span>
-                                    </div>
-                                    
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '10px'
-                                    }}>
-                                        <span>Sort by:</span>
-                                        <select
-                                            value={sortBy}
-                                            onChange={(e) => {
-                                                setSortBy(e.target.value);
-                                                setCurrentPage(0); // Reset to first page when sorting changes
-                                            }}
-                                            style={{
-                                                backgroundColor: '#2a2a2a',
-                                                color: '#ffffff',
-                                                border: '1px solid #444',
-                                                borderRadius: '4px',
-                                                padding: '4px 8px',
-                                                fontSize: '14px'
-                                            }}
-                                        >
-                                            <option value="newest">Newest</option>
-                                            <option value="oldest">Oldest</option>
-                                            <option value="activity-newest">Activity (Newest)</option>
-                                            <option value="activity-oldest">Activity (Oldest)</option>
-                                        </select>
-                                    </div>
-                                </div>
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '20px',
+                                            fontSize: '14px',
+                                            color: '#ccc'
+                                        }}>
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '10px'
+                                            }}>
+                                                <span>Show:</span>
+                                                <select
+                                                    value={threadsPerPage}
+                                                    onChange={(e) => handleThreadsPerPageChange(Number(e.target.value))}
+                                                    style={{
+                                                        backgroundColor: '#2a2a2a',
+                                                        color: '#ffffff',
+                                                        border: '1px solid #444',
+                                                        borderRadius: '4px',
+                                                        padding: '4px 8px',
+                                                        fontSize: '14px'
+                                                    }}
+                                                >
+                                                    <option value={5}>5 threads</option>
+                                                    <option value={10}>10 threads</option>
+                                                    <option value={20}>20 threads</option>
+                                                    <option value={50}>50 threads</option>
+                                                </select>
+                                                <span>per page</span>
+                                            </div>
+                                            
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '10px'
+                                            }}>
+                                                <span>Sort by:</span>
+                                                <select
+                                                    value={sortBy}
+                                                    onChange={(e) => {
+                                                        setSortBy(e.target.value);
+                                                        setCurrentPage(0); // Reset to first page when sorting changes
+                                                    }}
+                                                    style={{
+                                                        backgroundColor: '#2a2a2a',
+                                                        color: '#ffffff',
+                                                        border: '1px solid #444',
+                                                        borderRadius: '4px',
+                                                        padding: '4px 8px',
+                                                        fontSize: '14px'
+                                                    }}
+                                                >
+                                                    <option value="newest">Newest</option>
+                                                    <option value="oldest">Oldest</option>
+                                                    <option value="activity-newest">Activity (Newest)</option>
+                                                    <option value="activity-oldest">Activity (Oldest)</option>
+                                                </select>
+                                            </div>
+                                        </div>
 
-                                {/* Pagination - Right side */}
-                                {totalPages > 1 && (
-                                    <div style={styles.pagination}>
-                                        <button
-                                            style={{
-                                                ...styles.pageButton,
-                                                ...(currentPage === 0 ? styles.pageButtonDisabled : {})
-                                            }}
-                                            onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
-                                            disabled={currentPage === 0}
-                                        >
-                                            Previous
-                                        </button>
-                                        <span style={styles.pageInfo}>
-                                            Page {currentPage + 1} of {totalPages}
-                                        </span>
-                                        <button
-                                            style={{
-                                                ...styles.pageButton,
-                                                ...(currentPage >= totalPages - 1 ? styles.pageButtonDisabled : {})
-                                            }}
-                                            onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
-                                            disabled={currentPage >= totalPages - 1}
-                                        >
-                                            Next
-                                        </button>
+                                        {/* Pagination - Right side */}
+                                        {totalPages > 1 && (
+                                            <div style={styles.pagination}>
+                                                <button
+                                                    style={{
+                                                        ...styles.pageButton,
+                                                        ...(currentPage === 0 ? styles.pageButtonDisabled : {})
+                                                    }}
+                                                    onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                                                    disabled={currentPage === 0}
+                                                >
+                                                    Previous
+                                                </button>
+                                                <span style={styles.pageInfo}>
+                                                    Page {currentPage + 1} of {totalPages}
+                                                </span>
+                                                <button
+                                                    style={{
+                                                        ...styles.pageButton,
+                                                        ...(currentPage >= totalPages - 1 ? styles.pageButtonDisabled : {})
+                                                    }}
+                                                    onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                                                    disabled={currentPage >= totalPages - 1}
+                                                >
+                                                    Next
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    /* Mobile Layout */
+                                    <div>
+                                        {/* Filter controls */}
+                                        <div style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '12px',
+                                            marginBottom: totalPages > 1 ? '15px' : '0'
+                                        }}>
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                fontSize: '14px',
+                                                color: '#ccc'
+                                            }}>
+                                                <span style={{ minWidth: '45px', flexShrink: 0 }}>Show:</span>
+                                                <select
+                                                    value={threadsPerPage}
+                                                    onChange={(e) => handleThreadsPerPageChange(Number(e.target.value))}
+                                                    style={{
+                                                        backgroundColor: '#2a2a2a',
+                                                        color: '#ffffff',
+                                                        border: '1px solid #444',
+                                                        borderRadius: '4px',
+                                                        padding: '6px 8px',
+                                                        fontSize: '14px',
+                                                        flex: '1',
+                                                        minWidth: '0'
+                                                    }}
+                                                >
+                                                    <option value={5}>5 per page</option>
+                                                    <option value={10}>10 per page</option>
+                                                    <option value={20}>20 per page</option>
+                                                    <option value={50}>50 per page</option>
+                                                </select>
+                                            </div>
+                                            
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                fontSize: '14px',
+                                                color: '#ccc'
+                                            }}>
+                                                <span style={{ minWidth: '45px', flexShrink: 0 }}>Sort:</span>
+                                                <select
+                                                    value={sortBy}
+                                                    onChange={(e) => {
+                                                        setSortBy(e.target.value);
+                                                        setCurrentPage(0); // Reset to first page when sorting changes
+                                                    }}
+                                                    style={{
+                                                        backgroundColor: '#2a2a2a',
+                                                        color: '#ffffff',
+                                                        border: '1px solid #444',
+                                                        borderRadius: '4px',
+                                                        padding: '6px 8px',
+                                                        fontSize: '14px',
+                                                        flex: '1',
+                                                        minWidth: '0'
+                                                    }}
+                                                >
+                                                    <option value="newest">Newest</option>
+                                                    <option value="oldest">Oldest</option>
+                                                    <option value="activity-newest">Activity (Newest)</option>
+                                                    <option value="activity-oldest">Activity (Oldest)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* Pagination (mobile) */}
+                                        {totalPages > 1 && (
+                                            <div style={{
+                                                display: 'flex',
+                                                justifyContent: 'center',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                paddingTop: '15px',
+                                                borderTop: '1px solid #444'
+                                            }}>
+                                                <button
+                                                    style={{
+                                                        ...styles.pageButton,
+                                                        ...(currentPage === 0 ? styles.pageButtonDisabled : {}),
+                                                        padding: '6px 10px',
+                                                        fontSize: '13px'
+                                                    }}
+                                                    onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                                                    disabled={currentPage === 0}
+                                                >
+                                                    Prev
+                                                </button>
+                                                <span style={{
+                                                    ...styles.pageInfo,
+                                                    fontSize: '13px',
+                                                    whiteSpace: 'nowrap'
+                                                }}>
+                                                    {currentPage + 1}/{totalPages}
+                                                </span>
+                                                <button
+                                                    style={{
+                                                        ...styles.pageButton,
+                                                        ...(currentPage >= totalPages - 1 ? styles.pageButtonDisabled : {}),
+                                                        padding: '6px 10px',
+                                                        fontSize: '13px'
+                                                    }}
+                                                    onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                                                    disabled={currentPage >= totalPages - 1}
+                                                >
+                                                    Next
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
