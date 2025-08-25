@@ -319,12 +319,14 @@ const styles = {
     },
     checkbox: {
         cursor: 'pointer',
-        accentColor: '#3498db'
+        accentColor: '#3498db',
+        gridColumn: '1'
     },
     checkboxText: {
         color: '#ccc',
         fontSize: '0.9rem',
-        userSelect: 'none'
+        userSelect: 'none',
+        gridColumn: '3'
     },
     filterLayout: {
         display: 'flex',
@@ -382,9 +384,10 @@ const styles = {
         transition: 'background-color 0.2s ease'
     },
     snsCheckboxWithLogo: {
-        display: 'flex',
-        alignItems: 'center',
+        display: 'grid',
+        gridTemplateColumns: '20px 20px 1fr',
         gap: '8px',
+        alignItems: 'center',
         cursor: 'pointer',
         padding: '2px 4px',
         borderRadius: '4px',
@@ -392,14 +395,14 @@ const styles = {
         width: '100%'
     },
     clearSnsButton: {
-        backgroundColor: '#e74c3c',
-        color: 'white',
+        backgroundColor: '#666',
+        color: '#ccc',
         border: 'none',
         borderRadius: '4px',
         padding: '6px 12px',
         cursor: 'pointer',
         fontSize: '0.8rem',
-        fontWeight: '500',
+        fontWeight: '400',
         marginTop: '10px',
         transition: 'background-color 0.2s ease',
         width: '100%'
@@ -409,7 +412,8 @@ const styles = {
         height: '20px',
         borderRadius: '50%',
         objectFit: 'cover',
-        border: '1px solid #3a3a3a'
+        border: '1px solid #3a3a3a',
+        gridColumn: '2'
     },
     snsLogoPlaceholderSmall: {
         width: '20px',
@@ -422,7 +426,7 @@ const styles = {
         justifyContent: 'center',
         fontSize: '0.6rem',
         color: '#888',
-        flexShrink: 0
+        gridColumn: '2'
     }
 };
 
@@ -1671,10 +1675,10 @@ function Feed() {
                                                         onClick={clearAllSns}
                                                         style={styles.clearSnsButton}
                                                         onMouseEnter={(e) => {
-                                                            e.target.style.backgroundColor = '#c0392b';
+                                                            e.target.style.backgroundColor = '#555';
                                                         }}
                                                         onMouseLeave={(e) => {
-                                                            e.target.style.backgroundColor = '#e74c3c';
+                                                            e.target.style.backgroundColor = '#666';
                                                         }}
                                                     >
                                                         Clear SNS Selection
