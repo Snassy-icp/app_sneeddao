@@ -483,14 +483,18 @@ function Feed() {
                 setHasMore(response.has_more);
                 setNextStartId(response.next_start_id.length > 0 ? response.next_start_id[0] : null);
                 
-                // If we started from a specific item, we might have newer items available
+                // If we started from a specific item (either URL param or back button), we might have newer items available
                 const startFromParam = searchParams.get('startFrom');
-                if (startFromParam && response.items.length > 0) {
+                const wasBackButtonNavigation = startId !== null; // startId is set when loading from specific item
+                
+                if ((startFromParam || wasBackButtonNavigation) && response.items.length > 0) {
                     setHasNewer(true);
                     setPrevStartId(response.items[0].id);
+                    console.log('Set hasNewer=true for specific item loading, prevStartId:', response.items[0].id);
                 } else {
                     setHasNewer(false);
                     setPrevStartId(null);
+                    console.log('Set hasNewer=false for top-of-feed loading');
                 }
             } else if (direction === 'older') {
                 if (response.items.length > 0) {
