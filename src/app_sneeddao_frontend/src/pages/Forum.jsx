@@ -646,39 +646,152 @@ function Forum() {
     return (
         <div className='page-container'>
             <Header showSnsDropdown={true} />
+            
+            {/* Header-like Forum Section - Looks like part of header but scrolls with page */}
+            {forum && (
+                <div style={{
+                    backgroundColor: '#1a1a1a', // Match header background
+                    borderBottom: '1px solid rgba(255,255,255,0.1)',
+                    padding: '12px 0',
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 100
+                }}>
+                    <div style={{
+                        maxWidth: '1200px',
+                        margin: '0 auto',
+                        padding: '0 20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '15px'
+                    }}>
+                        {/* SNS Logo */}
+                        {loadingLogo ? (
+                            <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                backgroundColor: '#4a4a4a',
+                                border: '2px solid #3a3a3a',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.8rem',
+                                color: '#888',
+                                fontWeight: '600'
+                            }}>
+                                ...
+                            </div>
+                        ) : snsLogo ? (
+                            <img
+                                src={snsLogo}
+                                alt={snsInfo?.name || 'SNS Logo'}
+                                style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
+                                    border: '2px solid #3a3a3a'
+                                }}
+                            />
+                        ) : (
+                            <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                backgroundColor: '#4a4a4a',
+                                border: '2px solid #3a3a3a',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.8rem',
+                                color: '#888',
+                                fontWeight: '600'
+                            }}>
+                                {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
+                            </div>
+                        )}
+                        
+                        {/* Forum Title */}
+                        <h1 style={{
+                            color: '#ffffff',
+                            fontSize: '1.5rem',
+                            fontWeight: '600',
+                            margin: 0,
+                            flex: 1
+                        }}>
+                            {forum.title}
+                        </h1>
+                        
+                        {/* Forum Description */}
+                        {forum.description && (
+                            <p style={{
+                                color: '#888',
+                                fontSize: '0.9rem',
+                                margin: 0,
+                                maxWidth: '400px',
+                                textAlign: 'right'
+                            }}>
+                                {forum.description}
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
+            
             <main className="wallet-container">
                 <div style={styles.container}>
-                    {/* Forum Header Section */}
+                    {/* Forum Header Section - Updated to match welcome design */}
                     {forum && (
-                        <div style={styles.forumHeader}>
-                            {/* SNS Logo */}
-                            {loadingLogo ? (
-                                <div style={styles.forumLogoPlaceholder}>
-                                    ...
-                                </div>
-                            ) : snsLogo ? (
-                                <img
-                                    src={snsLogo}
-                                    alt={snsInfo?.name || 'SNS Logo'}
-                                    style={styles.forumLogo}
-                                />
-                            ) : (
-                                <div style={styles.forumLogoPlaceholder}>
-                                    {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
-                                </div>
-                            )}
-                            
-                            {/* Forum Info */}
-                            <div style={styles.forumHeaderContent}>
-                                <h1 style={styles.forumHeaderTitle}>
+                        <div style={{
+                            backgroundColor: '#2a2a2a',
+                            borderRadius: '12px',
+                            padding: '2rem',
+                            marginBottom: '2rem',
+                            border: '1px solid #4a4a4a',
+                            textAlign: 'center'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginBottom: '1rem' }}>
+                                {/* SNS Logo */}
+                                {loadingLogo ? (
+                                    <div style={styles.forumLogoPlaceholder}>
+                                        ...
+                                    </div>
+                                ) : snsLogo ? (
+                                    <img
+                                        src={snsLogo}
+                                        alt={snsInfo?.name || 'SNS Logo'}
+                                        style={styles.forumLogo}
+                                    />
+                                ) : (
+                                    <div style={styles.forumLogoPlaceholder}>
+                                        {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
+                                    </div>
+                                )}
+                                
+                                {/* Forum Title */}
+                                <h1 style={{
+                                    fontSize: '2.5rem',
+                                    color: '#ffffff',
+                                    marginBottom: '0',
+                                    fontWeight: 'bold'
+                                }}>
                                     {forum.title}
                                 </h1>
-                                {forum.description && (
-                                    <p style={styles.forumHeaderDescription}>
-                                        {forum.description}
-                                    </p>
-                                )}
                             </div>
+                            
+                            {/* Forum Description */}
+                            {forum.description && (
+                                <p style={{
+                                    color: '#ccc',
+                                    fontSize: '1.1rem',
+                                    lineHeight: '1.6',
+                                    maxWidth: '800px',
+                                    margin: '0 auto'
+                                }}>
+                                    {forum.description}
+                                </p>
+                            )}
                         </div>
                     )}
 
