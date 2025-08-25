@@ -26,6 +26,7 @@ const Post = () => {
     };
 
     const [threadId, setThreadId] = useState(null);
+    const [threadDetails, setThreadDetails] = useState(null);
     const [postDetails, setPostDetails] = useState(null);
     const [topicInfo, setTopicInfo] = useState(null);
     const [forumInfo, setForumInfo] = useState(null);
@@ -147,6 +148,7 @@ const Post = () => {
                         const threadResponse = await forumActor.get_thread(Number(post.thread_id));
                         if (threadResponse && threadResponse.length > 0) {
                             const thread = threadResponse[0];
+                            setThreadDetails(thread);
                             
                             // Get topic information
                             const topicResponse = await forumActor.get_topic(Number(thread.topic_id));
@@ -185,6 +187,34 @@ const Post = () => {
             loadSnsInfo();
         }
     }, [currentSnsRoot, identity]);
+
+    // Auto-scroll to the focused post when page loads
+    useEffect(() => {
+        if (!loading && threadId && postId) {
+            // Wait a bit for the ThreadViewer to render the posts
+            const timer = setTimeout(() => {
+                // Try multiple selectors to find the focused post
+                let focusedPostElement = document.querySelector('.focused-post');
+                
+                if (!focusedPostElement) {
+                    // Fallback: look for post with the specific post ID in a link
+                    focusedPostElement = document.querySelector(`a[href*="postid=${postId}"]`)?.closest('.post-item');
+                }
+                
+                if (focusedPostElement) {
+                    focusedPostElement.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'center' 
+                    });
+                    console.log(`Auto-scrolled to focused post #${postId}`);
+                } else {
+                    console.log(`Could not find focused post element for post #${postId}`);
+                }
+            }, 800); // Wait 800ms for the component to render
+
+            return () => clearTimeout(timer);
+        }
+    }, [loading, threadId, postId]);
 
     // Fetch all votes for the focused post
     const fetchPostVotes = useCallback(async () => {
@@ -413,6 +443,37 @@ const Post = () => {
                         }}>
                             Post
                         </span>
+                    </div>
+                )}
+
+                {/* Thread Title Section */}
+                {threadDetails && (
+                    <div style={{
+                        marginBottom: '20px',
+                        padding: '20px',
+                        backgroundColor: '#2a2a2a',
+                        borderRadius: '8px',
+                        border: '1px solid #3a3a3a'
+                    }}>
+                        <h1 style={{
+                            color: '#ffffff',
+                            fontSize: '1.8rem',
+                            fontWeight: '600',
+                            marginBottom: '8px',
+                            lineHeight: '1.3'
+                        }}>
+                            {threadDetails.title}
+                        </h1>
+                        {threadDetails.body && (
+                            <p style={{
+                                color: '#ccc',
+                                fontSize: '1rem',
+                                lineHeight: '1.5',
+                                margin: 0
+                            }}>
+                                {threadDetails.body}
+                            </p>
+                        )}
                     </div>
                 )}
                 
