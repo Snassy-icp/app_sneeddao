@@ -444,30 +444,45 @@ function Feed() {
                 }
                 
                 if (lastCreatedId > lastSeen) {
+                    // Check if we have SNS filters - if not, use simple count
+                    const hasSnsFilter = appliedFilters.selectedSnsList && appliedFilters.selectedSnsList.length > 0;
+                    
+                    if (!hasSnsFilter) {
+                        // No SNS filter - simple count based on ID difference
+                        const newCount = Number(lastCreatedId - lastSeen);
+                        setNewItemsCount(newCount);
+                        setShowNewItemsNotification(true);
+                        console.log(`Found ${newCount} new items (no SNS filter). Last created ID: ${lastCreatedId}, last seen: ${lastSeen}`);
+                        saveHighestCheckedId(lastCreatedId);
+                        return;
+                    }
+                    
                     // Query page by page from newest to lastSeen with SNS filter only
                     let newItemsCount = 0;
                     let currentId = lastCreatedId;
                     const pageSize = 20;
                     
                     // Build filter with only SNS selection (no text or type filters)
-                    let snsOnlyFilter = null;
-                    if (appliedFilters.selectedSnsList && appliedFilters.selectedSnsList.length > 0) {
-                        snsOnlyFilter = {
-                            creator_principals: [],
-                            topic_ids: [],
-                            search_text: [],
-                            sns_root_canister_ids: []
-                        };
-                        
-                        try {
-                            const principalArray = appliedFilters.selectedSnsList.map(snsId => 
-                                Principal.fromText(snsId)
-                            );
-                            snsOnlyFilter.sns_root_canister_ids = [principalArray];
-                        } catch (e) {
-                            console.warn('Invalid SNS principal(s) for new items check:', appliedFilters.selectedSnsList, e);
-                            snsOnlyFilter = null;
-                        }
+                    let snsOnlyFilter = {
+                        creator_principals: [],
+                        topic_ids: [],
+                        search_text: [],
+                        sns_root_canister_ids: []
+                    };
+                    
+                    try {
+                        const principalArray = appliedFilters.selectedSnsList.map(snsId => 
+                            Principal.fromText(snsId)
+                        );
+                        snsOnlyFilter.sns_root_canister_ids = [principalArray];
+                    } catch (e) {
+                        console.warn('Invalid SNS principal(s) for new items check:', appliedFilters.selectedSnsList, e);
+                        // Fall back to simple count if SNS filter is invalid
+                        const newCount = Number(lastCreatedId - lastSeen);
+                        setNewItemsCount(newCount);
+                        setShowNewItemsNotification(true);
+                        saveHighestCheckedId(lastCreatedId);
+                        return;
                     }
                     
                     // Query pages until we reach lastSeen
@@ -475,7 +490,7 @@ function Feed() {
                         const input = {
                             start_id: [currentId],
                             length: pageSize,
-                            filter: snsOnlyFilter ? [snsOnlyFilter] : []
+                            filter: [snsOnlyFilter]
                         };
                         
                         const response = await forumActor.get_feed(input);
@@ -578,11 +593,33 @@ function Feed() {
                         loadSnsLogo(sns.canisters.governance);
                     }
                 });
+            } else {
+                // Initialize empty array to prevent undefined errors
+                setSnsInstances([]);
             }
         };
         
         loadSnsData();
     }, []);
+
+    // Re-load SNS data when component becomes visible (e.g., after back button)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (!document.hidden && snsInstances.length === 0) {
+                console.log('Page became visible and snsInstances is empty, reloading...');
+                const cachedData = getAllSnses();
+                if (cachedData && cachedData.length > 0) {
+                    setSnsInstances(cachedData.map(sns => ({
+                        root_canister_id: sns.rootCanisterId,
+                        name: sns.name
+                    })));
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [snsInstances]);
 
     // Function to load a single SNS logo
     const loadSnsLogo = async (governanceId) => {
@@ -1234,7 +1271,7 @@ function Feed() {
                         
                         {item.thread_title && (Array.isArray(item.thread_title) ? item.thread_title.length > 0 : true) && (
                             <Link 
-                                to={`/thread?id=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id}`} 
+                                to={`/thread?threadid=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id}`} 
                                 style={styles.contextLink}
                             >
                                 Thread: {Array.isArray(item.thread_title) ? item.thread_title[0] : item.thread_title}
