@@ -722,79 +722,12 @@ function Forum() {
                         }}>
                             {forum.title}
                         </h1>
-                        
-                        {/* Forum Description */}
-                        {forum.description && (
-                            <p style={{
-                                color: '#888',
-                                fontSize: '0.9rem',
-                                margin: 0,
-                                maxWidth: '400px',
-                                textAlign: 'right'
-                            }}>
-                                {forum.description}
-                            </p>
-                        )}
                     </div>
                 </div>
             )}
             
             <main className="wallet-container">
                 <div style={styles.container}>
-                    {/* Forum Header Section - Updated to match welcome design */}
-                    {forum && (
-                        <div style={{
-                            backgroundColor: '#2a2a2a',
-                            borderRadius: '12px',
-                            padding: '2rem',
-                            marginBottom: '2rem',
-                            border: '1px solid #4a4a4a',
-                            textAlign: 'center'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginBottom: '1rem' }}>
-                                {/* SNS Logo */}
-                                {loadingLogo ? (
-                                    <div style={styles.forumLogoPlaceholder}>
-                                        ...
-                                    </div>
-                                ) : snsLogo ? (
-                                    <img
-                                        src={snsLogo}
-                                        alt={snsInfo?.name || 'SNS Logo'}
-                                        style={styles.forumLogo}
-                                    />
-                                ) : (
-                                    <div style={styles.forumLogoPlaceholder}>
-                                        {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
-                                    </div>
-                                )}
-                                
-                                {/* Forum Title */}
-                                <h1 style={{
-                                    fontSize: '2.5rem',
-                                    color: '#ffffff',
-                                    marginBottom: '0',
-                                    fontWeight: 'bold'
-                                }}>
-                                    {forum.title}
-                                </h1>
-                            </div>
-                            
-                            {/* Forum Description */}
-                            {forum.description && (
-                                <p style={{
-                                    color: '#ccc',
-                                    fontSize: '1.1rem',
-                                    lineHeight: '1.6',
-                                    maxWidth: '800px',
-                                    margin: '0 auto'
-                                }}>
-                                    {forum.description}
-                                </p>
-                            )}
-                        </div>
-                    )}
-
                     {/* Welcome Section */}
                     <div style={{
                         backgroundColor: '#2a2a2a',
@@ -883,6 +816,60 @@ function Forum() {
                             </div>
                         </div>
                     </div>
+
+                    {/* Forum Header Section - Updated to match welcome design */}
+                    {forum && (
+                        <div style={{
+                            backgroundColor: '#2a2a2a',
+                            borderRadius: '12px',
+                            padding: '2rem',
+                            marginBottom: '2rem',
+                            border: '1px solid #4a4a4a',
+                            textAlign: 'center'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginBottom: '1rem' }}>
+                                {/* SNS Logo */}
+                                {loadingLogo ? (
+                                    <div style={styles.forumLogoPlaceholder}>
+                                        ...
+                                    </div>
+                                ) : snsLogo ? (
+                                    <img
+                                        src={snsLogo}
+                                        alt={snsInfo?.name || 'SNS Logo'}
+                                        style={styles.forumLogo}
+                                    />
+                                ) : (
+                                    <div style={styles.forumLogoPlaceholder}>
+                                        {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
+                                    </div>
+                                )}
+                                
+                                {/* Forum Title */}
+                                <h1 style={{
+                                    fontSize: '2.5rem',
+                                    color: '#ffffff',
+                                    marginBottom: '0',
+                                    fontWeight: 'bold'
+                                }}>
+                                    {forum.title}
+                                </h1>
+                            </div>
+                            
+                            {/* Forum Description */}
+                            {forum.description && (
+                                <p style={{
+                                    color: '#ccc',
+                                    fontSize: '1.1rem',
+                                    lineHeight: '1.6',
+                                    maxWidth: '800px',
+                                    margin: '0 auto'
+                                }}>
+                                    {forum.description}
+                                </p>
+                            )}
+                        </div>
+                    )}
 
                     {/* Forum Header */}
                     <div style={styles.header}>
