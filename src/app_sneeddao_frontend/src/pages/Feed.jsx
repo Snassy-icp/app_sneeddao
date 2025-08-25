@@ -1924,6 +1924,16 @@ function Feed() {
                                     </div>
                                 </div>
                                 
+                                {/* Filter Buttons */}
+                                <div style={styles.filterRow}>
+                                    <button onClick={applyFilters} style={styles.applyButton}>
+                                        Apply Filters
+                                    </button>
+                                    <button onClick={clearFilters} style={styles.clearButton}>
+                                        Clear Filters
+                                    </button>
+                                </div>
+                                
                                 {/* Right Column (or bottom on narrow): SNS List */}
                                 <div style={styles.filterRightColumn}>
                                     <div style={styles.filterGroup}>
@@ -2025,15 +2035,6 @@ function Feed() {
                                         )}
                                     </div>
                                 </div>
-                            </div>
-                            
-                            <div style={styles.filterRow}>
-                                <button onClick={applyFilters} style={styles.applyButton}>
-                                    Apply Filters
-                                </button>
-                                <button onClick={clearFilters} style={styles.clearButton}>
-                                    Clear Filters
-                                </button>
                             </div>
                         </>
                     )}
