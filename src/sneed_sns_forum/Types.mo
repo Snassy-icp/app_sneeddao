@@ -331,6 +331,7 @@ module {
         updated_at: Int;
         deleted: Bool;
         unread_posts_count: ?Nat; // Number of unread posts for the calling user (null if not calculated)
+        total_posts_count: ?Nat; // Total number of posts in thread (null if not calculated)
     };
 
     public type PostResponse = {

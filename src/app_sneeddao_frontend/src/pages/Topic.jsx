@@ -1521,6 +1521,18 @@ function Topic() {
                                                     {(() => {
                                                         const unreadCount = thread.unread_posts_count && thread.unread_posts_count.length > 0 
                                                             ? Number(thread.unread_posts_count[0]) : 0;
+                                                        const totalCount = thread.total_posts_count && thread.total_posts_count.length > 0 
+                                                            ? Number(thread.total_posts_count[0]) : 0;
+                                                        
+                                                        // Debug logging for counting issues
+                                                        if (unreadCount > totalCount && totalCount > 0) {
+                                                            console.warn(`🐛 Counting bug in thread ${thread.id}:`, {
+                                                                unreadCount,
+                                                                totalCount,
+                                                                threadTitle: thread.title
+                                                            });
+                                                        }
+                                                        
                                                         return unreadCount > 0 ? unreadCount : 'NEW';
                                                     })()}
                                                 </span>
@@ -1566,7 +1578,12 @@ function Topic() {
                                         <div style={styles.threadMeta}>
                                             <span>Created {formatTimeAgo(thread.created_at)}</span>
                                             {(() => {
-                                                const postCount = threadPostCounts.get(thread.id.toString());
+                                                // Use backend-provided total post count if available, fallback to async count
+                                                const backendPostCount = thread.total_posts_count && thread.total_posts_count.length > 0 
+                                                    ? Number(thread.total_posts_count[0]) : null;
+                                                const asyncPostCount = threadPostCounts.get(thread.id.toString());
+                                                const postCount = backendPostCount !== null ? backendPostCount : asyncPostCount;
+                                                
                                                 return postCount !== undefined ? (
                                                     <span style={{ color: '#888', fontSize: '0.9rem' }}>
                                                         • {postCount} post{postCount !== 1 ? 's' : ''}

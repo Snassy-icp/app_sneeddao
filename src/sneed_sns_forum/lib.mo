@@ -1074,6 +1074,7 @@ module {
                     updated_at = thread.updated_at;
                     deleted = thread.deleted;
                     unread_posts_count = null; // Not calculated in basic get_thread
+                    total_posts_count = null; // Not calculated in basic get_thread
                 }
             };
             case null null;
@@ -1092,7 +1093,7 @@ module {
                     case (?p) p;
                     case null Principal.fromText("2vxsx-fae");
                 };
-                let unread_count = calculate_unread_posts_count(state, caller, id);
+                let (unread_count, total_count) = calculate_thread_post_counts(state, caller, id);
                 ?{
                     id = thread.id;
                     topic_id = thread.topic_id;
@@ -1104,6 +1105,7 @@ module {
                     updated_at = thread.updated_at;
                     deleted = thread.deleted;
                     unread_posts_count = ?unread_count;
+                    total_posts_count = ?total_count;
                 }
             };
             case null null;
@@ -4345,45 +4347,47 @@ module {
         Buffer.toArray(results)
     };
 
-    // Helper function to calculate unread posts count for a user in a thread
-    private func calculate_unread_posts_count(state: ForumState, caller: Principal, thread_id: Nat) : Nat {
+    // Helper function to calculate both unread and total post counts for a user in a thread
+    private func calculate_thread_post_counts(state: ForumState, caller: Principal, thread_id: Nat) : (Nat, Nat) {
         let key = make_user_thread_key(caller, thread_id);
         let last_read_post_id = switch (Map.get(state.user_thread_reads, Map.thash, key)) {
             case (?read_data) read_data.last_read_post_id;
             case null 0; // Never read = 0
         };
         
-        // Count posts in thread with ID higher than last read
+        var total_count = 0;
         var unread_count = 0;
+        
         switch (Map.get(state.thread_posts, Map.nhash, thread_id)) {
             case (?post_ids) {
                 for (post_id in Vector.vals(post_ids)) {
-                    if (post_id > last_read_post_id) {
-                        // Check if post exists and is not deleted (or user can see it)
-                        switch (Map.get(state.posts, Map.nhash, post_id)) {
-                            case (?post) {
-                                if (not post.deleted) {
-                                    unread_count += 1;
-                                } else {
-                                    // If post is deleted, check if user is the author
-                                    switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, post.created_by)) {
-                                        case (?post_author) {
-                                            if (Principal.equal(post_author, caller)) {
-                                                unread_count += 1;
-                                            };
-                                        };
-                                        case null {};
-                                    };
+                    // Check if post exists and user can see it
+                    switch (Map.get(state.posts, Map.nhash, post_id)) {
+                        case (?post) {
+                            let user_can_see_post = if (not post.deleted) {
+                                true
+                            } else {
+                                // If post is deleted, check if user is the author
+                                switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, post.created_by)) {
+                                    case (?post_author) Principal.equal(post_author, caller);
+                                    case null false;
                                 };
                             };
-                            case null {};
+                            
+                            if (user_can_see_post) {
+                                total_count += 1;
+                                if (post_id > last_read_post_id) {
+                                    unread_count += 1;
+                                };
+                            };
                         };
+                        case null {};
                     };
                 };
             };
             case null {};
         };
         
-        unread_count
+        (unread_count, total_count)
     };
 }
