@@ -871,13 +871,7 @@ function Forum() {
                         </div>
                     )}
 
-                    {/* Forum Header */}
-                    <div style={styles.header}>
-                        <h1 style={styles.title}>{forum?.title || 'Forum'}</h1>
-                        <p style={styles.description}>
-                            {forum?.description || 'Community discussion and governance topics'}
-                        </p>
-                    </div>
+
 
                     {/* Topics Grid */}
                     {topicHierarchy.length > 0 ? (
