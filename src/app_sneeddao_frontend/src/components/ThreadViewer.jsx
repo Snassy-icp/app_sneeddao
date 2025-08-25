@@ -317,6 +317,8 @@ function ThreadViewer({
     
     // Poll state
     const [threadPolls, setThreadPolls] = useState([]); // Polls for the thread
+    const [lastReadPostId, setLastReadPostId] = useState(0); // Track last read post ID for highlighting
+    const [stashedLastReadPostId, setStashedLastReadPostId] = useState(0); // Stashed value for highlighting new posts
     const [postPolls, setPostPolls] = useState(new Map()); // Map<postId, Poll[]>
     const [showPollForm, setShowPollForm] = useState(new Map()); // Map<postId|'thread', boolean>
     const [loadingPolls, setLoadingPolls] = useState(false);
@@ -423,6 +425,39 @@ function ThreadViewer({
     // Helper function to find a post by ID
     const findPostById = (postsList, postId) => {
         return postsList.find(p => Number(p.id) === Number(postId));
+    };
+
+    // Read tracking functions
+    const fetchLastReadPost = useCallback(async (currentThreadId) => {
+        if (!forumActor || !identity || !currentThreadId) return 0;
+        
+        try {
+            const response = await forumActor.get_last_read_post({ thread_id: parseInt(currentThreadId) });
+            const lastRead = response.last_read_post_id ? Number(response.last_read_post_id[0]) : 0;
+            return lastRead;
+        } catch (error) {
+            console.warn('Failed to fetch last read post:', error);
+            return 0;
+        }
+    }, [forumActor, identity]);
+
+    const updateLastReadPost = useCallback(async (currentThreadId, postId) => {
+        if (!forumActor || !identity || !currentThreadId || !postId) return;
+        
+        try {
+            await forumActor.set_last_read_post({ 
+                thread_id: parseInt(currentThreadId), 
+                last_read_post_id: Number(postId) 
+            });
+        } catch (error) {
+            console.warn('Failed to update last read post:', error);
+        }
+    }, [forumActor, identity]);
+
+    // Helper function to check if a post is unread (new since last visit)
+    const isPostUnread = (post) => {
+        const postId = Number(post.id);
+        return postId > stashedLastReadPostId;
     };
 
     // Helper function to derive display title for presentation (from original Discussion.jsx)
@@ -1393,6 +1428,32 @@ function ThreadViewer({
             fetchPolls();
         }
     }, [fetchPolls, threadId, discussionPosts]);
+
+    // Effect to handle read tracking when thread is loaded
+    useEffect(() => {
+        const handleReadTracking = async () => {
+            if (!threadId || !identity || discussionPosts.length === 0) return;
+            
+            // Fetch current read position and stash it for highlighting
+            const currentLastRead = await fetchLastReadPost(threadId);
+            setLastReadPostId(currentLastRead);
+            setStashedLastReadPostId(currentLastRead);
+            
+            // Find the highest post ID that the user can see
+            const visiblePosts = discussionPosts.filter(post => !post.deleted || post.author === identity.getPrincipal().toText());
+            if (visiblePosts.length === 0) return;
+            
+            const highestPostId = Math.max(...visiblePosts.map(post => Number(post.id)));
+            
+            // Update the read position to the highest visible post
+            if (highestPostId > currentLastRead) {
+                await updateLastReadPost(threadId, highestPostId);
+                setLastReadPostId(highestPostId);
+            }
+        };
+        
+        handleReadTracking();
+    }, [threadId, identity, discussionPosts, fetchLastReadPost, updateLastReadPost]);
 
     // Effect to handle responsive screen width
     useEffect(() => {
@@ -2495,6 +2556,7 @@ function ThreadViewer({
         const isFocused = focusedPostId && Number(post.id) === Number(focusedPostId);
         const score = calculatePostScore(post);
         const isNegative = score < 0;
+        const isUnread = isPostUnread(post);
         const hasBeenManuallyToggled = collapsedPosts.has(Number(post.id));
         
         // Default state: negative posts are collapsed, positive posts are expanded
@@ -2507,9 +2569,9 @@ function ThreadViewer({
                 className={`post-item ${isFocused ? 'focused-post' : ''}`} 
                 style={{ 
                     marginLeft: isFlat ? 0 : `${depth * 20}px`,
-                    backgroundColor: isNegative ? '#3a2a2a' : (isFocused ? '#2f3542' : '#2a2a2a'),
-                    borderColor: isFocused ? '#3c6382' : (isNegative ? '#8b4513' : '#4a4a4a'),
-                    borderWidth: isFocused ? '2px' : '1px',
+                    backgroundColor: isUnread ? '#3a2a4a' : (isNegative ? '#3a2a2a' : (isFocused ? '#2f3542' : '#2a2a2a')),
+                    borderColor: isUnread ? '#9b59b6' : (isFocused ? '#3c6382' : (isNegative ? '#8b4513' : '#4a4a4a')),
+                    borderWidth: isUnread ? '2px' : (isFocused ? '2px' : '1px'),
                     borderStyle: 'solid',
                     borderRadius: '6px',
                     padding: '15px',
@@ -2568,6 +2630,19 @@ function ThreadViewer({
                             #{isNarrowScreen ? '' : post.id.toString()}
                         </a>
                         {post.title && <h4 style={{ margin: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{post.title}</h4>}
+                        {isUnread && (
+                            <span style={{
+                                backgroundColor: '#e74c3c',
+                                color: 'white',
+                                fontSize: '0.65rem',
+                                padding: '2px 6px',
+                                borderRadius: '10px',
+                                fontWeight: 'bold',
+                                flexShrink: 0
+                            }}>
+                                UNREAD
+                            </span>
+                        )}
                         <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><PrincipalDisplay 
                             principal={post.created_by} 
                             displayInfo={principalDisplayInfo.get(post.created_by?.toString())}

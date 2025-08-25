@@ -233,6 +233,9 @@ module {
         proposal_topics: Map.Map<Nat, ProposalTopicMapping>; // forum_id -> mapping
         proposal_threads: Map.Map<ProposalThreadKey, ProposalThreadMapping>; // (sns_root, proposal_id) -> mapping
         thread_proposals: Map.Map<Nat, (Nat32, Nat)>; // thread_id -> (sns_root_index, proposal_id) (for reverse lookup)
+        
+        // Read tracking
+        user_thread_reads: Map.Map<Text, UserThreadReadData>; // "{user_principal}:{thread_id}" -> read_data
     };
 
     // Input types for creation functions
@@ -695,5 +698,34 @@ module {
         threads: [ThreadResponse];
         has_more: Bool; // Whether there are more threads available
         next_start_from: ?Nat; // Thread index to use for next page
+    };
+
+    // Read tracking types
+    public type UserThreadReadKey = {
+        user: Principal;
+        thread_id: Nat;
+    };
+
+    public type UserThreadReadData = {
+        last_read_post_id: Nat;
+        updated_at: Int;
+    };
+
+    public type SetLastReadPostRequest = {
+        thread_id: Nat;
+        last_read_post_id: Nat;
+    };
+
+    public type SetLastReadPostResponse = {
+        success: Bool;
+        message: Text;
+    };
+
+    public type GetLastReadPostRequest = {
+        thread_id: Nat;
+    };
+
+    public type GetLastReadPostResponse = {
+        last_read_post_id: ?Nat;
     };
 }

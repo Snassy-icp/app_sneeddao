@@ -375,6 +375,7 @@ function Topic() {
     const [showPreproposalsPrompt, setShowPreproposalsPrompt] = useState(false);
     const [creatingPreproposals, setCreatingPreproposals] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+    const [userThreadReads, setUserThreadReads] = useState(new Map()); // threadId -> lastReadPostId
     
     // Poll creation state
     const [includePoll, setIncludePoll] = useState(false);
@@ -482,6 +483,22 @@ function Topic() {
             });
         }
     }, [searchParams, selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT, setSearchParams]);
+
+    // Fetch user thread read status
+    const fetchUserThreadReads = useCallback(async () => {
+        if (!forumActor || !identity || !topicId) return;
+        
+        try {
+            const reads = await forumActor.get_user_thread_reads_for_topic(parseInt(topicId));
+            const readMap = new Map();
+            reads.forEach(([threadId, lastReadPostId]) => {
+                readMap.set(threadId.toString(), Number(lastReadPostId));
+            });
+            setUserThreadReads(readMap);
+        } catch (error) {
+            console.warn('Failed to fetch user thread reads:', error);
+        }
+    }, [forumActor, identity, topicId]);
 
     // Async function to check and fetch proposal data for threads
     const fetchProposalDataForThreads = useCallback(async (threads) => {
@@ -700,6 +717,31 @@ function Topic() {
             fetchThreadPostCounts(threads);
         }
     }, [threads, fetchThreadPostCounts]);
+
+    // Fetch user thread read status when topic is loaded
+    useEffect(() => {
+        if (!loading && topicId && identity) {
+            fetchUserThreadReads();
+        }
+    }, [fetchUserThreadReads, loading, topicId, identity]);
+
+    // Helper function to check if thread has unread posts
+    const hasUnreadPosts = (thread) => {
+        const threadId = thread.id.toString();
+        const lastReadPostId = userThreadReads.get(threadId) || 0;
+        const postCount = threadPostCounts.get(threadId);
+        
+        // If we don't have post count yet, assume no unread posts to avoid false indicators
+        if (postCount === undefined) return false;
+        
+        // Simple heuristic: if there are posts and user has never read any (lastReadPostId = 0), 
+        // or if the thread was created after their last read, there are likely unread posts
+        if (postCount > 0 && lastReadPostId === 0) return true;
+        
+        // For a more accurate check, we'd need to fetch the actual highest post ID in the thread
+        // For now, this provides a reasonable approximation
+        return false;
+    };
 
     const isRootGovernanceTopic = (topic) => {
         return topic && 
@@ -1466,6 +1508,19 @@ function Topic() {
                                     >
                                         <h3 style={styles.threadTitle}>
                                             {thread.title || `Thread #${thread.id}`}
+                                            {hasUnreadPosts(thread) && (
+                                                <span style={{
+                                                    marginLeft: '8px',
+                                                    backgroundColor: '#e74c3c',
+                                                    color: 'white',
+                                                    fontSize: '0.7rem',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '10px',
+                                                    fontWeight: 'bold'
+                                                }}>
+                                                    NEW
+                                                </span>
+                                            )}
                                         </h3>
                                         <p style={{...styles.threadBody, whiteSpace: 'pre-wrap'}}>{thread.body}</p>
                                         

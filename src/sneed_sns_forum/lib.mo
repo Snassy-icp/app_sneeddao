@@ -4175,4 +4175,64 @@ module {
             case null 0; // No posts in thread, use 0 as activity level
         }
     };
+
+    // Read tracking functions
+    private func make_user_thread_key(user: Principal, thread_id: Nat) : Text {
+        Principal.toText(user) # ":" # Nat.toText(thread_id)
+    };
+
+    public func set_last_read_post(state: ForumState, caller: Principal, thread_id: Nat, last_read_post_id: Nat) : T.SetLastReadPostResponse {
+        let key = make_user_thread_key(caller, thread_id);
+        let current_time = Time.now();
+        
+        let read_data : T.UserThreadReadData = {
+            last_read_post_id = last_read_post_id;
+            updated_at = current_time;
+        };
+        
+        Map.set(state.user_thread_reads, Map.thash, key, read_data);
+        
+        {
+            success = true;
+            message = "Last read post updated successfully";
+        }
+    };
+
+    public func get_last_read_post(state: ForumState, caller: Principal, thread_id: Nat) : T.GetLastReadPostResponse {
+        let key = make_user_thread_key(caller, thread_id);
+        
+        switch (Map.get(state.user_thread_reads, Map.thash, key)) {
+            case (?read_data) {
+                { last_read_post_id = ?read_data.last_read_post_id }
+            };
+            case null {
+                { last_read_post_id = null }
+            };
+        }
+    };
+
+    public func get_user_thread_reads_for_topic(state: ForumState, caller: Principal, topic_id: Nat) : [(Nat, Nat)] {
+        let results = Buffer.Buffer<(Nat, Nat)>(0);
+        
+        // Get all threads in the topic
+        switch (Map.get(state.topic_threads, Map.nhash, topic_id)) {
+            case (?thread_ids) {
+                for (thread_id in Vector.vals(thread_ids)) {
+                    let key = make_user_thread_key(caller, thread_id);
+                    switch (Map.get(state.user_thread_reads, Map.thash, key)) {
+                        case (?read_data) {
+                            results.add((thread_id, read_data.last_read_post_id));
+                        };
+                        case null {
+                            // No read data means they haven't read any posts in this thread
+                            results.add((thread_id, 0));
+                        };
+                    };
+                };
+            };
+            case null {};
+        };
+        
+        Buffer.toArray(results)
+    };
 }

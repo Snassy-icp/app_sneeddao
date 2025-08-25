@@ -102,6 +102,7 @@ persistent actor SneedSNSForum {
     stable let stable_proposal_topics = Map.new<Nat, T.ProposalTopicMapping>();
     stable let stable_proposal_threads = Map.new<T.ProposalThreadKey, T.ProposalThreadMapping>();
     stable let stable_thread_proposals = Map.new<Nat, (Nat32, Nat)>();
+    stable let stable_user_thread_reads = Map.new<Text, T.UserThreadReadData>();
     stable var stable_text_limits : T.TextLimits = Lib.get_default_text_limits();
 
     // Runtime state that directly references stable storage
@@ -135,6 +136,7 @@ persistent actor SneedSNSForum {
         proposal_topics = stable_proposal_topics;
         proposal_threads = stable_proposal_threads;
         thread_proposals = stable_thread_proposals;
+        user_thread_reads = stable_user_thread_reads;
     };
 
 
@@ -617,6 +619,19 @@ persistent actor SneedSNSForum {
 
     public shared ({ caller }) func update_text_limits(input: T.UpdateTextLimitsInput) : async T.Result<(), T.ForumError> {
         Lib.update_text_limits(state, caller, input)
+    };
+
+    // Read tracking endpoints
+    public shared ({ caller }) func set_last_read_post(request: T.SetLastReadPostRequest) : async T.SetLastReadPostResponse {
+        Lib.set_last_read_post(state, caller, request.thread_id, request.last_read_post_id)
+    };
+
+    public query ({ caller }) func get_last_read_post(request: T.GetLastReadPostRequest) : async T.GetLastReadPostResponse {
+        Lib.get_last_read_post(state, caller, request.thread_id)
+    };
+
+    public query ({ caller }) func get_user_thread_reads_for_topic(topic_id: Nat) : async [(Nat, Nat)] {
+        Lib.get_user_thread_reads_for_topic(state, caller, topic_id)
     };
 
     // System upgrade hooks to maintain stable storage consistency
