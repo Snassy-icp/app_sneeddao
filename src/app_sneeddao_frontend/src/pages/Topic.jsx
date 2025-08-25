@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
@@ -321,9 +321,14 @@ const styles = {
 
 function Topic() {
     const { topicId } = useParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { identity } = useAuth();
-    const { selectedSnsRoot } = useSns();
+    const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
     const navigate = useNavigate();
+
+    // Get SNS from URL params if provided, otherwise use selected SNS
+    const snsParam = searchParams.get('sns');
+    const currentSnsRoot = snsParam || selectedSnsRoot;
     
     const handleSnsChange = (newSnsRoot) => {
         console.log('Topic page: SNS change detected, navigating to forum. New SNS:', newSnsRoot);
@@ -331,11 +336,13 @@ function Topic() {
     };
     
     const [topic, setTopic] = useState(null);
+    const [forumInfo, setForumInfo] = useState(null);
     const [subtopics, setSubtopics] = useState([]);
     const [threads, setThreads] = useState([]);
     const [threadPostCounts, setThreadPostCounts] = useState(new Map());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [breadcrumbLoading, setBreadcrumbLoading] = useState(true);
     const [hoveredCard, setHoveredCard] = useState(null);
     const [hoveredThread, setHoveredThread] = useState(null);
     const [currentPage, setCurrentPage] = useState(0);
@@ -386,9 +393,24 @@ function Topic() {
     // Get text limits
     const { textLimits } = useTextLimits(forumActor);
 
+    // Sync URL parameters with global state
+    useEffect(() => {
+        const snsParam = searchParams.get('sns');
+        if (snsParam && snsParam !== selectedSnsRoot) {
+            // URL parameter takes precedence (for direct links)
+            updateSelectedSns(snsParam);
+        } else if (!snsParam && selectedSnsRoot !== SNEED_SNS_ROOT) {
+            // Update URL to match global state
+            setSearchParams(prev => {
+                prev.set('sns', selectedSnsRoot);
+                return prev;
+            });
+        }
+    }, [searchParams, selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT, setSearchParams]);
+
     // Async function to check and fetch proposal data for threads
     const fetchProposalDataForThreads = useCallback(async (threads) => {
-        if (!forumActor || !identity || !selectedSnsRoot || !threads.length) return;
+        if (!forumActor || !identity || !currentSnsRoot || !threads.length) return;
         
         // Only fetch for "Proposals" topic to avoid unnecessary API calls
         if (topic?.title !== "Proposals") return;
@@ -417,7 +439,7 @@ function Topic() {
                             
                             // Fetch proposal data from governance
                             try {
-                                const selectedSns = getSnsById(selectedSnsRoot);
+                                const selectedSns = getSnsById(currentSnsRoot);
                                 if (selectedSns) {
                                     const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
                                         agentOptions: { identity },
@@ -456,7 +478,7 @@ function Topic() {
                 return updated;
             });
         }
-    }, [forumActor, identity, selectedSnsRoot, topic?.title]);
+    }, [forumActor, identity, currentSnsRoot, topic?.title]);
 
     // Fetch post counts for threads asynchronously (non-blocking)
     const fetchThreadPostCounts = useCallback(async (threads) => {
@@ -488,6 +510,61 @@ function Topic() {
             console.error('Error fetching thread post counts:', err);
         }
     }, [forumActor]);
+
+    // Fetch forum information for breadcrumb and SNS context
+    useEffect(() => {
+        const fetchForumInfo = async () => {
+            if (!forumActor || !topicId) {
+                setBreadcrumbLoading(false);
+                return;
+            }
+
+            try {
+                // First get the topic to find its forum_id
+                const topicResponse = await forumActor.get_topic(Number(topicId));
+                if (!topicResponse || topicResponse.length === 0) {
+                    setBreadcrumbLoading(false);
+                    return;
+                }
+
+                const topicData = topicResponse[0];
+                
+                // Then get the forum information
+                const forumResponse = await forumActor.get_forum(Number(topicData.forum_id));
+                if (forumResponse && forumResponse.length > 0) {
+                    const forum = forumResponse[0];
+                    setForumInfo(forum);
+                    
+                    // Update SNS context and URL based on forum's SNS root canister ID
+                    if (forum.sns_root_canister_id && forum.sns_root_canister_id.length > 0) {
+                        const forumSnsRoot = forum.sns_root_canister_id[0].toText();
+                        
+                        // Always update if the discovered SNS is different from current
+                        if (forumSnsRoot !== selectedSnsRoot) {
+                            console.log(`Topic page: Discovered SNS ${forumSnsRoot} from forum, updating context and URL`);
+                            updateSelectedSns(forumSnsRoot);
+                        }
+                        
+                        // Update URL parameter if it's missing or incorrect
+                        const currentSnsParam = searchParams.get('sns');
+                        if (!currentSnsParam || currentSnsParam !== forumSnsRoot) {
+                            setSearchParams(prev => {
+                                const newParams = new URLSearchParams(prev);
+                                newParams.set('sns', forumSnsRoot);
+                                return newParams;
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching forum info for breadcrumb:', error);
+            } finally {
+                setBreadcrumbLoading(false);
+            }
+        };
+
+        fetchForumInfo();
+    }, [forumActor, topicId, selectedSnsRoot, updateSelectedSns, searchParams, setSearchParams]);
 
     useEffect(() => {
         if (!topicId) {
@@ -528,7 +605,7 @@ function Topic() {
     };
 
     const handleCreatePreproposalsTopic = async () => {
-        if (!identity || !selectedSnsRoot || creatingPreproposals) return;
+        if (!identity || !currentSnsRoot || creatingPreproposals) return;
 
         setCreatingPreproposals(true);
         try {
@@ -539,7 +616,7 @@ function Topic() {
                 },
             });
 
-            const snsRootPrincipal = Principal.fromText(selectedSnsRoot);
+            const snsRootPrincipal = Principal.fromText(currentSnsRoot);
             const result = await forumActor.create_special_topic({
                 sns_root_canister_id: snsRootPrincipal,
                 special_topic_type: { 'Preproposals': null }
@@ -823,11 +900,21 @@ function Topic() {
             <main className="wallet-container">
                 <div style={styles.container}>
                     {/* Breadcrumb */}
-                    <div style={styles.breadcrumb}>
-                        <Link to="/forum" style={styles.breadcrumbLink}>Forum</Link>
-                        <span style={styles.breadcrumbSeparator}>›</span>
-                        <span style={styles.currentPage}>{topic?.title}</span>
-                    </div>
+                    {!breadcrumbLoading && (
+                        <div style={styles.breadcrumb}>
+                            <Link 
+                                to={forumInfo?.sns_root_canister_id?.length > 0 
+                                    ? `/forum?sns=${forumInfo.sns_root_canister_id[0].toText()}`
+                                    : "/forum"
+                                } 
+                                style={styles.breadcrumbLink}
+                            >
+                                Forum
+                            </Link>
+                            <span style={styles.breadcrumbSeparator}>›</span>
+                            <span style={styles.currentPage}>{topic?.title}</span>
+                        </div>
+                    )}
 
                     {/* Topic Header */}
                     <div style={styles.header}>
