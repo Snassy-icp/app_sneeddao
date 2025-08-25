@@ -11,6 +11,7 @@ import { fetchSnsLogo, getAllSnses, getSnsById } from '../utils/SnsUtils';
 import { PrincipalDisplay } from '../utils/PrincipalUtils';
 import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
+import Poll from '../components/Poll';
 
 const styles = {
     container: {
@@ -846,14 +847,23 @@ function Feed() {
             .filter(item => item.poll_id && item.poll_id.length > 0)
             .map(item => Number(item.poll_id[0]));
         
+        console.log('🗳️ Feed poll fetching:', { 
+            totalItems: items.length, 
+            itemsWithPolls: items.filter(item => item.poll_id && item.poll_id.length > 0).length,
+            pollIds 
+        });
+        
         if (pollIds.length === 0) return;
 
         // Fetch polls in parallel
         const pollPromises = pollIds.map(async (pollId) => {
             try {
                 const pollResponse = await actor.get_poll(pollId);
-                if (pollResponse && pollResponse.length > 0) {
-                    return { pollId, poll: pollResponse[0] };
+                console.log(`🗳️ Raw poll response for ${pollId}:`, pollResponse);
+                if (pollResponse) {
+                    // Handle Motoko optional: [] = null, [value] = Some(value)
+                    const actualPoll = Array.isArray(pollResponse) && pollResponse.length > 0 ? pollResponse[0] : pollResponse;
+                    return { pollId, poll: actualPoll };
                 }
                 return null;
             } catch (error) {
@@ -866,13 +876,19 @@ function Feed() {
             const results = await Promise.allSettled(pollPromises);
             const newPollsMap = new Map(pollsData);
             
+            console.log('🗳️ Poll fetch results:', results);
+            
             results.forEach((result) => {
                 if (result.status === 'fulfilled' && result.value) {
                     const { pollId, poll } = result.value;
+                    console.log(`🗳️ Successfully fetched poll ${pollId}:`, poll);
                     newPollsMap.set(pollId, poll);
+                } else if (result.status === 'rejected') {
+                    console.warn('🗳️ Poll fetch rejected:', result.reason);
                 }
             });
             
+            console.log('🗳️ Updated polls map:', newPollsMap);
             setPollsData(newPollsMap);
         } catch (error) {
             console.warn('Failed to fetch polls:', error);
@@ -1570,201 +1586,32 @@ function Feed() {
 
                     {/* Poll information */}
                     {item.poll_id && item.poll_id.length > 0 && (
-                        <div style={{
-                            backgroundColor: '#2a2a3a',
-                            border: '1px solid #4a4a6a',
-                            borderRadius: '8px',
-                            padding: '12px',
-                            margin: '12px 0',
-                            borderLeft: '4px solid #9b59b6'
-                        }}>
+                        <div style={{ margin: '12px 0' }}>
                             {(() => {
                                 const pollId = Number(item.poll_id[0]);
                                 const poll = pollsData.get(pollId);
                                 
                                 if (poll) {
-                                    const hasEnded = poll.has_ended;
-                                    const totalVotes = poll.options.reduce((sum, opt) => sum + Number(opt.vote_count), 0);
-                                    const totalVotingPower = poll.options.reduce((sum, opt) => sum + Number(opt.total_voting_power), 0);
-                                    
+                                    console.log('🗳️ Rendering poll in feed:', poll);
+                                    // The poll data is wrapped in an array, extract the actual poll object
+                                    const actualPoll = Array.isArray(poll) ? poll[0] : poll;
+                                    console.log('🗳️ Extracted poll object:', actualPoll);
                                     return (
-                                        <div>
-                                            <div style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                marginBottom: '8px'
-                                            }}>
-                                                <span style={{
-                                                    fontSize: '0.85rem',
-                                                    color: '#9b59b6',
-                                                    marginRight: '8px'
-                                                }}>
-                                                    📊 Poll:
-                                                </span>
-                                                {hasEnded && (
-                                                    <span style={{
-                                                        backgroundColor: '#e74c3c',
-                                                        color: 'white',
-                                                        padding: '2px 6px',
-                                                        borderRadius: '4px',
-                                                        fontSize: '0.7rem',
-                                                        fontWeight: 'bold'
-                                                    }}>
-                                                        ENDED
-                                                    </span>
-                                                )}
-                                                {!hasEnded && (
-                                                    <span style={{
-                                                        backgroundColor: '#27ae60',
-                                                        color: 'white',
-                                                        padding: '2px 6px',
-                                                        borderRadius: '4px',
-                                                        fontSize: '0.7rem',
-                                                        fontWeight: 'bold'
-                                                    }}>
-                                                        ACTIVE
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div style={{
-                                                fontSize: '0.9rem',
-                                                color: '#ffffff',
-                                                fontWeight: '500',
-                                                marginBottom: '6px'
-                                            }}>
-                                                {poll.title}
-                                            </div>
-                                            {poll.body && poll.body.trim().length > 0 && (
-                                                <div style={{
-                                                    fontSize: '0.8rem',
-                                                    color: '#ccc',
-                                                    marginBottom: '12px',
-                                                    lineHeight: '1.4'
-                                                }}>
-                                                    {poll.body.length > 200 ? `${poll.body.substring(0, 200)}...` : poll.body}
-                                                </div>
-                                            )}
-                                            
-                                            {/* Poll Options */}
-                                            <div style={{ marginBottom: '8px' }}>
-                                                {poll.options.map((option, index) => {
-                                                    const voteCount = Number(option.vote_count);
-                                                    const votingPower = Number(option.total_voting_power);
-                                                    const percentage = totalVotes > 0 ? (voteCount / totalVotes * 100) : 0;
-                                                    const powerPercentage = totalVotingPower > 0 ? (votingPower / totalVotingPower * 100) : 0;
-                                                    
-                                                    return (
-                                                        <div key={option.id} style={{
-                                                            marginBottom: '8px',
-                                                            padding: '8px',
-                                                            backgroundColor: '#333',
-                                                            borderRadius: '6px',
-                                                            border: '1px solid #444'
-                                                        }}>
-                                                            <div style={{
-                                                                display: 'flex',
-                                                                justifyContent: 'space-between',
-                                                                alignItems: 'center',
-                                                                marginBottom: '4px'
-                                                            }}>
-                                                                <span style={{
-                                                                    fontSize: '0.85rem',
-                                                                    color: '#ffffff',
-                                                                    fontWeight: '500'
-                                                                }}>
-                                                                    {option.title}
-                                                                </span>
-                                                                <span style={{
-                                                                    fontSize: '0.75rem',
-                                                                    color: '#ccc'
-                                                                }}>
-                                                                    {voteCount} vote{voteCount !== 1 ? 's' : ''} ({percentage.toFixed(1)}%)
-                                                                </span>
-                                                            </div>
-                                                            
-                                                            {/* Vote Count Progress Bar */}
-                                                            <div style={{
-                                                                width: '100%',
-                                                                height: '6px',
-                                                                backgroundColor: '#555',
-                                                                borderRadius: '3px',
-                                                                overflow: 'hidden',
-                                                                marginBottom: '2px'
-                                                            }}>
-                                                                <div style={{
-                                                                    width: `${percentage}%`,
-                                                                    height: '100%',
-                                                                    backgroundColor: '#9b59b6',
-                                                                    transition: 'width 0.3s ease'
-                                                                }} />
-                                                            </div>
-                                                            
-                                                            {/* Voting Power Progress Bar (if different from vote count) */}
-                                                            {Math.abs(powerPercentage - percentage) > 0.1 && (
-                                                                <>
-                                                                    <div style={{
-                                                                        fontSize: '0.7rem',
-                                                                        color: '#aaa',
-                                                                        marginTop: '2px',
-                                                                        marginBottom: '2px'
-                                                                    }}>
-                                                                        Voting Power: {powerPercentage.toFixed(1)}%
-                                                                    </div>
-                                                                    <div style={{
-                                                                        width: '100%',
-                                                                        height: '4px',
-                                                                        backgroundColor: '#555',
-                                                                        borderRadius: '2px',
-                                                                        overflow: 'hidden'
-                                                                    }}>
-                                                                        <div style={{
-                                                                            width: `${powerPercentage}%`,
-                                                                            height: '100%',
-                                                                            backgroundColor: '#3498db',
-                                                                            transition: 'width 0.3s ease'
-                                                                        }} />
-                                                                    </div>
-                                                                </>
-                                                            )}
-                                                            
-                                                            {option.body && option.body.length > 0 && (
-                                                                <div style={{
-                                                                    fontSize: '0.75rem',
-                                                                    color: '#bbb',
-                                                                    marginTop: '4px',
-                                                                    lineHeight: '1.3'
-                                                                }}>
-                                                                    {option.body.length > 100 ? `${option.body.substring(0, 100)}...` : option.body}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                            
-                                            {/* Poll Summary */}
-                                            <div style={{
-                                                fontSize: '0.75rem',
-                                                color: '#888',
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                paddingTop: '8px',
-                                                borderTop: '1px solid #444'
-                                            }}>
-                                                <span>
-                                                    {totalVotes} total vote{totalVotes !== 1 ? 's' : ''}
-                                                    {totalVotingPower !== totalVotes && ` • ${totalVotingPower.toLocaleString()} voting power`}
-                                                </span>
-                                                <span>
-                                                    Ends: {new Date(Number(poll.end_timestamp) / 1000000).toLocaleDateString()}
-                                                </span>
-                                            </div>
-                                        </div>
+                                        <Poll 
+                                            poll={actualPoll}
+                                            showCreateForm={false}
+                                            selectedNeurons={[]}
+                                            allNeurons={[]}
+                                            totalVotingPower={0}
+                                        />
                                     );
                                 } else {
                                     return (
                                         <div style={{
+                                            backgroundColor: '#2a2a2a',
+                                            borderRadius: '6px',
+                                            padding: '20px',
+                                            border: '1px solid #444',
                                             fontSize: '0.85rem',
                                             color: '#9b59b6'
                                         }}>

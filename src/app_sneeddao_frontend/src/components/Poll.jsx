@@ -274,6 +274,11 @@ const Poll = ({
     };
 
     const formatDate = (timestamp) => {
+        // Handle undefined/null timestamps
+        if (!timestamp && timestamp !== 0) {
+            return 'Unknown';
+        }
+        
         // Convert nanoseconds to milliseconds, handling BigInt
         const timestampBigInt = typeof timestamp === 'bigint' ? timestamp : BigInt(timestamp);
         return new Date(Number(timestampBigInt / 1000000n)).toLocaleString();
@@ -687,6 +692,16 @@ const Poll = ({
     // Show existing poll
     if (!poll) return null;
 
+    // Debug: Log poll structure (can be removed later)
+    console.log('🗳️ Poll component received poll data:', {
+        title: poll.title,
+        body: poll.body,
+        optionsCount: poll.options ? poll.options.length : 0,
+        hasEnded: poll.has_ended,
+        vpPower: poll.vp_power,
+        endTimestamp: poll.end_timestamp
+    });
+
     return (
         <div style={{ 
             backgroundColor: '#2a2a2a', 
@@ -698,7 +713,7 @@ const Poll = ({
             <div style={{ marginBottom: '15px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                     <h4 style={{ color: '#ffffff', fontSize: '16px', margin: 0 }}>
-                        📊 {poll.title}
+                        📊 {poll.title || 'Untitled Poll'}
                     </h4>
                     {poll.has_ended && (
                         <span style={{
@@ -713,11 +728,13 @@ const Poll = ({
                         </span>
                     )}
                 </div>
-                <p style={{ color: '#ccc', fontSize: '14px', margin: '0 0 10px 0', lineHeight: '1.4' }}>
-                    {poll.body}
-                </p>
+                {poll.body && (
+                    <p style={{ color: '#ccc', fontSize: '14px', margin: '0 0 10px 0', lineHeight: '1.4' }}>
+                        {poll.body}
+                    </p>
+                )}
                 <div style={{ fontSize: '12px', color: '#888' }}>
-                    Ends: {formatDate(poll.end_timestamp)} • VP Power: {poll.vp_power}x
+                    Ends: {formatDate(poll.end_timestamp)} • VP Power: {poll.vp_power || 1}x
                     {!poll.allow_vote_changes && (
                         <>
                             {' • '}
@@ -730,7 +747,7 @@ const Poll = ({
             </div>
 
             <div style={{ marginBottom: '15px' }}>
-                {poll.options && poll.options.map((option, index) => {
+                {poll.options && poll.options.length > 0 ? poll.options.map((option, index) => {
                     const percentage = getOptionVotePercentage(option);
                     const userVoteCount = getUserVoteForOption(option.id);
                     const votingState = votingStates.get(option.id);
@@ -841,7 +858,16 @@ const Poll = ({
                             </div>
                         </div>
                     );
-                })}
+                }) : (
+                    <div style={{
+                        padding: '20px',
+                        textAlign: 'center',
+                        color: '#888',
+                        fontStyle: 'italic'
+                    }}>
+                        No poll options available
+                    </div>
+                )}
             </div>
 
             {selectedNeurons && selectedNeurons.length > 0 && !poll.has_ended && (
