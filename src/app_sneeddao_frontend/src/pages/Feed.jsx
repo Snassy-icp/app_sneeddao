@@ -1673,155 +1673,203 @@ function Feed() {
             )}
             
             <div ref={scrollContainerRef} style={styles.container}>
-                                    <div style={styles.header}>
+                {/* Header Card */}
+                <div style={{
+                    backgroundColor: '#2a2a2a',
+                    borderRadius: '16px',
+                    padding: '24px',
+                    marginBottom: '24px',
+                    border: '1px solid #3a3a3a',
+                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+                    background: 'linear-gradient(135deg, #2a2a2a 0%, #252525 100%)'
+                }}>
+                    {/* Header Content */}
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        textAlign: 'center',
+                        marginBottom: '20px'
+                    }}>
+                        {/* Logo and Title Row */}
                         <div style={{
-                            textAlign: 'center',
-                            marginBottom: '20px'
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '12px',
+                            marginBottom: '16px',
+                            flexWrap: 'wrap'
                         }}>
-                            <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '15px',
-                                marginBottom: '10px'
+                            <img
+                                src="sneed_logo.png"
+                                alt="Sneed Logo"
+                                style={{
+                                    width: '48px',
+                                    height: '48px',
+                                    objectFit: 'cover',
+                                    cursor: 'pointer',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)'
+                                }}
+                            />
+                            <h1 style={{
+                                ...styles.title,
+                                margin: '0',
+                                background: 'linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%)',
+                                backgroundClip: 'text',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                fontSize: 'clamp(2rem, 5vw, 2.5rem)'
                             }}>
-                                {/* Sneed DAO Logo */}
-                                <img
-                                    src="sneed_logo.png"
-                                    alt="Sneed Logo"
-                                    style={{
-                                        width: '48px',
-                                        height: '48px',
-                                        objectFit: 'cover',
-                                        cursor: 'pointer'
-                                    }}
-                                />
-                                <h1 style={styles.title}>Sneed's Feed</h1>
-                            </div>
-                            <p style={styles.description}>
-                                Latest activity across all SNS forums - see new forums, topics, threads, and posts as they happen.
-                            </p>
+                                Sneed's Feed
+                            </h1>
                         </div>
+                        
+                        {/* Description */}
+                        <p style={{
+                            ...styles.description,
+                            margin: '0',
+                            maxWidth: '600px',
+                            fontSize: 'clamp(1rem, 2.5vw, 1.1rem)',
+                            lineHeight: '1.6'
+                        }}>
+                            Latest activity across all SNS forums - see new forums, topics, threads, and posts as they happen.
+                        </p>
+                    </div>
 
-                        {/* SNS Logos Row */}
-                        {(() => {
-                            // Determine which SNSes to show
-                            const selectedSnsIds = appliedFilters.selectedSnsList || [];
-                            const snsesToShow = selectedSnsIds.length > 0 
-                                ? snsInstances.filter(sns => selectedSnsIds.includes(sns.root_canister_id))
-                                : snsInstances; // Show all if none selected
-                            
-                            if (snsesToShow.length === 0) return null;
-                            
-                            return (
+                    {/* SNS Logos Section */}
+                    {(() => {
+                        // Determine which SNSes to show
+                        const selectedSnsIds = appliedFilters.selectedSnsList || [];
+                        const snsesToShow = selectedSnsIds.length > 0 
+                            ? snsInstances.filter(sns => selectedSnsIds.includes(sns.root_canister_id))
+                            : snsInstances; // Show all if none selected
+                        
+                        if (snsesToShow.length === 0) return null;
+                        
+                        return (
+                            <div style={{
+                                borderTop: '1px solid #3a3a3a',
+                                paddingTop: '20px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                gap: '12px'
+                            }}>
+                                <div style={{
+                                    fontSize: '0.9rem',
+                                    color: '#888',
+                                    fontWeight: '500',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px'
+                                }}>
+                                    {selectedSnsIds.length > 0 ? 'Filtered SNS Communities' : 'All SNS Communities'}
+                                </div>
+                                
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    marginTop: '10px'
+                                    flexWrap: 'wrap',
+                                    gap: '8px',
+                                    maxWidth: '100%'
                                 }}>
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        position: 'relative'
-                                    }}>
-                                        {snsesToShow.slice(0, 8).map((sns, index) => {
-                                            const snsInfo = getSnsInfo(sns.root_canister_id);
-                                            const snsLogo = snsInfo ? snsLogos.get(snsInfo.canisters.governance) : null;
-                                            const isLoadingLogo = snsInfo ? loadingLogos.has(snsInfo.canisters.governance) : false;
-                                            
-                                            return (
-                                                <div
-                                                    key={sns.root_canister_id}
-                                                    style={{
-                                                        position: 'relative',
-                                                        marginLeft: index > 0 ? '-12px' : '0', // 33% overlap (36px * 0.33 ≈ 12px)
-                                                        zIndex: snsesToShow.length - index, // Later items have lower z-index so earlier ones appear on top
-                                                        transition: 'transform 0.2s ease, z-index 0.2s ease'
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                        e.currentTarget.style.transform = 'scale(1.1) translateY(-2px)';
-                                                        e.currentTarget.style.zIndex = '100';
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        e.currentTarget.style.transform = 'scale(1) translateY(0)';
-                                                        e.currentTarget.style.zIndex = snsesToShow.length - index;
-                                                    }}
-                                                    title={snsInfo?.name || sns.name || 'SNS'}
-                                                >
-                                                    {isLoadingLogo ? (
-                                                        <div style={{
-                                                            width: '36px',
-                                                            height: '36px',
-                                                            borderRadius: '50%',
-                                                            backgroundColor: '#4a4a4a',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            fontSize: '12px',
-                                                            color: '#ccc',
-                                                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)'
-                                                        }}>
-                                                            ...
-                                                        </div>
-                                                    ) : snsLogo ? (
-                                                        <img
-                                                            src={snsLogo}
-                                                            alt={snsInfo?.name || sns.name}
-                                                            style={{
-                                                                width: '36px',
-                                                                height: '36px',
-                                                                borderRadius: '50%',
-                                                                objectFit: 'cover',
-                                                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)'
-                                                            }}
-                                                        />
-                                                    ) : (
-                                                        <div style={{
-                                                            width: '36px',
-                                                            height: '36px',
-                                                            borderRadius: '50%',
-                                                            backgroundColor: '#4a4a4a',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            fontSize: '10px',
-                                                            color: '#ffffff',
-                                                            fontWeight: 'bold',
-                                                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)'
-                                                        }}>
-                                                            {(snsInfo?.name || sns.name || 'SNS').substring(0, 2).toUpperCase()}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
+                                    {snsesToShow.slice(0, 10).map((sns, index) => {
+                                        const snsInfo = getSnsInfo(sns.root_canister_id);
+                                        const snsLogo = snsInfo ? snsLogos.get(snsInfo.canisters.governance) : null;
+                                        const isLoadingLogo = snsInfo ? loadingLogos.has(snsInfo.canisters.governance) : false;
                                         
-                                        {/* Show "+X more" if there are more than 8 SNSes */}
-                                        {snsesToShow.length > 8 && (
-                                            <div style={{
-                                                marginLeft: '-12px',
-                                                width: '36px',
-                                                height: '36px',
-                                                borderRadius: '50%',
-                                                backgroundColor: '#666',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                fontSize: '10px',
-                                                color: '#ffffff',
-                                                fontWeight: 'bold',
-                                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-                                                zIndex: '0'
-                                            }}>
-                                                +{snsesToShow.length - 8}
+                                        return (
+                                            <div
+                                                key={sns.root_canister_id}
+                                                style={{
+                                                    position: 'relative',
+                                                    transition: 'transform 0.2s ease',
+                                                    cursor: 'pointer'
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    e.currentTarget.style.transform = 'scale(1.1) translateY(-2px)';
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    e.currentTarget.style.transform = 'scale(1) translateY(0)';
+                                                }}
+                                                title={snsInfo?.name || sns.name || 'SNS'}
+                                            >
+                                                {isLoadingLogo ? (
+                                                    <div style={{
+                                                        width: '40px',
+                                                        height: '40px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: '#4a4a4a',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        fontSize: '12px',
+                                                        color: '#ccc',
+                                                        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.4)',
+                                                        border: '2px solid #3a3a3a'
+                                                    }}>
+                                                        ...
+                                                    </div>
+                                                ) : snsLogo ? (
+                                                    <img
+                                                        src={snsLogo}
+                                                        alt={snsInfo?.name || sns.name}
+                                                        style={{
+                                                            width: '40px',
+                                                            height: '40px',
+                                                            borderRadius: '50%',
+                                                            objectFit: 'cover',
+                                                            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.4)',
+                                                            border: '2px solid #3a3a3a'
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <div style={{
+                                                        width: '40px',
+                                                        height: '40px',
+                                                        borderRadius: '50%',
+                                                        backgroundColor: '#4a4a4a',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        fontSize: '11px',
+                                                        color: '#ffffff',
+                                                        fontWeight: 'bold',
+                                                        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.4)',
+                                                        border: '2px solid #3a3a3a'
+                                                    }}>
+                                                        {(snsInfo?.name || sns.name || 'SNS').substring(0, 2).toUpperCase()}
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
+                                        );
+                                    })}
+                                    
+                                    {/* Show "+X more" if there are more than 10 SNSes */}
+                                    {snsesToShow.length > 10 && (
+                                        <div style={{
+                                            width: '40px',
+                                            height: '40px',
+                                            borderRadius: '50%',
+                                            backgroundColor: '#555',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '11px',
+                                            color: '#ffffff',
+                                            fontWeight: 'bold',
+                                            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.4)',
+                                            border: '2px solid #3a3a3a'
+                                        }}>
+                                            +{snsesToShow.length - 10}
+                                        </div>
+                                    )}
                                 </div>
-                            );
-                        })()}
-                    </div>
+                            </div>
+                        );
+                    })()}
+                </div>
 
                 {/* Filter Section */}
                 <div style={styles.filterSection}>
