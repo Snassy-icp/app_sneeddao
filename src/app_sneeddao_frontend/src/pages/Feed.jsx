@@ -1686,19 +1686,16 @@ function Feed() {
                                 marginBottom: '10px'
                             }}>
                                 {/* Sneed DAO Logo */}
-                                <div style={{
-                                    width: '48px',
-                                    height: '48px',
-                                    borderRadius: '50%',
-                                    backgroundColor: '#2a2a2a',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '24px',
-                                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)'
-                                }}>
-                                    🌱
-                                </div>
+                                <img
+                                    src="sneed_logo.png"
+                                    alt="Sneed Logo"
+                                    style={{
+                                        width: '48px',
+                                        height: '48px',
+                                        objectFit: 'cover',
+                                        cursor: 'pointer'
+                                    }}
+                                />
                                 <h1 style={styles.title}>Sneed's Feed</h1>
                             </div>
                             <p style={styles.description}>
