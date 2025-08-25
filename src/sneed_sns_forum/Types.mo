@@ -330,6 +330,7 @@ module {
         updated_by: Principal;
         updated_at: Int;
         deleted: Bool;
+        unread_posts_count: ?Nat; // Number of unread posts for the calling user (null if not calculated)
     };
 
     public type PostResponse = {

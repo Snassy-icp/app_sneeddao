@@ -1073,6 +1073,37 @@ module {
                     updated_by;
                     updated_at = thread.updated_at;
                     deleted = thread.deleted;
+                    unread_posts_count = null; // Not calculated in basic get_thread
+                }
+            };
+            case null null;
+        }
+    };
+
+    // Get thread with unread count for a specific caller
+    public func get_thread_with_unread_count(state: ForumState, id: Nat, caller: Principal) : ?T.ThreadResponse {
+        switch (Map.get(state.threads, Map.nhash, id)) {
+            case (?thread) {
+                let created_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, thread.created_by)) {
+                    case (?p) p;
+                    case null Principal.fromText("2vxsx-fae");
+                };
+                let updated_by = switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, thread.updated_by)) {
+                    case (?p) p;
+                    case null Principal.fromText("2vxsx-fae");
+                };
+                let unread_count = calculate_unread_posts_count(state, caller, id);
+                ?{
+                    id = thread.id;
+                    topic_id = thread.topic_id;
+                    title = thread.title;
+                    body = thread.body;
+                    created_by;
+                    created_at = thread.created_at;
+                    updated_by;
+                    updated_at = thread.updated_at;
+                    deleted = thread.deleted;
+                    unread_posts_count = ?unread_count;
                 }
             };
             case null null;
@@ -1085,6 +1116,23 @@ module {
             case (?thread_ids) {
                 for (thread_id in Vector.vals(thread_ids)) {
                     switch (get_thread(state, thread_id)) {
+                        case (?thread_response) threads.add(thread_response);
+                        case null {};
+                    };
+                };
+            };
+            case null {};
+        };
+        Buffer.toArray(threads)
+    };
+
+    // Get threads by topic with unread counts for a specific caller
+    public func get_threads_by_topic_with_unread_counts(state: ForumState, topic_id: Nat, caller: Principal) : [T.ThreadResponse] {
+        let threads = Buffer.Buffer<T.ThreadResponse>(0);
+        switch (Map.get(state.topic_threads, Map.nhash, topic_id)) {
+            case (?thread_ids) {
+                for (thread_id in Vector.vals(thread_ids)) {
+                    switch (get_thread_with_unread_count(state, thread_id, caller)) {
                         case (?thread_response) threads.add(thread_response);
                         case null {};
                     };
@@ -4161,6 +4209,67 @@ module {
         }
     };
 
+    // Get threads by activity with unread counts for a specific caller
+    public func get_threads_by_activity_with_unread_counts(state: ForumState, topic_id: Nat, start_from: ?Nat, length: Nat, reverse: Bool, show_deleted: Bool, caller: Principal) : T.GetThreadsByActivityResponse {
+        // Get all threads in the topic
+        let thread_activity_pairs = Buffer.Buffer<(T.ThreadResponse, Nat)>(0);
+        
+        switch (Map.get(state.topic_threads, Map.nhash, topic_id)) {
+            case (?thread_ids) {
+                for (thread_id in Vector.vals(thread_ids)) {
+                    switch (get_thread_with_unread_count(state, thread_id, caller)) {
+                        case (?thread_response) {
+                            if (show_deleted or not thread_response.deleted) {
+                                // Find the highest post ID in this thread
+                                let highest_post_id = get_highest_post_id_in_thread(state, thread_id);
+                                thread_activity_pairs.add((thread_response, highest_post_id));
+                            };
+                        };
+                        case null {};
+                    };
+                };
+            };
+            case null {};
+        };
+
+        // Sort by activity (highest post ID)
+        let sorted_pairs = Array.sort(Buffer.toArray(thread_activity_pairs), func(a : (T.ThreadResponse, Nat), b : (T.ThreadResponse, Nat)) : Order.Order {
+            let (_, a_activity) = a;
+            let (_, b_activity) = b;
+            if (reverse) {
+                Nat.compare(b_activity, a_activity) // Newest activity first
+            } else {
+                Nat.compare(a_activity, b_activity) // Oldest activity first
+            }
+        });
+
+        // Apply pagination
+        let total_count = sorted_pairs.size();
+        let start_index = switch (start_from) {
+            case (?from) from;
+            case null 0;
+        };
+        
+        let end_index = Nat.min(start_index + length, total_count);
+        let has_more = end_index < total_count;
+        let next_start_from = if (has_more) ?end_index else null;
+
+        // Extract threads from the paginated slice
+        let result_threads = Buffer.Buffer<T.ThreadResponse>(0);
+        var i = start_index;
+        while (i < end_index) {
+            let (thread_response, _) = sorted_pairs[i];
+            result_threads.add(thread_response);
+            i += 1;
+        };
+
+        {
+            threads = Buffer.toArray(result_threads);
+            has_more;
+            next_start_from;
+        }
+    };
+
     private func get_highest_post_id_in_thread(state: ForumState, thread_id: Nat) : Nat {
         switch (Map.get(state.thread_posts, Map.nhash, thread_id)) {
             case (?post_ids) {
@@ -4234,5 +4343,47 @@ module {
         };
         
         Buffer.toArray(results)
+    };
+
+    // Helper function to calculate unread posts count for a user in a thread
+    private func calculate_unread_posts_count(state: ForumState, caller: Principal, thread_id: Nat) : Nat {
+        let key = make_user_thread_key(caller, thread_id);
+        let last_read_post_id = switch (Map.get(state.user_thread_reads, Map.thash, key)) {
+            case (?read_data) read_data.last_read_post_id;
+            case null 0; // Never read = 0
+        };
+        
+        // Count posts in thread with ID higher than last read
+        var unread_count = 0;
+        switch (Map.get(state.thread_posts, Map.nhash, thread_id)) {
+            case (?post_ids) {
+                for (post_id in Vector.vals(post_ids)) {
+                    if (post_id > last_read_post_id) {
+                        // Check if post exists and is not deleted (or user can see it)
+                        switch (Map.get(state.posts, Map.nhash, post_id)) {
+                            case (?post) {
+                                if (not post.deleted) {
+                                    unread_count += 1;
+                                } else {
+                                    // If post is deleted, check if user is the author
+                                    switch (Dedup.getPrincipalForIndex(state.principal_dedup_state, post.created_by)) {
+                                        case (?post_author) {
+                                            if (Principal.equal(post_author, caller)) {
+                                                unread_count += 1;
+                                            };
+                                        };
+                                        case null {};
+                                    };
+                                };
+                            };
+                            case null {};
+                        };
+                    };
+                };
+            };
+            case null {};
+        };
+        
+        unread_count
     };
 }

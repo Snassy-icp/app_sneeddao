@@ -727,19 +727,19 @@ function Topic() {
 
     // Helper function to check if thread has unread posts
     const hasUnreadPosts = (thread) => {
+        // Use the unread count from the backend if available
+        if (thread.unread_posts_count !== undefined && thread.unread_posts_count !== null) {
+            return Number(thread.unread_posts_count[0] || 0) > 0;
+        }
+        
+        // Fallback to old heuristic if unread count not available
         const threadId = thread.id.toString();
         const lastReadPostId = userThreadReads.get(threadId) || 0;
         const postCount = threadPostCounts.get(threadId);
         
-        // If we don't have post count yet, assume no unread posts to avoid false indicators
         if (postCount === undefined) return false;
-        
-        // Simple heuristic: if there are posts and user has never read any (lastReadPostId = 0), 
-        // or if the thread was created after their last read, there are likely unread posts
         if (postCount > 0 && lastReadPostId === 0) return true;
         
-        // For a more accurate check, we'd need to fetch the actual highest post ID in the thread
-        // For now, this provides a reasonable approximation
         return false;
     };
 
@@ -837,7 +837,7 @@ function Topic() {
                 const reverse = sortBy === 'activity-newest';
                 const startFrom = currentPage * threadsPerPage;
                 
-                const activityResponse = await forumActor.get_threads_by_activity(
+                const activityResponse = await forumActor.get_threads_by_activity_with_unread_counts(
                     parseInt(topicId),
                     [startFrom], // Optional Nat
                     threadsPerPage,
@@ -860,7 +860,7 @@ function Topic() {
                 }
             } else {
                 // Use creation time sorting with frontend pagination (existing logic)
-                threadsResponse = await forumActor.get_threads_by_topic(parseInt(topicId));
+                threadsResponse = await forumActor.get_threads_by_topic_with_unread_counts(parseInt(topicId));
                 
                 if (threadsResponse) {
                     // Filter out deleted threads
@@ -1563,9 +1563,25 @@ function Topic() {
                                             <span>Created {formatTimeAgo(thread.created_at)}</span>
                                             {(() => {
                                                 const postCount = threadPostCounts.get(thread.id.toString());
+                                                const unreadCount = thread.unread_posts_count && thread.unread_posts_count.length > 0 
+                                                    ? Number(thread.unread_posts_count[0]) : 0;
+                                                
                                                 return postCount !== undefined ? (
                                                     <span style={{ color: '#888', fontSize: '0.9rem' }}>
                                                         • {postCount} post{postCount !== 1 ? 's' : ''}
+                                                        {unreadCount > 0 && (
+                                                            <span style={{
+                                                                marginLeft: '6px',
+                                                                backgroundColor: '#e74c3c',
+                                                                color: 'white',
+                                                                fontSize: '0.7rem',
+                                                                padding: '1px 4px',
+                                                                borderRadius: '8px',
+                                                                fontWeight: 'bold'
+                                                            }}>
+                                                                {unreadCount} new
+                                                            </span>
+                                                        )}
                                                     </span>
                                                 ) : (
                                                     <span style={{ color: '#666', fontSize: '0.8rem', fontStyle: 'italic' }}>
