@@ -441,6 +441,7 @@ function Feed() {
     const [feedItems, setFeedItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [pollsData, setPollsData] = useState(new Map()); // pollId -> poll data
     const [loadingNewer, setLoadingNewer] = useState(false);
     const [error, setError] = useState(null);
     const [hasMore, setHasMore] = useState(true);
@@ -839,6 +840,45 @@ function Feed() {
         return colors[typeStr] || '#3498db';
     };
 
+    // Fetch polls async for feed items
+    const fetchPollsForItems = async (items, actor) => {
+        const pollIds = items
+            .filter(item => item.poll_id && item.poll_id.length > 0)
+            .map(item => Number(item.poll_id[0]));
+        
+        if (pollIds.length === 0) return;
+
+        // Fetch polls in parallel
+        const pollPromises = pollIds.map(async (pollId) => {
+            try {
+                const pollResponse = await actor.get_poll(pollId);
+                if (pollResponse && pollResponse.length > 0) {
+                    return { pollId, poll: pollResponse[0] };
+                }
+                return null;
+            } catch (error) {
+                console.warn(`Failed to fetch poll ${pollId}:`, error);
+                return null;
+            }
+        });
+
+        try {
+            const results = await Promise.allSettled(pollPromises);
+            const newPollsMap = new Map(pollsData);
+            
+            results.forEach((result) => {
+                if (result.status === 'fulfilled' && result.value) {
+                    const { pollId, poll } = result.value;
+                    newPollsMap.set(pollId, poll);
+                }
+            });
+            
+            setPollsData(newPollsMap);
+        } catch (error) {
+            console.warn('Failed to fetch polls:', error);
+        }
+    };
+
     // Load feed items (supports bidirectional loading)
     const loadFeed = async (startId = null, direction = 'initial') => {
         try {
@@ -922,6 +962,11 @@ function Feed() {
                 setHasMore(response.has_more);
                 setNextStartId(response.next_start_id.length > 0 ? response.next_start_id[0] : null);
                 
+                // Fetch polls for items with poll_id (async, non-blocking)
+                if (filteredItems.length > 0) {
+                    fetchPollsForItems(filteredItems, forumActor);
+                }
+                
                 // If we started from a specific item (either URL param or back button), we might have newer items available
                 const startFromParam = searchParams.get('startFrom');
                 const wasBackButtonNavigation = startId !== null; // startId is set when loading from specific item
@@ -946,6 +991,9 @@ function Feed() {
                     setFeedItems(prev => [...prev, ...filteredItems]);
                     setHasMore(response.has_more);
                     setNextStartId(response.next_start_id.length > 0 ? response.next_start_id[0] : null);
+                    
+                    // Fetch polls for new items (async, non-blocking)
+                    fetchPollsForItems(filteredItems, forumActor);
                 } else {
                     // No more older items available, disable auto-loading
                     setCanAutoLoadOlder(false);
@@ -980,6 +1028,9 @@ function Feed() {
                         
                         // Add newer items to the beginning
                         setFeedItems(prev => [...newerItems, ...prev]);
+                        
+                        // Fetch polls for new items (async, non-blocking)
+                        fetchPollsForItems(newerItems, forumActor);
                         
                         // Restore scroll position after React re-renders
                         setTimeout(() => {
@@ -1473,6 +1524,119 @@ function Feed() {
                             {(() => {
                                 const bodyText = Array.isArray(item.body) ? item.body[0] : item.body;
                                 return bodyText.length > 300 ? `${bodyText.substring(0, 300)}...` : bodyText;
+                            })()}
+                        </div>
+                    )}
+
+                    {/* Replied-to post information */}
+                    {item.replied_to_post && item.replied_to_post.length > 0 && (
+                        <div style={{
+                            backgroundColor: '#3a3a3a',
+                            border: '1px solid #4a4a4a',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            margin: '12px 0',
+                            borderLeft: '4px solid #3498db'
+                        }}>
+                            <div style={{
+                                fontSize: '0.85rem',
+                                color: '#888',
+                                marginBottom: '6px'
+                            }}>
+                                💬 Replying to:
+                            </div>
+                            {item.replied_to_post[0].title && item.replied_to_post[0].title.length > 0 && (
+                                <div style={{
+                                    fontSize: '0.9rem',
+                                    color: '#ffffff',
+                                    fontWeight: '500',
+                                    marginBottom: '4px'
+                                }}>
+                                    {Array.isArray(item.replied_to_post[0].title) ? item.replied_to_post[0].title[0] : item.replied_to_post[0].title}
+                                </div>
+                            )}
+                            <div style={{
+                                fontSize: '0.85rem',
+                                color: '#ccc',
+                                lineHeight: '1.4'
+                            }}>
+                                {(() => {
+                                    const replyBody = item.replied_to_post[0].body;
+                                    return replyBody.length > 150 ? `${replyBody.substring(0, 150)}...` : replyBody;
+                                })()}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Poll information */}
+                    {item.poll_id && item.poll_id.length > 0 && (
+                        <div style={{
+                            backgroundColor: '#2a2a3a',
+                            border: '1px solid #4a4a6a',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            margin: '12px 0',
+                            borderLeft: '4px solid #9b59b6'
+                        }}>
+                            {(() => {
+                                const pollId = Number(item.poll_id[0]);
+                                const poll = pollsData.get(pollId);
+                                
+                                if (poll) {
+                                    const hasEnded = poll.has_ended;
+                                    return (
+                                        <div>
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                marginBottom: '8px'
+                                            }}>
+                                                <span style={{
+                                                    fontSize: '0.85rem',
+                                                    color: '#9b59b6',
+                                                    marginRight: '8px'
+                                                }}>
+                                                    📊 Poll:
+                                                </span>
+                                                {hasEnded && (
+                                                    <span style={{
+                                                        backgroundColor: '#e74c3c',
+                                                        color: 'white',
+                                                        padding: '2px 6px',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.7rem',
+                                                        fontWeight: 'bold'
+                                                    }}>
+                                                        ENDED
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div style={{
+                                                fontSize: '0.9rem',
+                                                color: '#ffffff',
+                                                fontWeight: '500',
+                                                marginBottom: '6px'
+                                            }}>
+                                                {poll.title}
+                                            </div>
+                                            <div style={{
+                                                fontSize: '0.8rem',
+                                                color: '#ccc'
+                                            }}>
+                                                {poll.options.length} option{poll.options.length !== 1 ? 's' : ''} • {poll.options.reduce((sum, opt) => sum + Number(opt.vote_count), 0)} vote{poll.options.reduce((sum, opt) => sum + Number(opt.vote_count), 0) !== 1 ? 's' : ''}
+                                            </div>
+                                        </div>
+                                    );
+                                } else {
+                                    return (
+                                        <div style={{
+                                            fontSize: '0.85rem',
+                                            color: '#9b59b6'
+                                        }}>
+                                            📊 Poll (loading...)
+                                        </div>
+                                    );
+                                }
                             })()}
                         </div>
                     )}

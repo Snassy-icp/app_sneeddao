@@ -3851,6 +3851,8 @@ module {
             topic_title = null;
             thread_id = null;
             thread_title = null;
+            poll_id = null; // Forums don't have polls
+            replied_to_post = null; // Forums don't reply to posts
         }
     };
 
@@ -3879,6 +3881,8 @@ module {
             topic_title = null;
             thread_id = null;
             thread_title = null;
+            poll_id = null; // Topics don't have polls
+            replied_to_post = null; // Topics don't reply to posts
         }
     };
 
@@ -3899,6 +3903,16 @@ module {
             case null ("Unknown Topic", 0, "Unknown Forum", null);
         };
 
+        // Get poll_id if there's a poll associated with this thread
+        let poll_id = switch (Map.get(state.thread_polls, Map.nhash, thread.id)) {
+            case (?poll_ids) {
+                if (Vector.size(poll_ids) > 0) {
+                    ?Vector.get(poll_ids, 0) // Get first poll ID
+                } else null
+            };
+            case null null;
+        };
+
         ?{
             id = thread.id;
             item_type = #thread;
@@ -3913,6 +3927,8 @@ module {
             topic_title = ?topic_title;
             thread_id = null;
             thread_title = null;
+            poll_id = poll_id;
+            replied_to_post = null; // Threads don't reply to posts
         }
     };
 
@@ -3939,6 +3955,35 @@ module {
             case null (null, 0, "Unknown Topic", 0, "Unknown Forum", null);
         };
 
+        // Get poll_id if there's a poll associated with this post
+        let poll_id = switch (Map.get(state.post_polls, Map.nhash, post.id)) {
+            case (?poll_ids) {
+                if (Vector.size(poll_ids) > 0) {
+                    ?Vector.get(poll_ids, 0) // Get first poll ID
+                } else null
+            };
+            case null null;
+        };
+
+        // Get replied-to post information if this is a reply
+        let replied_to_post = switch (post.reply_to_post_id) {
+            case (?reply_to_id) {
+                switch (Map.get(state.posts, Map.nhash, reply_to_id)) {
+                    case (?replied_post) {
+                        if (not replied_post.deleted) {
+                            ?{
+                                id = replied_post.id;
+                                title = replied_post.title;
+                                body = replied_post.body;
+                            }
+                        } else null
+                    };
+                    case null null;
+                }
+            };
+            case null null;
+        };
+
         ?{
             id = post.id;
             item_type = #post;
@@ -3953,6 +3998,8 @@ module {
             topic_title = ?topic_title;
             thread_id = ?post.thread_id;
             thread_title = thread_title;
+            poll_id = poll_id;
+            replied_to_post = replied_to_post;
         }
     };
 

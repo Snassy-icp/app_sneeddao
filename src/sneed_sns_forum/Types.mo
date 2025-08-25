@@ -675,6 +675,10 @@ module {
         topic_title: ?Text;
         thread_id: ?Nat;
         thread_title: ?Text;
+        
+        // Enhanced context
+        poll_id: ?Nat; // ID of associated poll (for threads and posts)
+        replied_to_post: ?{id: Nat; title: ?Text; body: Text}; // Info about the post being replied to (for posts only)
     };
 
     public type FeedFilter = {
