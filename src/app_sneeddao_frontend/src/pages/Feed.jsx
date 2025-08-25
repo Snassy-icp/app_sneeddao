@@ -1756,15 +1756,7 @@ function Feed() {
                                 alignItems: 'center',
                                 gap: '12px'
                             }}>
-                                <div style={{
-                                    fontSize: '0.9rem',
-                                    color: '#888',
-                                    fontWeight: '500',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.5px'
-                                }}>
-                                    {selectedSnsIds.length > 0 ? 'Filtered SNS Communities' : 'All SNS Communities'}
-                                </div>
+
                                 
                                 <div style={{
                                     display: 'flex',
