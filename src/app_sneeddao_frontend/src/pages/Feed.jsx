@@ -592,38 +592,32 @@ function Feed() {
     // Load initial feed
     useEffect(() => {
         if (identity) {
-            // Check for startFrom parameter
-            const startFromParam = searchParams.get('startFrom');
-            if (startFromParam) {
-                console.log('Loading feed starting from item:', startFromParam);
-                // Convert to BigInt if needed
-                const startId = BigInt(startFromParam);
+            // First check for back button navigation (sessionStorage)
+            const savedItemId = sessionStorage.getItem('feedReturnToItem');
+            
+            if (savedItemId) {
+                console.log('Loading feed from back button navigation, starting from item:', savedItemId);
+                // Clear the saved item ID after using it
+                sessionStorage.removeItem('feedReturnToItem');
+                const startId = BigInt(savedItemId);
                 loadFeed(startId, 'initial');
             } else {
-                loadFeed(null, 'initial');
+                // Check for URL parameter (manual navigation)
+                const startFromParam = searchParams.get('startFrom');
+                if (startFromParam) {
+                    console.log('Loading feed starting from URL parameter:', startFromParam);
+                    const startId = BigInt(startFromParam);
+                    loadFeed(startId, 'initial');
+                } else {
+                    // Default: load from the top
+                    console.log('Loading feed from the top');
+                    loadFeed(null, 'initial');
+                }
             }
         }
     }, [identity, appliedFilters, searchParams]);
 
-    // Handle back button navigation
-    useEffect(() => {
-        // Check if we should navigate to a specific item when returning
-        const savedItemId = sessionStorage.getItem('feedReturnToItem');
-        const currentStartFrom = searchParams.get('startFrom');
-        
-        if (savedItemId && !currentStartFrom && !loading) {
-            console.log('Navigating back to feed item:', savedItemId);
-            // Clear the saved item ID
-            sessionStorage.removeItem('feedReturnToItem');
-            // Navigate to feed with startFrom parameter (without updating browser history)
-            window.history.replaceState(null, '', `/feed?startFrom=${savedItemId}`);
-            // Reload with the new parameter
-            if (identity) {
-                const startId = BigInt(savedItemId);
-                loadFeed(startId, 'initial');
-            }
-        }
-    }, [loading, searchParams, identity]);
+
 
     // Bidirectional infinite scroll effect
     useEffect(() => {
