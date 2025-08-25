@@ -454,11 +454,21 @@ function Feed() {
                 // Note: We don't have topic_ids or creator_principals filters in the UI yet
             }
 
+            // For newer items, we need to work differently since the API only goes backwards
+            let actualStartId = startId;
+            let actualLength = 20;
+            
+            if (direction === 'newer') {
+                // For newer items, don't provide a start_id to get the latest items
+                // Then we'll filter out what we already have
+                actualStartId = null;
+                actualLength = 50; // Load more items to increase chance of finding newer ones
+            }
+
             const input = {
-                start_id: startId ? [startId] : [],
-                length: 20,
-                filter: filter ? [filter] : [],
-                reverse: direction === 'newer' ? [true] : [false] // Load newer items in reverse order
+                start_id: actualStartId ? [actualStartId] : [],
+                length: actualLength,
+                filter: filter ? [filter] : []
             };
 
             const response = await forumActor.get_feed(input);
@@ -494,15 +504,40 @@ function Feed() {
                 }
             } else if (direction === 'newer') {
                 if (response.items.length > 0) {
-                    // For newer items, we need to reverse them and add to the beginning
-                    const newerItems = response.items.reverse();
-                    setFeedItems(prev => [...newerItems, ...prev]);
-                    setHasNewer(response.has_more);
-                    setPrevStartId(newerItems[0].id);
+                    // Filter out items we already have (items with ID <= current first item ID)
+                    const currentFirstId = feedItems.length > 0 ? feedItems[0].id : 0n;
+                    const newerItems = response.items.filter(item => {
+                        // Handle BigInt comparison
+                        const itemId = typeof item.id === 'bigint' ? item.id : BigInt(item.id);
+                        const currentId = typeof currentFirstId === 'bigint' ? currentFirstId : BigInt(currentFirstId);
+                        return itemId > currentId;
+                    });
+                    
+                    console.log('Filtered newer items:', newerItems.length, 'from', response.items.length, 'total. Current first ID:', currentFirstId);
+                    
+                    if (newerItems.length > 0) {
+                        // Sort newer items in descending order (newest first) using BigInt comparison
+                        newerItems.sort((a, b) => {
+                            const aId = typeof a.id === 'bigint' ? a.id : BigInt(a.id);
+                            const bId = typeof b.id === 'bigint' ? b.id : BigInt(b.id);
+                            if (aId > bId) return -1;
+                            if (aId < bId) return 1;
+                            return 0;
+                        });
+                        setFeedItems(prev => [...newerItems, ...prev]);
+                        setHasNewer(true); // There might be even more newer items
+                        setPrevStartId(newerItems[0].id);
+                    } else {
+                        // No newer items found, disable auto-loading
+                        setCanAutoLoadNewer(false);
+                        setHasNewer(false);
+                        console.log('No newer items found');
+                    }
                 } else {
                     // No more newer items available, disable auto-loading
                     setCanAutoLoadNewer(false);
                     setHasNewer(false);
+                    console.log('No items returned for newer direction');
                 }
             }
 
@@ -531,7 +566,9 @@ function Feed() {
             const startFromParam = searchParams.get('startFrom');
             if (startFromParam) {
                 console.log('Loading feed starting from item:', startFromParam);
-                loadFeed(parseInt(startFromParam), 'initial');
+                // Convert to BigInt if needed
+                const startId = BigInt(startFromParam);
+                loadFeed(startId, 'initial');
             } else {
                 loadFeed(null, 'initial');
             }
@@ -551,9 +588,9 @@ function Feed() {
             // Navigate to feed with startFrom parameter (without updating browser history)
             window.history.replaceState(null, '', `/feed?startFrom=${savedItemId}`);
             // Reload with the new parameter
-            const startFromParam = savedItemId;
             if (identity) {
-                loadFeed(parseInt(startFromParam), 'initial');
+                const startId = BigInt(savedItemId);
+                loadFeed(startId, 'initial');
             }
         }
     }, [loading, searchParams, identity]);
