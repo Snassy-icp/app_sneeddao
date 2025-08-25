@@ -353,8 +353,22 @@ function Topic() {
     const [hoveredThread, setHoveredThread] = useState(null);
     const [currentPage, setCurrentPage] = useState(0);
     const [totalThreads, setTotalThreads] = useState(0);
-    const [threadsPerPage, setThreadsPerPage] = useState(10);
-    const [sortBy, setSortBy] = useState('newest'); // 'newest', 'oldest', 'activity-newest', 'activity-oldest'
+    const [threadsPerPage, setThreadsPerPage] = useState(() => {
+        try {
+            const saved = localStorage.getItem('topicThreadsPerPage');
+            return saved ? parseInt(saved) : 10;
+        } catch (e) {
+            return 10;
+        }
+    });
+    const [sortBy, setSortBy] = useState(() => {
+        try {
+            const saved = localStorage.getItem('topicSortBy');
+            return saved || 'newest';
+        } catch (e) {
+            return 'newest';
+        }
+    });
     const [createThreadTitle, setCreateThreadTitle] = useState('');
     const [createThreadBody, setCreateThreadBody] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -642,6 +656,24 @@ function Topic() {
 
         fetchTopicData();
     }, [topicId, identity, currentPage, threadsPerPage, sortBy]);
+
+    // Save threadsPerPage to localStorage when it changes
+    useEffect(() => {
+        try {
+            localStorage.setItem('topicThreadsPerPage', threadsPerPage.toString());
+        } catch (e) {
+            console.warn('Failed to save threadsPerPage to localStorage:', e);
+        }
+    }, [threadsPerPage]);
+
+    // Save sortBy to localStorage when it changes
+    useEffect(() => {
+        try {
+            localStorage.setItem('topicSortBy', sortBy);
+        } catch (e) {
+            console.warn('Failed to save sortBy to localStorage:', e);
+        }
+    }, [sortBy]);
 
     // Fetch proposal data for threads when threads are loaded (async, non-blocking)
     useEffect(() => {
@@ -1178,6 +1210,109 @@ function Topic() {
                             <div style={styles.error}>{error}</div>
                         )}
 
+                        {/* Filter Controls - Above threads */}
+                        {(threads.length > 0 || totalThreads > 0) && (
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '15px 0',
+                                borderBottom: '1px solid #333',
+                                marginBottom: '20px'
+                            }}>
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '20px',
+                                    fontSize: '14px',
+                                    color: '#ccc'
+                                }}>
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px'
+                                    }}>
+                                        <span>Show:</span>
+                                        <select
+                                            value={threadsPerPage}
+                                            onChange={(e) => handleThreadsPerPageChange(Number(e.target.value))}
+                                            style={{
+                                                backgroundColor: '#2a2a2a',
+                                                color: '#ffffff',
+                                                border: '1px solid #444',
+                                                borderRadius: '4px',
+                                                padding: '4px 8px',
+                                                fontSize: '14px'
+                                            }}
+                                        >
+                                            <option value={5}>5 threads</option>
+                                            <option value={10}>10 threads</option>
+                                            <option value={20}>20 threads</option>
+                                            <option value={50}>50 threads</option>
+                                        </select>
+                                        <span>per page</span>
+                                    </div>
+                                    
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px'
+                                    }}>
+                                        <span>Sort by:</span>
+                                        <select
+                                            value={sortBy}
+                                            onChange={(e) => {
+                                                setSortBy(e.target.value);
+                                                setCurrentPage(0); // Reset to first page when sorting changes
+                                            }}
+                                            style={{
+                                                backgroundColor: '#2a2a2a',
+                                                color: '#ffffff',
+                                                border: '1px solid #444',
+                                                borderRadius: '4px',
+                                                padding: '4px 8px',
+                                                fontSize: '14px'
+                                            }}
+                                        >
+                                            <option value="newest">Newest</option>
+                                            <option value="oldest">Oldest</option>
+                                            <option value="activity-newest">Activity (Newest)</option>
+                                            <option value="activity-oldest">Activity (Oldest)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Pagination - Right side */}
+                                {totalPages > 1 && (
+                                    <div style={styles.pagination}>
+                                        <button
+                                            style={{
+                                                ...styles.pageButton,
+                                                ...(currentPage === 0 ? styles.pageButtonDisabled : {})
+                                            }}
+                                            onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                                            disabled={currentPage === 0}
+                                        >
+                                            Previous
+                                        </button>
+                                        <span style={styles.pageInfo}>
+                                            Page {currentPage + 1} of {totalPages}
+                                        </span>
+                                        <button
+                                            style={{
+                                                ...styles.pageButton,
+                                                ...(currentPage >= totalPages - 1 ? styles.pageButtonDisabled : {})
+                                            }}
+                                            onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                                            disabled={currentPage >= totalPages - 1}
+                                        >
+                                            Next
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {threads.length > 0 ? (
                             <div style={styles.threadsContainer}>
                                 {threads.map((thread, index) => (
@@ -1253,107 +1388,7 @@ function Topic() {
                                         </div>
                                     </div>
                                 ))}
-                                
-                                {/* Threads Per Page Selector */}
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    padding: '15px 0',
-                                    borderTop: '1px solid #333',
-                                    marginTop: '20px'
-                                }}>
-                                    <div style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '20px',
-                                        fontSize: '14px',
-                                        color: '#ccc'
-                                    }}>
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '10px'
-                                        }}>
-                                            <span>Show:</span>
-                                            <select
-                                                value={threadsPerPage}
-                                                onChange={(e) => handleThreadsPerPageChange(Number(e.target.value))}
-                                                style={{
-                                                    backgroundColor: '#2a2a2a',
-                                                    color: '#ffffff',
-                                                    border: '1px solid #444',
-                                                    borderRadius: '4px',
-                                                    padding: '4px 8px',
-                                                    fontSize: '14px'
-                                                }}
-                                            >
-                                                <option value={5}>5 threads</option>
-                                                <option value={10}>10 threads</option>
-                                                <option value={20}>20 threads</option>
-                                                <option value={50}>50 threads</option>
-                                            </select>
-                                            <span>per page</span>
-                                        </div>
-                                        
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '10px'
-                                        }}>
-                                            <span>Sort by:</span>
-                                            <select
-                                                value={sortBy}
-                                                onChange={(e) => {
-                                                    setSortBy(e.target.value);
-                                                    setCurrentPage(0); // Reset to first page when sorting changes
-                                                }}
-                                                style={{
-                                                    backgroundColor: '#2a2a2a',
-                                                    color: '#ffffff',
-                                                    border: '1px solid #444',
-                                                    borderRadius: '4px',
-                                                    padding: '4px 8px',
-                                                    fontSize: '14px'
-                                                }}
-                                            >
-                                                <option value="newest">Newest</option>
-                                                <option value="oldest">Oldest</option>
-                                                <option value="activity-newest">Activity (Newest)</option>
-                                                <option value="activity-oldest">Activity (Oldest)</option>
-                                            </select>
-                                        </div>
-                                    </div>
 
-                                    {/* Pagination */}
-                                    {totalPages > 1 && (
-                                        <div style={styles.pagination}>
-                                            <button
-                                                style={{
-                                                    ...styles.pageButton,
-                                                    ...(currentPage === 0 ? styles.pageButtonDisabled : {})
-                                                }}
-                                                onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
-                                                disabled={currentPage === 0}
-                                            >
-                                                Previous
-                                            </button>
-                                            <span style={styles.pageInfo}>
-                                                Page {currentPage + 1} of {totalPages}
-                                            </span>
-                                            <button
-                                                style={{
-                                                    ...styles.pageButton,
-                                                    ...(currentPage >= totalPages - 1 ? styles.pageButtonDisabled : {})
-                                                }}
-                                                onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
-                                                disabled={currentPage >= totalPages - 1}
-                                            >
-                                                Next
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
                             </div>
                         ) : (
                             <div style={styles.noContent}>
