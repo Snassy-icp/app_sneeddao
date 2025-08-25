@@ -191,54 +191,35 @@ const Post = () => {
     // Auto-scroll to the focused post when page loads
     useEffect(() => {
         if (!loading && threadId && postId) {
-            // Wait longer for the ThreadViewer to render the posts since it's now repositioned
-            const timer = setTimeout(() => {
-                // Try multiple selectors to find the focused post
-                let focusedPostElement = document.querySelector('.focused-post');
-                
-                if (!focusedPostElement) {
-                    // Fallback: look for post with the specific post ID in a link
-                    focusedPostElement = document.querySelector(`a[href*="postid=${postId}"]`)?.closest('.post-item');
-                }
-                
-                if (!focusedPostElement) {
-                    // Another fallback: look for any post-item and check if it contains our post ID
-                    const postItems = document.querySelectorAll('.post-item');
-                    for (const item of postItems) {
-                        const postLink = item.querySelector(`a[href*="postid=${postId}"]`);
-                        if (postLink) {
-                            focusedPostElement = item;
-                            break;
-                        }
-                    }
-                }
+            // Simple scroll-to-post implementation
+            const scrollToPost = () => {
+                // Look for the focused post element
+                const focusedPostElement = document.querySelector('.focused-post') || 
+                                         document.querySelector(`[data-post-id="${postId}"]`) ||
+                                         document.querySelector(`a[href*="postid=${postId}"]`)?.closest('.post-item');
                 
                 if (focusedPostElement) {
                     focusedPostElement.scrollIntoView({ 
                         behavior: 'smooth', 
                         block: 'center' 
                     });
-                    console.log(`Auto-scrolled to focused post #${postId}`);
-                } else {
-                    console.log(`Could not find focused post element for post #${postId}. Trying again...`);
-                    // If still not found, try one more time after another delay
-                    setTimeout(() => {
-                        const retryElement = document.querySelector('.focused-post') || 
-                                           document.querySelector(`a[href*="postid=${postId}"]`)?.closest('.post-item');
-                        if (retryElement) {
-                            retryElement.scrollIntoView({ 
-                                behavior: 'smooth', 
-                                block: 'center' 
-                            });
-                            console.log(`Auto-scrolled to focused post #${postId} on retry`);
-                        } else {
-                            console.log(`Still could not find focused post element for post #${postId}`);
-                        }
-                    }, 500);
+                    console.log(`Scrolled to focused post #${postId}`);
+                    return true;
                 }
-            }, 1200); // Wait 1200ms for the component to render
+                return false;
+            };
 
-            return () => clearTimeout(timer);
+            // Try immediately
+            if (!scrollToPost()) {
+                // If not found, try again after a short delay for component to render
+                const timer = setTimeout(() => {
+                    if (!scrollToPost()) {
+                        console.log(`Could not find focused post element for post #${postId}`);
+                    }
+                }, 800);
+                
+                return () => clearTimeout(timer);
+            }
         }
     }, [loading, threadId, postId]);
 
