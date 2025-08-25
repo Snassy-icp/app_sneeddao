@@ -300,7 +300,7 @@ const styles = {
     checkboxContainer: {
         display: 'flex',
         flexDirection: 'column',
-        gap: '8px',
+        gap: '4px',
         maxHeight: '200px',
         overflowY: 'auto',
         backgroundColor: '#1a1a1a',
@@ -329,7 +329,21 @@ const styles = {
     filterLayout: {
         display: 'flex',
         gap: '20px',
-        alignItems: 'flex-start'
+        alignItems: 'flex-start',
+        '@media (max-width: 768px)': {
+            flexDirection: 'column'
+        }
+    },
+    filterLayoutResponsive: {
+        display: 'flex',
+        gap: '20px',
+        alignItems: 'flex-start',
+        flexDirection: 'row'
+    },
+    filterLayoutStacked: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '20px'
     },
     filterLeftColumn: {
         display: 'flex',
@@ -372,9 +386,23 @@ const styles = {
         alignItems: 'center',
         gap: '8px',
         cursor: 'pointer',
-        padding: '4px',
+        padding: '2px 4px',
         borderRadius: '4px',
-        transition: 'background-color 0.2s ease'
+        transition: 'background-color 0.2s ease',
+        width: '100%'
+    },
+    clearSnsButton: {
+        backgroundColor: '#e74c3c',
+        color: 'white',
+        border: 'none',
+        borderRadius: '4px',
+        padding: '6px 12px',
+        cursor: 'pointer',
+        fontSize: '0.8rem',
+        fontWeight: '500',
+        marginTop: '10px',
+        transition: 'background-color 0.2s ease',
+        width: '100%'
     },
     snsLogoSmall: {
         width: '20px',
@@ -426,6 +454,7 @@ function Feed() {
     // Filter state
     const [showFilters, setShowFilters] = useState(false);
     const [showSnsList, setShowSnsList] = useState(true); // For collapsible SNS list
+    const [isNarrowScreen, setIsNarrowScreen] = useState(window.innerWidth <= 768);
     const [searchText, setSearchText] = useState('');
     const [selectedCreator, setSelectedCreator] = useState('');
     const [selectedSnsList, setSelectedSnsList] = useState(() => {
@@ -702,6 +731,16 @@ function Feed() {
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, [snsInstances]);
+
+    // Handle window resize for responsive layout
+    useEffect(() => {
+        const handleResize = () => {
+            setIsNarrowScreen(window.innerWidth <= 768);
+        };
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // Function to load a single SNS logo
     const loadSnsLogo = async (governanceId) => {
@@ -1186,7 +1225,7 @@ function Feed() {
         setNextStartId(null);
     };
 
-    // Clear filters
+    // Clear filters (only clear principal, text, type - NOT SNS selection)
     const clearFilters = () => {
         // Clear scroll position when clearing filters (start from top)
         try {
@@ -1198,9 +1237,14 @@ function Feed() {
         
         setSearchText('');
         setSelectedCreator('');
-        setSelectedSnsList([]);
         setSelectedType('');
-        setAppliedFilters({});
+        
+        // Keep SNS selection but clear other filters
+        const newFilters = {};
+        if (selectedSnsList.length > 0) {
+            newFilters.selectedSnsList = selectedSnsList;
+        }
+        setAppliedFilters(newFilters);
         setNextStartId(null);
     };
 
@@ -1489,18 +1533,17 @@ function Feed() {
                 {/* Filter Section */}
                 <div style={styles.filterSection}>
                     <div style={styles.filterTitle}>
-                        Filters
                         <button 
                             onClick={() => setShowFilters(!showFilters)}
-                            style={{...styles.applyButton, marginLeft: '10px', fontSize: '0.8rem', padding: '4px 8px'}}
+                            style={{...styles.applyButton, fontSize: '0.9rem', padding: '6px 12px'}}
                         >
-                            {showFilters ? 'Hide' : 'Show'}
+                            {showFilters ? 'Hide Filters' : 'Show Filters'}
                         </button>
                     </div>
                     
                     {showFilters && (
                         <>
-                            <div style={styles.filterLayout}>
+                            <div style={isNarrowScreen ? styles.filterLayoutStacked : styles.filterLayoutResponsive}>
                                 {/* Left Column: User, Type, Text */}
                                 <div style={styles.filterLeftColumn}>
                                     <div style={styles.filterGroup}>
@@ -1540,7 +1583,7 @@ function Feed() {
                                     </div>
                                 </div>
                                 
-                                {/* Right Column: SNS List */}
+                                {/* Right Column (or bottom on narrow): SNS List */}
                                 <div style={styles.filterRightColumn}>
                                     <div style={styles.filterGroup}>
                                         <div style={styles.snsFilterHeader}>
@@ -1552,90 +1595,92 @@ function Feed() {
                                                     </span>
                                                 )}
                                             </label>
-                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                                {selectedSnsList.length > 0 && (
-                                                    <button
-                                                        onClick={clearAllSns}
-                                                        style={styles.clearAllButton}
-                                                        onMouseEnter={(e) => {
-                                                            e.target.style.backgroundColor = '#555';
-                                                        }}
-                                                        onMouseLeave={(e) => {
-                                                            e.target.style.backgroundColor = '#666';
-                                                        }}
-                                                    >
-                                                        Clear All
-                                                    </button>
-                                                )}
-                                                <button
-                                                    onClick={() => setShowSnsList(!showSnsList)}
-                                                    style={styles.snsToggleButton}
-                                                >
-                                                    {showSnsList ? '▼ Hide' : '▶ Show'}
-                                                </button>
-                                            </div>
+                                            <button
+                                                onClick={() => setShowSnsList(!showSnsList)}
+                                                style={styles.snsToggleButton}
+                                            >
+                                                {showSnsList ? '▼ Hide' : '▶ Show'}
+                                            </button>
                                         </div>
                                         
                                         {showSnsList && (
-                                            <div style={styles.checkboxContainer}>
-                                                {snsInstances && snsInstances.map((sns) => {
-                                                    // Find the corresponding SNS info for logo
-                                                    const snsInfo = allSnses.find(s => s.rootCanisterId === sns.root_canister_id);
-                                                    const snsLogo = snsInfo ? snsLogos.get(snsInfo.canisters.governance) : null;
-                                                    const isLoadingLogo = snsInfo ? loadingLogos.has(snsInfo.canisters.governance) : false;
-                                                    
-                                                    return (
-                                                        <label 
-                                                            key={sns.root_canister_id} 
-                                                            style={styles.snsCheckboxWithLogo}
-                                                            onMouseEnter={(e) => {
-                                                                e.target.style.backgroundColor = '#2a2a2a';
-                                                            }}
-                                                            onMouseLeave={(e) => {
-                                                                e.target.style.backgroundColor = 'transparent';
-                                                            }}
-                                                        >
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={selectedSnsList.includes(sns.root_canister_id)}
-                                                                onChange={(e) => {
-                                                                    if (e.target.checked) {
-                                                                        setSelectedSnsList(prev => [...prev, sns.root_canister_id]);
-                                                                    } else {
-                                                                        setSelectedSnsList(prev => prev.filter(id => id !== sns.root_canister_id));
-                                                                    }
+                                            <>
+                                                <div style={styles.checkboxContainer}>
+                                                    {snsInstances && snsInstances.map((sns) => {
+                                                        // Find the corresponding SNS info for logo
+                                                        const snsInfo = allSnses.find(s => s.rootCanisterId === sns.root_canister_id);
+                                                        const snsLogo = snsInfo ? snsLogos.get(snsInfo.canisters.governance) : null;
+                                                        const isLoadingLogo = snsInfo ? loadingLogos.has(snsInfo.canisters.governance) : false;
+                                                        
+                                                        return (
+                                                            <label 
+                                                                key={sns.root_canister_id} 
+                                                                style={styles.snsCheckboxWithLogo}
+                                                                onMouseEnter={(e) => {
+                                                                    e.target.style.backgroundColor = '#2a2a2a';
                                                                 }}
-                                                                style={styles.checkbox}
+                                                                onMouseLeave={(e) => {
+                                                                    e.target.style.backgroundColor = 'transparent';
+                                                                }}
+                                                            >
+                                                                                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedSnsList.includes(sns.root_canister_id)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedSnsList(prev => [...prev, sns.root_canister_id]);
+                                                        } else {
+                                                            setSelectedSnsList(prev => prev.filter(id => id !== sns.root_canister_id));
+                                                        }
+                                                    }}
+                                                    style={styles.checkbox}
+                                                />
+                                                
+                                                {/* SNS Logo */}
+                                                {snsInfo && (
+                                                    <>
+                                                        {isLoadingLogo ? (
+                                                            <div style={styles.snsLogoPlaceholderSmall}>
+                                                                ...
+                                                            </div>
+                                                        ) : snsLogo ? (
+                                                            <img
+                                                                src={snsLogo}
+                                                                alt={snsInfo.name}
+                                                                style={styles.snsLogoSmall}
                                                             />
-                                                            
-                                                            {/* SNS Logo */}
-                                                            {snsInfo && (
-                                                                <>
-                                                                    {isLoadingLogo ? (
-                                                                        <div style={styles.snsLogoPlaceholderSmall}>
-                                                                            ...
-                                                                        </div>
-                                                                    ) : snsLogo ? (
-                                                                        <img
-                                                                            src={snsLogo}
-                                                                            alt={snsInfo.name}
-                                                                            style={styles.snsLogoSmall}
-                                                                        />
-                                                                    ) : (
-                                                                        <div style={styles.snsLogoPlaceholderSmall}>
-                                                                            {snsInfo.name.substring(0, 2).toUpperCase()}
-                                                                        </div>
-                                                                    )}
-                                                                </>
-                                                            )}
-                                                            
-                                                            <span style={styles.checkboxText}>
-                                                                {sns.name || sns.root_canister_id.substring(0, 8) + '...'}
-                                                            </span>
-                                                        </label>
-                                                    );
-                                                })}
-                                            </div>
+                                                        ) : (
+                                                            <div style={styles.snsLogoPlaceholderSmall}>
+                                                                {snsInfo.name.substring(0, 2).toUpperCase()}
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                )}
+                                                
+                                                <span style={styles.checkboxText}>
+                                                    {sns.name || sns.root_canister_id.substring(0, 8) + '...'}
+                                                </span>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                </div>
+                                                
+                                                {/* Clear SNS Button - below the list */}
+                                                {selectedSnsList.length > 0 && (
+                                                    <button
+                                                        onClick={clearAllSns}
+                                                        style={styles.clearSnsButton}
+                                                        onMouseEnter={(e) => {
+                                                            e.target.style.backgroundColor = '#c0392b';
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            e.target.style.backgroundColor = '#e74c3c';
+                                                        }}
+                                                    >
+                                                        Clear SNS Selection
+                                                    </button>
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                 </div>
