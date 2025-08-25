@@ -193,33 +193,87 @@ const Post = () => {
         if (!loading && threadId && postId) {
             // Wait a bit longer for ThreadViewer to expand ancestor posts
             const timer = setTimeout(() => {
-                const scrollToPost = () => {
-                    // Look for the focused post element
-                    const focusedPostElement = document.querySelector('.focused-post') || 
-                                             document.querySelector(`[data-post-id="${postId}"]`) ||
-                                             document.querySelector(`a[href*="postid=${postId}"]`)?.closest('.post-item');
-                    
-                    if (focusedPostElement) {
-                        focusedPostElement.scrollIntoView({ 
-                            behavior: 'smooth', 
-                            block: 'center' 
-                        });
-                        console.log(`Post page: Scrolled to focused post #${postId}`);
-                        return true;
-                    }
-                    return false;
-                };
+                                 const scrollToPost = () => {
+                     console.log(`🎯 DEBUG: Looking for focused post #${postId}`);
+                     
+                     // Debug: Check what's in the DOM
+                     const allPostItems = document.querySelectorAll('.post-item');
+                     console.log(`🎯 DEBUG: Found ${allPostItems.length} .post-item elements`);
+                     
+                     const focusedPosts = document.querySelectorAll('.focused-post');
+                     console.log(`🎯 DEBUG: Found ${focusedPosts.length} .focused-post elements`);
+                     
+                     const dataPostElements = document.querySelectorAll(`[data-post-id]`);
+                     console.log(`🎯 DEBUG: Found ${dataPostElements.length} elements with data-post-id`);
+                     
+                     const postLinks = document.querySelectorAll(`a[href*="postid="]`);
+                     console.log(`🎯 DEBUG: Found ${postLinks.length} links with postid in href`);
+                     
+                     // Try each selector individually with debug info
+                     let focusedPostElement = document.querySelector('.focused-post');
+                     console.log(`🎯 DEBUG: .focused-post query result:`, focusedPostElement);
+                     
+                     if (!focusedPostElement) {
+                         focusedPostElement = document.querySelector(`[data-post-id="${postId}"]`);
+                         console.log(`🎯 DEBUG: [data-post-id="${postId}"] query result:`, focusedPostElement);
+                     }
+                     
+                     if (!focusedPostElement) {
+                         const linkElement = document.querySelector(`a[href*="postid=${postId}"]`);
+                         console.log(`🎯 DEBUG: Link element with postid=${postId}:`, linkElement);
+                         if (linkElement) {
+                             focusedPostElement = linkElement.closest('.post-item');
+                             console.log(`🎯 DEBUG: Closest .post-item to link:`, focusedPostElement);
+                         }
+                     }
+                     
+                     if (focusedPostElement) {
+                         console.log(`🎯 DEBUG: Found focused post element:`, focusedPostElement);
+                         console.log(`🎯 DEBUG: Element classes:`, focusedPostElement.className);
+                         console.log(`🎯 DEBUG: Element position:`, focusedPostElement.getBoundingClientRect());
+                         
+                         focusedPostElement.scrollIntoView({ 
+                             behavior: 'smooth', 
+                             block: 'center' 
+                         });
+                         console.log(`Post page: Scrolled to focused post #${postId}`);
+                         return true;
+                     } else {
+                         console.log(`DEBUG: No focused post element found for post #${postId}`);
+                         
+                         // Debug: Log some sample post items to see their structure
+                         if (allPostItems.length > 0) {
+                             console.log(`DEBUG: Sample post item HTML:`, allPostItems[0].outerHTML.substring(0, 500));
+                         }
+                         
+                         return false;
+                     }
+                 };
 
-                // Try to scroll
-                if (!scrollToPost()) {
-                    // If not found, try again after another delay
-                    setTimeout(() => {
-                        if (!scrollToPost()) {
-                            console.log(`Post page: Could not find focused post element for post #${postId}`);
-                        }
-                    }, 300);
-                }
-            }, 500); // Wait for ThreadViewer expansion to complete
+                // Try to scroll with multiple retries
+                const attemptScroll = (attempt = 1, maxAttempts = 5) => {
+                    console.log(`🎯 DEBUG: Scroll attempt ${attempt}/${maxAttempts}`);
+                    
+                    if (scrollToPost()) {
+                        console.log(`🎯 SUCCESS: Scroll succeeded on attempt ${attempt}`);
+                        return;
+                    }
+                    
+                    // If no posts rendered yet and we have attempts left
+                    const postCount = document.querySelectorAll('.post-item').length;
+                    console.log(`🎯 DEBUG: Post count on attempt ${attempt}: ${postCount}`);
+                    
+                    if (attempt < maxAttempts) {
+                        const delay = attempt * 500; // Increasing delay: 500ms, 1000ms, 1500ms, 2000ms
+                        console.log(`🎯 DEBUG: Retrying in ${delay}ms...`);
+                        setTimeout(() => attemptScroll(attempt + 1, maxAttempts), delay);
+                    } else {
+                        console.log(`🎯 FAILED: Could not find focused post element for post #${postId} after ${maxAttempts} attempts`);
+                    }
+                };
+                
+                attemptScroll();
+            }, 1200); // Wait longer for ThreadViewer to render posts
             
             return () => clearTimeout(timer);
         }
