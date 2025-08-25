@@ -1674,6 +1674,68 @@ function ThreadViewer({
         return buildPostTree(discussionPosts);
     }, [discussionPosts, mode, focusedPostId, buildPostTree]);
 
+    // Ensure ancestor posts are expanded when in post mode
+    useEffect(() => {
+        if (mode === 'post' && focusedPostId && discussionPosts.length > 0) {
+            const focusedPost = discussionPosts.find(p => Number(p.id) === Number(focusedPostId));
+            if (!focusedPost) return;
+            
+            console.log('ThreadViewer: Ensuring ancestors are expanded for focused post:', focusedPostId);
+            
+            // Find all ancestor post IDs and include the focused post itself
+            const postsToExpand = new Set();
+            
+            // Always expand the focused post itself
+            postsToExpand.add(Number(focusedPostId));
+            
+            // Add all ancestors
+            let currentPost = focusedPost;
+            while (currentPost && currentPost.reply_to_post_id && currentPost.reply_to_post_id.length > 0) {
+                const parentId = Number(currentPost.reply_to_post_id[0]);
+                postsToExpand.add(parentId);
+                currentPost = discussionPosts.find(p => Number(p.id) === parentId);
+            }
+            
+            console.log('Posts to expand:', Array.from(postsToExpand));
+            
+            // Force expand focused post and all ancestor posts
+            if (postsToExpand.size > 0) {
+                setCollapsedPosts(prevCollapsed => {
+                    const newCollapsed = new Set(prevCollapsed);
+                    let changed = false;
+                    
+                    postsToExpand.forEach(postId => {
+                        const post = discussionPosts.find(p => Number(p.id) === postId);
+                        if (post) {
+                            const score = Number(post.upvote_score || 0) - Number(post.downvote_score || 0);
+                            const isNegative = score < 0;
+                            
+                            console.log(`Post ${postId}: score=${score}, isNegative=${isNegative}, wasToggled=${newCollapsed.has(postId)}`);
+                            
+                            if (isNegative) {
+                                // For negative posts, add to collapsed set to expand them (opposite of default)
+                                if (!newCollapsed.has(postId)) {
+                                    newCollapsed.add(postId);
+                                    changed = true;
+                                    console.log(`Added negative post ${postId} to collapsed set to expand it`);
+                                }
+                            } else {
+                                // For positive posts, remove from collapsed set to expand them (same as default)
+                                if (newCollapsed.has(postId)) {
+                                    newCollapsed.delete(postId);
+                                    changed = true;
+                                    console.log(`Removed positive post ${postId} from collapsed set to expand it`);
+                                }
+                            }
+                        }
+                    });
+                    
+                    return changed ? newCollapsed : prevCollapsed;
+                });
+            }
+        }
+    }, [mode, focusedPostId, discussionPosts]);
+
     // Get posts for display based on view mode
     const displayPosts = React.useMemo(() => {
         const posts = getDisplayPosts();
