@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
@@ -287,13 +287,19 @@ function Feed() {
     const { getPrincipalDisplayName } = useNaming();
     const navigate = useNavigate();
     const location = useLocation();
+    const [searchParams] = useSearchParams();
     const scrollContainerRef = useRef(null);
     const [feedItems, setFeedItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [loadingNewer, setLoadingNewer] = useState(false);
     const [error, setError] = useState(null);
     const [hasMore, setHasMore] = useState(true);
+    const [hasNewer, setHasNewer] = useState(false);
     const [nextStartId, setNextStartId] = useState(null);
+    const [prevStartId, setPrevStartId] = useState(null);
+    const [canAutoLoadNewer, setCanAutoLoadNewer] = useState(true);
+    const [canAutoLoadOlder, setCanAutoLoadOlder] = useState(true);
 
     // Filter state
     const [showFilters, setShowFilters] = useState(false);
@@ -417,14 +423,16 @@ function Feed() {
         return colors[typeStr] || '#3498db';
     };
 
-    // Load feed items
-    const loadFeed = async (startId = null, isLoadMore = false) => {
+    // Load feed items (supports bidirectional loading)
+    const loadFeed = async (startId = null, direction = 'initial') => {
         try {
-            if (!isLoadMore) {
+            if (direction === 'initial') {
                 setLoading(true);
                 setError(null);
-            } else {
+            } else if (direction === 'older') {
                 setLoadingMore(true);
+            } else if (direction === 'newer') {
+                setLoadingNewer(true);
             }
 
             const forumActor = createForumActor();
@@ -449,81 +457,126 @@ function Feed() {
             const input = {
                 start_id: startId ? [startId] : [],
                 length: 20,
-                filter: filter ? [filter] : []
+                filter: filter ? [filter] : [],
+                reverse: direction === 'newer' ? [true] : [false] // Load newer items in reverse order
             };
 
             const response = await forumActor.get_feed(input);
             
             // Debug log to see the structure of the response
             if (response.items.length > 0) {
-                console.log('Feed item sample:', response.items[0]);
+                console.log(`Feed ${direction} load - items:`, response.items.length, 'has_more:', response.has_more);
             }
             
-            if (isLoadMore) {
-                setFeedItems(prev => [...prev, ...response.items]);
-            } else {
+            if (direction === 'initial') {
                 setFeedItems(response.items);
+                setHasMore(response.has_more);
+                setNextStartId(response.next_start_id.length > 0 ? response.next_start_id[0] : null);
+                
+                // If we started from a specific item, we might have newer items available
+                const startFromParam = searchParams.get('startFrom');
+                if (startFromParam && response.items.length > 0) {
+                    setHasNewer(true);
+                    setPrevStartId(response.items[0].id);
+                } else {
+                    setHasNewer(false);
+                    setPrevStartId(null);
+                }
+            } else if (direction === 'older') {
+                if (response.items.length > 0) {
+                    setFeedItems(prev => [...prev, ...response.items]);
+                    setHasMore(response.has_more);
+                    setNextStartId(response.next_start_id.length > 0 ? response.next_start_id[0] : null);
+                } else {
+                    // No more older items available, disable auto-loading
+                    setCanAutoLoadOlder(false);
+                    setHasMore(false);
+                }
+            } else if (direction === 'newer') {
+                if (response.items.length > 0) {
+                    // For newer items, we need to reverse them and add to the beginning
+                    const newerItems = response.items.reverse();
+                    setFeedItems(prev => [...newerItems, ...prev]);
+                    setHasNewer(response.has_more);
+                    setPrevStartId(newerItems[0].id);
+                } else {
+                    // No more newer items available, disable auto-loading
+                    setCanAutoLoadNewer(false);
+                    setHasNewer(false);
+                }
             }
-            
-            setHasMore(response.has_more);
-            setNextStartId(response.next_start_id.length > 0 ? response.next_start_id[0] : null);
 
         } catch (err) {
-            console.error('Error loading feed:', err);
-            setError(formatError(err));
+            console.error(`Error loading feed (${direction}):`, err);
+            if (direction === 'initial') {
+                setError(formatError(err));
+            }
+            // For newer/older loads, disable auto-loading on error
+            if (direction === 'newer') {
+                setCanAutoLoadNewer(false);
+            } else if (direction === 'older') {
+                setCanAutoLoadOlder(false);
+            }
         } finally {
             setLoading(false);
             setLoadingMore(false);
+            setLoadingNewer(false);
         }
     };
 
     // Load initial feed
     useEffect(() => {
         if (identity) {
-            loadFeed();
-        }
-    }, [identity, appliedFilters]);
-
-    // Scroll position restoration
-    useEffect(() => {
-        // Restore scroll position when returning to the page
-        const restoreScrollPosition = () => {
-            const savedPosition = sessionStorage.getItem('feedScrollPosition');
-            if (savedPosition && !loading) {
-                const position = parseInt(savedPosition, 10);
-                console.log('Restoring feed scroll position:', position);
-                
-                // Use a timeout to ensure the page content has rendered
-                setTimeout(() => {
-                    window.scrollTo({
-                        top: position,
-                        behavior: 'auto' // Use 'auto' instead of 'smooth' for immediate positioning
-                    });
-                    // Clear the saved position after restoring
-                    sessionStorage.removeItem('feedScrollPosition');
-                }, 200); // Increased timeout to ensure content is loaded
+            // Check for startFrom parameter
+            const startFromParam = searchParams.get('startFrom');
+            if (startFromParam) {
+                console.log('Loading feed starting from item:', startFromParam);
+                loadFeed(parseInt(startFromParam), 'initial');
+            } else {
+                loadFeed(null, 'initial');
             }
-        };
-
-        // Restore scroll position when component mounts and content is loaded
-        if (!loading && feedItems.length > 0) {
-            restoreScrollPosition();
         }
-    }, [loading, feedItems.length]);
+    }, [identity, appliedFilters, searchParams]);
 
-    // Infinite scroll effect
+    // Handle back button navigation
+    useEffect(() => {
+        // Check if we should navigate to a specific item when returning
+        const savedItemId = sessionStorage.getItem('feedReturnToItem');
+        const currentStartFrom = searchParams.get('startFrom');
+        
+        if (savedItemId && !currentStartFrom && !loading) {
+            console.log('Navigating back to feed item:', savedItemId);
+            // Clear the saved item ID
+            sessionStorage.removeItem('feedReturnToItem');
+            // Navigate to feed with startFrom parameter (without updating browser history)
+            window.history.replaceState(null, '', `/feed?startFrom=${savedItemId}`);
+            // Reload with the new parameter
+            const startFromParam = savedItemId;
+            if (identity) {
+                loadFeed(parseInt(startFromParam), 'initial');
+            }
+        }
+    }, [loading, searchParams, identity]);
+
+    // Bidirectional infinite scroll effect
     useEffect(() => {
         const handleScroll = () => {
-            // Check if we're near the bottom of the page
             const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
             const windowHeight = window.innerHeight;
             const documentHeight = document.documentElement.scrollHeight;
             
-            // Trigger load more when we're within 500px of the bottom
+            // Check if we're near the bottom (load older items)
             const isNearBottom = scrollTop + windowHeight >= documentHeight - 500;
+            if (isNearBottom && hasMore && !loadingMore && !loading && nextStartId && canAutoLoadOlder) {
+                console.log('Auto-loading older items');
+                loadFeed(nextStartId, 'older');
+            }
             
-            if (isNearBottom && hasMore && !loadingMore && !loading && nextStartId) {
-                loadFeed(nextStartId, true);
+            // Check if we're near the top (load newer items)
+            const isNearTop = scrollTop <= 500;
+            if (isNearTop && hasNewer && !loadingNewer && !loading && prevStartId && canAutoLoadNewer) {
+                console.log('Auto-loading newer items');
+                loadFeed(prevStartId, 'newer');
             }
         };
 
@@ -538,7 +591,7 @@ function Feed() {
             window.removeEventListener('scroll', handleScroll);
             window.removeEventListener('resize', handleScroll);
         };
-    }, [hasMore, loadingMore, loading, nextStartId]);
+    }, [hasMore, hasNewer, loadingMore, loadingNewer, loading, nextStartId, prevStartId, canAutoLoadOlder, canAutoLoadNewer]);
 
     // Apply filters
     const applyFilters = () => {
@@ -660,10 +713,9 @@ function Feed() {
         
         // Handle SNS logo click to navigate to forum
         const handleSnsLogoClick = () => {
-            // Save scroll position before navigating
-            const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
-            sessionStorage.setItem('feedScrollPosition', scrollPosition.toString());
-            console.log('Saved feed scroll position before SNS logo click:', scrollPosition);
+            // Save item ID for back button functionality
+            sessionStorage.setItem('feedReturnToItem', item.id.toString());
+            console.log('Saved feed return item ID before SNS logo click:', item.id);
             
             const snsRootId = Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id[0] : item.sns_root_canister_id;
             const snsRootStr = principalToText(snsRootId);
@@ -676,10 +728,9 @@ function Feed() {
 
         // Handle item navigation
         const handleItemClick = () => {
-            // Save scroll position before navigating
-            const scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
-            sessionStorage.setItem('feedScrollPosition', scrollPosition.toString());
-            console.log('Saved feed scroll position before item click:', scrollPosition);
+            // Save item ID for back button functionality
+            sessionStorage.setItem('feedReturnToItem', item.id.toString());
+            console.log('Saved feed return item ID before item click:', item.id);
             
             navigate(navigationUrl);
         };
@@ -914,12 +965,65 @@ function Feed() {
                     <div style={styles.feedContainer}>
                         {feedItems.length > 0 ? (
                             <>
+                                {/* Load More Newer Items Button */}
+                                {(hasNewer || loadingNewer) && (
+                                    <div style={{
+                                        textAlign: 'center',
+                                        padding: '20px',
+                                        marginBottom: '20px'
+                                    }}>
+                                        {loadingNewer ? (
+                                            <div style={styles.loadingSpinner}>
+                                                Loading newer items...
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => {
+                                                    setCanAutoLoadNewer(true);
+                                                    loadFeed(prevStartId, 'newer');
+                                                }}
+                                                style={{
+                                                    ...styles.applyButton,
+                                                    fontSize: '1rem',
+                                                    padding: '12px 24px'
+                                                }}
+                                                disabled={!prevStartId}
+                                            >
+                                                Load More Recent
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+
                                 {feedItems.map(renderFeedItem)}
                                 
-                                {/* Loading indicator for infinite scroll */}
-                                {loadingMore && (
-                                    <div style={styles.loadingSpinner}>
-                                        Loading more items...
+                                {/* Load More Older Items - Loading indicator or manual button */}
+                                {(loadingMore || (hasMore && !canAutoLoadOlder)) && (
+                                    <div style={{
+                                        textAlign: 'center',
+                                        padding: '20px',
+                                        marginTop: '20px'
+                                    }}>
+                                        {loadingMore ? (
+                                            <div style={styles.loadingSpinner}>
+                                                Loading more items...
+                                            </div>
+                                        ) : hasMore && !canAutoLoadOlder ? (
+                                            <button
+                                                onClick={() => {
+                                                    setCanAutoLoadOlder(true);
+                                                    loadFeed(nextStartId, 'older');
+                                                }}
+                                                style={{
+                                                    ...styles.applyButton,
+                                                    fontSize: '1rem',
+                                                    padding: '12px 24px'
+                                                }}
+                                                disabled={!nextStartId}
+                                            >
+                                                Load More Older
+                                            </button>
+                                        ) : null}
                                     </div>
                                 )}
                                 
