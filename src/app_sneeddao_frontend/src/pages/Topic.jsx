@@ -376,6 +376,7 @@ function Topic() {
     const [creatingPreproposals, setCreatingPreproposals] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
     const [userThreadReads, setUserThreadReads] = useState(new Map()); // threadId -> lastReadPostId
+    const [subtopicStatistics, setSubtopicStatistics] = useState(new Map()); // topicId -> {thread_count, total_unread_posts}
     
     // Poll creation state
     const [includePoll, setIncludePoll] = useState(false);
@@ -724,6 +725,49 @@ function Topic() {
             fetchUserThreadReads();
         }
     }, [fetchUserThreadReads, loading, topicId, identity]);
+
+    // Fetch subtopic statistics (async, non-blocking)
+    const fetchSubtopicStatistics = useCallback(async (subtopicIds) => {
+        if (!forumActor || !identity || subtopicIds.length === 0) return;
+        
+        // Fetch statistics for all subtopics in parallel
+        const statisticsPromises = subtopicIds.map(async (topicId) => {
+            try {
+                const stats = await forumActor.get_topic_statistics(topicId);
+                return { topicId, stats };
+            } catch (error) {
+                console.warn(`Failed to fetch statistics for subtopic ${topicId}:`, error);
+                return { topicId, stats: null };
+            }
+        });
+        
+        try {
+            const results = await Promise.allSettled(statisticsPromises);
+            const statsMap = new Map();
+            
+            results.forEach((result) => {
+                if (result.status === 'fulfilled' && result.value.stats) {
+                    const { topicId, stats } = result.value;
+                    statsMap.set(topicId, {
+                        thread_count: Number(stats.thread_count),
+                        total_unread_posts: Number(stats.total_unread_posts)
+                    });
+                }
+            });
+            
+            setSubtopicStatistics(statsMap);
+        } catch (error) {
+            console.warn('Failed to fetch subtopic statistics:', error);
+        }
+    }, [forumActor, identity]);
+
+    // Fetch subtopic statistics when subtopics are loaded
+    useEffect(() => {
+        if (subtopics.length > 0) {
+            const subtopicIds = subtopics.map(subtopic => subtopic.id);
+            fetchSubtopicStatistics(subtopicIds);
+        }
+    }, [subtopics, fetchSubtopicStatistics]);
 
     // Helper function to check if thread has unread posts
     const hasUnreadPosts = (thread) => {
@@ -1216,6 +1260,34 @@ function Topic() {
                                         <p style={styles.subtopicDescription}>
                                             {subtopic.description || 'No description available'}
                                         </p>
+
+                                        {/* Subtopic Statistics */}
+                                        {(() => {
+                                            const stats = subtopicStatistics.get(subtopic.id);
+                                            return stats ? (
+                                                <div style={{
+                                                    display: 'flex',
+                                                    gap: '12px',
+                                                    marginTop: '8px',
+                                                    fontSize: '0.8rem',
+                                                    color: '#888'
+                                                }}>
+                                                    <span>📋 {stats.thread_count} thread{stats.thread_count !== 1 ? 's' : ''}</span>
+                                                    {stats.total_unread_posts > 0 && (
+                                                        <span style={{
+                                                            backgroundColor: '#e74c3c',
+                                                            color: 'white',
+                                                            padding: '2px 6px',
+                                                            borderRadius: '8px',
+                                                            fontSize: '0.7rem',
+                                                            fontWeight: 'bold'
+                                                        }}>
+                                                            {stats.total_unread_posts} new
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : null;
+                                        })()}
                                     </Link>
                                 ))}
                             </div>

@@ -643,6 +643,10 @@ persistent actor SneedSNSForum {
         Lib.get_user_thread_reads_for_topic(state, caller, topic_id)
     };
 
+    public query ({ caller }) func get_topic_statistics(topic_id: Nat) : async T.TopicStatistics {
+        Lib.get_topic_statistics(state, caller, topic_id)
+    };
+
     // System upgrade hooks to maintain stable storage consistency
     system func preupgrade() {
         stable_next_id := state.next_id;

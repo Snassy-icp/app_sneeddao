@@ -283,6 +283,7 @@ function Forum() {
     const [creatingForum, setCreatingForum] = useState(false);
     const [hoveredCard, setHoveredCard] = useState(null);
     const [showGeneralPrompt, setShowGeneralPrompt] = useState(false);
+    const [topicStatistics, setTopicStatistics] = useState(new Map()); // topicId -> {thread_count, total_unread_posts}
     const [creatingGeneral, setCreatingGeneral] = useState(false);
     const [showGovernancePrompt, setShowGovernancePrompt] = useState(false);
     const [creatingGovernance, setCreatingGovernance] = useState(false);
@@ -493,6 +494,56 @@ function Forum() {
         }
     };
 
+    // Helper function to extract all topic IDs from hierarchy
+    const getAllTopicIds = (hierarchyTopics) => {
+        const ids = [];
+        const extractIds = (topics) => {
+            topics.forEach(topic => {
+                ids.push(topic.id);
+                if (topic.children && topic.children.length > 0) {
+                    extractIds(topic.children);
+                }
+            });
+        };
+        extractIds(hierarchyTopics);
+        return ids;
+    };
+
+    // Fetch topic statistics (async, non-blocking)
+    const fetchTopicStatistics = async (topicIds) => {
+        if (!forumActor || !identity || topicIds.length === 0) return;
+        
+        // Fetch statistics for all topics in parallel
+        const statisticsPromises = topicIds.map(async (topicId) => {
+            try {
+                const stats = await forumActor.get_topic_statistics(topicId);
+                return { topicId, stats };
+            } catch (error) {
+                console.warn(`Failed to fetch statistics for topic ${topicId}:`, error);
+                return { topicId, stats: null };
+            }
+        });
+        
+        try {
+            const results = await Promise.allSettled(statisticsPromises);
+            const statsMap = new Map();
+            
+            results.forEach((result) => {
+                if (result.status === 'fulfilled' && result.value.stats) {
+                    const { topicId, stats } = result.value;
+                    statsMap.set(topicId, {
+                        thread_count: Number(stats.thread_count),
+                        total_unread_posts: Number(stats.total_unread_posts)
+                    });
+                }
+            });
+            
+            setTopicStatistics(statsMap);
+        } catch (error) {
+            console.warn('Failed to fetch topic statistics:', error);
+        }
+    };
+
     const fetchForumData = async () => {
         try {
             setLoading(true);
@@ -536,6 +587,12 @@ function Forum() {
             const rootTopics = hierarchyTopics.map(topic => ({ ...topic, children: undefined }));
             setTopics(rootTopics);
             setTopicHierarchy(hierarchyTopics);
+
+            // Fetch topic statistics asynchronously (non-blocking)
+            const allTopicIds = getAllTopicIds(hierarchyTopics);
+            if (allTopicIds.length > 0) {
+                fetchTopicStatistics(allTopicIds);
+            }
 
             // Check if General and Governance topics exist and show prompts if not
             const hasGeneralTopic = checkForGeneralTopic(topicsResponse);
@@ -898,6 +955,34 @@ function Forum() {
                                     <p style={styles.topicDescription}>
                                         {rootTopic.description || 'No description available'}
                                     </p>
+
+                                    {/* Topic Statistics */}
+                                    {(() => {
+                                        const stats = topicStatistics.get(rootTopic.id);
+                                        return stats ? (
+                                            <div style={{
+                                                display: 'flex',
+                                                gap: '12px',
+                                                marginTop: '12px',
+                                                fontSize: '0.85rem',
+                                                color: '#888'
+                                            }}>
+                                                <span>📋 {stats.thread_count} thread{stats.thread_count !== 1 ? 's' : ''}</span>
+                                                {stats.total_unread_posts > 0 && (
+                                                    <span style={{
+                                                        backgroundColor: '#e74c3c',
+                                                        color: 'white',
+                                                        padding: '2px 6px',
+                                                        borderRadius: '8px',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 'bold'
+                                                    }}>
+                                                        {stats.total_unread_posts} new
+                                                    </span>
+                                                )}
+                                            </div>
+                                        ) : null;
+                                    })()}
                                     
                                     {/* Subtopics List */}
                                     {rootTopic.children.length > 0 && (
@@ -914,6 +999,25 @@ function Forum() {
                                                             }}
                                                         >
                                                             {child.title}
+                                                            {(() => {
+                                                                const childStats = topicStatistics.get(child.id);
+                                                                if (childStats && childStats.total_unread_posts > 0) {
+                                                                    return (
+                                                                        <span style={{
+                                                                            marginLeft: '4px',
+                                                                            backgroundColor: '#e74c3c',
+                                                                            color: 'white',
+                                                                            padding: '1px 4px',
+                                                                            borderRadius: '6px',
+                                                                            fontSize: '0.7rem',
+                                                                            fontWeight: 'bold'
+                                                                        }}>
+                                                                            {childStats.total_unread_posts}
+                                                                        </span>
+                                                                    );
+                                                                }
+                                                                return null;
+                                                            })()}
                                                         </span>
                                                         {index < rootTopic.children.length - 1 && ', '}
                                                     </span>

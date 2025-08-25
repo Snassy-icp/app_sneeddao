@@ -730,4 +730,11 @@ module {
     public type GetLastReadPostResponse = {
         last_read_post_id: ?Nat;
     };
+
+    // Topic statistics types
+    public type TopicStatistics = {
+        topic_id: Nat;
+        thread_count: Nat;
+        total_unread_posts: Nat;
+    };
 }

@@ -4390,4 +4390,36 @@ module {
         
         (unread_count, total_count)
     };
+
+    // Calculate statistics for a topic (thread count and total unread posts)
+    public func get_topic_statistics(state: ForumState, caller: Principal, topic_id: Nat) : T.TopicStatistics {
+        var thread_count = 0;
+        var total_unread_posts = 0;
+        
+        switch (Map.get(state.topic_threads, Map.nhash, topic_id)) {
+            case (?thread_ids) {
+                for (thread_id in Vector.vals(thread_ids)) {
+                    // Check if thread exists and is not deleted
+                    switch (Map.get(state.threads, Map.nhash, thread_id)) {
+                        case (?thread) {
+                            if (not thread.deleted) {
+                                thread_count += 1;
+                                // Calculate unread posts for this thread
+                                let (unread_count, _) = calculate_thread_post_counts(state, caller, thread_id);
+                                total_unread_posts += unread_count;
+                            };
+                        };
+                        case null {};
+                    };
+                };
+            };
+            case null {};
+        };
+        
+        {
+            topic_id = topic_id;
+            thread_count = thread_count;
+            total_unread_posts = total_unread_posts;
+        }
+    };
 }
