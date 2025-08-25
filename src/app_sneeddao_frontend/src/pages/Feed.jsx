@@ -462,7 +462,7 @@ function Feed() {
                 // For newer items, don't provide a start_id to get the latest items
                 // Then we'll filter out what we already have
                 actualStartId = null;
-                actualLength = 50; // Load more items to increase chance of finding newer ones
+                actualLength = 20; // Use standard page size
             }
 
             const input = {
@@ -524,9 +524,39 @@ function Feed() {
                             if (aId < bId) return 1;
                             return 0;
                         });
+                        
+                        // Save current scroll position before adding newer items
+                        const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                        const currentDocumentHeight = document.documentElement.scrollHeight;
+                        
+                        // Add newer items to the beginning
                         setFeedItems(prev => [...newerItems, ...prev]);
-                        setHasNewer(true); // There might be even more newer items
+                        
+                        // Restore scroll position after React re-renders
+                        setTimeout(() => {
+                            const newDocumentHeight = document.documentElement.scrollHeight;
+                            const heightDifference = newDocumentHeight - currentDocumentHeight;
+                            
+                            // Adjust scroll position to account for new content added above
+                            const newScrollTop = currentScrollTop + heightDifference;
+                            window.scrollTo({
+                                top: newScrollTop,
+                                behavior: 'auto' // No smooth scrolling, instant adjustment
+                            });
+                            
+                            console.log(`Scroll adjusted by ${heightDifference}px to maintain position`);
+                        }, 0);
+                        
+                        // If we got a full page (20 items), there might be more newer items
+                        // If we got less than 20, we've probably reached the newest items
+                        const hasMoreNewer = newerItems.length >= 20;
+                        setHasNewer(hasMoreNewer);
                         setPrevStartId(newerItems[0].id);
+                        
+                        // Re-enable auto-loading since we found newer items
+                        setCanAutoLoadNewer(true);
+                        
+                        console.log(`Added ${newerItems.length} newer items. Has more newer: ${hasMoreNewer}`);
                     } else {
                         // No newer items found, disable auto-loading
                         setCanAutoLoadNewer(false);
