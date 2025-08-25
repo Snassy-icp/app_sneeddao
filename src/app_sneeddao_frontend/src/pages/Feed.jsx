@@ -1766,7 +1766,13 @@ function Feed() {
                                     gap: '8px',
                                     maxWidth: '100%'
                                 }}>
-                                    {snsesToShow.slice(0, 10).map((sns, index) => {
+                                    {(() => {
+                                        // If we have more than 10 SNSes, randomize which ones to show
+                                        const displaySnses = snsesToShow.length > 10 
+                                            ? [...snsesToShow].sort(() => Math.random() - 0.5).slice(0, 10)
+                                            : snsesToShow;
+                                        
+                                        return displaySnses.map((sns, index) => {
                                         const snsInfo = getSnsInfo(sns.root_canister_id);
                                         const snsLogo = snsInfo ? snsLogos.get(snsInfo.canisters.governance) : null;
                                         const isLoadingLogo = snsInfo ? loadingLogos.has(snsInfo.canisters.governance) : false;
@@ -1836,7 +1842,8 @@ function Feed() {
                                                 )}
                                             </div>
                                         );
-                                    })}
+                                        });
+                                    })()}
                                     
                                     {/* Show "+X more" if there are more than 10 SNSes */}
                                     {snsesToShow.length > 10 && (
