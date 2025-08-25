@@ -295,6 +295,35 @@ const styles = {
         fontWeight: '500',
         transition: 'all 0.3s ease',
         border: '1px solid rgba(255,255,255,0.1)'
+    },
+    checkboxContainer: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        maxHeight: '200px',
+        overflowY: 'auto',
+        backgroundColor: '#1a1a1a',
+        border: '1px solid #3a3a3a',
+        borderRadius: '4px',
+        padding: '8px'
+    },
+    checkboxLabel: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        cursor: 'pointer',
+        padding: '4px',
+        borderRadius: '4px',
+        transition: 'background-color 0.2s ease'
+    },
+    checkbox: {
+        cursor: 'pointer',
+        accentColor: '#3498db'
+    },
+    checkboxText: {
+        color: '#ccc',
+        fontSize: '0.9rem',
+        userSelect: 'none'
     }
 };
 
@@ -326,7 +355,7 @@ function Feed() {
     // Filter state
     const [showFilters, setShowFilters] = useState(false);
     const [searchText, setSearchText] = useState('');
-    const [selectedSns, setSelectedSns] = useState('');
+    const [selectedSnsList, setSelectedSnsList] = useState([]);  // Changed to array for multiple selection
     const [selectedType, setSelectedType] = useState('');
     const [appliedFilters, setAppliedFilters] = useState({});
 
@@ -523,18 +552,26 @@ function Feed() {
 
             const forumActor = createForumActor();
             
-            // Build filter object
+            // Build filter object - must include all fields even if empty
             let filter = null;
             if (Object.keys(appliedFilters).length > 0) {
-                filter = {};
+                filter = {
+                    creator_principals: [],
+                    topic_ids: [],
+                    search_text: [],
+                    sns_root_canister_ids: []
+                };
+                
                 if (appliedFilters.searchText) {
                     filter.search_text = [appliedFilters.searchText];
                 }
-                if (appliedFilters.selectedSns) {
+                if (appliedFilters.selectedSnsList && appliedFilters.selectedSnsList.length > 0) {
                     try {
-                        filter.sns_root_canister_ids = [Principal.fromText(appliedFilters.selectedSns)];
+                        filter.sns_root_canister_ids = appliedFilters.selectedSnsList.map(snsId => 
+                            Principal.fromText(snsId)
+                        );
                     } catch (e) {
-                        console.warn('Invalid SNS principal:', appliedFilters.selectedSns, e);
+                        console.warn('Invalid SNS principal(s):', appliedFilters.selectedSnsList, e);
                     }
                 }
                 // Note: We don't have topic_ids or creator_principals filters in the UI yet
@@ -781,7 +818,7 @@ function Feed() {
     const applyFilters = () => {
         const filters = {};
         if (searchText.trim()) filters.searchText = searchText.trim();
-        if (selectedSns) filters.selectedSns = selectedSns;
+        if (selectedSnsList.length > 0) filters.selectedSnsList = selectedSnsList;
         if (selectedType) filters.selectedType = selectedType;
         
         setAppliedFilters(filters);
@@ -791,7 +828,7 @@ function Feed() {
     // Clear filters
     const clearFilters = () => {
         setSearchText('');
-        setSelectedSns('');
+        setSelectedSnsList([]);
         setSelectedType('');
         setAppliedFilters({});
         setNextStartId(null);
@@ -1109,19 +1146,37 @@ function Feed() {
                                 </div>
                                 
                                 <div style={styles.filterGroup}>
-                                    <label style={styles.filterLabel}>SNS</label>
-                                    <select
-                                        value={selectedSns}
-                                        onChange={(e) => setSelectedSns(e.target.value)}
-                                        style={styles.filterSelect}
-                                    >
-                                        <option value="">All SNS</option>
+                                    <label style={styles.filterLabel}>SNS (Select Multiple)</label>
+                                    <div style={styles.checkboxContainer}>
                                         {snsInstances && snsInstances.map((sns) => (
-                                            <option key={sns.root_canister_id} value={sns.root_canister_id}>
-                                                {sns.name || sns.root_canister_id.substring(0, 8)}...
-                                            </option>
+                                            <label 
+                                                key={sns.root_canister_id} 
+                                                style={styles.checkboxLabel}
+                                                onMouseEnter={(e) => {
+                                                    e.target.style.backgroundColor = '#2a2a2a';
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    e.target.style.backgroundColor = 'transparent';
+                                                }}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedSnsList.includes(sns.root_canister_id)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedSnsList(prev => [...prev, sns.root_canister_id]);
+                                                        } else {
+                                                            setSelectedSnsList(prev => prev.filter(id => id !== sns.root_canister_id));
+                                                        }
+                                                    }}
+                                                    style={styles.checkbox}
+                                                />
+                                                <span style={styles.checkboxText}>
+                                                    {sns.name || sns.root_canister_id.substring(0, 8) + '...'}
+                                                </span>
+                                            </label>
                                         ))}
-                                    </select>
+                                    </div>
                                 </div>
                                 
                                 <div style={styles.filterGroup}>
