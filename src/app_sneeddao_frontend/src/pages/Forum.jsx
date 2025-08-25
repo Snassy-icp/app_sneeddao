@@ -834,21 +834,23 @@ function Forum() {
                                 marginBottom: '1rem'
                             }}>
                                 {/* SNS Logo */}
-                                {loadingLogo ? (
-                                    <div style={styles.forumLogoPlaceholder}>
-                                        ...
-                                    </div>
-                                ) : snsLogo ? (
-                                    <img
-                                        src={snsLogo}
-                                        alt={snsInfo?.name || 'SNS Logo'}
-                                        style={styles.forumLogo}
-                                    />
-                                ) : (
-                                    <div style={styles.forumLogoPlaceholder}>
-                                        {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
-                                    </div>
-                                )}
+                                <div style={{ flexShrink: 0 }}>
+                                    {loadingLogo ? (
+                                        <div style={styles.forumLogoPlaceholder}>
+                                            ...
+                                        </div>
+                                    ) : snsLogo ? (
+                                        <img
+                                            src={snsLogo}
+                                            alt={snsInfo?.name || 'SNS Logo'}
+                                            style={styles.forumLogo}
+                                        />
+                                    ) : (
+                                        <div style={styles.forumLogoPlaceholder}>
+                                            {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
+                                        </div>
+                                    )}
+                                </div>
                                 
                                 {/* Forum Title */}
                                 <h1 style={{
@@ -856,7 +858,8 @@ function Forum() {
                                     color: '#ffffff',
                                     margin: '0',
                                     fontWeight: 'bold',
-                                    lineHeight: '1.2'
+                                    lineHeight: '1.2',
+                                    flex: 1
                                 }}>
                                     {snsInfo?.name ? `${snsInfo.name} Forum` : (forum.title || 'Forum')}
                                 </h1>
