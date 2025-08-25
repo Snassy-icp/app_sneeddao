@@ -300,7 +300,7 @@ const styles = {
 
 function Feed() {
     const { identity } = useAuth();
-    const { selectedSnsRoot, snsInstances } = useSns();
+    const { selectedSnsRoot } = useSns();
     const { getPrincipalDisplayName } = useNaming();
     const navigate = useNavigate();
     const location = useLocation();
@@ -334,6 +334,7 @@ function Feed() {
     const [snsLogos, setSnsLogos] = useState(new Map());
     const [loadingLogos, setLoadingLogos] = useState(new Set());
     const [allSnses, setAllSnses] = useState([]);
+    const [snsInstances, setSnsInstances] = useState([]);
 
     // Create forum actor
     const createForumActor = () => {
@@ -406,6 +407,11 @@ function Feed() {
             const cachedData = getAllSnses();
             if (cachedData && cachedData.length > 0) {
                 setAllSnses(cachedData);
+                // Convert to the format expected by the dropdown
+                setSnsInstances(cachedData.map(sns => ({
+                    root_canister_id: sns.rootCanisterId,
+                    name: sns.name
+                })));
                 
                 // Start loading logos for all SNSes
                 cachedData.forEach(sns => {
@@ -1110,7 +1116,7 @@ function Feed() {
                                         style={styles.filterSelect}
                                     >
                                         <option value="">All SNS</option>
-                                        {snsInstances.map((sns) => (
+                                        {snsInstances && snsInstances.map((sns) => (
                                             <option key={sns.root_canister_id} value={sns.root_canister_id}>
                                                 {sns.name || sns.root_canister_id.substring(0, 8)}...
                                             </option>
@@ -1195,7 +1201,7 @@ function Feed() {
                                     </div>
                                 )}
 
-                                {feedItems.map(renderFeedItem)}
+                                {feedItems && feedItems.map(renderFeedItem)}
                                 
                                 {/* Load More Older Items - Loading indicator or manual button */}
                                 {(loadingMore || (hasMore && !canAutoLoadOlder)) && (
