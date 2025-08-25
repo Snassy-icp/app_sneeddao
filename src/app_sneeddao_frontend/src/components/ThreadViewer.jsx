@@ -1776,18 +1776,11 @@ function ThreadViewer({
     const getDisplayTitle = () => {
         if (title) return title;
         if (mode === 'post' && focusedPostId) {
-            const focusedPost = discussionPosts.find(p => Number(p.id) === Number(focusedPostId));
-            if (focusedPost) {
-                const posterInfo = principalDisplayInfo.get(focusedPost.created_by?.toString());
-                const posterName = posterInfo?.nickname || posterInfo?.name || 
-                                 `${focusedPost.created_by.toString().slice(0, 8)}...`;
-                
-                if (focusedPost.title && focusedPost.title.length > 0) {
-                    return `${focusedPost.title[0]} by ${posterName}`;
-                }
-                return `Post #${focusedPostId} by ${posterName}`;
+            // For post mode, show the thread title instead of the post title
+            if (threadDetails && threadDetails.title) {
+                return threadDetails.title;
             }
-            return `Post #${focusedPostId}`;
+            return `Thread #${threadId}`;
         }
         if (threadDetails && threadDetails.title) {
             return threadDetails.title;

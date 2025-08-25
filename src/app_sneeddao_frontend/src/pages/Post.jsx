@@ -446,37 +446,21 @@ const Post = () => {
                     </div>
                 )}
 
-                {/* Thread Title Section */}
-                {threadDetails && (
-                    <div style={{
-                        marginBottom: '20px',
-                        padding: '20px',
-                        backgroundColor: '#2a2a2a',
-                        borderRadius: '8px',
-                        border: '1px solid #3a3a3a'
-                    }}>
-                        <h1 style={{
-                            color: '#ffffff',
-                            fontSize: '1.8rem',
-                            fontWeight: '600',
-                            marginBottom: '8px',
-                            lineHeight: '1.3'
-                        }}>
-                            {threadDetails.title}
-                        </h1>
-                        {threadDetails.body && (
-                            <p style={{
-                                color: '#ccc',
-                                fontSize: '1rem',
-                                lineHeight: '1.5',
-                                margin: 0
-                            }}>
-                                {threadDetails.body}
-                            </p>
-                        )}
-                    </div>
-                )}
+
+                {/* Post Votes Display - Moved to bottom after ThreadViewer */}
                 
+                <ThreadViewer
+                    forumActor={forumActor}
+                    mode="post"
+                    threadId={threadId}
+                    focusedPostId={Number(postId)}
+                    selectedSnsRoot={currentSnsRoot}
+                    isAuthenticated={isAuthenticated}
+                    onError={handleError}
+                    showCreatePost={true}
+
+                />
+
                 {/* Post Votes Display */}
                 {postDetails && (
                     <div style={{
@@ -705,18 +689,6 @@ const Post = () => {
                         )}
                     </div>
                 )}
-                
-                <ThreadViewer
-                    forumActor={forumActor}
-                    mode="post"
-                    threadId={threadId}
-                    focusedPostId={Number(postId)}
-                    selectedSnsRoot={currentSnsRoot}
-                    isAuthenticated={isAuthenticated}
-                    onError={handleError}
-                    showCreatePost={true}
-
-                />
             </div>
         </div>
     );
