@@ -371,13 +371,21 @@ function Feed() {
             const currentCounter = await forumActor.get_current_counter();
             const lastSeen = getLastSeenId();
             
-            if (lastSeen && currentCounter > lastSeen) {
-                const newCount = Number(currentCounter - lastSeen);
-                setNewItemsCount(newCount);
-                setShowNewItemsNotification(true);
-                console.log(`Found ${newCount} new items. Current counter: ${currentCounter}, last seen: ${lastSeen}`);
+            if (lastSeen) {
+                // currentCounter is the next ID to be assigned, so the last created item has ID (currentCounter - 1)
+                // We have new items if the last created item ID is greater than what we last saw
+                const lastCreatedId = currentCounter - 1n;
+                
+                if (lastCreatedId > lastSeen) {
+                    const newCount = Number(lastCreatedId - lastSeen);
+                    setNewItemsCount(newCount);
+                    setShowNewItemsNotification(true);
+                    console.log(`Found ${newCount} new items. Last created ID: ${lastCreatedId}, last seen: ${lastSeen}`);
+                } else {
+                    console.log(`No new items. Last created ID: ${lastCreatedId}, last seen: ${lastSeen}`);
+                }
             } else {
-                console.log(`No new items. Current counter: ${currentCounter}, last seen: ${lastSeen}`);
+                console.log(`No last seen ID stored. Current counter: ${currentCounter}`);
             }
         } catch (error) {
             console.error('Error checking for new items:', error);
