@@ -229,6 +229,11 @@ persistent actor SneedSNSForum {
         Lib.get_threads_by_topic_filtered(state, topic_id, is_admin)
     };
 
+    public query ({ caller }) func get_threads_by_activity(topic_id: Nat, start_from: ?Nat, length: Nat, reverse: Bool) : async T.GetThreadsByActivityResponse {
+        let is_admin = Lib.is_admin(state, caller);
+        Lib.get_threads_by_activity(state, topic_id, start_from, length, reverse, is_admin)
+    };
+
     public query func get_thread_context(thread_id: Nat) : async ?T.ThreadContextResponse {
         Lib.get_thread_context(state, thread_id)
     };

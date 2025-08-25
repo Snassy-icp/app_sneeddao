@@ -354,6 +354,7 @@ function Topic() {
     const [currentPage, setCurrentPage] = useState(0);
     const [totalThreads, setTotalThreads] = useState(0);
     const [threadsPerPage, setThreadsPerPage] = useState(10);
+    const [sortBy, setSortBy] = useState('newest'); // 'newest', 'oldest', 'activity-newest', 'activity-oldest'
     const [createThreadTitle, setCreateThreadTitle] = useState('');
     const [createThreadBody, setCreateThreadBody] = useState('');
     const [submitting, setSubmitting] = useState(false);
@@ -640,7 +641,7 @@ function Topic() {
         }
 
         fetchTopicData();
-    }, [topicId, identity, currentPage, threadsPerPage]);
+    }, [topicId, identity, currentPage, threadsPerPage, sortBy]);
 
     // Fetch proposal data for threads when threads are loaded (async, non-blocking)
     useEffect(() => {
@@ -742,27 +743,64 @@ function Topic() {
                 setShowPreproposalsPrompt(false);
             }
 
-            // Get threads for this topic
-            const threadsResponse = await forumActor.get_threads_by_topic(parseInt(topicId));
-            
-            if (threadsResponse) {
-                // Filter out deleted threads
-                const activeThreads = threadsResponse.filter(thread => !thread.deleted);
+            let threadsResponse;
+            let paginatedThreads;
+            let totalCount;
+
+            if (sortBy.startsWith('activity-')) {
+                // Use activity-based sorting with backend pagination
+                const reverse = sortBy === 'activity-newest';
+                const startFrom = currentPage * threadsPerPage;
                 
-                // Sort by created_at descending (newest first)
-                activeThreads.sort((a, b) => Number(b.created_at - a.created_at));
+                const activityResponse = await forumActor.get_threads_by_activity(
+                    parseInt(topicId),
+                    [startFrom], // Optional Nat
+                    threadsPerPage,
+                    reverse
+                );
                 
-                // Apply pagination on the frontend
-                const startIndex = currentPage * threadsPerPage;
-                const endIndex = startIndex + threadsPerPage;
-                const paginatedThreads = activeThreads.slice(startIndex, endIndex);
-                
-                setThreads(paginatedThreads);
-                setTotalThreads(activeThreads.length);
+                if (activityResponse) {
+                    paginatedThreads = activityResponse.threads.filter(thread => !thread.deleted);
+                    // For activity sorting, we need to get total count separately since backend does pagination
+                    // For now, we'll use a simple approach - if has_more is false and this is first page, we know the total
+                    if (currentPage === 0 && !activityResponse.has_more) {
+                        totalCount = paginatedThreads.length;
+                    } else {
+                        // Estimate total - this is not perfect but workable
+                        totalCount = activityResponse.has_more ? (currentPage + 2) * threadsPerPage : (currentPage * threadsPerPage) + paginatedThreads.length;
+                    }
+                } else {
+                    paginatedThreads = [];
+                    totalCount = 0;
+                }
             } else {
-                setThreads([]);
-                setTotalThreads(0);
+                // Use creation time sorting with frontend pagination (existing logic)
+                threadsResponse = await forumActor.get_threads_by_topic(parseInt(topicId));
+                
+                if (threadsResponse) {
+                    // Filter out deleted threads
+                    const activeThreads = threadsResponse.filter(thread => !thread.deleted);
+                    
+                    // Sort by created_at
+                    if (sortBy === 'newest') {
+                        activeThreads.sort((a, b) => Number(b.created_at - a.created_at));
+                    } else { // oldest
+                        activeThreads.sort((a, b) => Number(a.created_at - b.created_at));
+                    }
+                    
+                    // Apply pagination on the frontend
+                    const startIndex = currentPage * threadsPerPage;
+                    const endIndex = startIndex + threadsPerPage;
+                    paginatedThreads = activeThreads.slice(startIndex, endIndex);
+                    totalCount = activeThreads.length;
+                } else {
+                    paginatedThreads = [];
+                    totalCount = 0;
+                }
             }
+            
+            setThreads(paginatedThreads);
+            setTotalThreads(totalCount);
 
         } catch (err) {
             console.error('Error fetching topic data:', err);
@@ -1228,29 +1266,63 @@ function Topic() {
                                     <div style={{
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '10px',
+                                        gap: '20px',
                                         fontSize: '14px',
                                         color: '#ccc'
                                     }}>
-                                        <span>Show:</span>
-                                        <select
-                                            value={threadsPerPage}
-                                            onChange={(e) => handleThreadsPerPageChange(Number(e.target.value))}
-                                            style={{
-                                                backgroundColor: '#2a2a2a',
-                                                color: '#ffffff',
-                                                border: '1px solid #444',
-                                                borderRadius: '4px',
-                                                padding: '4px 8px',
-                                                fontSize: '14px'
-                                            }}
-                                        >
-                                            <option value={5}>5 threads</option>
-                                            <option value={10}>10 threads</option>
-                                            <option value={20}>20 threads</option>
-                                            <option value={50}>50 threads</option>
-                                        </select>
-                                        <span>per page</span>
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px'
+                                        }}>
+                                            <span>Show:</span>
+                                            <select
+                                                value={threadsPerPage}
+                                                onChange={(e) => handleThreadsPerPageChange(Number(e.target.value))}
+                                                style={{
+                                                    backgroundColor: '#2a2a2a',
+                                                    color: '#ffffff',
+                                                    border: '1px solid #444',
+                                                    borderRadius: '4px',
+                                                    padding: '4px 8px',
+                                                    fontSize: '14px'
+                                                }}
+                                            >
+                                                <option value={5}>5 threads</option>
+                                                <option value={10}>10 threads</option>
+                                                <option value={20}>20 threads</option>
+                                                <option value={50}>50 threads</option>
+                                            </select>
+                                            <span>per page</span>
+                                        </div>
+                                        
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '10px'
+                                        }}>
+                                            <span>Sort by:</span>
+                                            <select
+                                                value={sortBy}
+                                                onChange={(e) => {
+                                                    setSortBy(e.target.value);
+                                                    setCurrentPage(0); // Reset to first page when sorting changes
+                                                }}
+                                                style={{
+                                                    backgroundColor: '#2a2a2a',
+                                                    color: '#ffffff',
+                                                    border: '1px solid #444',
+                                                    borderRadius: '4px',
+                                                    padding: '4px 8px',
+                                                    fontSize: '14px'
+                                                }}
+                                            >
+                                                <option value="newest">Newest</option>
+                                                <option value="oldest">Oldest</option>
+                                                <option value="activity-newest">Activity (Newest)</option>
+                                                <option value="activity-oldest">Activity (Oldest)</option>
+                                            </select>
+                                        </div>
                                     </div>
 
                                     {/* Pagination */}

@@ -4100,4 +4100,79 @@ module {
             next_start_id;
         }
     };
+
+    public func get_threads_by_activity(state: ForumState, topic_id: Nat, start_from: ?Nat, length: Nat, reverse: Bool, show_deleted: Bool) : T.GetThreadsByActivityResponse {
+        // Get all threads in the topic
+        let thread_activity_pairs = Buffer.Buffer<(T.ThreadResponse, Nat)>(0);
+        
+        switch (Map.get(state.topic_threads, Map.nhash, topic_id)) {
+            case (?thread_ids) {
+                for (thread_id in Vector.vals(thread_ids)) {
+                    switch (get_thread(state, thread_id)) {
+                        case (?thread_response) {
+                            if (show_deleted or not thread_response.deleted) {
+                                // Find the highest post ID in this thread
+                                let highest_post_id = get_highest_post_id_in_thread(state, thread_id);
+                                thread_activity_pairs.add((thread_response, highest_post_id));
+                            };
+                        };
+                        case null {};
+                    };
+                };
+            };
+            case null {};
+        };
+
+        // Sort by activity (highest post ID)
+        let sorted_pairs = Array.sort(Buffer.toArray(thread_activity_pairs), func(a : (T.ThreadResponse, Nat), b : (T.ThreadResponse, Nat)) : Order.Order {
+            let (_, a_activity) = a;
+            let (_, b_activity) = b;
+            if (reverse) {
+                Nat.compare(b_activity, a_activity) // Newest activity first
+            } else {
+                Nat.compare(a_activity, b_activity) // Oldest activity first
+            }
+        });
+
+        // Apply pagination
+        let total_count = sorted_pairs.size();
+        let start_index = switch (start_from) {
+            case (?from) from;
+            case null 0;
+        };
+        
+        let end_index = Nat.min(start_index + length, total_count);
+        let has_more = end_index < total_count;
+        let next_start_from = if (has_more) ?end_index else null;
+
+        // Extract threads from the paginated slice
+        let result_threads = Buffer.Buffer<T.ThreadResponse>(0);
+        var i = start_index;
+        while (i < end_index) {
+            let (thread_response, _) = sorted_pairs[i];
+            result_threads.add(thread_response);
+            i += 1;
+        };
+
+        {
+            threads = Buffer.toArray(result_threads);
+            has_more = has_more;
+            next_start_from = next_start_from;
+        }
+    };
+
+    private func get_highest_post_id_in_thread(state: ForumState, thread_id: Nat) : Nat {
+        switch (Map.get(state.thread_posts, Map.nhash, thread_id)) {
+            case (?post_ids) {
+                var highest_id = 0;
+                for (post_id in Vector.vals(post_ids)) {
+                    if (post_id > highest_id) {
+                        highest_id := post_id;
+                    };
+                };
+                highest_id
+            };
+            case null 0; // No posts in thread, use 0 as activity level
+        }
+    };
 }

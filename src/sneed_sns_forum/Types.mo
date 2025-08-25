@@ -690,4 +690,10 @@ module {
         has_more: Bool; // Whether there are more items available
         next_start_id: ?Nat; // ID to use for next page
     };
+
+    public type GetThreadsByActivityResponse = {
+        threads: [ThreadResponse];
+        has_more: Bool; // Whether there are more threads available
+        next_start_from: ?Nat; // Thread index to use for next page
+    };
 }
