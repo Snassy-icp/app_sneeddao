@@ -1518,7 +1518,11 @@ function Topic() {
                                                     borderRadius: '10px',
                                                     fontWeight: 'bold'
                                                 }}>
-                                                    NEW
+                                                    {(() => {
+                                                        const unreadCount = thread.unread_posts_count && thread.unread_posts_count.length > 0 
+                                                            ? Number(thread.unread_posts_count[0]) : 0;
+                                                        return unreadCount > 0 ? unreadCount : 'NEW';
+                                                    })()}
                                                 </span>
                                             )}
                                         </h3>
@@ -1563,25 +1567,9 @@ function Topic() {
                                             <span>Created {formatTimeAgo(thread.created_at)}</span>
                                             {(() => {
                                                 const postCount = threadPostCounts.get(thread.id.toString());
-                                                const unreadCount = thread.unread_posts_count && thread.unread_posts_count.length > 0 
-                                                    ? Number(thread.unread_posts_count[0]) : 0;
-                                                
                                                 return postCount !== undefined ? (
                                                     <span style={{ color: '#888', fontSize: '0.9rem' }}>
                                                         • {postCount} post{postCount !== 1 ? 's' : ''}
-                                                        {unreadCount > 0 && (
-                                                            <span style={{
-                                                                marginLeft: '6px',
-                                                                backgroundColor: '#e74c3c',
-                                                                color: 'white',
-                                                                fontSize: '0.7rem',
-                                                                padding: '1px 4px',
-                                                                borderRadius: '8px',
-                                                                fontWeight: 'bold'
-                                                            }}>
-                                                                {unreadCount} new
-                                                            </span>
-                                                        )}
                                                     </span>
                                                 ) : (
                                                     <span style={{ color: '#666', fontSize: '0.8rem', fontStyle: 'italic' }}>
