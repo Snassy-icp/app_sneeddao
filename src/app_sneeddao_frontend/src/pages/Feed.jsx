@@ -355,7 +355,16 @@ function Feed() {
     // Filter state
     const [showFilters, setShowFilters] = useState(false);
     const [searchText, setSearchText] = useState('');
-    const [selectedSnsList, setSelectedSnsList] = useState([]);  // Changed to array for multiple selection
+    const [selectedSnsList, setSelectedSnsList] = useState(() => {
+        // Load SNS selection from localStorage
+        try {
+            const saved = localStorage.getItem('feedSnsSelection');
+            return saved ? JSON.parse(saved) : [];
+        } catch (e) {
+            console.warn('Failed to load SNS selection from localStorage:', e);
+            return [];
+        }
+    });
     const [selectedType, setSelectedType] = useState('');
     const [appliedFilters, setAppliedFilters] = useState({});
 
@@ -394,25 +403,117 @@ function Feed() {
         }
     };
 
-    // Check for new items
+    // Get/set highest checked ID from localStorage (to avoid redundant queries)
+    const getHighestCheckedId = () => {
+        try {
+            const stored = localStorage.getItem('feedHighestCheckedId');
+            return stored ? BigInt(stored) : null;
+        } catch (e) {
+            console.warn('Error reading highest checked ID from localStorage:', e);
+            return null;
+        }
+    };
+
+    const saveHighestCheckedId = (id) => {
+        try {
+            if (id) {
+                localStorage.setItem('feedHighestCheckedId', id.toString());
+                console.log('Saved highest checked ID:', id);
+            }
+        } catch (e) {
+            console.warn('Error saving highest checked ID to localStorage:', e);
+        }
+    };
+
+    // Check for new items with SNS filtering
     const checkForNewItems = async () => {
         try {
             const forumActor = createForumActor();
             const currentCounter = await forumActor.get_current_counter();
             const lastSeen = getLastSeenId();
+            const highestChecked = getHighestCheckedId();
             
             if (lastSeen) {
                 // currentCounter is the next ID to be assigned, so the last created item has ID (currentCounter - 1)
-                // We have new items if the last created item ID is greater than what we last saw
                 const lastCreatedId = currentCounter - 1n;
                 
+                // Skip checking if we've already checked up to this ID
+                if (highestChecked && lastCreatedId <= highestChecked) {
+                    console.log(`Already checked up to ID ${highestChecked}, last created: ${lastCreatedId}`);
+                    return;
+                }
+                
                 if (lastCreatedId > lastSeen) {
-                    const newCount = Number(lastCreatedId - lastSeen);
-                    setNewItemsCount(newCount);
-                    setShowNewItemsNotification(true);
-                    console.log(`Found ${newCount} new items. Last created ID: ${lastCreatedId}, last seen: ${lastSeen}`);
+                    // Query page by page from newest to lastSeen with SNS filter only
+                    let newItemsCount = 0;
+                    let currentId = lastCreatedId;
+                    const pageSize = 20;
+                    
+                    // Build filter with only SNS selection (no text or type filters)
+                    let snsOnlyFilter = null;
+                    if (appliedFilters.selectedSnsList && appliedFilters.selectedSnsList.length > 0) {
+                        snsOnlyFilter = {
+                            creator_principals: [],
+                            topic_ids: [],
+                            search_text: [],
+                            sns_root_canister_ids: []
+                        };
+                        
+                        try {
+                            const principalArray = appliedFilters.selectedSnsList.map(snsId => 
+                                Principal.fromText(snsId)
+                            );
+                            snsOnlyFilter.sns_root_canister_ids = [principalArray];
+                        } catch (e) {
+                            console.warn('Invalid SNS principal(s) for new items check:', appliedFilters.selectedSnsList, e);
+                            snsOnlyFilter = null;
+                        }
+                    }
+                    
+                    // Query pages until we reach lastSeen
+                    while (currentId > lastSeen) {
+                        const input = {
+                            start_id: [currentId],
+                            length: pageSize,
+                            filter: snsOnlyFilter ? [snsOnlyFilter] : []
+                        };
+                        
+                        const response = await forumActor.get_feed(input);
+                        if (response.items.length === 0) break;
+                        
+                        // Count items that are newer than lastSeen
+                        const relevantItems = response.items.filter(item => {
+                            const itemId = typeof item.id === 'bigint' ? item.id : BigInt(item.id);
+                            return itemId > lastSeen;
+                        });
+                        
+                        newItemsCount += relevantItems.length;
+                        
+                        // Update currentId for next iteration
+                        if (response.next_start_id && response.next_start_id.length > 0) {
+                            currentId = response.next_start_id[0];
+                        } else {
+                            break;
+                        }
+                        
+                        // Safety check to prevent infinite loops
+                        if (currentId <= lastSeen) break;
+                    }
+                    
+                    if (newItemsCount > 0) {
+                        setNewItemsCount(newItemsCount);
+                        setShowNewItemsNotification(true);
+                        console.log(`Found ${newItemsCount} new items matching SNS filter. Last created ID: ${lastCreatedId}, last seen: ${lastSeen}`);
+                    } else {
+                        console.log(`No new items matching SNS filter. Last created ID: ${lastCreatedId}, last seen: ${lastSeen}`);
+                    }
+                    
+                    // Save the highest ID we've checked to avoid redundant queries
+                    saveHighestCheckedId(lastCreatedId);
                 } else {
                     console.log(`No new items. Last created ID: ${lastCreatedId}, last seen: ${lastSeen}`);
+                    // Still save that we've checked up to this ID
+                    saveHighestCheckedId(lastCreatedId);
                 }
             } else {
                 console.log(`No last seen ID stored. Current counter: ${currentCounter}`);
@@ -426,9 +527,38 @@ function Feed() {
     const handleShowNewItems = () => {
         setShowNewItemsNotification(false);
         setNewItemsCount(0);
+        
+        // Clear the highest checked ID so we can check for new items again
+        try {
+            localStorage.removeItem('feedHighestCheckedId');
+            console.log('Cleared highest checked ID - will check for new items again');
+        } catch (e) {
+            console.warn('Error clearing highest checked ID:', e);
+        }
+        
+        // Clear text and type filters but keep SNS selection
+        setSearchText('');
+        setSelectedType('');
+        
+        // Update applied filters to only include SNS selection
+        const newFilters = {};
+        if (selectedSnsList.length > 0) {
+            newFilters.selectedSnsList = selectedSnsList;
+        }
+        setAppliedFilters(newFilters);
+        
         // Reload feed from the top
         loadFeed(null, 'initial');
     };
+
+    // Save SNS selection to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('feedSnsSelection', JSON.stringify(selectedSnsList));
+        } catch (e) {
+            console.warn('Failed to save SNS selection to localStorage:', e);
+        }
+    }, [selectedSnsList]);
 
     // Load SNS data and logos
     useEffect(() => {
@@ -507,6 +637,15 @@ function Feed() {
             }
         }
         return String(variant);
+    };
+
+    // Filter feed items by type (frontend filtering since backend doesn't support it)
+    const filterFeedItemsByType = (items, typeFilter) => {
+        if (!typeFilter) return items;
+        return items.filter(item => {
+            const itemType = extractVariant(item.item_type);
+            return itemType === typeFilter;
+        });
     };
 
     // Get display text for type (NEW FORUM, NEW TOPIC, etc.)
@@ -597,13 +736,19 @@ function Feed() {
 
             const response = await forumActor.get_feed(input);
             
+            // Apply frontend type filtering
+            let filteredItems = response.items;
+            if (appliedFilters.selectedType) {
+                filteredItems = filterFeedItemsByType(response.items, appliedFilters.selectedType);
+            }
+            
             // Debug log to see the structure of the response
             if (response.items.length > 0) {
-                console.log(`Feed ${direction} load - items:`, response.items.length, 'has_more:', response.has_more);
+                console.log(`Feed ${direction} load - items:`, response.items.length, 'filtered:', filteredItems.length, 'has_more:', response.has_more);
             }
             
             if (direction === 'initial') {
-                setFeedItems(response.items);
+                setFeedItems(filteredItems);
                 setHasMore(response.has_more);
                 setNextStartId(response.next_start_id.length > 0 ? response.next_start_id[0] : null);
                 
@@ -621,14 +766,14 @@ function Feed() {
                     console.log('Set hasNewer=false for top-of-feed loading');
                     
                     // If loading from the top (no specific start item), save the highest ID as last seen
-                    if (response.items.length > 0) {
-                        saveLastSeenId(response.items[0].id);
-                        console.log('Saved last seen ID:', response.items[0].id);
+                    if (filteredItems.length > 0) {
+                        saveLastSeenId(filteredItems[0].id);
+                        console.log('Saved last seen ID:', filteredItems[0].id);
                     }
                 }
             } else if (direction === 'older') {
-                if (response.items.length > 0) {
-                    setFeedItems(prev => [...prev, ...response.items]);
+                if (filteredItems.length > 0) {
+                    setFeedItems(prev => [...prev, ...filteredItems]);
                     setHasMore(response.has_more);
                     setNextStartId(response.next_start_id.length > 0 ? response.next_start_id[0] : null);
                 } else {
@@ -637,10 +782,10 @@ function Feed() {
                     setHasMore(false);
                 }
             } else if (direction === 'newer') {
-                if (response.items.length > 0) {
+                if (filteredItems.length > 0) {
                     // Filter out items we already have (items with ID <= current first item ID)
                     const currentFirstId = feedItems.length > 0 ? feedItems[0].id : 0n;
-                    const newerItems = response.items.filter(item => {
+                    const newerItems = filteredItems.filter(item => {
                         // Handle BigInt comparison
                         const itemId = typeof item.id === 'bigint' ? item.id : BigInt(item.id);
                         const currentId = typeof currentFirstId === 'bigint' ? currentFirstId : BigInt(currentFirstId);
@@ -722,6 +867,20 @@ function Feed() {
             setLoadingNewer(false);
         }
     };
+
+    // Clear text and type filters on page load (keep SNS selection)
+    useEffect(() => {
+        // Clear text and type filters but preserve SNS selection
+        setSearchText('');
+        setSelectedType('');
+        
+        // Set initial applied filters to only include SNS selection
+        const initialFilters = {};
+        if (selectedSnsList.length > 0) {
+            initialFilters.selectedSnsList = selectedSnsList;
+        }
+        setAppliedFilters(initialFilters);
+    }, []); // Run only once on mount
 
     // Load initial feed
     useEffect(() => {
