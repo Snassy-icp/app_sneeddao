@@ -191,7 +191,7 @@ const Post = () => {
     // Auto-scroll to the focused post when page loads
     useEffect(() => {
         if (!loading && threadId && postId) {
-            // Wait a bit for the ThreadViewer to render the posts
+            // Wait longer for the ThreadViewer to render the posts since it's now repositioned
             const timer = setTimeout(() => {
                 // Try multiple selectors to find the focused post
                 let focusedPostElement = document.querySelector('.focused-post');
@@ -201,6 +201,18 @@ const Post = () => {
                     focusedPostElement = document.querySelector(`a[href*="postid=${postId}"]`)?.closest('.post-item');
                 }
                 
+                if (!focusedPostElement) {
+                    // Another fallback: look for any post-item and check if it contains our post ID
+                    const postItems = document.querySelectorAll('.post-item');
+                    for (const item of postItems) {
+                        const postLink = item.querySelector(`a[href*="postid=${postId}"]`);
+                        if (postLink) {
+                            focusedPostElement = item;
+                            break;
+                        }
+                    }
+                }
+                
                 if (focusedPostElement) {
                     focusedPostElement.scrollIntoView({ 
                         behavior: 'smooth', 
@@ -208,9 +220,23 @@ const Post = () => {
                     });
                     console.log(`Auto-scrolled to focused post #${postId}`);
                 } else {
-                    console.log(`Could not find focused post element for post #${postId}`);
+                    console.log(`Could not find focused post element for post #${postId}. Trying again...`);
+                    // If still not found, try one more time after another delay
+                    setTimeout(() => {
+                        const retryElement = document.querySelector('.focused-post') || 
+                                           document.querySelector(`a[href*="postid=${postId}"]`)?.closest('.post-item');
+                        if (retryElement) {
+                            retryElement.scrollIntoView({ 
+                                behavior: 'smooth', 
+                                block: 'center' 
+                            });
+                            console.log(`Auto-scrolled to focused post #${postId} on retry`);
+                        } else {
+                            console.log(`Still could not find focused post element for post #${postId}`);
+                        }
+                    }, 500);
                 }
-            }, 800); // Wait 800ms for the component to render
+            }, 1200); // Wait 1200ms for the component to render
 
             return () => clearTimeout(timer);
         }
