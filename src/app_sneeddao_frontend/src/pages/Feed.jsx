@@ -551,6 +551,14 @@ function Feed() {
             console.warn('Error clearing highest checked ID:', e);
         }
         
+        // Clear scroll position when clicking new items notification (start from top)
+        try {
+            sessionStorage.removeItem('feedScrollPositionId');
+            console.log('Cleared scroll position for new items view');
+        } catch (e) {
+            console.warn('Error clearing scroll position:', e);
+        }
+        
         // Clear text and type filters but keep SNS selection
         setSearchText('');
         setSelectedType('');
@@ -905,6 +913,28 @@ function Feed() {
         }
     };
 
+    // Get/set scroll position cache (persists until browser refresh)
+    const getScrollPositionId = () => {
+        try {
+            const stored = sessionStorage.getItem('feedScrollPositionId');
+            return stored ? BigInt(stored) : null;
+        } catch (e) {
+            console.warn('Error reading scroll position ID from sessionStorage:', e);
+            return null;
+        }
+    };
+
+    const saveScrollPositionId = (id) => {
+        try {
+            if (id) {
+                sessionStorage.setItem('feedScrollPositionId', id.toString());
+                console.log('Saved scroll position ID:', id);
+            }
+        } catch (e) {
+            console.warn('Error saving scroll position ID to sessionStorage:', e);
+        }
+    };
+
     // Clear text and type filters on page load (keep SNS selection)
     useEffect(() => {
         // Clear text and type filters but preserve SNS selection
@@ -922,15 +952,12 @@ function Feed() {
     // Load initial feed
     useEffect(() => {
         if (identity) {
-            // First check for back button navigation (sessionStorage)
-            const savedItemId = sessionStorage.getItem('feedReturnToItem');
+            // Check for cached scroll position first
+            const scrollPositionId = getScrollPositionId();
             
-            if (savedItemId) {
-                console.log('Loading feed from back button navigation, starting from item:', savedItemId);
-                // Clear the saved item ID after using it
-                sessionStorage.removeItem('feedReturnToItem');
-                const startId = BigInt(savedItemId);
-                loadFeed(startId, 'initial');
+            if (scrollPositionId) {
+                console.log('Loading feed from cached scroll position:', scrollPositionId);
+                loadFeed(scrollPositionId, 'initial');
             } else {
                 // Check for URL parameter (manual navigation)
                 const startFromParam = searchParams.get('startFrom');
@@ -976,12 +1003,44 @@ function Feed() {
         };
     }, [identity, lastSeenId]);
 
-    // Bidirectional infinite scroll effect
+    // Bidirectional infinite scroll effect with position caching
     useEffect(() => {
         const handleScroll = () => {
             const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
             const windowHeight = window.innerHeight;
             const documentHeight = document.documentElement.scrollHeight;
+            
+            // Save scroll position based on visible items
+            if (feedItems.length > 0) {
+                // Find the item that's roughly in the middle of the viewport
+                const viewportMiddle = scrollTop + windowHeight / 2;
+                const feedContainer = document.querySelector('[data-feed-container]');
+                
+                if (feedContainer) {
+                    const feedItemElements = feedContainer.querySelectorAll('[data-feed-item-id]');
+                    let closestItem = null;
+                    let closestDistance = Infinity;
+                    
+                    feedItemElements.forEach(element => {
+                        const rect = element.getBoundingClientRect();
+                        const elementTop = rect.top + scrollTop;
+                        const elementMiddle = elementTop + rect.height / 2;
+                        const distance = Math.abs(elementMiddle - viewportMiddle);
+                        
+                        if (distance < closestDistance) {
+                            closestDistance = distance;
+                            closestItem = element;
+                        }
+                    });
+                    
+                    if (closestItem) {
+                        const itemId = closestItem.getAttribute('data-feed-item-id');
+                        if (itemId) {
+                            saveScrollPositionId(BigInt(itemId));
+                        }
+                    }
+                }
+            }
             
             // Check if we're near the bottom (load older items)
             const isNearBottom = scrollTop + windowHeight >= documentHeight - 500;
@@ -998,18 +1057,31 @@ function Feed() {
             }
         };
 
+        // Throttle scroll events for better performance
+        let scrollTimeout;
+        const throttledScroll = () => {
+            if (scrollTimeout) return;
+            scrollTimeout = setTimeout(() => {
+                handleScroll();
+                scrollTimeout = null;
+            }, 100); // Throttle to every 100ms
+        };
+
         // Add scroll event listener
-        window.addEventListener('scroll', handleScroll);
+        window.addEventListener('scroll', throttledScroll);
         
         // Also check on resize in case content changes
         window.addEventListener('resize', handleScroll);
 
         // Cleanup
         return () => {
-            window.removeEventListener('scroll', handleScroll);
+            window.removeEventListener('scroll', throttledScroll);
             window.removeEventListener('resize', handleScroll);
+            if (scrollTimeout) {
+                clearTimeout(scrollTimeout);
+            }
         };
-    }, [hasMore, hasNewer, loadingMore, loadingNewer, loading, nextStartId, prevStartId, canAutoLoadOlder, canAutoLoadNewer]);
+    }, [hasMore, hasNewer, loadingMore, loadingNewer, loading, nextStartId, prevStartId, canAutoLoadOlder, canAutoLoadNewer, feedItems]);
 
     // Apply filters
     const applyFilters = () => {
@@ -1018,12 +1090,28 @@ function Feed() {
         if (selectedSnsList.length > 0) filters.selectedSnsList = selectedSnsList;
         if (selectedType) filters.selectedType = selectedType;
         
+        // Clear scroll position when manually applying filters (start from top)
+        try {
+            sessionStorage.removeItem('feedScrollPositionId');
+            console.log('Cleared scroll position for manual filter application');
+        } catch (e) {
+            console.warn('Error clearing scroll position:', e);
+        }
+        
         setAppliedFilters(filters);
         setNextStartId(null);
     };
 
     // Clear filters
     const clearFilters = () => {
+        // Clear scroll position when clearing filters (start from top)
+        try {
+            sessionStorage.removeItem('feedScrollPositionId');
+            console.log('Cleared scroll position for filter clearing');
+        } catch (e) {
+            console.warn('Error clearing scroll position:', e);
+        }
+        
         setSearchText('');
         setSelectedSnsList([]);
         setSelectedType('');
@@ -1131,10 +1219,6 @@ function Feed() {
         
         // Handle SNS logo click to navigate to forum
         const handleSnsLogoClick = () => {
-            // Save item ID for back button functionality
-            sessionStorage.setItem('feedReturnToItem', item.id.toString());
-            console.log('Saved feed return item ID before SNS logo click:', item.id);
-            
             const snsRootId = Array.isArray(item.sns_root_canister_id) ? item.sns_root_canister_id[0] : item.sns_root_canister_id;
             const snsRootStr = principalToText(snsRootId);
             navigate(`/forum?sns=${snsRootStr}`);
@@ -1146,15 +1230,11 @@ function Feed() {
 
         // Handle item navigation
         const handleItemClick = () => {
-            // Save item ID for back button functionality
-            sessionStorage.setItem('feedReturnToItem', item.id.toString());
-            console.log('Saved feed return item ID before item click:', item.id);
-            
             navigate(navigationUrl);
         };
         
         return (
-            <div key={item.id} style={styles.feedItem}>
+            <div key={item.id} style={styles.feedItem} data-feed-item-id={item.id.toString()}>
                 {/* SNS Logo - Clickable link to forum */}
                 {snsInfo && (
                     <>
@@ -1420,7 +1500,7 @@ function Feed() {
 
                 {/* Feed Items */}
                 {!loading && (
-                    <div style={styles.feedContainer}>
+                    <div style={styles.feedContainer} data-feed-container>
                         {feedItems.length > 0 ? (
                             <>
                                 {/* Load More Newer Items Button */}
