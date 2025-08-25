@@ -2590,18 +2590,52 @@ function ThreadViewer({
                                 return (
                                     <>
                                         <span>•</span>
-                                        <a 
-                                            href={`/post?postid=${Number(post.reply_to_post_id[0])}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
+                                        <button 
+                                            onClick={() => {
+                                                const parentPostId = Number(post.reply_to_post_id[0]);
+                                                // First try to find by data attribute or class
+                                                let parentElement = document.querySelector(`[data-post-id="${parentPostId}"]`) ||
+                                                                  document.querySelector(`a[href*="postid=${parentPostId}"]`)?.closest('.post-item');
+                                                
+                                                // If not found, look through all post items for one containing a link to this post
+                                                if (!parentElement) {
+                                                    const postItems = document.querySelectorAll('.post-item');
+                                                    for (const item of postItems) {
+                                                        const postLink = item.querySelector(`a[href*="postid=${parentPostId}"]`);
+                                                        if (postLink) {
+                                                            parentElement = item;
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                
+                                                if (parentElement) {
+                                                    parentElement.scrollIntoView({ 
+                                                        behavior: 'smooth', 
+                                                        block: 'center' 
+                                                    });
+                                                    console.log(`Scrolled to parent post #${parentPostId}`);
+                                                } else {
+                                                    console.log(`Could not find parent post #${parentPostId} to scroll to`);
+                                                    // Fallback: navigate to post page
+                                                    window.location.href = `/post?postid=${parentPostId}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`;
+                                                }
+                                            }}
                                             style={{
+                                                background: 'none',
+                                                border: 'none',
                                                 color: '#3498db',
                                                 textDecoration: 'none',
-                                                fontWeight: '500'
+                                                fontWeight: '500',
+                                                cursor: 'pointer',
+                                                padding: 0,
+                                                font: 'inherit'
                                             }}
                                             onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
                                             onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
                                         >
                                             Reply to #{Number(post.reply_to_post_id[0])}: {parentDerivedTitle}
-                                        </a>
+                                        </button>
                                     </>
                                 );
                             }
