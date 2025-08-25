@@ -824,10 +824,15 @@ function Forum() {
                             borderRadius: '12px',
                             padding: '2rem',
                             marginBottom: '2rem',
-                            border: '1px solid #4a4a4a',
-                            textAlign: 'center'
+                            border: '1px solid #4a4a4a'
                         }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', marginBottom: '1rem' }}>
+                            {/* Top row: Logo and Title */}
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '20px', 
+                                marginBottom: '1rem'
+                            }}>
                                 {/* SNS Logo */}
                                 {loadingLogo ? (
                                     <div style={styles.forumLogoPlaceholder}>
@@ -849,25 +854,24 @@ function Forum() {
                                 <h1 style={{
                                     fontSize: '2.5rem',
                                     color: '#ffffff',
-                                    marginBottom: '0',
-                                    fontWeight: 'bold'
+                                    margin: '0',
+                                    fontWeight: 'bold',
+                                    lineHeight: '1.2'
                                 }}>
                                     {snsInfo?.name ? `${snsInfo.name} Forum` : (forum.title || 'Forum')}
                                 </h1>
                             </div>
                             
-                            {/* Forum Description */}
-                            {forum.description && (
-                                <p style={{
-                                    color: '#ccc',
-                                    fontSize: '1.1rem',
-                                    lineHeight: '1.6',
-                                    maxWidth: '800px',
-                                    margin: '0 auto'
-                                }}>
-                                    {forum.description}
-                                </p>
-                            )}
+                            {/* Forum Description - Full width below */}
+                            <p style={{
+                                color: '#ccc',
+                                fontSize: '1.1rem',
+                                lineHeight: '1.6',
+                                margin: '0',
+                                textAlign: 'left'
+                            }}>
+                                Discussion forum for {snsInfo?.name || 'SNS'} governance and community topics
+                            </p>
                         </div>
                     )}
 
