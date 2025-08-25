@@ -510,13 +510,13 @@ function Forum() {
     };
 
     // Fetch topic statistics (async, non-blocking)
-    const fetchTopicStatistics = async (topicIds) => {
-        if (!forumActor || !identity || topicIds.length === 0) return;
+    const fetchTopicStatistics = async (topicIds, actor) => {
+        if (!actor || !identity || topicIds.length === 0) return;
         
         // Fetch statistics for all topics in parallel
         const statisticsPromises = topicIds.map(async (topicId) => {
             try {
-                const stats = await forumActor.get_topic_statistics(topicId);
+                const stats = await actor.get_topic_statistics(topicId);
                 return { topicId, stats };
             } catch (error) {
                 console.warn(`Failed to fetch statistics for topic ${topicId}:`, error);
@@ -591,7 +591,7 @@ function Forum() {
             // Fetch topic statistics asynchronously (non-blocking)
             const allTopicIds = getAllTopicIds(hierarchyTopics);
             if (allTopicIds.length > 0) {
-                fetchTopicStatistics(allTopicIds);
+                fetchTopicStatistics(allTopicIds, forumActor);
             }
 
             // Check if General and Governance topics exist and show prompts if not
