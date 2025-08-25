@@ -518,6 +518,11 @@ module {
         id
     };
 
+    // Public function to get the current counter ID (without incrementing)
+    public func get_current_counter(state: ForumState) : Nat {
+        state.next_id
+    };
+
     // Helper function to validate text input
     private func validate_text(text: Text, field_name: Text, max_length: Nat) : Result<(), ForumError> {
         if (Text.size(text) == 0) {

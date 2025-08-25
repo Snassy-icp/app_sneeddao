@@ -278,6 +278,23 @@ const styles = {
     emptyStateDescription: {
         fontSize: '1rem',
         lineHeight: '1.6'
+    },
+    newItemsNotification: {
+        position: 'fixed',
+        top: '80px', // Below header
+        left: '50%',
+        transform: 'translateX(-50%)',
+        backgroundColor: '#1DA1F2', // Twitter blue
+        color: 'white',
+        padding: '12px 24px',
+        borderRadius: '25px',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        cursor: 'pointer',
+        zIndex: 1000,
+        fontSize: '0.95rem',
+        fontWeight: '500',
+        transition: 'all 0.3s ease',
+        border: '1px solid rgba(255,255,255,0.1)'
     }
 };
 
@@ -300,6 +317,11 @@ function Feed() {
     const [prevStartId, setPrevStartId] = useState(null);
     const [canAutoLoadNewer, setCanAutoLoadNewer] = useState(true);
     const [canAutoLoadOlder, setCanAutoLoadOlder] = useState(true);
+    
+    // New items notification state
+    const [newItemsCount, setNewItemsCount] = useState(0);
+    const [showNewItemsNotification, setShowNewItemsNotification] = useState(false);
+    const [lastSeenId, setLastSeenId] = useState(null);
 
     // Filter state
     const [showFilters, setShowFilters] = useState(false);
@@ -318,6 +340,56 @@ function Feed() {
         return createActor(canisterId, {
             agentOptions: { identity }
         });
+    };
+
+    // Get/set last seen ID from localStorage
+    const getLastSeenId = () => {
+        try {
+            const stored = localStorage.getItem('feedLastSeenId');
+            return stored ? BigInt(stored) : null;
+        } catch (e) {
+            console.warn('Error reading last seen ID from localStorage:', e);
+            return null;
+        }
+    };
+
+    const saveLastSeenId = (id) => {
+        try {
+            if (id) {
+                localStorage.setItem('feedLastSeenId', id.toString());
+                setLastSeenId(id);
+            }
+        } catch (e) {
+            console.warn('Error saving last seen ID to localStorage:', e);
+        }
+    };
+
+    // Check for new items
+    const checkForNewItems = async () => {
+        try {
+            const forumActor = createForumActor();
+            const currentCounter = await forumActor.get_current_counter();
+            const lastSeen = getLastSeenId();
+            
+            if (lastSeen && currentCounter > lastSeen) {
+                const newCount = Number(currentCounter - lastSeen);
+                setNewItemsCount(newCount);
+                setShowNewItemsNotification(true);
+                console.log(`Found ${newCount} new items. Current counter: ${currentCounter}, last seen: ${lastSeen}`);
+            } else {
+                console.log(`No new items. Current counter: ${currentCounter}, last seen: ${lastSeen}`);
+            }
+        } catch (error) {
+            console.error('Error checking for new items:', error);
+        }
+    };
+
+    // Handle clicking the new items notification
+    const handleShowNewItems = () => {
+        setShowNewItemsNotification(false);
+        setNewItemsCount(0);
+        // Reload feed from the top
+        loadFeed(null, 'initial');
     };
 
     // Load SNS data and logos
@@ -495,6 +567,12 @@ function Feed() {
                     setHasNewer(false);
                     setPrevStartId(null);
                     console.log('Set hasNewer=false for top-of-feed loading');
+                    
+                    // If loading from the top (no specific start item), save the highest ID as last seen
+                    if (response.items.length > 0) {
+                        saveLastSeenId(response.items[0].id);
+                        console.log('Saved last seen ID:', response.items[0].id);
+                    }
                 }
             } else if (direction === 'older') {
                 if (response.items.length > 0) {
@@ -621,7 +699,34 @@ function Feed() {
         }
     }, [identity, appliedFilters, searchParams]);
 
+    // Initialize last seen ID from localStorage
+    useEffect(() => {
+        const storedLastSeen = getLastSeenId();
+        if (storedLastSeen) {
+            setLastSeenId(storedLastSeen);
+            console.log('Initialized last seen ID from localStorage:', storedLastSeen);
+        }
+    }, []);
 
+    // Periodic check for new items
+    useEffect(() => {
+        if (!identity) return;
+
+        // Initial check after a short delay
+        const initialTimer = setTimeout(() => {
+            checkForNewItems();
+        }, 5000); // 5 seconds after page load
+
+        // Set up periodic checking every 30 seconds
+        const interval = setInterval(() => {
+            checkForNewItems();
+        }, 30000); // 30 seconds
+
+        return () => {
+            clearTimeout(initialTimer);
+            clearInterval(interval);
+        };
+    }, [identity, lastSeenId]);
 
     // Bidirectional infinite scroll effect
     useEffect(() => {
@@ -933,6 +1038,28 @@ function Feed() {
     return (
         <div>
             <Header showSnsDropdown={true} />
+            
+            {/* New Items Notification Overlay */}
+            {showNewItemsNotification && (
+                <div 
+                    style={styles.newItemsNotification}
+                    onClick={handleShowNewItems}
+                    onMouseEnter={(e) => {
+                        e.target.style.backgroundColor = '#1991DA';
+                        e.target.style.transform = 'translateX(-50%) translateY(-2px)';
+                    }}
+                    onMouseLeave={(e) => {
+                        e.target.style.backgroundColor = '#1DA1F2';
+                        e.target.style.transform = 'translateX(-50%) translateY(0)';
+                    }}
+                >
+                    {newItemsCount === 1 
+                        ? '1 new item' 
+                        : `${newItemsCount} new items`
+                    } • Click to view
+                </div>
+            )}
+            
             <div ref={scrollContainerRef} style={styles.container}>
                 <div style={styles.header}>
                     <h1 style={styles.title}>Sneed's Feed</h1>

@@ -600,6 +600,11 @@ persistent actor SneedSNSForum {
         Lib.get_feed(state, input)
     };
 
+    // Get current counter ID (for checking if new items are available)
+    public query func get_current_counter() : async Nat {
+        Lib.get_current_counter(state)
+    };
+
     // Text limits management endpoints
     public query func get_text_limits() : async T.TextLimits {
         Lib.get_text_limits(state)
