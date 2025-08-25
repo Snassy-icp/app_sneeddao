@@ -6,6 +6,8 @@ import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 import { formatError } from '../utils/errorUtils';
+import { fetchSnsLogo, getAllSnses, getSnsById } from '../utils/SnsUtils';
+import { HttpAgent } from '@dfinity/agent';
 
 const styles = {
     container: {
@@ -217,6 +219,56 @@ const styles = {
     buttonDisabled: {
         opacity: 0.6,
         cursor: 'not-allowed'
+    },
+    forumHeader: {
+        backgroundColor: '#2a2a2a',
+        borderRadius: '12px',
+        padding: '24px',
+        marginBottom: '24px',
+        border: '1px solid #3a3a3a',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '20px',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+    },
+    forumLogo: {
+        width: '64px',
+        height: '64px',
+        borderRadius: '50%',
+        objectFit: 'cover',
+        border: '2px solid #3a3a3a',
+        flexShrink: 0
+    },
+    forumLogoPlaceholder: {
+        width: '64px',
+        height: '64px',
+        borderRadius: '50%',
+        backgroundColor: '#4a4a4a',
+        border: '2px solid #3a3a3a',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '1.2rem',
+        color: '#888',
+        fontWeight: '600',
+        flexShrink: 0
+    },
+    forumHeaderContent: {
+        flex: 1,
+        minWidth: 0
+    },
+    forumHeaderTitle: {
+        color: '#ffffff',
+        fontSize: '2rem',
+        fontWeight: '600',
+        marginBottom: '8px',
+        lineHeight: '1.2'
+    },
+    forumHeaderDescription: {
+        color: '#ccc',
+        fontSize: '1rem',
+        lineHeight: '1.5',
+        marginBottom: '0'
     }
 };
 
@@ -235,6 +287,11 @@ function Forum() {
     const [showGovernancePrompt, setShowGovernancePrompt] = useState(false);
     const [creatingGovernance, setCreatingGovernance] = useState(false);
 
+    // SNS logo state
+    const [snsLogo, setSnsLogo] = useState(null);
+    const [loadingLogo, setLoadingLogo] = useState(false);
+    const [snsInfo, setSnsInfo] = useState(null);
+
     useEffect(() => {
         if (!selectedSnsRoot) {
             setError('No SNS selected');
@@ -243,7 +300,61 @@ function Forum() {
         }
 
         fetchForumData();
+        loadSnsInfo();
     }, [selectedSnsRoot, identity]);
+
+    // Load SNS information and logo
+    const loadSnsInfo = async () => {
+        if (!selectedSnsRoot) return;
+
+        // Reset logo state when SNS changes
+        setSnsLogo(null);
+        setLoadingLogo(false);
+        setSnsInfo(null);
+
+        try {
+            // Get SNS info from cache
+            const allSnses = getAllSnses();
+            const currentSnsInfo = allSnses.find(sns => sns.rootCanisterId === selectedSnsRoot);
+            
+            if (currentSnsInfo) {
+                setSnsInfo(currentSnsInfo);
+                
+                // Load logo if we have governance canister ID
+                if (currentSnsInfo.canisters.governance) {
+                    await loadSnsLogo(currentSnsInfo.canisters.governance, currentSnsInfo.name);
+                }
+            }
+        } catch (error) {
+            console.error('Error loading SNS info:', error);
+        }
+    };
+
+    // Load SNS logo
+    const loadSnsLogo = async (governanceId, snsName) => {
+        if (loadingLogo) return;
+        
+        setLoadingLogo(true);
+        
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943';
+            const agent = new HttpAgent({
+                host,
+                ...(identity && { identity })
+            });
+
+            if (process.env.DFX_NETWORK !== 'ic') {
+                await agent.fetchRootKey();
+            }
+
+            const logo = await fetchSnsLogo(governanceId, agent);
+            setSnsLogo(logo);
+        } catch (error) {
+            console.error(`Error loading logo for SNS ${snsName}:`, error);
+        } finally {
+            setLoadingLogo(false);
+        }
+    };
 
     const checkForGeneralTopic = (topics) => {
         return topics.some(topic => 
@@ -537,6 +648,40 @@ function Forum() {
             <Header showSnsDropdown={true} />
             <main className="wallet-container">
                 <div style={styles.container}>
+                    {/* Forum Header Section */}
+                    {forum && (
+                        <div style={styles.forumHeader}>
+                            {/* SNS Logo */}
+                            {loadingLogo ? (
+                                <div style={styles.forumLogoPlaceholder}>
+                                    ...
+                                </div>
+                            ) : snsLogo ? (
+                                <img
+                                    src={snsLogo}
+                                    alt={snsInfo?.name || 'SNS Logo'}
+                                    style={styles.forumLogo}
+                                />
+                            ) : (
+                                <div style={styles.forumLogoPlaceholder}>
+                                    {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
+                                </div>
+                            )}
+                            
+                            {/* Forum Info */}
+                            <div style={styles.forumHeaderContent}>
+                                <h1 style={styles.forumHeaderTitle}>
+                                    {forum.title}
+                                </h1>
+                                {forum.description && (
+                                    <p style={styles.forumHeaderDescription}>
+                                        {forum.description}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Welcome Section */}
                     <div style={{
                         backgroundColor: '#2a2a2a',
