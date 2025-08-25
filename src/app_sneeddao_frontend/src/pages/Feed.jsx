@@ -1681,8 +1681,21 @@ function Feed() {
                     marginBottom: '24px',
                     border: '1px solid #3a3a3a',
                     boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
-                    background: 'linear-gradient(135deg, #2a2a2a 0%, #252525 100%)'
+                    background: 'linear-gradient(135deg, #2a2a2a 0%, #252525 100%)',
+                    position: 'relative'
                 }}>
+                    {/* Subtle joke quote in top right */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '16px',
+                        right: '20px',
+                        fontSize: '0.8rem',
+                        color: '#666',
+                        fontStyle: 'italic',
+                        opacity: '0.7'
+                    }}>
+                        "The name is a subtle joke."
+                    </div>
                     {/* Header Content */}
                     <div style={{
                         display: 'flex',
