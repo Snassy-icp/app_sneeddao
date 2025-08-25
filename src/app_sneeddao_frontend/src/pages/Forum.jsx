@@ -720,7 +720,7 @@ function Forum() {
                             margin: 0,
                             flex: 1
                         }}>
-                            {forum.title}
+                            {snsInfo?.name ? `${snsInfo.name} Forum` : (forum.title || 'Forum')}
                         </h1>
                     </div>
                 </div>
@@ -852,7 +852,7 @@ function Forum() {
                                     marginBottom: '0',
                                     fontWeight: 'bold'
                                 }}>
-                                    {forum.title}
+                                    {snsInfo?.name ? `${snsInfo.name} Forum` : (forum.title || 'Forum')}
                                 </h1>
                             </div>
                             

@@ -229,7 +229,7 @@ const Thread = () => {
                             margin: 0,
                             flex: 1
                         }}>
-                            {forumInfo.title}
+                            {snsInfo?.name ? `${snsInfo.name} Forum` : (forumInfo.title || 'Forum')}
                         </h1>
                     </div>
                 </div>
