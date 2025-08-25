@@ -1675,35 +1675,35 @@ function Feed() {
             <div ref={scrollContainerRef} style={styles.container}>
                                     <div style={styles.header}>
                         <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '20px',
+                            textAlign: 'center',
                             marginBottom: '20px'
                         }}>
-                            {/* Big Sneed Logo */}
                             <div style={{
-                                width: '80px',
-                                height: '80px',
-                                borderRadius: '50%',
-                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                fontSize: '32px',
-                                fontWeight: 'bold',
-                                color: '#ffffff',
-                                boxShadow: '0 8px 32px rgba(102, 126, 234, 0.3)',
-                                border: '3px solid rgba(255, 255, 255, 0.1)'
+                                gap: '15px',
+                                marginBottom: '10px'
                             }}>
-                                S
-                            </div>
-                            <div>
+                                {/* Sneed DAO Logo */}
+                                <div style={{
+                                    width: '48px',
+                                    height: '48px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#2a2a2a',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '24px',
+                                    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)'
+                                }}>
+                                    🌱
+                                </div>
                                 <h1 style={styles.title}>Sneed's Feed</h1>
-                                <p style={styles.description}>
-                                    Latest activity across all SNS forums - see new forums, topics, threads, and posts as they happen.
-                                </p>
                             </div>
+                            <p style={styles.description}>
+                                Latest activity across all SNS forums - see new forums, topics, threads, and posts as they happen.
+                            </p>
                         </div>
 
                         {/* SNS Logos Row */}
@@ -1758,7 +1758,6 @@ function Feed() {
                                                             height: '36px',
                                                             borderRadius: '50%',
                                                             backgroundColor: '#4a4a4a',
-                                                            border: '2px solid #ffffff',
                                                             display: 'flex',
                                                             alignItems: 'center',
                                                             justifyContent: 'center',
@@ -1777,7 +1776,6 @@ function Feed() {
                                                                 height: '36px',
                                                                 borderRadius: '50%',
                                                                 objectFit: 'cover',
-                                                                border: '2px solid #ffffff',
                                                                 boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)'
                                                             }}
                                                         />
@@ -1787,7 +1785,6 @@ function Feed() {
                                                             height: '36px',
                                                             borderRadius: '50%',
                                                             backgroundColor: '#4a4a4a',
-                                                            border: '2px solid #ffffff',
                                                             display: 'flex',
                                                             alignItems: 'center',
                                                             justifyContent: 'center',
@@ -1811,7 +1808,6 @@ function Feed() {
                                                 height: '36px',
                                                 borderRadius: '50%',
                                                 backgroundColor: '#666',
-                                                border: '2px solid #ffffff',
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
