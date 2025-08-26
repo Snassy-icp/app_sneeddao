@@ -165,3 +165,7 @@
   - Message cards with proper backgrounds, borders, and text colors
   - Focus states and hover effects using theme colors
   - All form elements, buttons, and navigation properly themed
+  - **Modal Dialogs**: Compose message modal and message view modal with proper theme backgrounds
+  - **Message Content**: Individual message cards, reply forms, and message details sections
+  - **Interactive Elements**: Hover effects, focus states, and form validation with theme colors
+  - **Message Threading**: Threaded conversation view with proper background and border theming

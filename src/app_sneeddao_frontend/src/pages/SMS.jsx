@@ -574,20 +574,20 @@ const SMS = () => {
                                         setShowMessageModal(true);
                                     }}
                                     style={{
-                                        backgroundColor: isNew ? 'rgba(0, 191, 255, 0.1)' : '#2a2a2a',
+                                        backgroundColor: isNew ? `${theme.colors.accent}20` : theme.colors.secondaryBg,
                                         borderRadius: '8px',
                                         padding: '20px',
-                                        border: isNew ? '1px solid #00BFFF' : '1px solid #3a3a3a',
+                                        border: isNew ? `1px solid ${theme.colors.accent}` : `1px solid ${theme.colors.border}`,
                                         cursor: 'pointer',
                                         transition: 'all 0.2s ease'
                                     }}
                                 onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor = isNew ? 'rgba(0, 191, 255, 0.2)' : '#333333';
-                                    e.currentTarget.style.borderColor = '#3498db';
+                                    e.currentTarget.style.backgroundColor = isNew ? `${theme.colors.accent}30` : theme.colors.tertiaryBg;
+                                    e.currentTarget.style.borderColor = theme.colors.accent;
                                 }}
                                 onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor = isNew ? 'rgba(0, 191, 255, 0.1)' : '#2a2a2a';
-                                    e.currentTarget.style.borderColor = isNew ? '#00BFFF' : '#3a3a3a';
+                                    e.currentTarget.style.backgroundColor = isNew ? `${theme.colors.accent}20` : theme.colors.secondaryBg;
+                                    e.currentTarget.style.borderColor = isNew ? theme.colors.accent : theme.colors.border;
                                 }}
                             >
                                 <div style={{ 
@@ -674,7 +674,7 @@ const SMS = () => {
                                             navigate(`/msg/${message.id}`);
                                         }}
                                         style={{
-                                            backgroundColor: '#2ecc71',
+                                            backgroundColor: theme.colors.success,
                                             color: theme.colors.primaryText,
                                             border: 'none',
                                             borderRadius: '4px',
@@ -707,14 +707,14 @@ const SMS = () => {
                         zIndex: 1100
                     }}>
                         <div style={{
-                            backgroundColor: '#2a2a2a',
+                            backgroundColor: theme.colors.secondaryBg,
                             borderRadius: '8px',
                             padding: '30px',
                             width: '90%',
                             maxWidth: '600px',
                             maxHeight: '80vh',
                             overflow: 'auto',
-                            border: '1px solid #3a3a3a'
+                            border: `1px solid ${theme.colors.border}`
                         }}>
                             <div style={{ 
                                 display: 'flex', 
@@ -796,7 +796,7 @@ const SMS = () => {
                                         onClick={addRecipient}
                                         style={{
                                             padding: '8px 16px',
-                                            backgroundColor: '#2ecc71',
+                                            backgroundColor: theme.colors.success,
                                             color: 'white',
                                             border: 'none',
                                             borderRadius: '4px',
@@ -822,8 +822,8 @@ const SMS = () => {
                                         style={{
                                             width: '100%',
                                             padding: '10px',
-                                            backgroundColor: '#3a3a3a',
-                                            border: '1px solid #4a4a4a',
+                                            backgroundColor: theme.colors.tertiaryBg,
+                                            border: `1px solid ${theme.colors.border}`,
                                             borderRadius: '4px',
                                             color: theme.colors.primaryText,
                                             fontSize: '14px'
@@ -844,8 +844,8 @@ const SMS = () => {
                                         style={{
                                             width: '100%',
                                             padding: '10px',
-                                            backgroundColor: '#3a3a3a',
-                                            border: '1px solid #4a4a4a',
+                                            backgroundColor: theme.colors.tertiaryBg,
+                                            border: `1px solid ${theme.colors.border}`,
                                             borderRadius: '4px',
                                             color: theme.colors.primaryText,
                                             fontSize: '14px',
@@ -957,14 +957,14 @@ const SMS = () => {
                     >
                         <div 
                             style={{
-                            backgroundColor: '#2a2a2a',
+                            backgroundColor: theme.colors.secondaryBg,
                             borderRadius: '8px',
                             padding: '30px',
                             width: '90%',
                             maxWidth: '700px',
                             maxHeight: '80vh',
                             overflow: 'auto',
-                            border: '1px solid #3a3a3a'
+                            border: `1px solid ${theme.colors.border}`
                         }}>
                             <div style={{ 
                                 display: 'flex', 
@@ -989,7 +989,7 @@ const SMS = () => {
                                             alignSelf: 'flex-start',
                                             textDecoration: 'none'
                                         }}
-                                        onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(52, 152, 219, 0.1)'}
+                                        onMouseOver={(e) => e.target.style.backgroundColor = `${theme.colors.accent}20`}
                                         onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
                                     >
                                         🔗 View Thread
@@ -1018,7 +1018,7 @@ const SMS = () => {
                                     onClick={() => setShowMessageDetails(!showMessageDetails)}
                                     style={{
                                         background: 'none',
-                                        border: '1px solid #3a3a3a',
+                                        border: `1px solid ${theme.colors.border}`,
                                         color: theme.colors.mutedText,
                                         cursor: 'pointer',
                                         fontSize: '14px',
@@ -1042,7 +1042,7 @@ const SMS = () => {
 
                                 {showMessageDetails && (
                                     <div style={{ 
-                                        backgroundColor: '#1a1a1a',
+                                        backgroundColor: theme.colors.tertiaryBg,
                                         padding: '15px',
                                         borderRadius: '6px',
                                         border: '1px solid #3a3a3a'
@@ -1095,7 +1095,7 @@ const SMS = () => {
                                     <div style={{ 
                                         color: theme.colors.primaryText, 
                                         marginTop: '10px',
-                                        backgroundColor: '#1a1a1a',
+                                        backgroundColor: theme.colors.tertiaryBg,
                                         padding: '15px',
                                         borderRadius: '6px',
                                         whiteSpace: 'pre-wrap',
@@ -1111,7 +1111,7 @@ const SMS = () => {
                                 flexWrap: 'wrap',
                                 justifyContent: 'flex-end', 
                                 gap: '10px',
-                                borderTop: '1px solid #3a3a3a',
+                                borderTop: `1px solid ${theme.colors.border}`,
                                 paddingTop: '15px'
                             }}>
                                 <button

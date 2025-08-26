@@ -758,7 +758,7 @@ const Message = () => {
                             <div style={{ 
                                 display: 'flex', 
                                 gap: '8px', 
-                                borderTop: '1px solid #3a3a3a', 
+                                borderTop: `1px solid ${theme.colors.border}`, 
                                 paddingTop: '10px',
                                 paddingLeft: '25px',
                                 flexWrap: 'wrap'
@@ -903,10 +903,10 @@ const Message = () => {
                 {/* Message Tree */}
                 {focusMessageId && messageTree.size > 0 && (
                     <div style={{ 
-                        backgroundColor: '#1a1a1a',
+                        backgroundColor: theme.colors.secondaryBg,
                         borderRadius: '8px',
                         padding: '20px',
-                        border: '1px solid #333'
+                        border: `1px solid ${theme.colors.border}`
                     }}>
                         {renderMessage(findTreeRoot())}
                     </div>
