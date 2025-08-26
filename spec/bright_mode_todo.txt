@@ -116,3 +116,4 @@
 - ✅ **Post Body Text** - Fixed white text on white background for post content
 - ✅ **Settings Panel Complete** - Fixed all remaining white text (neurons, voting power, sorting)
 - ✅ **ReplyForm Theme Error** - Fixed "theme is not defined" error in reply forms
+- ✅ **Settings Text Complete** - Fixed all remaining white text (sorting labels, neuron VP, borders, hover effects)

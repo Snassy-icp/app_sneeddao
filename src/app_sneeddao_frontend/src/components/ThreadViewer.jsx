@@ -2381,12 +2381,12 @@ function ThreadViewer({
                                     }}
                                     onMouseEnter={(e) => {
                                         if (sortBy !== option.value) {
-                                            e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
+                                            e.target.style.backgroundColor = theme.colors.accentHover;
                                         }
                                     }}
                                     onMouseLeave={(e) => {
                                         if (sortBy !== option.value) {
-                                            e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                                            e.target.style.backgroundColor = theme.colors.secondaryBg;
                                         }
                                     }}
                                 >
@@ -2409,7 +2409,7 @@ function ThreadViewer({
                                         }}
                                     />
                                     <span style={{ 
-                                        color: sortBy === option.value ? '#fff' : 'rgba(255, 255, 255, 0.8)',
+                                        color: sortBy === option.value ? theme.colors.primaryText : theme.colors.secondaryText,
                                         fontWeight: sortBy === option.value ? '500' : '400'
                                     }}>
                                         {option.label}
@@ -2420,7 +2420,7 @@ function ThreadViewer({
                     </div>
                     
                     {/* Voting Neurons Section */}
-                    <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '20px' }}>
+                    <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: '20px' }}>
                         <h4 style={{
                             color: theme.colors.primaryText,
                             fontSize: '1rem',
@@ -2459,20 +2459,20 @@ function ThreadViewer({
                                             alignItems: 'center',
                                             gap: '8px',
                                             padding: '8px 12px',
-                                            backgroundColor: isSelected ? 'rgba(255, 215, 0, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                                            border: `1px solid ${isSelected ? 'rgba(255, 215, 0, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
+                                            backgroundColor: isSelected ? theme.colors.accentHover : theme.colors.secondaryBg,
+                                            border: `1px solid ${isSelected ? theme.colors.warning : theme.colors.border}`,
                                             borderRadius: '6px',
                                             cursor: 'pointer',
                                             transition: 'all 0.2s ease'
                                         }}
                                         onMouseEnter={(e) => {
                                             if (!isSelected) {
-                                                e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
+                                                e.target.style.backgroundColor = theme.colors.accentHover;
                                             }
                                         }}
                                         onMouseLeave={(e) => {
                                             if (!isSelected) {
-                                                e.target.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                                                e.target.style.backgroundColor = theme.colors.secondaryBg;
                                             }
                                         }}
                                     >
@@ -2498,7 +2498,7 @@ function ThreadViewer({
                                                 }...
                                             </div>
                                             <div style={{
-                                                color: 'rgba(255, 255, 255, 0.6)',
+                                                color: theme.colors.mutedText,
                                                 fontSize: '0.8rem'
                                             }}>
                                                 {formatVotingPowerDisplay(neuronVotingPower)} VP
@@ -2510,7 +2510,7 @@ function ThreadViewer({
                         </div>
                     ) : (
                         <div style={{
-                            color: 'rgba(255, 255, 255, 0.6)',
+                            color: theme.colors.mutedText,
                             fontSize: '0.9rem',
                             textAlign: 'center',
                             padding: '20px'
