@@ -69,10 +69,10 @@ const getStyles = (theme) => ({
         marginBottom: '30px'
     },
     subtopicCard: {
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         borderRadius: '6px',
         padding: '15px',
-        border: '1px solid #3a3a3a',
+        border: `1px solid ${theme.colors.border}`,
         transition: 'all 0.2s ease',
         cursor: 'pointer',
         textDecoration: 'none',
@@ -94,19 +94,19 @@ const getStyles = (theme) => ({
         lineHeight: '1.4'
     },
     threadsContainer: {
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         borderRadius: '8px',
-        border: '1px solid #3a3a3a',
+        border: `1px solid ${theme.colors.border}`,
         overflow: 'hidden'
     },
     threadItem: {
         padding: '20px',
-        borderBottom: '1px solid #3a3a3a',
+        borderBottom: `1px solid ${theme.colors.border}`,
         transition: 'background-color 0.2s ease',
         cursor: 'pointer'
     },
     threadItemHover: {
-        backgroundColor: '#333'
+        backgroundColor: theme.colors.accentHover
     },
     threadTitle: {
         color: theme.colors.primaryText,
@@ -150,7 +150,7 @@ const getStyles = (theme) => ({
         transition: 'background-color 0.2s ease'
     },
     pageButtonDisabled: {
-        backgroundColor: '#555',
+        backgroundColor: theme.colors.mutedText,
         cursor: 'not-allowed',
         opacity: 0.6
     },
@@ -159,10 +159,10 @@ const getStyles = (theme) => ({
         fontSize: '0.9rem'
     },
     createThreadSection: {
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         borderRadius: '8px',
         padding: '25px',
-        border: '1px solid #3a3a3a',
+        border: `1px solid ${theme.colors.border}`,
         marginTop: '30px',
         boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
     },
@@ -178,8 +178,8 @@ const getStyles = (theme) => ({
         width: '100%'
     },
     threadTitleInput: {
-        backgroundColor: '#1a1a1a',
-        border: '1px solid #4a4a4a',
+        backgroundColor: theme.colors.primaryBg,
+        border: `1px solid ${theme.colors.border}`,
         borderRadius: '6px',
         padding: '14px 16px',
         color: theme.colors.primaryText,
@@ -191,8 +191,8 @@ const getStyles = (theme) => ({
         display: 'block'
     },
     threadBodyTextarea: {
-        backgroundColor: '#1a1a1a',
-        border: '1px solid #4a4a4a',
+        backgroundColor: theme.colors.primaryBg,
+        border: `1px solid ${theme.colors.border}`,
         borderRadius: '6px',
         padding: '14px 16px',
         color: theme.colors.primaryText,
@@ -240,7 +240,7 @@ const getStyles = (theme) => ({
         boxShadow: '0 4px 8px rgba(52, 152, 219, 0.3)'
     },
     submitButtonDisabled: {
-        backgroundColor: '#555',
+        backgroundColor: theme.colors.mutedText,
         cursor: 'not-allowed',
         opacity: 0.6,
         transform: 'none',
@@ -254,8 +254,8 @@ const getStyles = (theme) => ({
     },
     error: {
         backgroundColor: 'rgba(231, 76, 60, 0.2)',
-        border: '1px solid #e74c3c',
-        color: '#e74c3c',
+        border: `1px solid ${theme.colors.error}`,
+        color: theme.colors.error,
         padding: '15px',
         borderRadius: '6px',
         marginBottom: '20px',
@@ -268,7 +268,7 @@ const getStyles = (theme) => ({
         padding: '30px'
     },
     preproposalsPrompt: {
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         border: '1px solid #3498db',
         borderRadius: '8px',
         padding: '20px',
@@ -308,7 +308,7 @@ const getStyles = (theme) => ({
     dismissButton: {
         backgroundColor: 'transparent',
         color: theme.colors.mutedText,
-        border: '1px solid #555',
+        border: `1px solid ${theme.colors.border}`,
         borderRadius: '6px',
         padding: '10px 20px',
         fontSize: '0.95rem',
@@ -1157,8 +1157,8 @@ function Topic() {
                                 width: '32px',
                                 height: '32px',
                                 borderRadius: '50%',
-                                backgroundColor: '#4a4a4a',
-                                border: '2px solid #3a3a3a',
+                                backgroundColor: theme.colors.border,
+                                border: `2px solid ${theme.colors.border}`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -1177,7 +1177,7 @@ function Topic() {
                                     height: '32px',
                                     borderRadius: '50%',
                                     objectFit: 'cover',
-                                    border: '2px solid #3a3a3a'
+                                    border: `2px solid ${theme.colors.border}`
                                 }}
                             />
                         ) : (
@@ -1185,8 +1185,8 @@ function Topic() {
                                 width: '32px',
                                 height: '32px',
                                 borderRadius: '50%',
-                                backgroundColor: '#4a4a4a',
-                                border: '2px solid #3a3a3a',
+                                backgroundColor: theme.colors.border,
+                                border: `2px solid ${theme.colors.border}`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -1272,12 +1272,12 @@ function Topic() {
                                                     gap: '12px',
                                                     marginTop: '8px',
                                                     fontSize: '0.8rem',
-                                                    color: '#888'
+                                                    color: theme.colors.mutedText
                                                 }}>
                                                     <span>📋 {stats.thread_count} thread{stats.thread_count !== 1 ? 's' : ''}</span>
                                                     {stats.total_unread_posts > 0 && (
                                                         <span style={{
-                                                            backgroundColor: '#e74c3c',
+                                                            backgroundColor: theme.colors.error,
                                                             color: 'white',
                                                             padding: '2px 6px',
                                                             borderRadius: '8px',
@@ -1341,7 +1341,7 @@ function Topic() {
                         {(threads.length > 0 || totalThreads > 0) && (
                             <div style={{
                                 padding: '15px 0',
-                                borderBottom: '1px solid #333',
+                                borderBottom: `1px solid ${theme.colors.border}`,
                                 marginBottom: '20px'
                             }}>
                                 {!isMobile ? (
@@ -1357,7 +1357,7 @@ function Topic() {
                                             alignItems: 'center',
                                             gap: '20px',
                                             fontSize: '14px',
-                                            color: '#ccc'
+                                            color: theme.colors.secondaryText
                                         }}>
                                             <div style={{
                                                 display: 'flex',
@@ -1369,9 +1369,9 @@ function Topic() {
                                                     value={threadsPerPage}
                                                     onChange={(e) => handleThreadsPerPageChange(Number(e.target.value))}
                                                     style={{
-                                                        backgroundColor: '#2a2a2a',
+                                                        backgroundColor: theme.colors.secondaryBg,
                                                         color: theme.colors.primaryText,
-                                                        border: '1px solid #444',
+                                                        border: `1px solid ${theme.colors.border}`,
                                                         borderRadius: '4px',
                                                         padding: '4px 8px',
                                                         fontSize: '14px'
@@ -1398,9 +1398,9 @@ function Topic() {
                                                         setCurrentPage(0); // Reset to first page when sorting changes
                                                     }}
                                                     style={{
-                                                        backgroundColor: '#2a2a2a',
+                                                        backgroundColor: theme.colors.secondaryBg,
                                                         color: theme.colors.primaryText,
-                                                        border: '1px solid #444',
+                                                        border: `1px solid ${theme.colors.border}`,
                                                         borderRadius: '4px',
                                                         padding: '4px 8px',
                                                         fontSize: '14px'
@@ -1458,16 +1458,16 @@ function Topic() {
                                                 alignItems: 'center',
                                                 gap: '8px',
                                                 fontSize: '14px',
-                                                color: '#ccc'
+                                                color: theme.colors.secondaryText
                                             }}>
                                                 <span style={{ minWidth: '45px', flexShrink: 0 }}>Show:</span>
                                                 <select
                                                     value={threadsPerPage}
                                                     onChange={(e) => handleThreadsPerPageChange(Number(e.target.value))}
                                                     style={{
-                                                        backgroundColor: '#2a2a2a',
+                                                        backgroundColor: theme.colors.secondaryBg,
                                                         color: theme.colors.primaryText,
-                                                        border: '1px solid #444',
+                                                        border: `1px solid ${theme.colors.border}`,
                                                         borderRadius: '4px',
                                                         padding: '6px 8px',
                                                         fontSize: '14px',
@@ -1487,7 +1487,7 @@ function Topic() {
                                                 alignItems: 'center',
                                                 gap: '8px',
                                                 fontSize: '14px',
-                                                color: '#ccc'
+                                                color: theme.colors.secondaryText
                                             }}>
                                                 <span style={{ minWidth: '45px', flexShrink: 0 }}>Sort:</span>
                                                 <select
@@ -1497,9 +1497,9 @@ function Topic() {
                                                         setCurrentPage(0); // Reset to first page when sorting changes
                                                     }}
                                                     style={{
-                                                        backgroundColor: '#2a2a2a',
+                                                        backgroundColor: theme.colors.secondaryBg,
                                                         color: theme.colors.primaryText,
-                                                        border: '1px solid #444',
+                                                        border: `1px solid ${theme.colors.border}`,
                                                         borderRadius: '4px',
                                                         padding: '6px 8px',
                                                         fontSize: '14px',
@@ -1523,7 +1523,7 @@ function Topic() {
                                                 alignItems: 'center',
                                                 gap: '8px',
                                                 paddingTop: '15px',
-                                                borderTop: '1px solid #444'
+                                                borderTop: `1px solid ${theme.colors.border}`
                                             }}>
                                                 <button
                                                     style={{
@@ -1585,7 +1585,7 @@ function Topic() {
                                             {hasUnreadPosts(thread) && (
                                                 <span style={{
                                                     marginLeft: '8px',
-                                                    backgroundColor: '#e74c3c',
+                                                    backgroundColor: theme.colors.error,
                                                     color: 'white',
                                                     fontSize: '0.7rem',
                                                     padding: '2px 6px',
@@ -1693,7 +1693,7 @@ function Topic() {
                             placeholder="Thread title"
                             style={{
                                 width: '100%',
-                                backgroundColor: '#2a2a2a',
+                                backgroundColor: theme.colors.secondaryBg,
                                 color: theme.colors.primaryText,
                                 border: `1px solid ${textLimits && createThreadTitle.length > textLimits.thread_title_max_length ? '#e74c3c' : '#444'}`,
                                 borderRadius: '4px',
@@ -1723,7 +1723,7 @@ function Topic() {
                             placeholder="What would you like to discuss?"
                             style={{
                                 width: '100%',
-                                backgroundColor: '#2a2a2a',
+                                backgroundColor: theme.colors.secondaryBg,
                                 color: theme.colors.primaryText,
                                 border: `1px solid ${textLimits && createThreadBody.length > textLimits.thread_body_max_length ? '#e74c3c' : '#444'}`,
                                 borderRadius: '4px',
@@ -1776,7 +1776,7 @@ function Topic() {
 
                             {includePoll && (
                                 <div style={{ 
-                                    backgroundColor: '#333', 
+                                    backgroundColor: theme.colors.accentHover, 
                                     borderRadius: '6px', 
                                     padding: '20px', 
                                     border: '1px solid #444',
@@ -1792,7 +1792,7 @@ function Topic() {
                                         placeholder="Poll title (e.g., 'What should we prioritize next?')"
                                         style={{
                                             width: '100%',
-                                            backgroundColor: '#2a2a2a',
+                                            backgroundColor: theme.colors.secondaryBg,
                                             color: theme.colors.primaryText,
                                             border: `1px solid ${textLimits && pollTitle.length > textLimits.post_title_max_length ? '#e74c3c' : '#444'}`,
                                             borderRadius: '4px',
@@ -1820,7 +1820,7 @@ function Topic() {
                                         placeholder="Poll description (optional - explain what this poll is about)"
                                         style={{
                                             width: '100%',
-                                            backgroundColor: '#2a2a2a',
+                                            backgroundColor: theme.colors.secondaryBg,
                                             color: theme.colors.primaryText,
                                             border: `1px solid ${textLimits && pollBody.length > textLimits.post_body_max_length ? '#e74c3c' : '#444'}`,
                                             borderRadius: '4px',
@@ -1861,9 +1861,9 @@ function Topic() {
                                                         placeholder={`Option ${index + 1} (e.g., 'Feature A', 'Yes', 'No')`}
                                                         style={{
                                                             width: '100%',
-                                                            backgroundColor: '#2a2a2a',
+                                                            backgroundColor: theme.colors.secondaryBg,
                                                             color: theme.colors.primaryText,
-                                                            border: '1px solid #444',
+                                                            border: `1px solid ${theme.colors.border}`,
                                                             borderRadius: '4px',
                                                             padding: '8px',
                                                             fontSize: '14px',
@@ -1878,9 +1878,9 @@ function Topic() {
                                                         placeholder="Optional description for this option"
                                                         style={{
                                                             width: '100%',
-                                                            backgroundColor: '#2a2a2a',
+                                                            backgroundColor: theme.colors.secondaryBg,
                                                             color: theme.colors.primaryText,
-                                                            border: '1px solid #444',
+                                                            border: `1px solid ${theme.colors.border}`,
                                                             borderRadius: '4px',
                                                             padding: '8px',
                                                             fontSize: '12px',
@@ -1896,7 +1896,7 @@ function Topic() {
                                                         onClick={() => removePollOption(index)}
                                                         disabled={submitting}
                                                         style={{
-                                                            backgroundColor: '#e74c3c',
+                                                            backgroundColor: theme.colors.error,
                                                             color: theme.colors.primaryText,
                                                             border: 'none',
                                                             borderRadius: '4px',
@@ -1954,7 +1954,7 @@ function Topic() {
                                                 min={new Date().toISOString().split('T')[0]}
                                                 style={{
                                                     width: '100%',
-                                                    backgroundColor: '#2a2a2a',
+                                                    backgroundColor: theme.colors.secondaryBg,
                                                     color: theme.colors.primaryText,
                                                     border: '1px solid #444',
                                                     borderRadius: '4px',
@@ -1980,7 +1980,7 @@ function Topic() {
                                                 onChange={(e) => setPollEndTime(e.target.value)}
                                                 style={{
                                                     width: '100%',
-                                                    backgroundColor: '#2a2a2a',
+                                                    backgroundColor: theme.colors.secondaryBg,
                                                     color: theme.colors.primaryText,
                                                     border: '1px solid #444',
                                                     borderRadius: '4px',
@@ -2005,7 +2005,7 @@ function Topic() {
                                                 onChange={(e) => setPollVpPower(parseFloat(e.target.value))}
                                                 style={{
                                                     width: '100%',
-                                                    backgroundColor: '#2a2a2a',
+                                                    backgroundColor: theme.colors.secondaryBg,
                                                     color: theme.colors.primaryText,
                                                     border: '1px solid #444',
                                                     borderRadius: '4px',
@@ -2097,7 +2097,7 @@ function Topic() {
                                     style={{
                                         backgroundColor: 'transparent',
                                         color: theme.colors.mutedText,
-                                        border: '1px solid #555',
+                                        border: `1px solid ${theme.colors.border}`,
                                         borderRadius: '4px',
                                         padding: '8px 16px',
                                         cursor: submitting ? 'not-allowed' : 'pointer',
