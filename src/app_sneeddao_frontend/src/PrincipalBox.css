@@ -3,8 +3,8 @@
 }
 
 .principal-button {
-  background-color: #7c3aed;
-  color: white;
+  background-color: var(--color-accent);
+  color: var(--color-primary-text);
   border: none;
   border-radius: 20px;
   padding: 8px 16px;
@@ -16,8 +16,8 @@
   position: absolute;
   top: 100%;
   right: 0;
-  background-color: #2c2c2e;
-  border: 1px solid #48484a;
+  background-color: var(--color-secondary-bg);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 16px;
   z-index: 1000;
@@ -40,7 +40,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: #3a3a3c;
+  background-color: var(--color-primary-bg);
   border-radius: 8px;
   padding: 12px;
   cursor: pointer;
@@ -48,11 +48,11 @@
 }
 
 .principal-id-container:hover {
-  background-color: #4a4a4c;
+  background-color: var(--color-accent-hover);
 }
 
 .principal-id-text {
-  color: #ffffff;
+  color: var(--color-primary-text);
   font-family: monospace;
   font-size: 14px;
   word-break: break-all;
@@ -72,15 +72,15 @@
 }
 
 .copy-button.copied {
-  color: #34C759;
+  color: var(--color-success);
 }
 
 .copy-button:not(.copied) {
-  color: #8E8E93;
+  color: var(--color-muted-text);
 }
 
 .copy-feedback {
-  color: #34C759;
+  color: var(--color-success);
   font-size: 12px;
   text-align: center;
   margin-top: 4px;
@@ -93,8 +93,8 @@
 }
 
 .me-button {
-  background-color: #007AFF;
-  color: white;
+  background-color: var(--color-accent);
+  color: var(--color-primary-text);
   border: none;
   border-radius: 8px;
   padding: 12px;
@@ -105,12 +105,12 @@
 }
 
 .me-button:hover {
-  background-color: #0056CC;
+  background-color: var(--color-accent-hover);
 }
 
 .logout-button {
-  background-color: #FF3B30;
-  color: white;
+  background-color: var(--color-error);
+  color: var(--color-primary-text);
   border: none;
   border-radius: 8px;
   padding: 12px;
@@ -121,13 +121,14 @@
 }
 
 .logout-button:hover {
-  background-color: #D70015;
+  background-color: var(--color-error);
+  opacity: 0.8;
 }
 
 .user-name-link {
   background: none;
   border: none;
-  color: #007AFF;
+  color: var(--color-accent);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
@@ -137,12 +138,12 @@
 }
 
 .user-name-link:hover {
-  color: #0056CC;
+  color: var(--color-accent-hover);
 }
 
 .principal-popup h3 {
   margin-top: 0;
-  color: white;
+  color: var(--color-primary-text);
   margin-bottom: 16px;
 }
 
@@ -153,7 +154,7 @@
 .principal-input {
   width: 100%;
   background-color: transparent;
-  color: #a0a0b8;
+  color: var(--color-secondary-text);
   border: none;
   padding: 6px 0;
   font-family: monospace;
@@ -170,7 +171,7 @@
 }
 
 .copy-feedback {
-  color: #4CAF50;
+  color: var(--color-success);
   font-size: 0.9em;
   margin: 0;
   line-height: 20px; /* Should match the container height */
@@ -182,8 +183,8 @@
 }
 
 .principal-copy-button-group button {
-  background-color: #3f3f5a;
-  color: white;
+  background-color: var(--color-primary-bg);
+  color: var(--color-primary-text);
   border: none;
   border-radius: 4px;
   padding: 6px 12px;
@@ -193,7 +194,7 @@
 }
 
 .principal-copy-button-group button:hover {
-  background-color: #5a5a7d;
+  background-color: var(--color-accent-hover);
 }
 
 .principal-copy-button-group button:first-child {

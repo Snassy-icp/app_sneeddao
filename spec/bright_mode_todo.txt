@@ -102,3 +102,6 @@
 - ✅ **Hub.jsx** - All references updated
 - ✅ **All Pages Clean** - No remaining `styles.` references
 - ✅ **Topic Page Dark Sections** - Fixed subtopic cards, thread containers, all inputs
+- ✅ **SNS Dropdown** - Added theme support to header dropdown menu
+- ✅ **Main Menu Dropdown** - Fixed left sidebar menu background and styling
+- ✅ **User Dropdown** - Updated PrincipalBox component and CSS with theme variables

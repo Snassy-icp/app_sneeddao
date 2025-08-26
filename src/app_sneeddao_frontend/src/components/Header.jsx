@@ -553,7 +553,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     }}>
                         <div style={{ 
                             fontSize: '10px', 
-                            color: '#666'
+                            color: theme.colors.mutedText
                         }}>
                             Your Neurons
                         </div>
@@ -669,11 +669,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     gap: '4px',
                                     padding: '4px 8px',
                                     backgroundColor: 'rgba(255, 215, 0, 0.1)',
-                                    border: '1px solid #FFD700',
+                                    border: `1px solid ${theme.colors.warning}`,
                                     borderRadius: '12px',
                                     cursor: 'pointer',
                                     fontSize: '11px',
-                                    color: '#FFD700'
+                                    color: theme.colors.warning
                                 }}
                                 title={`You have ${newReplyCount} new ${newReplyCount === 1 ? 'reply' : 'replies'}`}
                             >
@@ -691,11 +691,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     gap: '4px',
                                     padding: '4px 8px',
                                     backgroundColor: 'rgba(0, 191, 255, 0.1)',
-                                    border: '1px solid #00BFFF',
+                                    border: `1px solid ${theme.colors.accent}`,
                                     borderRadius: '12px',
                                     cursor: 'pointer',
                                     fontSize: '11px',
-                                    color: '#00BFFF'
+                                    color: theme.colors.accent
                                 }}
                                 title={`You have ${newMessageCount} new ${newMessageCount === 1 ? 'message' : 'messages'}`}
                             >
@@ -713,11 +713,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     gap: '4px',
                                     padding: '4px 8px',
                                     backgroundColor: 'rgba(255, 215, 0, 0.1)',
-                                    border: '1px solid #FFD700',
+                                    border: `1px solid ${theme.colors.warning}`,
                                     borderRadius: '12px',
                                     cursor: 'pointer',
                                     fontSize: '11px',
-                                    color: '#FFD700'
+                                    color: theme.colors.warning
                                 }}
                                 title={`You have ${newTipCount} new ${newTipCount === 1 ? 'tip' : 'tips'}`}
                             >
@@ -735,7 +735,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         position: 'fixed',
                         top: '60px',
                         left: '0',
-                        background: 'linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%)',
+                        background: theme.colors.primaryGradient,
                         width: '250px',
                         padding: '20px',
                         boxShadow: '2px 0 15px rgba(0,0,0,0.3)',

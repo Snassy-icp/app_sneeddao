@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaCopy, FaCheck } from 'react-icons/fa';
 import { useAuth } from './AuthContext';
+import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
 import './PrincipalBox.css';
 
@@ -11,6 +12,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
     const [copied, setCopied] = useState(false);
     const popupRef = useRef(null);
     const { login, identity } = useAuth();
+    const { theme } = useTheme();
     const { getPrincipalDisplayName } = useNaming();
     const navigate = useNavigate();
 
@@ -94,7 +96,7 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
               style={compact ? {
                   background: 'none',
                   border: 'none',
-                  color: '#fff',
+                  color: theme.colors.primaryText,
                   cursor: 'pointer',
                   padding: '8px',
                   borderRadius: '4px',
@@ -113,8 +115,8 @@ function PrincipalBox({ principalText, onLogout, compact = false }) {
                       position: 'absolute',
                       top: '100%',
                       right: '0',
-                      backgroundColor: '#2c2c2e',
-                      border: '1px solid #48484a',
+                      backgroundColor: theme.colors.secondaryBg,
+                      border: `1px solid ${theme.colors.border}`,
                       borderRadius: '12px',
                       padding: '16px',
                       zIndex: 1000,

@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import { fetchSnsLogo, startBackgroundSnsFetch, getAllSnses } from '../utils/SnsUtils';
 import { HttpAgent } from '@dfinity/agent';
 
 function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
     const { identity } = useAuth();
+    const { theme } = useTheme();
     const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
     const [searchParams, setSearchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
@@ -181,7 +183,7 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                     style={{
                         backgroundColor: 'transparent',
                         border: 'none',
-                        color: '#ffffff',
+                        color: theme.colors.primaryText,
                         padding: '4px',
                         cursor: loadingSnses ? 'wait' : 'pointer',
                         display: 'flex',
@@ -204,7 +206,7 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                             width: '24px', 
                             height: '24px',
                             borderRadius: '50%',
-                            backgroundColor: '#3a3a3a',
+                            backgroundColor: theme.colors.border,
                             marginRight: '4px'
                         }} />
                     ) : (
@@ -243,7 +245,7 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                         transform: isOpen ? 'rotate(180deg)' : 'none',
                         transition: 'transform 0.2s ease',
                         fontSize: '12px',
-                        color: '#888'
+                        color: theme.colors.mutedText
                     }}>▼</span>
                 </div>
 
@@ -252,8 +254,8 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                         position: 'absolute',
                         top: '100%',
                         right: '0',
-                        backgroundColor: '#2a2a2a',
-                        border: '1px solid #4a4a4a',
+                        backgroundColor: theme.colors.secondaryBg,
+                        border: `1px solid ${theme.colors.border}`,
                         borderRadius: '4px',
                         marginTop: '4px',
                         maxHeight: '300px',
@@ -274,17 +276,17 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                                     style={{
                                         padding: '8px 12px',
                                         cursor: 'pointer',
-                                        backgroundColor: selectedSnsRoot === sns.rootCanisterId ? '#3a3a3a' : 'transparent',
+                                        backgroundColor: selectedSnsRoot === sns.rootCanisterId ? theme.colors.accentHover : 'transparent',
                                         display: 'flex',
                                         alignItems: 'center',
                                         gap: '8px',
                                         width: '100%',
                                         ':hover': {
-                                            backgroundColor: '#3a3a3a'
+                                            backgroundColor: theme.colors.accentHover
                                         }
                                     }}
                                     onMouseEnter={(e) => {
-                                        e.target.style.backgroundColor = '#3a3a3a';
+                                        e.target.style.backgroundColor = theme.colors.accentHover;
                                     }}
                                     onMouseLeave={(e) => {
                                         if (selectedSnsRoot !== sns.rootCanisterId) {
@@ -304,7 +306,7 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                                                 width: '20px', 
                                                 height: '20px',
                                                 borderRadius: '50%',
-                                                backgroundColor: '#3a3a3a',
+                                                backgroundColor: theme.colors.border,
                                                 gridColumn: '1'
                                             }} />
                                         ) : logo ? (
@@ -324,7 +326,7 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                                                 width: '20px', 
                                                 height: '20px',
                                                 borderRadius: '50%',
-                                                backgroundColor: '#3a3a3a',
+                                                backgroundColor: theme.colors.border,
                                                 gridColumn: '1'
                                             }} />
                                         )}
@@ -333,7 +335,8 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                                             textAlign: 'left',
                                             whiteSpace: 'nowrap',
                                             overflow: 'hidden',
-                                            textOverflow: 'ellipsis'
+                                            textOverflow: 'ellipsis',
+                                            color: theme.colors.primaryText
                                         }}>{sns.name}</span>
                                     </div>
                                 </div>
