@@ -1877,11 +1877,42 @@ function Feed() {
                                             color: theme.colors.primaryText,
                                             fontWeight: 'bold',
                                             boxShadow: '0 2px 12px rgba(0, 0, 0, 0.4)',
-                                            border: '2px solid #3a3a3a'
+                                            border: `2px solid ${theme.colors.border}`
                                         }}>
                                             +{snsesToShow.length - 10}
                                         </div>
                                     )}
+                                    
+                                    {/* Filter Toggle Button */}
+                                    <button 
+                                        onClick={() => setShowFilters(!showFilters)}
+                                        style={{
+                                            width: '40px',
+                                            height: '40px',
+                                            borderRadius: '50%',
+                                            backgroundColor: showFilters ? theme.colors.accent : theme.colors.secondaryBg,
+                                            border: `2px solid ${theme.colors.border}`,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '16px',
+                                            color: showFilters ? theme.colors.primaryText : theme.colors.mutedText,
+                                            cursor: 'pointer',
+                                            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.1)',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.target.style.backgroundColor = showFilters ? theme.colors.accentHover : theme.colors.border;
+                                            e.target.style.transform = 'scale(1.05)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.target.style.backgroundColor = showFilters ? theme.colors.accent : theme.colors.secondaryBg;
+                                            e.target.style.transform = 'scale(1)';
+                                        }}
+                                        title={showFilters ? 'Hide Filters' : 'Show Filters'}
+                                    >
+                                        {showFilters ? '✕' : '⚙'}
+                                    </button>
                                 </div>
                             </div>
                         );
@@ -1890,15 +1921,6 @@ function Feed() {
 
                 {/* Filter Section */}
                 <div style={getStyles(theme).filterSection}>
-                    <div style={getStyles(theme).filterTitle}>
-                        <button 
-                            onClick={() => setShowFilters(!showFilters)}
-                            style={{...getStyles(theme).applyButton, fontSize: '0.9rem', padding: '6px 12px'}}
-                        >
-                            {showFilters ? 'Hide Filters' : 'Show Filters'}
-                        </button>
-                    </div>
-                    
                     {showFilters && (
                         <>
                             <div style={isNarrowScreen ? getStyles(theme).filterLayoutStacked : getStyles(theme).filterLayoutResponsive}>
