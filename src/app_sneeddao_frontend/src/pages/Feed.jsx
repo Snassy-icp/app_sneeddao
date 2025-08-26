@@ -1736,10 +1736,7 @@ function Feed() {
                             <h1 style={{
                                 ...getStyles(theme).title,
                                 margin: '0',
-                                background: 'linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%)',
-                                backgroundClip: 'text',
-                                WebkitBackgroundClip: 'text',
-                                WebkitTextFillColor: 'transparent',
+                                color: theme.colors.primaryText,
                                 fontSize: 'clamp(2rem, 5vw, 2.5rem)'
                             }}>
                                 Sneed's Feed

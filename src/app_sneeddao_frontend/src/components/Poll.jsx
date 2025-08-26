@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
 import { formatError } from '../utils/errorUtils';
@@ -18,6 +19,7 @@ const Poll = ({
     totalVotingPower = 0
 }) => {
     const { identity } = useAuth();
+    const { theme } = useTheme();
     
     // Voting state
     const [votingStates, setVotingStates] = useState(new Map()); // optionId -> 'voting'|'success'|'error'
@@ -338,14 +340,14 @@ const Poll = ({
     if (showCreateForm) {
         return (
             <div style={{ 
-                backgroundColor: '#333', 
+                backgroundColor: theme.colors.secondaryBg, 
                 borderRadius: '6px', 
                 padding: '20px', 
-                border: '1px solid #444',
+                border: `1px solid ${theme.colors.border}`,
                 marginTop: '15px'
             }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                    <h4 style={{ color: '#ffffff', fontSize: '16px', margin: 0 }}>
+                    <h4 style={{ color: theme.colors.primaryText, fontSize: '16px', margin: 0 }}>
                         📊 Create Poll {postId ? 'for Post' : 'for Thread'}
                     </h4>
                     {onCancelCreate && (
@@ -354,7 +356,7 @@ const Poll = ({
                             disabled={submittingPoll}
                             style={{
                                 backgroundColor: 'transparent',
-                                color: '#888',
+                                color: theme.colors.mutedText,
                                 border: 'none',
                                 fontSize: '18px',
                                 cursor: 'pointer',
@@ -369,8 +371,8 @@ const Poll = ({
                 {pollError && (
                     <div style={{
                         backgroundColor: 'rgba(231, 76, 60, 0.2)',
-                        border: '1px solid #e74c3c',
-                        color: '#e74c3c',
+                        border: `1px solid ${theme.colors.error}`,
+                        color: theme.colors.error,
                         padding: '10px',
                         borderRadius: '4px',
                         marginBottom: '15px',
@@ -388,9 +390,9 @@ const Poll = ({
                     placeholder="Poll title (e.g., 'What should we prioritize next?')"
                     style={{
                         width: '100%',
-                        backgroundColor: '#2a2a2a',
-                        color: '#ffffff',
-                        border: `1px solid ${textLimits && textLimits.post_title_max_length && pollTitle.length > textLimits.post_title_max_length ? '#e74c3c' : '#444'}`,
+                        backgroundColor: theme.colors.secondaryBg,
+                        color: theme.colors.primaryText,
+                        border: `1px solid ${textLimits && textLimits.post_title_max_length && pollTitle.length > textLimits.post_title_max_length ? theme.colors.error : theme.colors.border}`,
                         borderRadius: '4px',
                         padding: '10px',
                         marginBottom: '5px',
@@ -402,7 +404,7 @@ const Poll = ({
                 {textLimits && (
                     <div style={{
                         fontSize: '12px',
-                        color: textLimits && textLimits.post_title_max_length && pollTitle.length > textLimits.post_title_max_length ? '#e74c3c' : '#888',
+                        color: textLimits && textLimits.post_title_max_length && pollTitle.length > textLimits.post_title_max_length ? theme.colors.error : theme.colors.mutedText,
                         marginBottom: '10px',
                         textAlign: 'right'
                     }}>
@@ -417,9 +419,9 @@ const Poll = ({
                     placeholder="Poll description (explain what this poll is about)"
                     style={{
                         width: '100%',
-                        backgroundColor: '#2a2a2a',
-                        color: '#ffffff',
-                        border: `1px solid ${textLimits && textLimits.post_body_max_length && pollBody.length > textLimits.post_body_max_length ? '#e74c3c' : '#444'}`,
+                        backgroundColor: theme.colors.secondaryBg,
+                        color: theme.colors.primaryText,
+                        border: `1px solid ${textLimits && textLimits.post_body_max_length && pollBody.length > textLimits.post_body_max_length ? theme.colors.error : theme.colors.border}`,
                         borderRadius: '4px',
                         padding: '10px',
                         fontSize: '14px',
@@ -433,7 +435,7 @@ const Poll = ({
                 {textLimits && (
                     <div style={{
                         fontSize: '12px',
-                        color: textLimits && textLimits.post_body_max_length && pollBody.length > textLimits.post_body_max_length ? '#e74c3c' : '#888',
+                        color: textLimits && textLimits.post_body_max_length && pollBody.length > textLimits.post_body_max_length ? theme.colors.error : theme.colors.mutedText,
                         marginBottom: '15px',
                         textAlign: 'right'
                     }}>
@@ -443,7 +445,7 @@ const Poll = ({
 
                 {/* Poll Options */}
                 <div style={{ marginBottom: '15px' }}>
-                    <h5 style={{ color: '#ffffff', marginBottom: '10px', fontSize: '14px' }}>Poll Options</h5>
+                    <h5 style={{ color: theme.colors.primaryText, marginBottom: '10px', fontSize: '14px' }}>Poll Options</h5>
                     {pollOptions.map((option, index) => (
                         <div key={index} style={{ 
                             display: 'flex', 
@@ -459,9 +461,9 @@ const Poll = ({
                                     placeholder={`Option ${index + 1} (e.g., 'Feature A', 'Yes', 'No')`}
                                     style={{
                                         width: '100%',
-                                        backgroundColor: '#2a2a2a',
-                                        color: '#ffffff',
-                                        border: '1px solid #444',
+                                        backgroundColor: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
                                         borderRadius: '4px',
                                         padding: '8px',
                                         fontSize: '14px',
@@ -476,9 +478,9 @@ const Poll = ({
                                     placeholder="Optional description for this option"
                                     style={{
                                         width: '100%',
-                                        backgroundColor: '#2a2a2a',
-                                        color: '#ffffff',
-                                        border: '1px solid #444',
+                                        backgroundColor: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
                                         borderRadius: '4px',
                                         padding: '8px',
                                         fontSize: '12px',
@@ -494,8 +496,8 @@ const Poll = ({
                                     onClick={() => removePollOption(index)}
                                     disabled={submittingPoll}
                                     style={{
-                                        backgroundColor: '#e74c3c',
-                                        color: '#ffffff',
+                                        backgroundColor: theme.colors.error,
+                                        color: theme.colors.primaryText,
                                         border: 'none',
                                         borderRadius: '4px',
                                         padding: '8px',
@@ -515,8 +517,8 @@ const Poll = ({
                             onClick={addPollOption}
                             disabled={submittingPoll}
                             style={{
-                                backgroundColor: '#3498db',
-                                color: '#ffffff',
+                                backgroundColor: theme.colors.accent,
+                                color: theme.colors.primaryText,
                                 border: 'none',
                                 borderRadius: '4px',
                                 padding: '6px 12px',
@@ -538,7 +540,7 @@ const Poll = ({
                 }}>
                     <div>
                         <label style={{ 
-                            color: '#ccc', 
+                            color: theme.colors.secondaryText, 
                             fontSize: '12px', 
                             display: 'block', 
                             marginBottom: '5px' 
@@ -552,9 +554,9 @@ const Poll = ({
                             min={new Date().toISOString().split('T')[0]}
                             style={{
                                 width: '100%',
-                                backgroundColor: '#2a2a2a',
-                                color: '#ffffff',
-                                border: '1px solid #444',
+                                backgroundColor: theme.colors.secondaryBg,
+                                color: theme.colors.primaryText,
+                                border: `1px solid ${theme.colors.border}`,
                                 borderRadius: '4px',
                                 padding: '8px',
                                 fontSize: '14px',
@@ -565,7 +567,7 @@ const Poll = ({
                     </div>
                     <div>
                         <label style={{ 
-                            color: '#ccc', 
+                            color: theme.colors.secondaryText, 
                             fontSize: '12px', 
                             display: 'block', 
                             marginBottom: '5px' 
@@ -578,9 +580,9 @@ const Poll = ({
                             onChange={(e) => setPollEndTime(e.target.value)}
                             style={{
                                 width: '100%',
-                                backgroundColor: '#2a2a2a',
-                                color: '#ffffff',
-                                border: '1px solid #444',
+                                backgroundColor: theme.colors.secondaryBg,
+                                color: theme.colors.primaryText,
+                                border: `1px solid ${theme.colors.border}`,
                                 borderRadius: '4px',
                                 padding: '8px',
                                 fontSize: '14px',
@@ -591,7 +593,7 @@ const Poll = ({
                     </div>
                     <div>
                         <label style={{ 
-                            color: '#ccc', 
+                            color: theme.colors.secondaryText, 
                             fontSize: '12px', 
                             display: 'block', 
                             marginBottom: '5px' 
@@ -603,9 +605,9 @@ const Poll = ({
                             onChange={(e) => setPollVpPower(parseFloat(e.target.value))}
                             style={{
                                 width: '100%',
-                                backgroundColor: '#2a2a2a',
-                                color: '#ffffff',
-                                border: '1px solid #444',
+                                backgroundColor: theme.colors.secondaryBg,
+                                color: theme.colors.primaryText,
+                                border: `1px solid ${theme.colors.border}`,
                                 borderRadius: '4px',
                                 padding: '8px',
                                 fontSize: '14px',
@@ -623,7 +625,7 @@ const Poll = ({
                     {/* Allow Vote Changes */}
                     <div style={{ marginBottom: '15px' }}>
                         <label style={{ 
-                            color: '#ccc', 
+                            color: theme.colors.secondaryText, 
                             fontSize: '14px', 
                             display: 'flex', 
                             alignItems: 'center',
@@ -643,7 +645,7 @@ const Poll = ({
                         </label>
                         <div style={{ 
                             fontSize: '12px', 
-                            color: '#888', 
+                            color: theme.colors.mutedText, 
                             marginTop: '5px',
                             marginLeft: '28px'
                         }}>
@@ -657,8 +659,8 @@ const Poll = ({
                         onClick={handleCreatePoll}
                         disabled={submittingPoll}
                         style={{
-                            backgroundColor: submittingPoll ? '#666' : '#2ecc71',
-                            color: '#ffffff',
+                            backgroundColor: submittingPoll ? theme.colors.mutedText : theme.colors.success,
+                            color: theme.colors.primaryText,
                             border: 'none',
                             borderRadius: '4px',
                             padding: '8px 16px',
@@ -674,8 +676,8 @@ const Poll = ({
                         disabled={submittingPoll}
                         style={{
                             backgroundColor: 'transparent',
-                            color: '#888',
-                            border: '1px solid #555',
+                            color: theme.colors.mutedText,
+                            border: `1px solid ${theme.colors.border}`,
                             borderRadius: '4px',
                             padding: '8px 16px',
                             cursor: submittingPoll ? 'not-allowed' : 'pointer',
@@ -704,21 +706,21 @@ const Poll = ({
 
     return (
         <div style={{ 
-            backgroundColor: '#2a2a2a', 
+            backgroundColor: theme.colors.secondaryBg, 
             borderRadius: '6px', 
             padding: '20px', 
-            border: '1px solid #444',
+            border: `1px solid ${theme.colors.border}`,
             marginTop: '15px'
         }}>
             <div style={{ marginBottom: '15px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                    <h4 style={{ color: '#ffffff', fontSize: '16px', margin: 0 }}>
+                    <h4 style={{ color: theme.colors.primaryText, fontSize: '16px', margin: 0 }}>
                         📊 {poll.title || 'Untitled Poll'}
                     </h4>
                     {poll.has_ended && (
                         <span style={{
-                            backgroundColor: '#e74c3c',
-                            color: '#ffffff',
+                            backgroundColor: theme.colors.error,
+                            color: theme.colors.primaryText,
                             padding: '2px 8px',
                             borderRadius: '12px',
                             fontSize: '12px',
@@ -729,16 +731,16 @@ const Poll = ({
                     )}
                 </div>
                 {poll.body && (
-                    <p style={{ color: '#ccc', fontSize: '14px', margin: '0 0 10px 0', lineHeight: '1.4' }}>
+                    <p style={{ color: theme.colors.secondaryText, fontSize: '14px', margin: '0 0 10px 0', lineHeight: '1.4' }}>
                         {poll.body}
                     </p>
                 )}
-                <div style={{ fontSize: '12px', color: '#888' }}>
+                <div style={{ fontSize: '12px', color: theme.colors.mutedText }}>
                     Ends: {formatDate(poll.end_timestamp)} • VP Power: {poll.vp_power || 1}x
                     {!poll.allow_vote_changes && (
                         <>
                             {' • '}
-                            <span style={{ color: '#f39c12', fontWeight: '500' }}>
+                            <span style={{ color: theme.colors.warning, fontWeight: '500' }}>
                                 ⚠️ Vote changes not allowed
                             </span>
                         </>
@@ -763,12 +765,12 @@ const Poll = ({
                                 marginBottom: '5px'
                             }}>
                                 <div style={{ flex: 1 }}>
-                                    <strong style={{ color: '#ffffff', fontSize: '14px' }}>
+                                    <strong style={{ color: theme.colors.primaryText, fontSize: '14px' }}>
                                         {option.title}
                                     </strong>
                                     {option.body && Array.isArray(option.body) && option.body.length > 0 && (
                                         <p style={{ 
-                                            color: '#ccc', 
+                                            color: theme.colors.secondaryText, 
                                             fontSize: '12px', 
                                             margin: '2px 0 0 0',
                                             lineHeight: '1.3'
@@ -783,15 +785,15 @@ const Poll = ({
                                     gap: '10px',
                                     marginLeft: '15px'
                                 }}>
-                                    <span style={{ color: '#888', fontSize: '12px', minWidth: '60px', textAlign: 'right' }}>
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '12px', minWidth: '60px', textAlign: 'right' }}>
                                         {option.vote_count} votes
                                         <br />
                                         {formatVotingPowerDisplay(Number(option.total_voting_power))} VP
                                     </span>
                                     {userVoteCount > 0 && (
                                         <span style={{
-                                            backgroundColor: '#3498db',
-                                            color: '#ffffff',
+                                            backgroundColor: theme.colors.accent,
+                                            color: theme.colors.primaryText,
                                             padding: '2px 6px',
                                             borderRadius: '10px',
                                             fontSize: '10px',
@@ -805,13 +807,13 @@ const Poll = ({
                                             onClick={() => handleVoteOnOption(option.id)}
                                             disabled={isVoting || !selectedNeurons || selectedNeurons.length === 0}
                                             style={{
-                                                backgroundColor: 
-                                                    votingState === 'voting' ? '#666' :
-                                                    votingState === 'success' ? '#27ae60' :
-                                                    votingState === 'error' ? '#e74c3c' :
-                                                    isVoting ? '#666' :
-                                                    userVoteCount > 0 ? '#3498db' : '#2980b9',
-                                                color: '#ffffff',
+                                                                                backgroundColor: 
+                                    votingState === 'voting' ? theme.colors.mutedText :
+                                    votingState === 'success' ? theme.colors.success :
+                                    votingState === 'error' ? theme.colors.error :
+                                    isVoting ? theme.colors.mutedText :
+                                    userVoteCount > 0 ? theme.colors.accent : theme.colors.accentHover,
+                                                color: theme.colors.primaryText,
                                                 border: 'none',
                                                 borderRadius: '4px',
                                                 padding: '4px 8px',
@@ -835,7 +837,7 @@ const Poll = ({
                             <div style={{
                                 width: '100%',
                                 height: '6px',
-                                backgroundColor: '#1a1a1a',
+                                backgroundColor: theme.colors.primaryBg,
                                 borderRadius: '3px',
                                 overflow: 'hidden'
                             }}>
@@ -843,14 +845,14 @@ const Poll = ({
                                     width: `${percentage}%`,
                                     height: '100%',
                                     backgroundColor: 
-                                        poll.has_ended && isWinning ? '#27ae60' : // Green for winning option when poll ended
-                                        userVoteCount > 0 ? '#3498db' : '#555',    // Blue for user voted, gray for others
+                                        poll.has_ended && isWinning ? theme.colors.success : // Green for winning option when poll ended
+                                        userVoteCount > 0 ? theme.colors.accent : theme.colors.mutedText,    // Blue for user voted, gray for others
                                     transition: 'width 0.3s ease, background-color 0.3s ease'
                                 }} />
                             </div>
                             <div style={{ 
                                 fontSize: '11px', 
-                                color: '#888', 
+                                color: theme.colors.mutedText, 
                                 marginTop: '2px',
                                 textAlign: 'right'
                             }}>
@@ -862,7 +864,7 @@ const Poll = ({
                     <div style={{
                         padding: '20px',
                         textAlign: 'center',
-                        color: '#888',
+                        color: theme.colors.mutedText,
                         fontStyle: 'italic'
                     }}>
                         No poll options available
@@ -873,11 +875,11 @@ const Poll = ({
             {selectedNeurons && selectedNeurons.length > 0 && !poll.has_ended && (
                 <div style={{
                     fontSize: '12px',
-                    color: '#888',
+                    color: theme.colors.mutedText,
                     padding: '10px',
-                    backgroundColor: '#1a1a1a',
+                    backgroundColor: theme.colors.primaryBg,
                     borderRadius: '4px',
-                    border: '1px solid #333'
+                    border: `1px solid ${theme.colors.border}`
                 }}>
                     💡 Voting with {selectedNeurons ? selectedNeurons.length : 0} neuron{selectedNeurons && selectedNeurons.length !== 1 ? 's' : ''} 
                     ({formatVotingPowerDisplay(Number(totalVotingPower || 0))} total VP)
