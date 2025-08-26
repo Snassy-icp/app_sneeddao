@@ -357,7 +357,7 @@ function Hub() {
                         <Link 
                             to="/forum" 
                             style={{
-                                backgroundColor: '#3498db',
+                                backgroundColor: theme.colors.accent,
                                 color: 'white',
                                 padding: '0.75rem 1.5rem',
                                 borderRadius: '6px',
@@ -365,8 +365,8 @@ function Hub() {
                                 fontWeight: '500',
                                 transition: 'background-color 0.2s ease'
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = '#2980b9'}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = '#3498db'}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.accentHover}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.accent}
                         >
                             Visit Community Forum
                         </Link>
@@ -374,7 +374,7 @@ function Hub() {
                         <Link 
                             to="/dao" 
                             style={{
-                                backgroundColor: '#27ae60',
+                                backgroundColor: theme.colors.success,
                                 color: 'white',
                                 padding: '0.75rem 1.5rem',
                                 borderRadius: '6px',
@@ -383,7 +383,7 @@ function Hub() {
                                 transition: 'background-color 0.2s ease'
                             }}
                             onMouseEnter={(e) => e.target.style.backgroundColor = '#219a52'}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = '#27ae60'}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.success}
                         >
                             Learn More About Sneed DAO
                         </Link>
@@ -556,7 +556,7 @@ function Hub() {
                                     {isExpanded && (
                                         <div style={{
                                             padding: '1rem',
-                                            backgroundColor: '#1a1a1a'
+                                            backgroundColor: theme.colors.primaryBg
                                         }}>
                                             <div style={{
                                                 display: 'grid',
@@ -622,10 +622,10 @@ function Hub() {
                 }}>
                     {selectedSnsRoot ? (
                         <div style={{
-                            backgroundColor: '#2a2a2a',
+                            backgroundColor: theme.colors.secondaryBg,
                             borderRadius: '8px',
                             padding: '2rem',
-                            border: '1px solid #4a4a4a'
+                            border: `1px solid ${theme.colors.border}`
                         }}>
                             <h2 style={{
                                 color: theme.colors.primaryText,
@@ -722,7 +722,7 @@ function Hub() {
                                                     color: theme.colors.accent,
                                                     textDecoration: 'none',
                                                     padding: '0.5rem',
-                                                    backgroundColor: '#1a1a1a',
+                                                    backgroundColor: theme.colors.primaryBg,
                                                     borderRadius: '4px',
                                                     display: 'block'
                                                 }}
@@ -737,7 +737,7 @@ function Hub() {
                                                     color: theme.colors.accent,
                                                     textDecoration: 'none',
                                                     padding: '0.5rem',
-                                                    backgroundColor: '#1a1a1a',
+                                                    backgroundColor: theme.colors.primaryBg,
                                                     borderRadius: '4px',
                                                     display: 'block'
                                                 }}
@@ -754,64 +754,64 @@ function Hub() {
                                             <Link
                                                 to={`/proposals?sns=${selectedSnsRoot}`}
                                                 style={{
-                                                    color: '#2ecc71',
+                                                    color: theme.colors.success,
                                                     textDecoration: 'none',
                                                     padding: '0.5rem',
-                                                    backgroundColor: '#1a1a1a',
+                                                    backgroundColor: theme.colors.primaryBg,
                                                     borderRadius: '4px',
                                                     display: 'block',
                                                     transition: 'background-color 0.2s'
                                                 }}
-                                                onMouseEnter={(e) => e.target.style.backgroundColor = '#2a2a2a'}
-                                                onMouseLeave={(e) => e.target.style.backgroundColor = '#1a1a1a'}
+                                                onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                                onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
                                             >
                                                 📋 View Proposals →
                                             </Link>
                                             <Link
                                                 to={`/forum?sns=${selectedSnsRoot}`}
                                                 style={{
-                                                    color: '#2ecc71',
+                                                    color: theme.colors.success,
                                                     textDecoration: 'none',
                                                     padding: '0.5rem',
-                                                    backgroundColor: '#1a1a1a',
+                                                    backgroundColor: theme.colors.primaryBg,
                                                     borderRadius: '4px',
                                                     display: 'block',
                                                     transition: 'background-color 0.2s'
                                                 }}
-                                                onMouseEnter={(e) => e.target.style.backgroundColor = '#2a2a2a'}
-                                                onMouseLeave={(e) => e.target.style.backgroundColor = '#1a1a1a'}
+                                                onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                                onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
                                             >
                                                 💬 Visit Forum →
                                             </Link>
                                             <Link
                                                 to={`/neurons?sns=${selectedSnsRoot}`}
                                                 style={{
-                                                    color: '#2ecc71',
+                                                    color: theme.colors.success,
                                                     textDecoration: 'none',
                                                     padding: '0.5rem',
-                                                    backgroundColor: '#1a1a1a',
+                                                    backgroundColor: theme.colors.primaryBg,
                                                     borderRadius: '4px',
                                                     display: 'block',
                                                     transition: 'background-color 0.2s'
                                                 }}
-                                                onMouseEnter={(e) => e.target.style.backgroundColor = '#2a2a2a'}
-                                                onMouseLeave={(e) => e.target.style.backgroundColor = '#1a1a1a'}
+                                                onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                                onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
                                             >
                                                 🧠 Browse Neurons →
                                             </Link>
                                             <Link
                                                 to={`/transactions?sns=${selectedSnsRoot}`}
                                                 style={{
-                                                    color: '#2ecc71',
+                                                    color: theme.colors.success,
                                                     textDecoration: 'none',
                                                     padding: '0.5rem',
-                                                    backgroundColor: '#1a1a1a',
+                                                    backgroundColor: theme.colors.primaryBg,
                                                     borderRadius: '4px',
                                                     display: 'block',
                                                     transition: 'background-color 0.2s'
                                                 }}
-                                                onMouseEnter={(e) => e.target.style.backgroundColor = '#2a2a2a'}
-                                                onMouseLeave={(e) => e.target.style.backgroundColor = '#1a1a1a'}
+                                                onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
+                                                onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
                                             >
                                                 💰 View Transactions →
                                             </Link>
@@ -826,10 +826,10 @@ function Hub() {
                         </div>
                     ) : (
                         <div style={{
-                            backgroundColor: '#2a2a2a',
+                            backgroundColor: theme.colors.secondaryBg,
                             borderRadius: '8px',
                             padding: '2rem',
-                            border: '1px solid #4a4a4a',
+                            border: `1px solid ${theme.colors.border}`,
                             textAlign: 'center'
                         }}>
                             <h2 style={{

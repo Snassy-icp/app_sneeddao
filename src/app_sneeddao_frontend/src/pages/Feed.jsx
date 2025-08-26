@@ -1920,9 +1920,8 @@ function Feed() {
                 </div>
 
                 {/* Filter Section */}
-                <div style={getStyles(theme).filterSection}>
-                    {showFilters && (
-                        <>
+                {showFilters && (
+                    <div style={getStyles(theme).filterSection}>
                             <div style={isNarrowScreen ? getStyles(theme).filterLayoutStacked : getStyles(theme).filterLayoutResponsive}>
                                 {/* Left Column: User, Type, Text */}
                                 <div style={getStyles(theme).filterLeftColumn}>
@@ -2075,9 +2074,8 @@ function Feed() {
                                     </div>
                                 </div>
                             </div>
-                        </>
-                    )}
-                </div>
+                    </div>
+                )}
 
                 {/* Error Message */}
                 {error && (
