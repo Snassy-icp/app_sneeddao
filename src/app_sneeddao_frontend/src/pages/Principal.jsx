@@ -804,8 +804,8 @@ export default function PrincipalPage() {
                                                         <button
                                                             onClick={() => setEditingName(true)}
                                                             style={{
-                                                                backgroundColor: '#3498db',
-                                                                color: '#ffffff',
+                                                                                                                                    backgroundColor: theme.colors.accent,
+                                                                    color: theme.colors.primaryText,
                                                                 border: 'none',
                                                                 borderRadius: '4px',
                                                                 padding: '8px 12px',
@@ -823,8 +823,8 @@ export default function PrincipalPage() {
                                                                     navigate(`/sms?recipient=${encodeURIComponent(recipientPrincipal)}`);
                                                                 }}
                                                                 style={{
-                                                                    backgroundColor: '#2ecc71',
-                                                                    color: '#ffffff',
+                                                                    backgroundColor: theme.colors.success,
+                                                                    color: theme.colors.primaryText,
                                                                     border: 'none',
                                                                     borderRadius: '4px',
                                                                     padding: '8px 12px',
@@ -859,17 +859,17 @@ export default function PrincipalPage() {
                                                     maxLength={32}
                                                     placeholder="Enter public name (max 32 chars)"
                                                     style={{
-                                                        backgroundColor: '#3a3a3a',
-                                                        border: `1px solid ${inputError ? '#e74c3c' : '#4a4a4a'}`,
+                                                        backgroundColor: theme.colors.tertiaryBg,
+                                                        border: `1px solid ${inputError ? theme.colors.error : theme.colors.border}`,
                                                         borderRadius: '4px',
-                                                        color: '#ffffff',
+                                                        color: theme.colors.primaryText,
                                                         padding: '8px',
                                                         width: '100%'
                                                     }}
                                                 />
                                                 {inputError && (
                                                     <div style={{
-                                                        color: '#e74c3c',
+                                                        color: theme.colors.error,
                                                         fontSize: '12px',
                                                         marginTop: '4px'
                                                     }}>
@@ -877,7 +877,7 @@ export default function PrincipalPage() {
                                                     </div>
                                                 )}
                                                 <div style={{
-                                                    color: '#888',
+                                                    color: theme.colors.mutedText,
                                                     fontSize: '12px',
                                                     marginTop: '4px'
                                                 }}>
@@ -893,8 +893,8 @@ export default function PrincipalPage() {
                                                     onClick={handleNameSubmit}
                                                     disabled={isSubmitting}
                                                     style={{
-                                                        backgroundColor: '#3498db',
-                                                        color: '#ffffff',
+                                                                                                                            backgroundColor: theme.colors.accent,
+                                                                    color: theme.colors.primaryText,
                                                         border: 'none',
                                                         borderRadius: '4px',
                                                         padding: '8px 12px',
@@ -926,8 +926,8 @@ export default function PrincipalPage() {
                                                     }}
                                                     disabled={isSubmitting}
                                                     style={{
-                                                        backgroundColor: '#e74c3c',
-                                                        color: '#ffffff',
+                                                        backgroundColor: theme.colors.error,
+                                                        color: theme.colors.primaryText,
                                                         border: 'none',
                                                         borderRadius: '4px',
                                                         padding: '8px 12px',
@@ -960,17 +960,17 @@ export default function PrincipalPage() {
                                                     maxLength={32}
                                                     placeholder="Enter private nickname (max 32 chars)"
                                                     style={{
-                                                        backgroundColor: '#3a3a3a',
-                                                        border: `1px solid ${nicknameError ? '#e74c3c' : '#4a4a4a'}`,
+                                                        backgroundColor: theme.colors.tertiaryBg,
+                                                        border: `1px solid ${nicknameError ? theme.colors.error : theme.colors.border}`,
                                                         borderRadius: '4px',
-                                                        color: '#ffffff',
+                                                        color: theme.colors.primaryText,
                                                         padding: '8px',
                                                         width: '100%'
                                                     }}
                                                 />
                                                 {nicknameError && (
                                                     <div style={{
-                                                        color: '#e74c3c',
+                                                        color: theme.colors.error,
                                                         fontSize: '12px',
                                                         marginTop: '4px'
                                                     }}>
@@ -978,7 +978,7 @@ export default function PrincipalPage() {
                                                     </div>
                                                 )}
                                                 <div style={{
-                                                    color: '#888',
+                                                    color: theme.colors.mutedText,
                                                     fontSize: '12px',
                                                     marginTop: '4px'
                                                 }}>
@@ -995,7 +995,7 @@ export default function PrincipalPage() {
                                                     disabled={isSubmittingNickname}
                                                     style={{
                                                         backgroundColor: '#95a5a6',
-                                                        color: '#ffffff',
+                                                        color: theme.colors.primaryText,
                                                         border: 'none',
                                                         borderRadius: '4px',
                                                         padding: '8px 12px',
@@ -1027,8 +1027,8 @@ export default function PrincipalPage() {
                                                     }}
                                                     disabled={isSubmittingNickname}
                                                     style={{
-                                                        backgroundColor: '#e74c3c',
-                                                        color: '#ffffff',
+                                                        backgroundColor: theme.colors.error,
+                                                        color: theme.colors.primaryText,
                                                         border: 'none',
                                                         borderRadius: '4px',
                                                         padding: '8px 12px',
@@ -1047,11 +1047,11 @@ export default function PrincipalPage() {
 
                         {/* Posts & Threads Section */}
                         <div style={{ 
-                            backgroundColor: '#2a2a2a',
+                            backgroundColor: theme.colors.secondaryBg,
                             borderRadius: '8px',
                             padding: '20px',
                             marginBottom: '30px',
-                            border: '1px solid #3a3a3a'
+                            border: `1px solid ${theme.colors.border}`
                         }}>
                             <div 
                                 style={{ 
@@ -1066,14 +1066,14 @@ export default function PrincipalPage() {
                             >
                                 <span style={{
                                     fontSize: '18px',
-                                    color: '#888',
+                                    color: theme.colors.mutedText,
                                     transition: 'transform 0.2s',
                                     transform: isPostsCollapsed ? 'rotate(-90deg)' : 'none'
                                 }}>
                                     ▼
                                 </span>
                                 <h2 style={{ 
-                                    color: '#ffffff',
+                                    color: theme.colors.primaryText,
                                     fontSize: '18px',
                                     fontWeight: '500',
                                     margin: 0
@@ -1087,7 +1087,7 @@ export default function PrincipalPage() {
                                     {/* Tab Navigation */}
                                     <div style={{
                                         display: 'flex',
-                                        borderBottom: '1px solid #3a3a3a',
+                                        borderBottom: `1px solid ${theme.colors.border}`,
                                         marginBottom: '20px'
                                     }}>
                                         <button
@@ -1095,12 +1095,12 @@ export default function PrincipalPage() {
                                             style={{
                                                 backgroundColor: 'transparent',
                                                 border: 'none',
-                                                color: postsActiveTab === 'posts' ? '#3498db' : '#888',
+                                                color: postsActiveTab === 'posts' ? theme.colors.accent : theme.colors.mutedText,
                                                 fontSize: '16px',
                                                 fontWeight: '500',
                                                 padding: '10px 20px',
                                                 cursor: 'pointer',
-                                                borderBottom: postsActiveTab === 'posts' ? '2px solid #3498db' : '2px solid transparent',
+                                                borderBottom: postsActiveTab === 'posts' ? `2px solid ${theme.colors.accent}` : '2px solid transparent',
                                                 transition: 'all 0.2s'
                                             }}
                                         >
@@ -1111,12 +1111,12 @@ export default function PrincipalPage() {
                                             style={{
                                                 backgroundColor: 'transparent',
                                                 border: 'none',
-                                                color: postsActiveTab === 'threads' ? '#3498db' : '#888',
+                                                color: postsActiveTab === 'threads' ? theme.colors.accent : theme.colors.mutedText,
                                                 fontSize: '16px',
                                                 fontWeight: '500',
                                                 padding: '10px 20px',
                                                 cursor: 'pointer',
-                                                borderBottom: postsActiveTab === 'threads' ? '2px solid #3498db' : '2px solid transparent',
+                                                borderBottom: postsActiveTab === 'threads' ? `2px solid ${theme.colors.accent}` : '2px solid transparent',
                                                 transition: 'all 0.2s'
                                             }}
                                         >
@@ -1131,9 +1131,9 @@ export default function PrincipalPage() {
                                         </div>
                                     ) : postsError ? (
                                         <div style={{ 
-                                            backgroundColor: 'rgba(231, 76, 60, 0.2)', 
-                                            border: '1px solid #e74c3c',
-                                            color: '#e74c3c',
+                                            backgroundColor: `${theme.colors.error}20`, 
+                                            border: `1px solid ${theme.colors.error}`,
+                                            color: theme.colors.error,
                                             padding: '15px',
                                             borderRadius: '6px',
                                             marginBottom: '20px'
@@ -1364,11 +1364,11 @@ export default function PrincipalPage() {
                         </div>
 
                         <div style={{ 
-                            backgroundColor: '#2a2a2a',
+                            backgroundColor: theme.colors.secondaryBg,
                             borderRadius: '8px',
                             padding: '20px',
                             marginBottom: '30px',
-                            border: '1px solid #3a3a3a'
+                            border: `1px solid ${theme.colors.border}`
                         }}>
                             <div 
                                 style={{ 
@@ -1383,14 +1383,14 @@ export default function PrincipalPage() {
                             >
                                 <span style={{
                                     fontSize: '18px',
-                                    color: '#888',
+                                    color: theme.colors.mutedText,
                                     transition: 'transform 0.2s',
                                     transform: isNeuronsCollapsed ? 'rotate(-90deg)' : 'none'
                                 }}>
                                     ▼
                                 </span>
                                 <h2 style={{ 
-                                    color: '#ffffff',
+                                    color: theme.colors.primaryText,
                                     fontSize: '18px',
                                     fontWeight: '500',
                                     margin: 0
@@ -1402,14 +1402,14 @@ export default function PrincipalPage() {
                             {!isNeuronsCollapsed && (
                                 <>
                                     {loadingNeurons ? (
-                                        <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                        <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
                                             Loading neurons...
                                         </div>
                                     ) : neuronError ? (
                                         <div style={{ 
-                                            backgroundColor: 'rgba(231, 76, 60, 0.2)', 
-                                            border: '1px solid #e74c3c',
-                                            color: '#e74c3c',
+                                            backgroundColor: `${theme.colors.error}20`, 
+                                            border: `1px solid ${theme.colors.error}`,
+                                            color: theme.colors.error,
                                             padding: '15px',
                                             borderRadius: '6px',
                                             marginBottom: '20px'
