@@ -125,3 +125,6 @@
 - ✅ **Proposal Navigation** - Fixed dark navigation buttons (Previous/Next) and input field
 - ✅ **Proposal Payload Section** - Fixed dark proposal payload display box
 - ✅ **Proposal Sections Complete** - Fixed all major dark sections in individual proposal page
+- ✅ **HotkeyNeurons Component** - Added theme support to Vote with Your Neurons section
+- ✅ **Discussion Component** - Added theme support to Discussion section and header
+- ✅ **Voting History Section** - Completed theming of voting history component with full theme support

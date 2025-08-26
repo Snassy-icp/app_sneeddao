@@ -7,6 +7,7 @@ import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { getSnsById } from '../utils/SnsUtils';
 import { useSns } from '../contexts/SnsContext';
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
+import { useTheme } from '../contexts/ThemeContext';
 
 const HotkeyNeurons = ({ 
     fetchNeuronsFromSns, 
@@ -20,7 +21,47 @@ const HotkeyNeurons = ({
     onVoteSuccess = null,
     forceSneedSns = false
 }) => {
+    const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
+
+    // Theme-aware styles
+    const getStyles = (theme) => ({
+        container: {
+            backgroundColor: theme.colors.secondaryBg,
+            borderRadius: '8px',
+            padding: '20px',
+            marginBottom: '20px'
+        },
+        header: {
+            backgroundColor: theme.colors.border,
+            borderRadius: '6px',
+            padding: '10px'
+        },
+        neuronCard: {
+            backgroundColor: theme.colors.border,
+            borderRadius: '6px',
+            padding: '15px',
+            marginBottom: '10px'
+        },
+        text: {
+            color: theme.colors.primaryText
+        },
+        mutedText: {
+            color: theme.colors.mutedText
+        },
+        button: {
+            backgroundColor: theme.colors.accent,
+            color: theme.colors.primaryText,
+            border: 'none',
+            borderRadius: '4px'
+        },
+        voteButton: {
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '4px',
+            padding: '5px 10px',
+            cursor: 'pointer'
+        }
+    });
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
     const { getHotkeyNeurons, loading: neuronsLoading, refreshNeurons, neuronsData } = useNeurons();
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -145,9 +186,9 @@ const HotkeyNeurons = ({
     // Format vote for display
     const formatVote = (voteNumber) => {
         switch (voteNumber) {
-            case 1: return { text: 'Adopt', color: '#2ecc71' };
-            case 2: return { text: 'Reject', color: '#e74c3c' };
-            default: return { text: 'Not Voted', color: '#888' };
+            case 1: return { text: 'Adopt', color: theme.colors.success };
+            case 2: return { text: 'Reject', color: theme.colors.error };
+            default: return { text: 'Not Voted', color: theme.colors.mutedText };
         }
     };
 

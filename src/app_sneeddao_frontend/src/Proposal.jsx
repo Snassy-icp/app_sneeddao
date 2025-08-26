@@ -598,13 +598,13 @@ function Proposal() {
                 </div>
                 
                 {/* Voting information */}
-                <div style={{ marginTop: '25px', fontSize: '14px', color: '#bdc3c7' }}>
+                <div style={{ marginTop: '25px', fontSize: '14px', color: theme.colors.mutedText }}>
                     <p>There are two ways {isCritical ? 'a critical' : 'a'} proposal can be decided:</p>
                     
                     <ol style={{ paddingLeft: '20px' }}>
                         <li style={{ marginBottom: '10px' }}>
                             <strong>Immediate {isCritical ? 'supermajority' : 'majority'} decision</strong> <span style={{ fontSize: '12px' }}>ℹ️</span>
-                            <p style={{ margin: '5px 0', color: '#95a5a6' }}>
+                            <p style={{ margin: '5px 0', color: theme.colors.secondaryText }}>
                                 {isCritical ? 
                                     'A critical proposal is immediately adopted or rejected if, before the voting period ends, more than 67% of the total voting power votes Yes (indicated by the purple marker), or at least 33% votes No, respectively.' :
                                     'A proposal is immediately adopted or rejected if, before the voting period ends, more than half of the total voting power votes Yes (indicated by the yellow marker), or at least half votes No, respectively.'}
@@ -612,7 +612,7 @@ function Proposal() {
                         </li>
                         <li>
                             <strong>Standard {isCritical ? 'supermajority' : 'majority'} decision</strong> <span style={{ fontSize: '12px' }}>ℹ️</span>
-                            <p style={{ margin: '5px 0', color: '#95a5a6' }}>
+                            <p style={{ margin: '5px 0', color: theme.colors.secondaryText }}>
                                 {isCritical ?
                                     'At the end of the voting period, a critical proposal is adopted if more than 67% of the votes cast are Yes votes, provided these votes represent at least 3% of the total voting power. Otherwise, it is rejected. Before a proposal is decided, the voting period can be extended in order to "wait for quiet". Such voting period extensions occur when a proposal\'s voting results turn from either a Yes majority to a No majority or vice versa.' :
                                     'At the end of the voting period, a proposal is adopted if more than half of the votes cast are Yes votes, provided these votes represent at least 3% of the total voting power (indicated by the orange marker). Otherwise, it is rejected. Before a proposal is decided, the voting period can be extended in order to "wait for quiet". Such voting period extensions occur when a proposal\'s voting results turn from either a Yes majority to a No majority or vice versa.'}
@@ -857,8 +857,8 @@ function Proposal() {
                                                 style={{
                                                     padding: '5px 10px',
                                                     borderRadius: '4px',
-                                                    backgroundColor: '#2c3e50',
-                                                    color: '#ffffff',
+                                                    backgroundColor: theme.colors.accent,
+                                                    color: theme.colors.primaryText,
                                                     textDecoration: 'none',
                                                     fontSize: '14px'
                                                 }}
@@ -872,8 +872,8 @@ function Proposal() {
                                                 style={{
                                                     padding: '5px 10px',
                                                     borderRadius: '4px',
-                                                    backgroundColor: '#2c3e50',
-                                                    color: '#ffffff',
+                                                    backgroundColor: theme.colors.accent,
+                                                    color: theme.colors.primaryText,
                                                     textDecoration: 'none',
                                                     fontSize: '14px'
                                                 }}
@@ -887,8 +887,8 @@ function Proposal() {
                                                 style={{
                                                     padding: '5px 10px',
                                                     borderRadius: '4px',
-                                                    backgroundColor: '#2c3e50',
-                                                    color: '#ffffff',
+                                                    backgroundColor: theme.colors.accent,
+                                                    color: theme.colors.primaryText,
                                                     textDecoration: 'none',
                                                     fontSize: '14px'
                                                 }}
@@ -911,7 +911,7 @@ function Proposal() {
                                                 // Custom styling for links to handle long URLs
                                                 a: ({node, ...props}) => (
                                                     <a {...props} style={{
-                                                        color: '#3498db',
+                                                        color: theme.colors.linkText,
                                                         wordBreak: 'break-all',
                                                         overflowWrap: 'break-word',
                                                         textDecoration: 'underline'
@@ -931,7 +931,7 @@ function Proposal() {
                                         </ReactMarkdown>
                                     </div></p>
                                     <p><strong>URL:</strong> <a href={proposalData.proposal?.[0]?.url} target="_blank" rel="noopener noreferrer" style={{ 
-                                        color: '#3498db',
+                                        color: theme.colors.linkText,
                                         wordBreak: 'break-all',
                                         overflowWrap: 'break-word',
                                         display: 'inline-block',
@@ -991,7 +991,7 @@ function Proposal() {
                                                     alignItems: 'center',
                                                     gap: '10px',
                                                     padding: '10px',
-                                                    backgroundColor: '#2a2a2a',
+                                                    backgroundColor: theme.colors.tertiaryBg,
                                                     borderRadius: '6px',
                                                     marginBottom: isVotingHistoryExpanded ? '10px' : '0'
                                                 }}
@@ -999,14 +999,15 @@ function Proposal() {
                                                 <span style={{ 
                                                     transform: isVotingHistoryExpanded ? 'rotate(90deg)' : 'none',
                                                     transition: 'transform 0.3s ease',
-                                                    display: 'inline-block'
+                                                    display: 'inline-block',
+                                                    color: theme.colors.primaryText
                                                 }}>▶</span>
-                                                <h3 style={{ margin: 0 }}>Voting History</h3>
+                                                <h3 style={{ margin: 0, color: theme.colors.primaryText }}>Voting History</h3>
                                             </div>
                                             
                                             {isVotingHistoryExpanded && (
                                                 <div style={{ 
-                                                    backgroundColor: '#2a2a2a',
+                                                    backgroundColor: theme.colors.tertiaryBg,
                                                     padding: '15px',
                                                     borderRadius: '6px'
                                                 }}>
@@ -1015,7 +1016,7 @@ function Proposal() {
                                                         gap: '20px',
                                                         marginBottom: '15px',
                                                         padding: '10px',
-                                                        backgroundColor: '#1a1a1a',
+                                                        backgroundColor: theme.colors.secondaryBg,
                                                         borderRadius: '4px',
                                                         flexWrap: 'wrap',
                                                         alignItems: 'center',
@@ -1075,7 +1076,7 @@ function Proposal() {
                                                             gap: '8px'
                                                         }}>
                                                             <label style={{
-                                                                color: '#888',
+                                                                color: theme.colors.mutedText,
                                                                 fontSize: '14px'
                                                             }}>
                                                                 Sort by:
@@ -1084,9 +1085,9 @@ function Proposal() {
                                                                 value={sortBy}
                                                                 onChange={(e) => setSortBy(e.target.value)}
                                                                 style={{
-                                                                    backgroundColor: '#3a3a3a',
-                                                                    color: '#fff',
-                                                                    border: '1px solid #4a4a4a',
+                                                                    backgroundColor: theme.colors.primaryBg,
+                                                                    color: theme.colors.primaryText,
+                                                                    border: `1px solid ${theme.colors.border}`,
                                                                     borderRadius: '4px',
                                                                     padding: '4px 8px',
                                                                     cursor: 'pointer'
@@ -1102,14 +1103,14 @@ function Proposal() {
                                                             key={index}
                                                             style={{
                                                                 padding: '10px',
-                                                                backgroundColor: '#1a1a1a',
+                                                                backgroundColor: theme.colors.secondaryBg,
                                                                 marginBottom: '10px',
                                                                 borderRadius: '4px'
                                                             }}
                                                         >
                                                             <div style={{ 
                                                                 wordBreak: 'break-all',
-                                                                color: '#888',
+                                                                color: theme.colors.mutedText,
                                                                 fontSize: '14px',
                                                                 marginBottom: '4px',
                                                                 fontFamily: 'monospace'
@@ -1125,11 +1126,11 @@ function Proposal() {
                                                                 display: 'flex',
                                                                 justifyContent: 'space-between',
                                                                 alignItems: 'center',
-                                                                color: '#888',
+                                                                color: theme.colors.mutedText,
                                                                 fontSize: '14px'
                                                             }}>
                                                                 <div style={{ 
-                                                                    color: ballot.vote === 1 ? '#2ecc71' : ballot.vote === 2 ? '#e74c3c' : '#ffffff',
+                                                                    color: ballot.vote === 1 ? theme.colors.success : ballot.vote === 2 ? theme.colors.error : theme.colors.primaryText,
                                                                     fontWeight: 'bold'
                                                                 }}>
                                                                     {formatVote(ballot.vote)}
@@ -1189,7 +1190,7 @@ function Proposal() {
                                     justifyContent: 'space-between',
                                     gap: '10px',
                                     padding: '10px',
-                                    backgroundColor: '#3a3a3a',
+                                    backgroundColor: theme.colors.tertiaryBg,
                                     borderRadius: '6px',
                                     marginBottom: isDiscussionExpanded ? '10px' : '0'
                                 }}
@@ -1200,7 +1201,7 @@ function Proposal() {
                                         transition: 'transform 0.3s ease',
                                         display: 'inline-block'
                                     }}>▶</span>
-                                    <h2 style={{ margin: 0, color: '#ffffff' }}>Discussion</h2>
+                                    <h2 style={{ margin: 0, color: theme.colors.primaryText }}>Discussion</h2>
                                 </div>
                                 
                                 {/* Thread link - only show if thread exists */}
@@ -1209,21 +1210,21 @@ function Proposal() {
                                         to={`/thread?threadid=${proposalThreadId}&sns=${selectedSnsRoot}`}
                                         onClick={(e) => e.stopPropagation()} // Prevent header click
                                         style={{
-                                            color: '#3498db',
+                                            color: theme.colors.linkText,
                                             textDecoration: 'none',
                                             fontSize: '0.9rem',
                                             padding: '4px 8px',
                                             borderRadius: '4px',
-                                            border: '1px solid rgba(52, 152, 219, 0.3)',
+                                            border: `1px solid ${theme.colors.border}`,
                                             transition: 'all 0.2s ease'
                                         }}
                                         onMouseEnter={(e) => {
-                                            e.target.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
-                                            e.target.style.borderColor = '#3498db';
+                                            e.target.style.backgroundColor = theme.colors.accentHover;
+                                            e.target.style.borderColor = theme.colors.borderHover;
                                         }}
                                         onMouseLeave={(e) => {
                                             e.target.style.backgroundColor = 'transparent';
-                                            e.target.style.borderColor = 'rgba(52, 152, 219, 0.3)';
+                                            e.target.style.borderColor = theme.colors.border;
                                         }}
                                     >
                                         {threadLinkLoading ? 'Loading...' : 'View in Forum →'}
@@ -1237,7 +1238,7 @@ function Proposal() {
                                         <div style={{ 
                                             padding: '20px', 
                                             textAlign: 'center', 
-                                            color: '#888' 
+                                            color: theme.colors.mutedText 
                                         }}>
                                             Loading discussion...
                                         </div>

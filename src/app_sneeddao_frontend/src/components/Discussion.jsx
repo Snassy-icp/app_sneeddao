@@ -15,6 +15,7 @@ import { createTip, getTipsByPost } from '../utils/BackendUtils';
 import { useTokens } from '../hooks/useTokens';
 import { formatError } from '../utils/errorUtils';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { useTheme } from '../contexts/ThemeContext';
 
 // Add CSS for spinner animation
 const spinnerStyles = `
@@ -213,6 +214,7 @@ function Discussion({
     onError,
     onThreadCreated 
 }) {
+    const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
     const { identity } = useAuth();
     const { getHotkeyNeurons, getAllNeurons, loading: neuronsLoading, neuronsData } = useNeurons();
