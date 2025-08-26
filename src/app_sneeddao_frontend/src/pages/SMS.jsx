@@ -652,7 +652,7 @@ const SMS = () => {
                                     </div>
                                 </div>
                                 <div style={{ 
-                                    color: '#ccc', 
+                                    color: theme.colors.secondaryText, 
                                     fontSize: '14px',
                                     overflow: 'hidden',
                                     textOverflow: 'ellipsis',
@@ -685,6 +685,27 @@ const SMS = () => {
                                     >
                                         🔗 View Thread
                                     </button>
+                                    
+                                    {/* Reply button - only show if message is not from current user */}
+                                    {message.sender.toString() !== identity?.getPrincipal().toString() && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation(); // Prevent triggering the message modal
+                                                replyToMessage(message);
+                                            }}
+                                            style={{
+                                                backgroundColor: theme.colors.accent,
+                                                color: theme.colors.primaryText,
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                padding: '6px 12px',
+                                                cursor: 'pointer',
+                                                fontSize: '12px'
+                                            }}
+                                        >
+                                            ↩️ Reply
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                             );

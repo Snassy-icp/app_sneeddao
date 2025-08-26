@@ -169,3 +169,5 @@
   - **Message Content**: Individual message cards, reply forms, and message details sections
   - **Interactive Elements**: Hover effects, focus states, and form validation with theme colors
   - **Message Threading**: Threaded conversation view with proper background and border theming
+  - **Text Readability**: Improved message body text contrast using theme.colors.secondaryText
+  - **Reply Functionality**: Added Reply buttons to messages from other users for quick responses
