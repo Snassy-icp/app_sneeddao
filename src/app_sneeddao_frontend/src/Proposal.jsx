@@ -716,10 +716,7 @@ function Proposal() {
                                     }
                                 }}
                                 style={{
-                                    backgroundColor: '#2c3e50',
-                                    color: '#ffffff',
-                                    border: 'none',
-                                    borderRadius: '4px',
+                                    ...getStyles(theme).button,
                                     padding: '8px 16px',
                                     cursor: Number(currentProposalId) > 1 ? 'pointer' : 'not-allowed',
                                     opacity: Number(currentProposalId) > 1 ? 1 : 0.5,
@@ -750,7 +747,7 @@ function Proposal() {
                                 <span style={{
                                     position: 'absolute',
                                     left: '12px',
-                                    color: '#888',
+                                    color: theme.colors.mutedText,
                                     fontSize: '14px'
                                 }}>#</span>
                                 <input
@@ -759,10 +756,7 @@ function Proposal() {
                                     onChange={(e) => setProposalIdInput(e.target.value)}
                                     placeholder="Proposal ID"
                                     style={{
-                                        backgroundColor: '#3a3a3a',
-                                        border: '1px solid #4a4a4a',
-                                        borderRadius: '4px',
-                                        color: '#ffffff',
+                                        ...getStyles(theme).input,
                                         padding: '8px 12px 8px 26px',
                                         width: '100%',
                                         fontSize: '14px'
@@ -772,10 +766,7 @@ function Proposal() {
                             <button 
                                 type="submit" 
                                 style={{
-                                    backgroundColor: '#3498db',
-                                    color: '#ffffff',
-                                    border: 'none',
-                                    borderRadius: '4px',
+                                    ...getStyles(theme).button,
                                     padding: '8px 16px',
                                     cursor: 'pointer',
                                     fontSize: '14px',
@@ -788,7 +779,7 @@ function Proposal() {
                         </form>
 
                         <div style={{ justifySelf: 'end' }}>
-                            <button 
+                                                        <button
                                 onClick={() => {
                                     const nextId = Number(currentProposalId) + 1;
                                     setProposalIdInput(nextId.toString());
@@ -796,10 +787,7 @@ function Proposal() {
                                     setCurrentProposalId(nextId.toString());
                                 }}
                                 style={{
-                                    backgroundColor: '#2c3e50',
-                                    color: '#ffffff',
-                                    border: 'none',
-                                    borderRadius: '4px',
+                                    ...getStyles(theme).button,
                                     padding: '8px 16px',
                                     cursor: 'pointer',
                                     fontSize: '14px',
@@ -954,15 +942,7 @@ function Proposal() {
                                         <div style={{ marginTop: '15px' }}>
                                             <p><strong>Proposal Payload:</strong></p>
                                             <div style={{ 
-                                                backgroundColor: '#2a2a2a', 
-                                                padding: '15px', 
-                                                borderRadius: '6px',
-                                                marginTop: '8px',
-                                                border: '1px solid #3a3a3a',
-                                                fontFamily: 'monospace',
-                                                fontSize: '0.9rem',
-                                                lineHeight: '1.4',
-                                                color: '#e0e0e0',
+                                                ...getStyles(theme).payloadBox,
                                                 whiteSpace: 'pre-wrap',
                                                 overflowWrap: 'break-word',
                                                 maxHeight: '400px',

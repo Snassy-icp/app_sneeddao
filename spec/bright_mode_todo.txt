@@ -122,3 +122,6 @@
 - ✅ **Proposals Page** - Added complete theme support to /proposals page (Proposals.jsx)
 - ✅ **Proposal Page** - Added comprehensive theme support to /proposal page (Proposal.jsx)
 - ✅ **Proposals Summary Fix** - Fixed dark summary toggle sections in both proposal pages
+- ✅ **Proposal Navigation** - Fixed dark navigation buttons (Previous/Next) and input field
+- ✅ **Proposal Payload Section** - Fixed dark proposal payload display box
+- ✅ **Proposal Sections Complete** - Fixed all major dark sections in individual proposal page
