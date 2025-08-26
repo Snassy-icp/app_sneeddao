@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
@@ -9,7 +10,7 @@ import { formatError } from '../utils/errorUtils';
 import { fetchSnsLogo, getAllSnses, getSnsById } from '../utils/SnsUtils';
 import { HttpAgent } from '@dfinity/agent';
 
-const styles = {
+const getStyles = (theme) => ({
     container: {
         maxWidth: '1200px',
         margin: '0 auto',
@@ -20,13 +21,13 @@ const styles = {
         textAlign: 'center'
     },
     title: {
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '2.5rem',
         marginBottom: '10px',
         fontWeight: '600'
     },
     description: {
-        color: '#888',
+        color: theme.colors.mutedText,
         fontSize: '1.1rem',
         lineHeight: '1.6'
     },
@@ -37,28 +38,28 @@ const styles = {
         marginTop: '30px'
     },
     topicCard: {
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         borderRadius: '8px',
         padding: '20px',
-        border: '1px solid #3a3a3a',
+        border: `1px solid ${theme.colors.border}`,
         transition: 'all 0.2s ease',
         cursor: 'pointer',
         textDecoration: 'none',
         color: 'inherit'
     },
     topicCardHover: {
-        borderColor: '#3498db',
+        borderColor: theme.colors.borderHover,
         transform: 'translateY(-2px)',
         boxShadow: '0 4px 12px rgba(52, 152, 219, 0.2)'
     },
     topicTitle: {
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '1.3rem',
         fontWeight: '500',
         marginBottom: '10px'
     },
     topicDescription: {
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '0.95rem',
         lineHeight: '1.5',
         marginBottom: '15px'
@@ -68,18 +69,18 @@ const styles = {
         justifyContent: 'space-between',
         alignItems: 'center',
         fontSize: '0.85rem',
-        color: '#888'
+        color: theme.colors.mutedText
     },
     loading: {
         textAlign: 'center',
-        color: '#888',
+        color: theme.colors.mutedText,
         fontSize: '1.1rem',
         padding: '40px'
     },
     error: {
         backgroundColor: 'rgba(231, 76, 60, 0.2)',
         border: '1px solid #e74c3c',
-        color: '#e74c3c',
+        color: theme.colors.error,
         padding: '15px',
         borderRadius: '6px',
         marginBottom: '20px',
@@ -88,17 +89,17 @@ const styles = {
     subtopicsList: {
         marginBottom: '12px',
         padding: '10px',
-        backgroundColor: '#1a1a1a',
+        backgroundColor: theme.colors.primaryBg,
         borderRadius: '4px',
         border: '1px solid #333'
     },
     subtopicsText: {
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '0.9rem',
         lineHeight: '1.4'
     },
     subtopicLink: {
-        color: '#3498db',
+        color: theme.colors.accent,
         cursor: 'pointer',
         textDecoration: 'none',
         transition: 'color 0.2s ease',
@@ -109,12 +110,12 @@ const styles = {
     },
     noTopics: {
         textAlign: 'center',
-        color: '#888',
+        color: theme.colors.mutedText,
         fontSize: '1.1rem',
         padding: '40px',
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         borderRadius: '8px',
-        border: '1px solid #3a3a3a'
+        border: `1px solid ${theme.colors.border}`
     },
     noForumContainer: {
         display: 'flex',
@@ -125,34 +126,34 @@ const styles = {
     },
     noForumContent: {
         textAlign: 'center',
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         borderRadius: '12px',
         padding: '40px',
-        border: '1px solid #3a3a3a',
+        border: `1px solid ${theme.colors.border}`,
         maxWidth: '500px',
         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)'
     },
     noForumTitle: {
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '2rem',
         fontWeight: '600',
         marginBottom: '20px'
     },
     noForumMessage: {
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '1.1rem',
         marginBottom: '15px',
         lineHeight: '1.5'
     },
     noForumDescription: {
-        color: '#888',
+        color: theme.colors.mutedText,
         fontSize: '0.95rem',
         marginBottom: '30px',
         lineHeight: '1.4'
     },
     createForumButton: {
-        backgroundColor: '#3498db',
-        color: '#ffffff',
+        backgroundColor: theme.colors.accent,
+        color: theme.colors.primaryText,
         border: 'none',
         borderRadius: '8px',
         padding: '14px 28px',
@@ -163,14 +164,14 @@ const styles = {
         boxShadow: '0 2px 8px rgba(52, 152, 219, 0.3)'
     },
     createForumButtonDisabled: {
-        backgroundColor: '#555',
+        backgroundColor: theme.colors.mutedText,
         cursor: 'not-allowed',
         opacity: 0.6,
         boxShadow: 'none'
     },
     generalPrompt: {
-        backgroundColor: '#2a2a2a',
-        border: '1px solid #3498db',
+        backgroundColor: theme.colors.secondaryBg,
+        border: `1px solid ${theme.colors.accent}`,
         borderRadius: '8px',
         padding: '20px',
         marginTop: '40px',
@@ -178,13 +179,13 @@ const styles = {
         textAlign: 'center'
     },
     generalPromptTitle: {
-        color: '#3498db',
+        color: theme.colors.accent,
         fontSize: '1.3rem',
         fontWeight: '600',
         marginBottom: '10px'
     },
     generalPromptMessage: {
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '1rem',
         marginBottom: '20px',
         lineHeight: '1.5'
@@ -196,8 +197,8 @@ const styles = {
         alignItems: 'center'
     },
     createGeneralButton: {
-        backgroundColor: '#3498db',
-        color: '#ffffff',
+        backgroundColor: theme.colors.accent,
+        color: theme.colors.primaryText,
         border: 'none',
         borderRadius: '6px',
         padding: '10px 20px',
@@ -208,7 +209,7 @@ const styles = {
     },
     dismissButton: {
         backgroundColor: 'transparent',
-        color: '#888',
+        color: theme.colors.mutedText,
         border: '1px solid #555',
         borderRadius: '6px',
         padding: '10px 20px',
@@ -221,11 +222,11 @@ const styles = {
         cursor: 'not-allowed'
     },
     forumHeader: {
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         borderRadius: '12px',
         padding: '24px',
         marginBottom: '24px',
-        border: '1px solid #3a3a3a',
+        border: `1px solid ${theme.colors.border}`,
         display: 'flex',
         alignItems: 'center',
         gap: '20px',
@@ -236,20 +237,20 @@ const styles = {
         height: '64px',
         borderRadius: '50%',
         objectFit: 'cover',
-        border: '2px solid #3a3a3a',
+        border: `2px solid ${theme.colors.border}`,
         flexShrink: 0
     },
     forumLogoPlaceholder: {
         width: '64px',
         height: '64px',
         borderRadius: '50%',
-        backgroundColor: '#4a4a4a',
-        border: '2px solid #3a3a3a',
+        backgroundColor: theme.colors.border,
+        border: `2px solid ${theme.colors.border}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         fontSize: '1.2rem',
-        color: '#888',
+        color: theme.colors.mutedText,
         fontWeight: '600',
         flexShrink: 0
     },
@@ -258,22 +259,23 @@ const styles = {
         minWidth: 0
     },
     forumHeaderTitle: {
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '2rem',
         fontWeight: '600',
         marginBottom: '8px',
         lineHeight: '1.2'
     },
     forumHeaderDescription: {
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '1rem',
         lineHeight: '1.5',
         marginBottom: '0'
     }
-};
+});
 
 function Forum() {
     const { identity } = useAuth();
+    const { theme } = useTheme();
     const { selectedSnsRoot } = useSns();
     const [forum, setForum] = useState(null);
     const [topics, setTopics] = useState([]);
@@ -652,7 +654,7 @@ function Forum() {
             <div className='page-container'>
                 <Header showSnsDropdown={true} />
                 <main className="wallet-container">
-                    <div style={styles.loading}>Loading forum...</div>
+                    <div style={getStyles(theme).loading}>Loading forum...</div>
                 </main>
             </div>
         );
@@ -664,21 +666,21 @@ function Forum() {
                 <div className='page-container'>
                     <Header showSnsDropdown={true} />
                     <main className="wallet-container">
-                        <div style={styles.noForumContainer}>
-                            <div style={styles.noForumContent}>
-                                <h1 style={styles.noForumTitle}>Forum Not Available</h1>
-                                <p style={styles.noForumMessage}>
+                        <div style={getStyles(theme).noForumContainer}>
+                            <div style={getStyles(theme).noForumContent}>
+                                <h1 style={getStyles(theme).noForumTitle}>Forum Not Available</h1>
+                                <p style={getStyles(theme).noForumMessage}>
                                     This SNS doesn't have a forum yet. Would you like to create one?
                                 </p>
-                                <p style={styles.noForumDescription}>
+                                <p style={getStyles(theme).noForumDescription}>
                                     Creating a forum will set up discussion spaces for governance topics and proposals.
                                 </p>
                                 <button 
                                     onClick={handleCreateForum}
                                     disabled={creatingForum}
                                     style={{
-                                        ...styles.createForumButton,
-                                        ...(creatingForum ? styles.createForumButtonDisabled : {})
+                                        ...getStyles(theme).createForumButton,
+                                        ...(creatingForum ? getStyles(theme).createForumButtonDisabled : {})
                                     }}
                                 >
                                     {creatingForum ? 'Creating Forum...' : 'Create Forum'}
@@ -694,7 +696,7 @@ function Forum() {
             <div className='page-container'>
                 <Header showSnsDropdown={true} />
                 <main className="wallet-container">
-                    <div style={styles.error}>{error}</div>
+                    <div style={getStyles(theme).error}>{error}</div>
                 </main>
             </div>
         );
@@ -707,7 +709,7 @@ function Forum() {
             {/* Header-like Forum Section - Looks like part of header but scrolls with page */}
             {forum && (
                 <div style={{
-                    backgroundColor: '#1a1a1a', // Match header background
+                    backgroundColor: theme.colors.primaryBg, // Match header background
                     borderBottom: '1px solid rgba(255,255,255,0.1)',
                     padding: '12px 0',
                     position: 'sticky',
@@ -728,13 +730,13 @@ function Forum() {
                                 width: '32px',
                                 height: '32px',
                                 borderRadius: '50%',
-                                backgroundColor: '#4a4a4a',
-                                border: '2px solid #3a3a3a',
+                                backgroundColor: theme.colors.border,
+                                border: `2px solid ${theme.colors.border}`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 fontSize: '0.8rem',
-                                color: '#888',
+                                color: theme.colors.mutedText,
                                 fontWeight: '600'
                             }}>
                                 ...
@@ -756,13 +758,13 @@ function Forum() {
                                 width: '32px',
                                 height: '32px',
                                 borderRadius: '50%',
-                                backgroundColor: '#4a4a4a',
-                                border: '2px solid #3a3a3a',
+                                backgroundColor: theme.colors.border,
+                                border: `2px solid ${theme.colors.border}`,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 fontSize: '0.8rem',
-                                color: '#888',
+                                color: theme.colors.mutedText,
                                 fontWeight: '600'
                             }}>
                                 {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
@@ -771,7 +773,7 @@ function Forum() {
                         
                         {/* Forum Title */}
                         <h1 style={{
-                            color: '#ffffff',
+                            color: theme.colors.primaryText,
                             fontSize: '1.5rem',
                             fontWeight: '600',
                             margin: 0,
@@ -783,27 +785,34 @@ function Forum() {
                 </div>
             )}
             
+            <div 
+                style={{
+                    background: theme.colors.primaryGradient,
+                    color: theme.colors.primaryText,
+                    minHeight: '100vh'
+                }}
+            >
             <main className="wallet-container">
-                <div style={styles.container}>
+                <div style={getStyles(theme).container}>
                     {/* Welcome Section */}
                     <div style={{
-                        backgroundColor: '#2a2a2a',
+                        backgroundColor: theme.colors.secondaryBg,
                         borderRadius: '12px',
                         padding: '2rem',
                         marginBottom: '2rem',
-                        border: '1px solid #4a4a4a',
+                        border: `1px solid ${theme.colors.border}`,
                         textAlign: 'center'
                     }}>
                         <h1 style={{
                             fontSize: '2.5rem',
-                            color: '#ffffff',
+                            color: theme.colors.primaryText,
                             marginBottom: '1rem',
                             fontWeight: 'bold'
                         }}>
                             Welcome to the Sneed Hub SNS Forum
                         </h1>
                         <p style={{
-                            color: '#ccc',
+                            color: theme.colors.secondaryText,
                             fontSize: '1.1rem',
                             lineHeight: '1.6',
                             maxWidth: '800px',
@@ -815,7 +824,7 @@ function Forum() {
                         
                         {!identity && (
                             <p style={{
-                                color: '#f39c12',
+                                color: theme.colors.warning,
                                 fontSize: '1rem',
                                 lineHeight: '1.6',
                                 maxWidth: '800px',
@@ -837,34 +846,34 @@ function Forum() {
                             textAlign: 'left'
                         }}>
                             <div style={{
-                                backgroundColor: '#3a3a3a',
+                                backgroundColor: theme.colors.secondaryBg,
                                 padding: '1rem',
                                 borderRadius: '8px',
-                                border: '1px solid #4a4a4a'
+                                border: `1px solid ${theme.colors.border}`
                             }}>
-                                <h3 style={{ color: '#3498db', marginBottom: '0.5rem', fontSize: '1.1rem' }}>🗳️ Voting Power</h3>
+                                <h3 style={{ color: theme.colors.accent, marginBottom: '0.5rem', fontSize: '1.1rem' }}>🗳️ Voting Power</h3>
                                 <p style={{ color: '#ccc', fontSize: '0.9rem', lineHeight: '1.4', margin: 0 }}>
                                     Hotkey your SNS neurons to gain voting power for upvoting/downvoting posts and participating in polls.
                                 </p>
                             </div>
                             
                             <div style={{
-                                backgroundColor: '#3a3a3a',
+                                backgroundColor: theme.colors.secondaryBg,
                                 padding: '1rem',
                                 borderRadius: '8px',
-                                border: '1px solid #4a4a4a'
+                                border: `1px solid ${theme.colors.border}`
                             }}>
-                                <h3 style={{ color: '#27ae60', marginBottom: '0.5rem', fontSize: '1.1rem' }}>💬 Direct Messages</h3>
+                                <h3 style={{ color: theme.colors.success, marginBottom: '0.5rem', fontSize: '1.1rem' }}>💬 Direct Messages</h3>
                                 <p style={{ color: '#ccc', fontSize: '0.9rem', lineHeight: '1.4', margin: 0 }}>
                                     Send private messages to other users to have one-on-one conversations.
                                 </p>
                             </div>
                             
                             <div style={{
-                                backgroundColor: '#3a3a3a',
+                                backgroundColor: theme.colors.secondaryBg,
                                 padding: '1rem',
                                 borderRadius: '8px',
-                                border: '1px solid #4a4a4a'
+                                border: `1px solid ${theme.colors.border}`
                             }}>
                                 <h3 style={{ color: '#9b59b6', marginBottom: '0.5rem', fontSize: '1.1rem' }}>🏛️ Governance</h3>
                                 <p style={{ color: '#ccc', fontSize: '0.9rem', lineHeight: '1.4', margin: 0 }}>
@@ -877,7 +886,7 @@ function Forum() {
                     {/* Forum Header Section - Updated to match welcome design */}
                     {forum && (
                         <div style={{
-                            backgroundColor: '#2a2a2a',
+                            backgroundColor: theme.colors.secondaryBg,
                             borderRadius: '12px',
                             padding: '2rem',
                             marginBottom: '2rem',
@@ -893,17 +902,17 @@ function Forum() {
                                 {/* SNS Logo */}
                                 <div style={{ flexShrink: 0 }}>
                                     {loadingLogo ? (
-                                        <div style={styles.forumLogoPlaceholder}>
+                                        <div style={getStyles(theme).forumLogoPlaceholder}>
                                             ...
                                         </div>
                                     ) : snsLogo ? (
                                         <img
                                             src={snsLogo}
                                             alt={snsInfo?.name || 'SNS Logo'}
-                                            style={styles.forumLogo}
+                                            style={getStyles(theme).forumLogo}
                                         />
                                     ) : (
-                                        <div style={styles.forumLogoPlaceholder}>
+                                        <div style={getStyles(theme).forumLogoPlaceholder}>
                                             {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
                                         </div>
                                     )}
@@ -912,7 +921,7 @@ function Forum() {
                                 {/* Forum Title */}
                                 <h1 style={{
                                     fontSize: '2.5rem',
-                                    color: '#ffffff',
+                                    color: theme.colors.primaryText,
                                     margin: '0',
                                     fontWeight: 'bold',
                                     lineHeight: '1.2',
@@ -924,7 +933,7 @@ function Forum() {
                             
                             {/* Forum Description - Full width below */}
                             <p style={{
-                                color: '#ccc',
+                                color: theme.colors.secondaryText,
                                 fontSize: '1.1rem',
                                 lineHeight: '1.6',
                                 margin: '0',
@@ -939,20 +948,20 @@ function Forum() {
 
                     {/* Topics Grid */}
                     {topicHierarchy.length > 0 ? (
-                        <div style={styles.topicsGrid}>
+                        <div style={getStyles(theme).topicsGrid}>
                             {topicHierarchy.map((rootTopic) => (
                                 <Link
                                     key={rootTopic.id}
                                     to={`/topic/${rootTopic.id}`}
                                     style={{
-                                        ...styles.topicCard,
-                                        ...(hoveredCard === rootTopic.id ? styles.topicCardHover : {})
+                                        ...getStyles(theme).topicCard,
+                                        ...(hoveredCard === rootTopic.id ? getStyles(theme).topicCardHover : {})
                                     }}
                                     onMouseEnter={() => setHoveredCard(rootTopic.id)}
                                     onMouseLeave={() => setHoveredCard(null)}
                                 >
-                                    <h3 style={styles.topicTitle}>{rootTopic.title}</h3>
-                                    <p style={styles.topicDescription}>
+                                    <h3 style={getStyles(theme).topicTitle}>{rootTopic.title}</h3>
+                                    <p style={getStyles(theme).topicDescription}>
                                         {rootTopic.description || 'No description available'}
                                     </p>
 
@@ -965,12 +974,12 @@ function Forum() {
                                                 gap: '12px',
                                                 marginTop: '12px',
                                                 fontSize: '0.85rem',
-                                                color: '#888'
+                                                color: theme.colors.mutedText
                                             }}>
                                                 <span>📋 {stats.thread_count} thread{stats.thread_count !== 1 ? 's' : ''}</span>
                                                 {stats.total_unread_posts > 0 && (
                                                     <span style={{
-                                                        backgroundColor: '#e74c3c',
+                                                        backgroundColor: theme.colors.error,
                                                         color: 'white',
                                                         padding: '2px 6px',
                                                         borderRadius: '8px',
@@ -986,12 +995,12 @@ function Forum() {
                                     
                                     {/* Subtopics List */}
                                     {rootTopic.children.length > 0 && (
-                                        <div style={styles.subtopicsList}>
-                                            <span style={styles.subtopicsText}>
+                                        <div style={getStyles(theme).subtopicsList}>
+                                            <span style={getStyles(theme).subtopicsText}>
                                                 {rootTopic.children.map((child, index) => (
                                                     <span key={child.id}>
                                                         <span 
-                                                            style={styles.subtopicLink}
+                                                            style={getStyles(theme).subtopicLink}
                                                             onClick={(e) => {
                                                                 e.preventDefault();
                                                                 e.stopPropagation();
@@ -1005,7 +1014,7 @@ function Forum() {
                                                                     return (
                                                                         <span style={{
                                                                             marginLeft: '4px',
-                                                                            backgroundColor: '#e74c3c',
+                                                                            backgroundColor: theme.colors.error,
                                                                             color: 'white',
                                                                             padding: '1px 4px',
                                                                             borderRadius: '6px',
@@ -1026,7 +1035,7 @@ function Forum() {
                                         </div>
                                     )}
                                     
-                                    <div style={styles.topicMeta}>
+                                    <div style={getStyles(theme).topicMeta}>
                                         <span>Created {formatDate(rootTopic.created_at)}</span>
                                         {rootTopic.children.length > 0 && (
                                             <span>{rootTopic.children.length} subtopic{rootTopic.children.length !== 1 ? 's' : ''}</span>
@@ -1037,7 +1046,7 @@ function Forum() {
                             ))}
                         </div>
                     ) : (
-                        <div style={styles.noTopics}>
+                        <div style={getStyles(theme).noTopics}>
                             <p>No topics available in this forum yet.</p>
                             <p>Topics will be created automatically as the community grows.</p>
                         </div>
@@ -1045,19 +1054,19 @@ function Forum() {
 
                     {/* Special Topic Prompts */}
                     {showGeneralPrompt && (
-                        <div style={styles.generalPrompt}>
-                            <h3 style={styles.generalPromptTitle}>Create General Topic?</h3>
-                            <p style={styles.generalPromptMessage}>
+                        <div style={getStyles(theme).generalPrompt}>
+                            <h3 style={getStyles(theme).generalPromptTitle}>Create General Topic?</h3>
+                            <p style={getStyles(theme).generalPromptMessage}>
                                 This SNS does not have a "General" topic yet. Would you like to create it? 
                                 This will provide a space for general community discussions.
                             </p>
-                            <div style={styles.generalPromptButtons}>
+                            <div style={getStyles(theme).generalPromptButtons}>
                                 <button 
                                     onClick={handleCreateGeneralTopic}
                                     disabled={creatingGeneral}
                                     style={{
-                                        ...styles.createGeneralButton,
-                                        ...(creatingGeneral ? styles.buttonDisabled : {})
+                                        ...getStyles(theme).createGeneralButton,
+                                        ...(creatingGeneral ? getStyles(theme).buttonDisabled : {})
                                     }}
                                 >
                                     {creatingGeneral ? 'Creating...' : 'Create General Topic'}
@@ -1066,8 +1075,8 @@ function Forum() {
                                     onClick={() => setShowGeneralPrompt(false)}
                                     disabled={creatingGeneral}
                                     style={{
-                                        ...styles.dismissButton,
-                                        ...(creatingGeneral ? styles.buttonDisabled : {})
+                                        ...getStyles(theme).dismissButton,
+                                        ...(creatingGeneral ? getStyles(theme).buttonDisabled : {})
                                     }}
                                 >
                                     Maybe Later
@@ -1077,19 +1086,19 @@ function Forum() {
                     )}
 
                     {showGovernancePrompt && (
-                        <div style={styles.generalPrompt}>
-                            <h3 style={styles.generalPromptTitle}>Create Governance Topic?</h3>
-                            <p style={styles.generalPromptMessage}>
+                        <div style={getStyles(theme).generalPrompt}>
+                            <h3 style={getStyles(theme).generalPromptTitle}>Create Governance Topic?</h3>
+                            <p style={getStyles(theme).generalPromptMessage}>
                                 This SNS does not have a "Governance" topic yet. Would you like to create it? 
                                 This will provide a space for governance discussions and decision-making.
                             </p>
-                            <div style={styles.generalPromptButtons}>
+                            <div style={getStyles(theme).generalPromptButtons}>
                                 <button 
                                     onClick={handleCreateGovernanceTopic}
                                     disabled={creatingGovernance}
                                     style={{
-                                        ...styles.createGeneralButton,
-                                        ...(creatingGovernance ? styles.buttonDisabled : {})
+                                        ...getStyles(theme).createGeneralButton,
+                                        ...(creatingGovernance ? getStyles(theme).buttonDisabled : {})
                                     }}
                                 >
                                     {creatingGovernance ? 'Creating...' : 'Create Governance Topic'}
@@ -1098,8 +1107,8 @@ function Forum() {
                                     onClick={() => setShowGovernancePrompt(false)}
                                     disabled={creatingGovernance}
                                     style={{
-                                        ...styles.dismissButton,
-                                        ...(creatingGovernance ? styles.buttonDisabled : {})
+                                        ...getStyles(theme).dismissButton,
+                                        ...(creatingGovernance ? getStyles(theme).buttonDisabled : {})
                                     }}
                                 >
                                     Maybe Later
@@ -1109,6 +1118,7 @@ function Forum() {
                     )}
                 </div>
             </main>
+            </div>
         </div>
     );
 }

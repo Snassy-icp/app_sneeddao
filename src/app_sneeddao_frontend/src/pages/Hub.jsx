@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import { fetchAndCacheSnsData, fetchSnsLogo, getSnsById } from '../utils/SnsUtils';
@@ -12,6 +13,7 @@ import { Link } from 'react-router-dom';
 
 function Hub() {
     const { identity } = useAuth();
+    const { theme } = useTheme();
     const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
     const [searchParams, setSearchParams] = useSearchParams();
     const [snsList, setSnsList] = useState([]);
@@ -274,7 +276,7 @@ function Hub() {
             <div className='page-container'>
                 <Header showSnsDropdown={true} />
                 <main style={{ padding: '2rem', textAlign: 'center' }}>
-                    <div style={{ color: '#ffffff' }}>Loading SNS data...</div>
+                    <div style={{ color: theme.colors.primaryText }}>Loading SNS data...</div>
                 </main>
             </div>
         );
@@ -285,14 +287,21 @@ function Hub() {
             <div className='page-container'>
                 <Header showSnsDropdown={true} />
                 <main style={{ padding: '2rem', textAlign: 'center' }}>
-                    <div style={{ color: '#e74c3c' }}>{error}</div>
+                    <div style={{ color: theme.colors.error }}>{error}</div>
                 </main>
             </div>
         );
     }
 
     return (
-        <div className='page-container'>
+        <div 
+            className='page-container'
+            style={{
+                background: theme.colors.primaryGradient,
+                color: theme.colors.primaryText,
+                minHeight: '100vh'
+            }}
+        >
             <Header showSnsDropdown={true} />
             <main style={{
                 maxWidth: '1400px',
@@ -301,23 +310,23 @@ function Hub() {
             }}>
                 {/* Header Section - Spans full width */}
                 <div style={{
-                    backgroundColor: '#2a2a2a',
+                    backgroundColor: theme.colors.secondaryBg,
                     borderRadius: '12px',
                     padding: '2rem',
                     marginBottom: '2rem',
-                    border: '1px solid #4a4a4a',
+                    border: `1px solid ${theme.colors.border}`,
                     textAlign: 'center'
                 }}>
                     <h1 style={{
                         fontSize: '2.5rem',
-                        color: '#ffffff',
+                        color: theme.colors.primaryText,
                         marginBottom: '1rem',
                         fontWeight: 'bold'
                     }}>
                         Welcome to Sneed DAO SNS Hub
                     </h1>
                     <p style={{
-                        color: '#ccc',
+                        color: theme.colors.secondaryText,
                         fontSize: '1.1rem',
                         lineHeight: '1.6',
                         maxWidth: '800px',
@@ -329,7 +338,7 @@ function Hub() {
                     </p>
                     
                     <p style={{
-                        color: '#bbb',
+                        color: theme.colors.secondaryText,
                         fontSize: '1rem',
                         lineHeight: '1.6',
                         maxWidth: '800px',
@@ -417,18 +426,18 @@ function Hub() {
                         marginBottom: '1rem',
                         padding: '0.5rem 0'
                     }}>
-                        <div style={{ color: '#888', fontSize: '14px' }}>
+                        <div style={{ color: theme.colors.mutedText, fontSize: '14px' }}>
                             {snsList.length} SNS{snsList.length !== 1 ? 'es' : ''} found
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <label style={{ color: '#888', fontSize: '14px' }}>Sort by:</label>
+                            <label style={{ color: theme.colors.mutedText, fontSize: '14px' }}>Sort by:</label>
                             <select
                                 value={sortBy}
                                 onChange={(e) => setSortBy(e.target.value)}
                                 style={{
-                                    backgroundColor: '#3a3a3a',
-                                    color: '#ffffff',
-                                    border: '1px solid #4a4a4a',
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
+                                    border: `1px solid ${theme.colors.border}`,
                                     borderRadius: '4px',
                                     padding: '4px 8px',
                                     fontSize: '14px'
@@ -454,8 +463,8 @@ function Hub() {
                                 <div
                                     key={sns.rootCanisterId}
                                     style={{
-                                        backgroundColor: isSelected ? '#3a3a3a' : '#2a2a2a',
-                                        border: isSelected ? '2px solid #3498db' : '1px solid #4a4a4a',
+                                        backgroundColor: isSelected ? theme.colors.secondaryBg : theme.colors.primaryBg,
+                                        border: isSelected ? `2px solid ${theme.colors.accent}` : `1px solid ${theme.colors.border}`,
                                         borderRadius: '8px',
                                         overflow: 'hidden',
                                         opacity: startsWithAlphanumeric ? 1 : 0.7
@@ -470,7 +479,7 @@ function Hub() {
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'space-between',
-                                            borderBottom: isExpanded ? '1px solid #4a4a4a' : 'none'
+                                            borderBottom: isExpanded ? `1px solid ${theme.colors.border}` : 'none'
                                         }}
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -479,7 +488,7 @@ function Hub() {
                                                     width: '32px',
                                                     height: '32px',
                                                     borderRadius: '50%',
-                                                    backgroundColor: '#4a4a4a'
+                                                    backgroundColor: theme.colors.border
                                                 }} />
                                             ) : logo ? (
                                                 <img
@@ -497,11 +506,11 @@ function Hub() {
                                                     width: '32px',
                                                     height: '32px',
                                                     borderRadius: '50%',
-                                                    backgroundColor: '#4a4a4a',
+                                                    backgroundColor: theme.colors.border,
                                                     display: 'flex',
                                                     alignItems: 'center',
                                                     justifyContent: 'center',
-                                                    color: '#888',
+                                                    color: theme.colors.mutedText,
                                                     fontSize: '12px'
                                                 }}>
                                                     SNS
@@ -509,14 +518,14 @@ function Hub() {
                                             )}
                                             <div>
                                                 <div style={{
-                                                    color: startsWithAlphanumeric ? '#ffffff' : '#888',
+                                                    color: startsWithAlphanumeric ? theme.colors.primaryText : theme.colors.mutedText,
                                                     fontSize: '16px',
                                                     fontWeight: 'bold'
                                                 }}>
                                                     {sns.name}
                                                 </div>
                                                 <div style={{
-                                                    color: '#888',
+                                                    color: theme.colors.mutedText,
                                                     fontSize: '12px',
                                                     fontFamily: 'monospace'
                                                 }}>
@@ -532,7 +541,7 @@ function Hub() {
                                             style={{
                                                 background: 'none',
                                                 border: 'none',
-                                                color: '#888',
+                                                color: theme.colors.mutedText,
                                                 cursor: 'pointer',
                                                 fontSize: '16px',
                                                 transform: isExpanded ? 'rotate(180deg)' : 'none',
@@ -556,9 +565,9 @@ function Hub() {
                                                 fontSize: '14px'
                                             }}>
                                                 <div>
-                                                    <div style={{ color: '#888', marginBottom: '4px' }}>Root Canister</div>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Root Canister</div>
                                                     <div style={{ 
-                                                        color: '#ffffff',
+                                                        color: theme.colors.primaryText,
                                                         fontFamily: 'monospace',
                                                         fontSize: '12px'
                                                     }}>
@@ -566,9 +575,9 @@ function Hub() {
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <div style={{ color: '#888', marginBottom: '4px' }}>Governance</div>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Governance</div>
                                                     <div style={{ 
-                                                        color: '#ffffff',
+                                                        color: theme.colors.primaryText,
                                                         fontFamily: 'monospace',
                                                         fontSize: '12px'
                                                     }}>
@@ -576,9 +585,9 @@ function Hub() {
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <div style={{ color: '#888', marginBottom: '4px' }}>Ledger</div>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Ledger</div>
                                                     <div style={{ 
-                                                        color: '#ffffff',
+                                                        color: theme.colors.primaryText,
                                                         fontFamily: 'monospace',
                                                         fontSize: '12px'
                                                     }}>
@@ -587,9 +596,9 @@ function Hub() {
                                                 </div>
                                                 {sns.canisters.swap && (
                                                     <div>
-                                                        <div style={{ color: '#888', marginBottom: '4px' }}>Swap</div>
+                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Swap</div>
                                                         <div style={{ 
-                                                            color: '#ffffff',
+                                                            color: theme.colors.primaryText,
                                                             fontFamily: 'monospace',
                                                             fontSize: '12px'
                                                         }}>
@@ -619,7 +628,7 @@ function Hub() {
                             border: '1px solid #4a4a4a'
                         }}>
                             <h2 style={{
-                                color: '#ffffff',
+                                color: theme.colors.primaryText,
                                 marginBottom: '1.5rem',
                                 fontSize: '1.5rem'
                             }}>
@@ -627,35 +636,35 @@ function Hub() {
                             </h2>
 
                             {loadingDetails ? (
-                                <div style={{ textAlign: 'center', color: '#888', padding: '2rem' }}>
+                                <div style={{ textAlign: 'center', color: theme.colors.mutedText, padding: '2rem' }}>
                                     Loading detailed information...
                                 </div>
                             ) : selectedSnsDetails ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                                     {/* Basic Info */}
                                     <div>
-                                        <h3 style={{ color: '#3498db', marginBottom: '1rem' }}>Basic Information</h3>
+                                        <h3 style={{ color: theme.colors.accent, marginBottom: '1rem' }}>Basic Information</h3>
                                         <div style={{ display: 'grid', gap: '0.5rem' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span style={{ color: '#888' }}>Name:</span>
-                                                <span style={{ color: '#ffffff' }}>{selectedSnsDetails.name}</span>
+                                                <span style={{ color: theme.colors.mutedText }}>Name:</span>
+                                                <span style={{ color: theme.colors.primaryText }}>{selectedSnsDetails.name}</span>
                                             </div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span style={{ color: '#888' }}>Token Symbol:</span>
-                                                <span style={{ color: '#ffffff' }}>{selectedSnsDetails.tokenSymbol}</span>
+                                                <span style={{ color: theme.colors.mutedText }}>Token Symbol:</span>
+                                                <span style={{ color: theme.colors.primaryText }}>{selectedSnsDetails.tokenSymbol}</span>
                                             </div>
                                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span style={{ color: '#888' }}>Total Supply:</span>
-                                                <span style={{ color: '#ffffff' }}>
+                                                <span style={{ color: theme.colors.mutedText }}>Total Supply:</span>
+                                                <span style={{ color: theme.colors.primaryText }}>
                                                     {formatE8s(selectedSnsDetails.totalSupply)} {selectedSnsDetails.tokenSymbol}
                                                 </span>
                                             </div>
                                             {selectedSnsDetails.metadata?.description?.[0] && (
                                                 <div>
-                                                    <div style={{ color: '#888', marginBottom: '0.5rem' }}>Description:</div>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '0.5rem' }}>Description:</div>
                                                     <div style={{ 
-                                                        color: '#ffffff',
-                                                        backgroundColor: '#1a1a1a',
+                                                        color: theme.colors.primaryText,
+                                                        backgroundColor: theme.colors.primaryBg,
                                                         padding: '1rem',
                                                         borderRadius: '4px',
                                                         fontSize: '14px',
@@ -671,28 +680,28 @@ function Hub() {
                                     {/* Governance Parameters */}
                                     {selectedSnsDetails.nervousSystemParameters && (
                                         <div>
-                                            <h3 style={{ color: '#3498db', marginBottom: '1rem' }}>Governance Parameters</h3>
+                                            <h3 style={{ color: theme.colors.accent, marginBottom: '1rem' }}>Governance Parameters</h3>
                                             <div style={{ display: 'grid', gap: '0.5rem' }}>
                                                 {selectedSnsDetails.nervousSystemParameters.neuron_minimum_stake_e8s?.[0] && (
                                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                        <span style={{ color: '#888' }}>Min Neuron Stake:</span>
-                                                        <span style={{ color: '#ffffff' }}>
+                                                        <span style={{ color: theme.colors.mutedText }}>Min Neuron Stake:</span>
+                                                        <span style={{ color: theme.colors.primaryText }}>
                                                             {formatE8s(selectedSnsDetails.nervousSystemParameters.neuron_minimum_stake_e8s[0])} {selectedSnsDetails.tokenSymbol}
                                                         </span>
                                                     </div>
                                                 )}
                                                 {selectedSnsDetails.nervousSystemParameters.max_dissolve_delay_seconds?.[0] && (
                                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                        <span style={{ color: '#888' }}>Max Dissolve Delay:</span>
-                                                        <span style={{ color: '#ffffff' }}>
+                                                        <span style={{ color: theme.colors.mutedText }}>Max Dissolve Delay:</span>
+                                                        <span style={{ color: theme.colors.primaryText }}>
                                                             {formatDuration(selectedSnsDetails.nervousSystemParameters.max_dissolve_delay_seconds[0] * 1000000000n)}
                                                         </span>
                                                     </div>
                                                 )}
                                                 {selectedSnsDetails.nervousSystemParameters.proposal_reject_cost_e8s?.[0] && (
                                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                        <span style={{ color: '#888' }}>Proposal Reject Cost:</span>
-                                                        <span style={{ color: '#ffffff' }}>
+                                                        <span style={{ color: theme.colors.mutedText }}>Proposal Reject Cost:</span>
+                                                        <span style={{ color: theme.colors.primaryText }}>
                                                             {formatE8s(selectedSnsDetails.nervousSystemParameters.proposal_reject_cost_e8s[0])} {selectedSnsDetails.tokenSymbol}
                                                         </span>
                                                     </div>
@@ -703,14 +712,14 @@ function Hub() {
 
                                     {/* External Links */}
                                     <div>
-                                        <h3 style={{ color: '#3498db', marginBottom: '1rem' }}>External Links</h3>
+                                        <h3 style={{ color: theme.colors.accent, marginBottom: '1rem' }}>External Links</h3>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                             <a
                                                 href={`https://nns.ic0.app/project/?project=${selectedSnsRoot}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 style={{
-                                                    color: '#3498db',
+                                                    color: theme.colors.accent,
                                                     textDecoration: 'none',
                                                     padding: '0.5rem',
                                                     backgroundColor: '#1a1a1a',
@@ -725,7 +734,7 @@ function Hub() {
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 style={{
-                                                    color: '#3498db',
+                                                    color: theme.colors.accent,
                                                     textDecoration: 'none',
                                                     padding: '0.5rem',
                                                     backgroundColor: '#1a1a1a',
@@ -740,7 +749,7 @@ function Hub() {
 
                                     {/* Internal Pages */}
                                     <div>
-                                        <h3 style={{ color: '#3498db', marginBottom: '1rem' }}>Explore This SNS</h3>
+                                        <h3 style={{ color: theme.colors.accent, marginBottom: '1rem' }}>Explore This SNS</h3>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                             <Link
                                                 to={`/proposals?sns=${selectedSnsRoot}`}
@@ -810,7 +819,7 @@ function Hub() {
                                     </div>
                                 </div>
                             ) : (
-                                <div style={{ textAlign: 'center', color: '#888', padding: '2rem' }}>
+                                <div style={{ textAlign: 'center', color: theme.colors.mutedText, padding: '2rem' }}>
                                     Failed to load SNS details
                                 </div>
                             )}
@@ -824,13 +833,13 @@ function Hub() {
                             textAlign: 'center'
                         }}>
                             <h2 style={{
-                                color: '#ffffff',
+                                color: theme.colors.primaryText,
                                 marginBottom: '1rem',
                                 fontSize: '1.5rem'
                             }}>
                                 Select an SNS
                             </h2>
-                            <p style={{ color: '#888' }}>
+                            <p style={{ color: theme.colors.mutedText }}>
                                 Choose an SNS from the list to view detailed information
                             </p>
                         </div>

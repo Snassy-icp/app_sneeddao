@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import { useNaming } from '../NamingContext';
 import Header from '../components/Header';
@@ -13,7 +14,7 @@ import { HttpAgent } from '@dfinity/agent';
 import PrincipalInput from '../components/PrincipalInput';
 import Poll from '../components/Poll';
 
-const styles = {
+const getStyles = (theme) => ({
     container: {
         maxWidth: '1200px',
         margin: '0 auto',
@@ -24,25 +25,25 @@ const styles = {
         textAlign: 'center'
     },
     title: {
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '2.5rem',
         marginBottom: '10px',
         fontWeight: '600'
     },
     description: {
-        color: '#888',
+        color: theme.colors.mutedText,
         fontSize: '1.1rem',
         lineHeight: '1.6'
     },
     filterSection: {
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         borderRadius: '8px',
         padding: '20px',
         marginBottom: '30px',
-        border: '1px solid #3a3a3a'
+        border: `1px solid ${theme.colors.border}`
     },
     filterTitle: {
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '1.2rem',
         marginBottom: '15px',
         fontWeight: '500'
@@ -60,39 +61,39 @@ const styles = {
         minWidth: '200px'
     },
     filterLabel: {
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '0.9rem',
         fontWeight: '500'
     },
     filterInput: {
-        backgroundColor: '#1a1a1a',
-        border: '1px solid #3a3a3a',
+        backgroundColor: theme.colors.primaryBg,
+        border: `1px solid ${theme.colors.border}`,
         borderRadius: '4px',
         padding: '8px 12px',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '0.9rem'
     },
     filterSelect: {
-        backgroundColor: '#1a1a1a',
-        border: '1px solid #3a3a3a',
+        backgroundColor: theme.colors.primaryBg,
+        border: `1px solid ${theme.colors.border}`,
         borderRadius: '4px',
         padding: '8px 12px',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '0.9rem'
     },
     applyButton: {
-        backgroundColor: '#3498db',
-        color: 'white',
+        backgroundColor: theme.colors.accent,
+        color: theme.colors.primaryText,
         border: 'none',
         borderRadius: '4px',
         padding: '8px 16px',
         cursor: 'pointer',
         fontSize: '0.9rem',
         fontWeight: '500',
-        transition: 'background-color 0.2s ease'
+        transition: 'all 0.3s ease'
     },
     clearButton: {
-        backgroundColor: '#666',
+        backgroundColor: theme.colors.mutedText,
         color: 'white',
         border: 'none',
         borderRadius: '4px',
@@ -101,7 +102,7 @@ const styles = {
         fontSize: '0.9rem',
         fontWeight: '500',
         marginLeft: '10px',
-        transition: 'background-color 0.2s ease'
+        transition: 'all 0.3s ease'
     },
     feedContainer: {
         display: 'flex',
@@ -109,16 +110,16 @@ const styles = {
         gap: '20px'
     },
     feedItem: {
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         borderRadius: '8px',
         padding: '20px',
-        border: '1px solid #3a3a3a',
+        border: `1px solid ${theme.colors.border}`,
         transition: 'all 0.2s ease',
         position: 'relative'
     },
     feedItemHover: {
-        borderColor: '#3498db',
-        boxShadow: '0 2px 8px rgba(52, 152, 219, 0.2)'
+        borderColor: theme.colors.borderHover,
+        boxShadow: theme.colors.accentShadow
     },
     feedItemHeader: {
         display: 'flex',
@@ -426,13 +427,14 @@ const styles = {
         alignItems: 'center',
         justifyContent: 'center',
         fontSize: '0.6rem',
-        color: '#888',
+        color: theme.colors.mutedText,
         gridColumn: '2'
     }
-};
+});
 
 function Feed() {
     const { identity } = useAuth();
+    const { theme } = useTheme();
     const { selectedSnsRoot } = useSns();
     const { getPrincipalDisplayName } = useNaming();
     const navigate = useNavigate();
@@ -1438,13 +1440,13 @@ function Feed() {
         };
         
         return (
-            <div key={item.id} style={styles.feedItem} data-feed-item-id={item.id.toString()}>
+            <div key={item.id} style={getStyles(theme).feedItem} data-feed-item-id={item.id.toString()}>
                 {/* SNS Logo - Clickable link to forum */}
                 {snsInfo && (
                     <>
                         {isLoadingLogo ? (
                             <div 
-                                style={styles.snsLogoPlaceholder}
+                                style={getStyles(theme).snsLogoPlaceholder}
                                 onClick={handleSnsLogoClick}
                                 title={`Go to ${snsInfo.name} Forum`}
                             >
@@ -1454,7 +1456,7 @@ function Feed() {
                             <img
                                 src={snsLogo}
                                 alt={snsInfo.name}
-                                style={styles.snsLogo}
+                                style={getStyles(theme).snsLogo}
                                 title={`Go to ${snsInfo.name} Forum`}
                                 onClick={handleSnsLogoClick}
                                 onMouseEnter={(e) => {
@@ -1468,7 +1470,7 @@ function Feed() {
                             />
                         ) : (
                             <div 
-                                style={styles.snsLogoPlaceholder} 
+                                style={getStyles(theme).snsLogoPlaceholder} 
                                 title={`Go to ${snsInfo.name} Forum`}
                                 onClick={handleSnsLogoClick}
                                 onMouseEnter={(e) => {
@@ -1487,11 +1489,11 @@ function Feed() {
                 )}
                 
                 {/* Content with margin for logo */}
-                <div style={styles.feedItemContent}>
-                    <div style={styles.feedItemHeader}>
-                        <div style={styles.feedItemHeaderLeft}>
+                <div style={getStyles(theme).feedItemContent}>
+                    <div style={getStyles(theme).feedItemHeader}>
+                        <div style={getStyles(theme).feedItemHeaderLeft}>
                             <span 
-                                style={{...styles.feedItemType, backgroundColor: typeColor}}
+                                style={{...getStyles(theme).feedItemType, backgroundColor: typeColor}}
                                 onClick={handleItemClick}
                                 onMouseEnter={(e) => {
                                     e.target.style.backgroundColor = '#2980b9';
@@ -1514,14 +1516,14 @@ function Feed() {
                                 />
                             )}
                         </div>
-                        <span style={styles.feedItemDate}>
+                        <span style={getStyles(theme).feedItemDate}>
                             {formatDate(item.created_at)}
                         </span>
                     </div>
                     
                     {/* Always show title (actual or fallback) */}
                     <h3 
-                        style={styles.feedItemTitle}
+                        style={getStyles(theme).feedItemTitle}
                         onClick={handleItemClick}
                         onMouseEnter={(e) => {
                             e.target.style.color = '#3498db';
@@ -1535,7 +1537,7 @@ function Feed() {
                     </h3>
                     
                     {item.body && item.body.length > 0 && (
-                        <div style={styles.feedItemBody}>
+                        <div style={getStyles(theme).feedItemBody}>
                             {(() => {
                                 const bodyText = Array.isArray(item.body) ? item.body[0] : item.body;
                                 return bodyText.length > 300 ? `${bodyText.substring(0, 300)}...` : bodyText;
@@ -1622,11 +1624,11 @@ function Feed() {
                         </div>
                     )}
                     
-                    <div style={styles.feedItemContext}>
+                    <div style={getStyles(theme).feedItemContext}>
                         {item.topic_title && (Array.isArray(item.topic_title) ? item.topic_title.length > 0 : true) && (
                             <Link 
                                 to={`/topic/${Array.isArray(item.topic_id) ? item.topic_id[0] : item.topic_id}`} 
-                                style={styles.contextLink}
+                                style={getStyles(theme).contextLink}
                             >
                                 Topic: {Array.isArray(item.topic_title) ? item.topic_title[0] : item.topic_title}
                             </Link>
@@ -1635,7 +1637,7 @@ function Feed() {
                         {item.thread_title && (Array.isArray(item.thread_title) ? item.thread_title.length > 0 : true) && (
                             <Link 
                                 to={`/thread?threadid=${Array.isArray(item.thread_id) ? item.thread_id[0] : item.thread_id}`} 
-                                style={styles.contextLink}
+                                style={getStyles(theme).contextLink}
                             >
                                 Thread: {Array.isArray(item.thread_title) ? item.thread_title[0] : item.thread_title}
                             </Link>
@@ -1653,7 +1655,7 @@ function Feed() {
             {/* New Items Notification Overlay */}
             {showNewItemsNotification && (
                 <div 
-                    style={styles.newItemsNotification}
+                    style={getStyles(theme).newItemsNotification}
                     onClick={handleShowNewItems}
                     onMouseEnter={(e) => {
                         e.target.style.backgroundColor = '#1991DA';
@@ -1671,16 +1673,23 @@ function Feed() {
                 </div>
             )}
             
-            <div ref={scrollContainerRef} style={styles.container}>
+            <div 
+                style={{
+                    background: theme.colors.primaryGradient,
+                    color: theme.colors.primaryText,
+                    minHeight: '100vh'
+                }}
+            >
+            <div ref={scrollContainerRef} style={getStyles(theme).container}>
                 {/* Header Card */}
                 <div style={{
-                    backgroundColor: '#2a2a2a',
+                    backgroundColor: theme.colors.secondaryBg,
                     borderRadius: '16px',
                     padding: '24px',
                     marginBottom: '24px',
-                    border: '1px solid #3a3a3a',
-                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
-                    background: 'linear-gradient(135deg, #2a2a2a 0%, #252525 100%)',
+                    border: `1px solid ${theme.colors.border}`,
+                    boxShadow: theme.colors.cardShadow,
+                    background: theme.colors.cardGradient,
                     position: 'relative'
                 }}>
                     {/* Subtle joke quote in top right */}
@@ -1689,7 +1698,7 @@ function Feed() {
                         top: '16px',
                         right: '20px',
                         fontSize: '0.8rem',
-                        color: '#666',
+                        color: theme.colors.mutedText,
                         fontStyle: 'italic',
                         opacity: '0.7'
                     }}>
@@ -1725,7 +1734,7 @@ function Feed() {
                                 }}
                             />
                             <h1 style={{
-                                ...styles.title,
+                                ...getStyles(theme).title,
                                 margin: '0',
                                 background: 'linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%)',
                                 backgroundClip: 'text',
@@ -1739,7 +1748,7 @@ function Feed() {
                         
                         {/* Description */}
                         <p style={{
-                            ...styles.description,
+                            ...getStyles(theme).description,
                             margin: '0',
                             maxWidth: '600px',
                             fontSize: 'clamp(1rem, 2.5vw, 1.1rem)',
@@ -1883,11 +1892,11 @@ function Feed() {
                 </div>
 
                 {/* Filter Section */}
-                <div style={styles.filterSection}>
-                    <div style={styles.filterTitle}>
+                <div style={getStyles(theme).filterSection}>
+                    <div style={getStyles(theme).filterTitle}>
                         <button 
                             onClick={() => setShowFilters(!showFilters)}
-                            style={{...styles.applyButton, fontSize: '0.9rem', padding: '6px 12px'}}
+                            style={{...getStyles(theme).applyButton, fontSize: '0.9rem', padding: '6px 12px'}}
                         >
                             {showFilters ? 'Hide Filters' : 'Show Filters'}
                         </button>
@@ -1895,11 +1904,11 @@ function Feed() {
                     
                     {showFilters && (
                         <>
-                            <div style={isNarrowScreen ? styles.filterLayoutStacked : styles.filterLayoutResponsive}>
+                            <div style={isNarrowScreen ? getStyles(theme).filterLayoutStacked : getStyles(theme).filterLayoutResponsive}>
                                 {/* Left Column: User, Type, Text */}
-                                <div style={styles.filterLeftColumn}>
-                                    <div style={styles.filterGroup}>
-                                        <label style={styles.filterLabel}>User</label>
+                                <div style={getStyles(theme).filterLeftColumn}>
+                                    <div style={getStyles(theme).filterGroup}>
+                                        <label style={getStyles(theme).filterLabel}>User</label>
                                         <PrincipalInput
                                             value={selectedCreator}
                                             onChange={setSelectedCreator}
@@ -1908,12 +1917,12 @@ function Feed() {
                                         />
                                     </div>
                                     
-                                    <div style={styles.filterGroup}>
-                                        <label style={styles.filterLabel}>Type</label>
+                                    <div style={getStyles(theme).filterGroup}>
+                                        <label style={getStyles(theme).filterLabel}>Type</label>
                                         <select
                                             value={selectedType}
                                             onChange={(e) => setSelectedType(e.target.value)}
-                                            style={styles.filterSelect}
+                                            style={getStyles(theme).filterSelect}
                                         >
                                             <option value="">All Types</option>
                                             <option value="forum">Forums</option>
@@ -1923,33 +1932,33 @@ function Feed() {
                                         </select>
                                     </div>
                                     
-                                    <div style={styles.filterGroup}>
-                                        <label style={styles.filterLabel}>Search Text</label>
+                                    <div style={getStyles(theme).filterGroup}>
+                                        <label style={getStyles(theme).filterLabel}>Search Text</label>
                                         <input
                                             type="text"
                                             value={searchText}
                                             onChange={(e) => setSearchText(e.target.value)}
                                             placeholder="Search in titles and content..."
-                                            style={styles.filterInput}
+                                            style={getStyles(theme).filterInput}
                                         />
                                     </div>
                                 </div>
                                 
                                 {/* Filter Buttons */}
-                                <div style={styles.filterRow}>
-                                    <button onClick={applyFilters} style={styles.applyButton}>
+                                <div style={getStyles(theme).filterRow}>
+                                    <button onClick={applyFilters} style={getStyles(theme).applyButton}>
                                         Apply Filters
                                     </button>
-                                    <button onClick={clearFilters} style={styles.clearButton}>
+                                    <button onClick={clearFilters} style={getStyles(theme).clearButton}>
                                         Clear Filters
                                     </button>
                                 </div>
                                 
                                 {/* Right Column (or bottom on narrow): SNS List */}
-                                <div style={styles.filterRightColumn}>
-                                    <div style={styles.filterGroup}>
-                                        <div style={styles.snsFilterHeader}>
-                                            <label style={styles.filterLabel}>
+                                <div style={getStyles(theme).filterRightColumn}>
+                                    <div style={getStyles(theme).filterGroup}>
+                                        <div style={getStyles(theme).snsFilterHeader}>
+                                            <label style={getStyles(theme).filterLabel}>
                                                 SNS (Select Multiple)
                                                 {selectedSnsList.length > 0 && (
                                                     <span style={{ color: '#3498db', marginLeft: '8px' }}>
@@ -1959,7 +1968,7 @@ function Feed() {
                                             </label>
                                             <button
                                                 onClick={() => setShowSnsList(!showSnsList)}
-                                                style={styles.snsToggleButton}
+                                                style={getStyles(theme).snsToggleButton}
                                             >
                                                 {showSnsList ? '▼ Hide' : '▶ Show'}
                                             </button>
@@ -1967,7 +1976,7 @@ function Feed() {
                                         
                                         {showSnsList && (
                                             <>
-                                                <div style={styles.checkboxContainer}>
+                                                <div style={getStyles(theme).checkboxContainer}>
                                                     {snsInstances && snsInstances.map((sns) => {
                                                         // Find the corresponding SNS info for logo
                                                         const snsInfo = allSnses.find(s => s.rootCanisterId === sns.root_canister_id);
@@ -1977,7 +1986,7 @@ function Feed() {
                                                         return (
                                                             <label 
                                                                 key={sns.root_canister_id} 
-                                                                style={styles.snsCheckboxWithLogo}
+                                                                style={getStyles(theme).snsCheckboxWithLogo}
                                                                 onMouseEnter={(e) => {
                                                                     e.target.style.backgroundColor = '#2a2a2a';
                                                                 }}
@@ -1995,31 +2004,31 @@ function Feed() {
                                                             setSelectedSnsList(prev => prev.filter(id => id !== sns.root_canister_id));
                                                         }
                                                     }}
-                                                    style={styles.checkbox}
+                                                    style={getStyles(theme).checkbox}
                                                 />
                                                 
                                                 {/* SNS Logo */}
                                                 {snsInfo && (
                                                     <>
                                                         {isLoadingLogo ? (
-                                                            <div style={styles.snsLogoPlaceholderSmall}>
+                                                            <div style={getStyles(theme).snsLogoPlaceholderSmall}>
                                                                 ...
                                                             </div>
                                                         ) : snsLogo ? (
                                                             <img
                                                                 src={snsLogo}
                                                                 alt={snsInfo.name}
-                                                                style={styles.snsLogoSmall}
+                                                                style={getStyles(theme).snsLogoSmall}
                                                             />
                                                         ) : (
-                                                            <div style={styles.snsLogoPlaceholderSmall}>
+                                                            <div style={getStyles(theme).snsLogoPlaceholderSmall}>
                                                                 {snsInfo.name.substring(0, 2).toUpperCase()}
                                                             </div>
                                                         )}
                                                     </>
                                                 )}
                                                 
-                                                <span style={styles.checkboxText}>
+                                                <span style={getStyles(theme).checkboxText}>
                                                     {sns.name || sns.root_canister_id.substring(0, 8) + '...'}
                                                 </span>
                                                             </label>
@@ -2031,7 +2040,7 @@ function Feed() {
                                                 {selectedSnsList.length > 0 && (
                                                     <button
                                                         onClick={clearAllSns}
-                                                        style={styles.clearSnsButton}
+                                                        style={getStyles(theme).clearSnsButton}
                                                         onMouseEnter={(e) => {
                                                             e.target.style.backgroundColor = '#555';
                                                         }}
@@ -2053,21 +2062,21 @@ function Feed() {
 
                 {/* Error Message */}
                 {error && (
-                    <div style={styles.errorMessage}>
+                    <div style={getStyles(theme).errorMessage}>
                         {error}
                     </div>
                 )}
 
                 {/* Loading State */}
                 {loading && (
-                    <div style={styles.loadingSpinner}>
+                    <div style={getStyles(theme).loadingSpinner}>
                         Loading feed...
                     </div>
                 )}
 
                 {/* Feed Items */}
                 {!loading && (
-                    <div style={styles.feedContainer} data-feed-container>
+                    <div style={getStyles(theme).feedContainer} data-feed-container>
                         {feedItems.length > 0 ? (
                             <>
                                 {/* Load More Newer Items Button */}
@@ -2078,7 +2087,7 @@ function Feed() {
                                         marginBottom: '20px'
                                     }}>
                                         {loadingNewer ? (
-                                            <div style={styles.loadingSpinner}>
+                                            <div style={getStyles(theme).loadingSpinner}>
                                                 Loading newer items...
                                             </div>
                                         ) : (
@@ -2088,7 +2097,7 @@ function Feed() {
                                                     loadFeed(prevStartId, 'newer');
                                                 }}
                                                 style={{
-                                                    ...styles.applyButton,
+                                                    ...getStyles(theme).applyButton,
                                                     fontSize: '1rem',
                                                     padding: '12px 24px'
                                                 }}
@@ -2110,7 +2119,7 @@ function Feed() {
                                         marginTop: '20px'
                                     }}>
                                         {loadingMore ? (
-                                            <div style={styles.loadingSpinner}>
+                                            <div style={getStyles(theme).loadingSpinner}>
                                                 Loading more items...
                                             </div>
                                         ) : hasMore && !canAutoLoadOlder ? (
@@ -2120,7 +2129,7 @@ function Feed() {
                                                     loadFeed(nextStartId, 'older');
                                                 }}
                                                 style={{
-                                                    ...styles.applyButton,
+                                                    ...getStyles(theme).applyButton,
                                                     fontSize: '1rem',
                                                     padding: '12px 24px'
                                                 }}
@@ -2145,15 +2154,16 @@ function Feed() {
                                 )}
                             </>
                         ) : (
-                            <div style={styles.emptyState}>
-                                <h3 style={styles.emptyStateTitle}>No Activity Yet</h3>
-                                <p style={styles.emptyStateDescription}>
+                            <div style={getStyles(theme).emptyState}>
+                                <h3 style={getStyles(theme).emptyStateTitle}>No Activity Yet</h3>
+                                <p style={getStyles(theme).emptyStateDescription}>
                                     There's no activity to show yet. Check back later or try adjusting your filters.
                                 </p>
                             </div>
                         )}
                     </div>
                 )}
+            </div>
             </div>
         </div>
     );
