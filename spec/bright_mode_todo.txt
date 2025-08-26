@@ -119,3 +119,5 @@
 - ✅ **Settings Text Complete** - Fixed all remaining white text (sorting labels, neuron VP, borders, hover effects)
 - ✅ **Forum Breadcrumb Navigation** - Fixed white breadcrumb text on /thread and /post pages
 - ✅ **Forum Title Text** - Fixed "Sneed Forum" white text on /thread and /post pages
+- ✅ **Proposals Page** - Added complete theme support to /proposals page (Proposals.jsx)
+- 🔄 **Proposal Page** - Added basic theme support to /proposal page (Proposal.jsx) - needs hardcoded color fixes

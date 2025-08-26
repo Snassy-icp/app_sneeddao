@@ -17,9 +17,11 @@ import { useOptimizedSnsLoading } from './hooks/useOptimizedSnsLoading';
 import { formatNeuronDisplayWithContext, uint8ArrayToHex } from './utils/NeuronUtils';
 import { fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
+import { useTheme } from './contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 
 function Proposal() {
+    const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
     const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
     const { fetchNeuronsForSns, refreshNeurons } = useNeurons();
@@ -361,6 +363,100 @@ function Proposal() {
 
     const selectedSns = getSnsById(selectedSnsRoot);
 
+    // Theme-aware styles
+    const getStyles = (theme) => ({
+        pageContainer: {
+            backgroundColor: theme.colors.primaryBg,
+            minHeight: '100vh'
+        },
+        title: {
+            color: theme.colors.primaryText
+        },
+        section: {
+            backgroundColor: theme.colors.secondaryBg,
+            borderRadius: '8px',
+            padding: '20px',
+            marginTop: '20px'
+        },
+        button: {
+            backgroundColor: theme.colors.accent,
+            color: theme.colors.primaryText,
+            border: 'none',
+            borderRadius: '4px'
+        },
+        secondaryButton: {
+            backgroundColor: theme.colors.secondaryBg,
+            color: theme.colors.primaryText,
+            border: 'none',
+            borderRadius: '4px'
+        },
+        input: {
+            backgroundColor: theme.colors.secondaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '4px',
+            color: theme.colors.primaryText,
+            padding: '8px 12px'
+        },
+        error: {
+            color: theme.colors.error,
+            marginBottom: '20px'
+        },
+        loading: {
+            color: theme.colors.primaryText,
+            textAlign: 'center',
+            padding: '20px'
+        },
+        content: {
+            color: theme.colors.primaryText
+        },
+        expandToggle: {
+            backgroundColor: theme.colors.border,
+            borderRadius: '6px',
+            padding: '10px'
+        },
+        expandedContent: {
+            backgroundColor: theme.colors.border,
+            padding: '15px',
+            borderRadius: '6px',
+            marginTop: '10px'
+        },
+        summaryBox: {
+            backgroundColor: theme.colors.primaryBg,
+            padding: '10px',
+            borderRadius: '4px'
+        },
+        payloadBox: {
+            backgroundColor: theme.colors.primaryBg,
+            padding: '15px',
+            borderRadius: '6px',
+            marginTop: '8px',
+            border: `1px solid ${theme.colors.border}`,
+            fontFamily: 'monospace',
+            fontSize: '0.9rem',
+            lineHeight: '1.4',
+            color: theme.colors.primaryText,
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'break-word'
+        },
+        link: {
+            color: theme.colors.accent,
+            wordBreak: 'break-all',
+            overflowWrap: 'break-word'
+        },
+        mutedText: {
+            color: theme.colors.mutedText
+        },
+        votingInfo: {
+            marginTop: '25px',
+            fontSize: '14px',
+            color: theme.colors.mutedText
+        },
+        votingDetails: {
+            margin: '5px 0',
+            color: theme.colors.secondaryText
+        }
+    });
+
     // VotingBar component
     const VotingBar = ({ proposalData }) => {
         if (!proposalData?.latest_tally?.[0]) return null;
@@ -377,12 +473,12 @@ function Proposal() {
             <div style={{ marginTop: '20px' }}>
                 <h3>Voting Results</h3>
                 <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ color: '#2ecc71' }}>
+                    <div style={{ color: theme.colors.success }}>
                         <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Yes: {yesPercent.toFixed(3)}%</span>
                         <br />
                         <span style={{ fontSize: '14px', opacity: 0.9 }}>{formatE8s(tally.yes)} VP</span>
                     </div>
-                    <div style={{ color: '#e74c3c', textAlign: 'right' }}>
+                    <div style={{ color: theme.colors.error, textAlign: 'right' }}>
                         <span style={{ fontSize: '16px', fontWeight: 'bold' }}>No: {noPercent.toFixed(3)}%</span>
                         <br />
                         <span style={{ fontSize: '14px', opacity: 0.9 }}>{formatE8s(tally.no)} VP</span>
@@ -394,7 +490,7 @@ function Proposal() {
                     marginBottom: '15px',
                     textAlign: 'center',
                     fontSize: '14px',
-                    color: '#bdc3c7'
+                    color: theme.colors.mutedText
                 }}>
                     <span>Total Eligible: {formatE8s(tally.total)} VP</span>
                     <br />
@@ -405,7 +501,7 @@ function Proposal() {
                 <div style={{ 
                     position: 'relative',
                     height: '24px',
-                    backgroundColor: '#34495e',
+                    backgroundColor: theme.colors.border,
                     borderRadius: '12px',
                     overflow: 'hidden',
                     marginBottom: '30px' // Space for the markers below
@@ -416,7 +512,7 @@ function Proposal() {
                         left: 0,
                         height: '100%',
                         width: `${yesPercent}%`,
-                        backgroundColor: '#2ecc71',
+                        backgroundColor: theme.colors.success,
                         transition: 'width 0.3s ease'
                     }} />
                     
@@ -426,7 +522,7 @@ function Proposal() {
                         right: 0,
                         height: '100%',
                         width: `${noPercent}%`,
-                        backgroundColor: '#e74c3c',
+                        backgroundColor: theme.colors.error,
                         transition: 'width 0.3s ease'
                     }} />
                     
@@ -596,12 +692,12 @@ function Proposal() {
     };
 
     return (
-        <div className='page-container'>
+        <div className='page-container' style={getStyles(theme).pageContainer}>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             <main className="wallet-container">
-                <h1 style={{ color: '#ffffff' }}>Proposal Details</h1>
+                <h1 style={getStyles(theme).title}>Proposal Details</h1>
                 
-                <section style={{ backgroundColor: '#2a2a2a', borderRadius: '8px', padding: '20px', marginTop: '20px' }}>
+                <section style={getStyles(theme).section}>
                     <div style={{ 
                         display: 'grid',
                         gridTemplateColumns: '1fr minmax(auto, 500px) 1fr',
