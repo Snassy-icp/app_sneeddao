@@ -31,13 +31,13 @@ const Thread = () => {
 
     // Memoize forumActor to prevent unnecessary re-renders
     const forumActor = useMemo(() => {
-        return identity ? createForumActor(identity) : null;
+        return createForumActor(identity);
     }, [identity, createForumActor]);
 
     // Fetch topic information for breadcrumb
     useEffect(() => {
         const fetchTopicInfo = async () => {
-            if (!forumActor || !threadId) {
+            if (!threadId) {
                 setBreadcrumbLoading(false);
                 return;
             }
