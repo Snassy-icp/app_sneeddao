@@ -110,3 +110,6 @@
 - ✅ **ThreadViewer Component** - Complete theme support for thread content, posts, and interactions
 - ✅ **Thread View Buttons** - Fixed Flat/Tree/Settings button visibility and styling
 - ✅ **Thread Descriptions** - Fixed thread header and description text visibility
+- ✅ **Thread Settings Panel** - Fixed all white text issues in settings
+- ✅ **Tips Display Component** - Added theme support for tip badges and tooltips
+- ✅ **Negative Score Posts** - Fixed dark backgrounds for posts with negative scores

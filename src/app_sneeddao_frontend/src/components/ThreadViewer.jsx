@@ -1964,7 +1964,7 @@ function ThreadViewer({
                 <h2>{getDisplayTitle()}</h2>
                 {threadDetails && threadDetails.body && (
                     <div className="thread-description">
-                        <p style={{ whiteSpace: 'pre-wrap' }}>{threadDetails.body}</p>
+                        <p style={{ whiteSpace: 'pre-wrap', color: theme.colors.secondaryText }}>{threadDetails.body}</p>
                     </div>
                 )}
                 
@@ -2102,8 +2102,8 @@ function ThreadViewer({
                 )}
                 {mode === 'post' && focusedPostId && (
                     <div className="post-focus-info" style={{
-                        backgroundColor: '#2c3e50',
-                        border: '1px solid #34495e',
+                        backgroundColor: theme.colors.secondaryBg,
+                        border: `1px solid ${theme.colors.border}`,
                         borderRadius: '4px',
                         padding: '8px 12px',
                         marginTop: '10px',
@@ -2139,11 +2139,11 @@ function ThreadViewer({
                                 fontWeight: '500',
                                 padding: '4px 8px',
                                 borderRadius: '3px',
-                                backgroundColor: '#34495e',
+                                backgroundColor: theme.colors.primaryBg,
                                 transition: 'background-color 0.2s'
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = '#4a5f7a'}
-                            onMouseLeave={(e) => e.target.style.backgroundColor = '#34495e'}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.accentHover}
+                            onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.primaryBg}
                         >
                             View Full Thread →
                         </a>
@@ -2324,15 +2324,15 @@ function ThreadViewer({
             {/* Settings Panel */}
             {showSettings && (
                 <div style={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    backgroundColor: theme.colors.secondaryBg,
+                    border: `1px solid ${theme.colors.border}`,
                     borderRadius: '10px',
                     padding: '20px',
                     marginBottom: '20px',
                     backdropFilter: 'blur(10px)'
                 }}>
                     <h3 style={{
-                        color: '#ffd700',
+                        color: theme.colors.accent,
                         fontSize: '1.2rem',
                         fontWeight: '600',
                         marginBottom: '20px',
@@ -2344,7 +2344,7 @@ function ThreadViewer({
                     {/* Sorting Options */}
                     <div style={{ marginBottom: '25px' }}>
                         <h4 style={{
-                            color: '#fff',
+                            color: theme.colors.primaryText,
                             fontSize: '1rem',
                             fontWeight: '500',
                             marginBottom: '10px',
@@ -2421,7 +2421,7 @@ function ThreadViewer({
                     {/* Voting Neurons Section */}
                     <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '20px' }}>
                         <h4 style={{
-                            color: '#fff',
+                            color: theme.colors.primaryText,
                             fontSize: '1rem',
                             fontWeight: '500',
                             marginBottom: '10px',
@@ -2592,8 +2592,8 @@ function ThreadViewer({
                 className={`post-item ${isFocused ? 'focused-post' : ''}`} 
                 style={{ 
                     marginLeft: isFlat ? 0 : `${depth * 20}px`,
-                    backgroundColor: isUnread ? '#3a2a4a' : (isNegative ? '#3a2a2a' : (isFocused ? '#2f3542' : theme.colors.secondaryBg)),
-                    borderColor: isUnread ? '#9b59b6' : (isFocused ? '#3c6382' : (isNegative ? '#8b4513' : '#4a4a4a')),
+                    backgroundColor: isUnread ? theme.colors.accentHover : (isNegative ? theme.colors.primaryBg : (isFocused ? theme.colors.accentHover : theme.colors.secondaryBg)),
+                    borderColor: isUnread ? theme.colors.accent : (isFocused ? theme.colors.accent : (isNegative ? theme.colors.error : theme.colors.border)),
                     borderWidth: isUnread ? '2px' : (isFocused ? '2px' : '1px'),
                     borderStyle: 'solid',
                     borderRadius: '6px',

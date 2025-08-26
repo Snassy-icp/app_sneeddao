@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Principal } from '@dfinity/principal';
+import { useTheme } from '../contexts/ThemeContext';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { formatPrincipal } from '../utils/PrincipalUtils';
 
 const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = new Map(), isNarrowScreen = false }) => {
+    const { theme } = useTheme();
     const [hoveredToken, setHoveredToken] = useState(null);
     const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
     
@@ -155,7 +157,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
         }}>
             <span style={{
                 fontSize: '12px',
-                color: '#888',
+                color: theme.colors.mutedText,
                 marginRight: '4px'
             }}>
                 💰 Tips:
@@ -174,12 +176,12 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                         onMouseLeave={handleMouseLeave}
                         onMouseMove={handleMouseMove}
                         style={{
-                            backgroundColor: '#1a1a1a',
-                            border: `1px solid ${isLoading ? '#666' : '#f39c12'}`,
+                            backgroundColor: theme.colors.primaryBg,
+                            border: `1px solid ${isLoading ? theme.colors.mutedText : theme.colors.warning}`,
                             borderRadius: '12px',
                             padding: '4px 8px',
                             fontSize: '12px',
-                            color: isLoading ? '#888' : '#f39c12',
+                            color: isLoading ? theme.colors.mutedText : theme.colors.warning,
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
@@ -279,7 +281,7 @@ const TipDisplay = ({ tips = [], tokenInfo = new Map(), principalDisplayInfo = n
                                             {formatAmount(Number(tip.amount), getTokenDecimals(tip.token_ledger_principal))} {getTokenSymbol(tip.token_ledger_principal)}
                                         </div>
                                         <div style={{
-                                            color: '#888',
+                                            color: theme.colors.mutedText,
                                             fontSize: '10px',
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',
