@@ -8,6 +8,7 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/P
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
+import PrincipalInput from './PrincipalInput';
 import { Link } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 
@@ -114,14 +115,29 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         },
         filtersContainer: {
             display: 'flex',
-            gap: '20px',
-            alignItems: 'center',
+            flexDirection: 'column',
+            gap: '16px',
             marginBottom: '20px'
+        },
+        filtersRow: {
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '16px',
+            alignItems: 'center'
         },
         filterGroup: {
             display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
+            flexDirection: 'column',
+            gap: '4px',
+            minWidth: '200px',
+            flex: '1 1 200px'
+        },
+        compactFilterGroup: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+            minWidth: '120px',
+            flex: '0 0 auto'
         },
         filterLabel: {
             color: theme.colors.mutedText,
@@ -250,37 +266,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         }
     };
 
-    // Add responsive CSS for table/cards switching
-    React.useEffect(() => {
-        const mediaQueryCSS = `
-            <style id="transaction-responsive-css">
-                @media (max-width: 768px) {
-                    .transaction-table-container { display: none !important; }
-                    .transaction-cards-container { display: block !important; }
-                }
-                @media (min-width: 769px) {
-                    .transaction-table-container { display: block !important; }
-                    .transaction-cards-container { display: none !important; }
-                }
-            </style>
-        `;
 
-        // Remove existing style tag if it exists
-        const existingStyle = document.getElementById('transaction-responsive-css');
-        if (existingStyle) {
-            existingStyle.remove();
-        }
-
-        // Add new style tag
-        document.head.insertAdjacentHTML('beforeend', mediaQueryCSS);
-
-        return () => {
-            const styleElement = document.getElementById('transaction-responsive-css');
-            if (styleElement) {
-                styleElement.remove();
-            }
-        };
-    }, []);
     const { identity } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -309,13 +295,35 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         const urlStart = searchParams.get('start');
         return urlStart ? urlStart : '';
     });
-    // Add responsive CSS for table/cards switching
+    // Add responsive CSS for table/cards switching and filter layout
     React.useEffect(() => {
         const mediaQueryCSS = `
             <style id="transaction-responsive-css">
                 @media (max-width: 768px) {
                     .transaction-table-container { display: none !important; }
                     .transaction-cards-container { display: block !important; }
+                    .transaction-filters-row {
+                        flex-direction: column !important;
+                        align-items: stretch !important;
+                    }
+                    .transaction-filter-group,
+                    .transaction-compact-filter-group {
+                        min-width: 100% !important;
+                        flex: 1 1 100% !important;
+                    }
+                }
+                @media (min-width: 769px) and (max-width: 1024px) {
+                    .transaction-filters-row {
+                        flex-wrap: wrap !important;
+                    }
+                    .transaction-filter-group {
+                        flex: 1 1 45% !important;
+                        min-width: 200px !important;
+                    }
+                    .transaction-compact-filter-group {
+                        flex: 1 1 25% !important;
+                        min-width: 120px !important;
+                    }
                 }
                 @media (min-width: 769px) {
                     .transaction-table-container { display: block !important; }
@@ -983,22 +991,18 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                 </div>
             </div>
             
-            {/* Filters Row - Only when expanded */}
+            {/* Filters - Only when expanded */}
             {!isCollapsed && (
-                <div style={{
-                    ...styles.filtersContainer,
-                    flexWrap: 'wrap',
-                    gap: '15px',
-                    marginTop: '15px'
-                }}>
-                        {!principalId && ( // Only show in ledger mode
+                <div style={styles.filtersContainer}>
+                    {/* First Row: Go to TX Index (if in ledger mode) */}
+                    {!principalId && (
+                        <div style={styles.filtersRow}>
                             <form 
                                 onSubmit={handleTxIndexSubmit}
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '8px',
-                                    marginRight: '20px'
+                                    gap: '8px'
                                 }}
                             >
                                 <input
@@ -1014,8 +1018,8 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 <button
                                     type="submit"
                                     style={{
-                                        backgroundColor: '#3498db',
-                                        color: '#ffffff',
+                                        backgroundColor: theme.colors.accent,
+                                        color: theme.colors.primaryText,
                                         border: 'none',
                                         borderRadius: '4px',
                                         padding: '8px 12px',
@@ -1025,68 +1029,67 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                     Go
                                 </button>
                             </form>
-                        )}
-                    <div style={{...styles.filterGroup, flexWrap: 'wrap'}}>
-                        <span style={styles.filterLabel}>From:</span>
-                        <input
-                            type="text"
-                            value={fromFilter}
-                            onChange={(e) => {
-                                setFromFilter(e.target.value);
-                                setPage(0);
-                            }}
-                            placeholder="Filter by sender"
-                            style={{
-                                ...styles.filterInput,
-                                minWidth: '150px',
-                                flex: '1 1 200px'
-                            }}
-                        />
-                    </div>
-                    <select
-                        value={filterOperator}
-                        onChange={(e) => {
-                            setFilterOperator(e.target.value);
-                            setPage(0);
-                        }}
-                        style={styles.filterSelect}
-                    >
-                        <option value="and">AND</option>
-                        <option value="or">OR</option>
-                    </select>
-                    <div style={{...styles.filterGroup, flexWrap: 'wrap'}}>
-                        <span style={styles.filterLabel}>To:</span>
-                        <input
-                            type="text"
-                            value={toFilter}
-                            onChange={(e) => {
-                                setToFilter(e.target.value);
-                                setPage(0);
-                            }}
-                            placeholder="Filter by recipient"
-                            style={{
-                                ...styles.filterInput,
-                                minWidth: '150px',
-                                flex: '1 1 200px'
-                            }}
-                        />
-                    </div>
-                    <div style={{...styles.filters, flexWrap: 'wrap'}}>
-                        {Object.values(TransactionType).map(type => (
-                            <button
-                                key={type}
-                                style={{
-                                    ...styles.filterButton,
-                                    ...(selectedType === type ? styles.filterButtonActive : {})
-                                }}
-                                onClick={() => {
-                                    setSelectedType(type);
+                        </div>
+                    )}
+                    
+                    {/* Second Row: Principal Filters */}
+                    <div style={styles.filtersRow} className="transaction-filters-row">
+                        <div style={styles.filterGroup} className="transaction-filter-group">
+                            <span style={styles.filterLabel}>From:</span>
+                            <PrincipalInput
+                                value={fromFilter}
+                                onChange={(value) => {
+                                    setFromFilter(value);
                                     setPage(0);
                                 }}
+                                placeholder="Filter by sender"
+                            />
+                        </div>
+                        
+                        <div style={styles.compactFilterGroup} className="transaction-compact-filter-group">
+                            <span style={styles.filterLabel}>Operator:</span>
+                            <select
+                                value={filterOperator}
+                                onChange={(e) => {
+                                    setFilterOperator(e.target.value);
+                                    setPage(0);
+                                }}
+                                style={styles.filterSelect}
                             >
-                                {type.charAt(0).toUpperCase() + type.slice(1)}
-                            </button>
-                        ))}
+                                <option value="and">AND</option>
+                                <option value="or">OR</option>
+                            </select>
+                        </div>
+                        
+                        <div style={styles.filterGroup} className="transaction-filter-group">
+                            <span style={styles.filterLabel}>To:</span>
+                            <PrincipalInput
+                                value={toFilter}
+                                onChange={(value) => {
+                                    setToFilter(value);
+                                    setPage(0);
+                                }}
+                                placeholder="Filter by recipient"
+                            />
+                        </div>
+                        
+                        <div style={styles.compactFilterGroup} className="transaction-compact-filter-group">
+                            <span style={styles.filterLabel}>Type:</span>
+                            <select
+                                value={selectedType}
+                                onChange={(e) => {
+                                    setSelectedType(e.target.value);
+                                    setPage(0);
+                                }}
+                                style={styles.filterSelect}
+                            >
+                                {Object.values(TransactionType).map(type => (
+                                    <option key={type} value={type}>
+                                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
                 </div>
             )}

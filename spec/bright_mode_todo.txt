@@ -136,3 +136,10 @@
 - ✅ **Page Container Background Fix** - Added inline styles to /neurons and /neuron page containers to override CSS conflicts
 - ✅ **Transactions Pages Complete** - Both /transactions and /transaction pages fully themed with bright mode support
 - ✅ **Transaction Components** - TransactionList component updated with theme support (core functionality complete)
+- ✅ **TransactionType Error Fix** - Fixed ReferenceError: TransactionType is not defined by restoring the constant
+- ✅ **Transaction Layout Fix** - Fixed broken table layout on /transactions page by restoring proper CSS styles
+- ✅ **Transaction Filter Improvements** - Enhanced /transactions page with:
+  - Converted filter buttons to dropdown for better UX
+  - Replaced From/To inputs with PrincipalInput autocomplete component
+  - Improved responsive layout that scales from mobile to desktop
+  - Added proper CSS media queries for mobile/tablet/desktop breakpoints

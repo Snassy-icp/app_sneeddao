@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Principal } from '@dfinity/principal';
 import { useNaming } from '../NamingContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 
 const PrincipalInput = ({ 
@@ -10,6 +11,7 @@ const PrincipalInput = ({
     style = {},
     disabled = false 
 }) => {
+    const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
     const [inputValue, setInputValue] = useState(value);
     const [showDropdown, setShowDropdown] = useState(false);
@@ -213,10 +215,10 @@ const PrincipalInput = ({
                 style={{
                     width: '100%',
                     padding: '8px 12px',
-                    border: `2px solid ${isValid ? '#2ecc71' : '#3a3a3a'}`,
+                    border: `2px solid ${isValid ? theme.colors.success : theme.colors.border}`,
                     borderRadius: '4px',
-                    backgroundColor: '#2a2a2a',
-                    color: '#ffffff',
+                    backgroundColor: theme.colors.tertiaryBg,
+                    color: theme.colors.primaryText,
                     fontSize: '14px',
                     outline: 'none',
                     transition: 'border-color 0.2s ease'
@@ -228,7 +230,7 @@ const PrincipalInput = ({
                 <div style={{
                     marginTop: '4px',
                     fontSize: '12px',
-                    color: '#888'
+                    color: theme.colors.mutedText
                 }}>
                     {(() => {
                         try {
@@ -257,8 +259,8 @@ const PrincipalInput = ({
                         top: '100%',
                         left: 0,
                         right: 0,
-                        backgroundColor: '#2a2a2a',
-                        border: '1px solid #3a3a3a',
+                        backgroundColor: theme.colors.tertiaryBg,
+                        border: `1px solid ${theme.colors.border}`,
                         borderRadius: '4px',
                         maxHeight: '300px',
                         overflowY: 'auto',
@@ -274,11 +276,11 @@ const PrincipalInput = ({
                             style={{
                                 padding: '8px 12px',
                                 cursor: 'pointer',
-                                borderBottom: index < searchResults.length - 1 ? '1px solid #3a3a3a' : 'none',
+                                borderBottom: index < searchResults.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
                                 backgroundColor: 'transparent',
                                 transition: 'background-color 0.2s ease'
                             }}
-                            onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
+                            onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.secondaryBg}
                             onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                         >
                             <PrincipalDisplay
