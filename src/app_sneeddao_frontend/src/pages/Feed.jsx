@@ -137,7 +137,7 @@ const getStyles = (theme) => ({
     },
     feedItemType: {
         display: 'inline-block',
-        backgroundColor: '#3498db',
+        backgroundColor: theme.colors.accent,
         color: 'white',
         padding: '4px 8px',
         borderRadius: '4px',
@@ -149,15 +149,15 @@ const getStyles = (theme) => ({
         transition: 'all 0.2s ease'
     },
     feedItemTypeHover: {
-        backgroundColor: '#2980b9',
+        backgroundColor: theme.colors.accentHover,
         transform: 'translateY(-1px)'
     },
     feedItemDate: {
-        color: '#888',
+        color: theme.colors.mutedText,
         fontSize: '0.9rem'
     },
     feedItemTitle: {
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '1.3rem',
         fontWeight: '600',
         marginBottom: '10px',
@@ -167,10 +167,10 @@ const getStyles = (theme) => ({
         transition: 'color 0.2s ease'
     },
     feedItemTitleHover: {
-        color: '#3498db'
+        color: theme.colors.accent
     },
     feedItemBody: {
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '1rem',
         lineHeight: '1.6',
         marginBottom: '15px',
@@ -184,24 +184,24 @@ const getStyles = (theme) => ({
         gap: '10px',
         marginTop: '15px',
         paddingTop: '15px',
-        borderTop: '1px solid #3a3a3a'
+        borderTop: `1px solid ${theme.colors.border}`
     },
     contextItem: {
-        color: '#888',
+        color: theme.colors.mutedText,
         fontSize: '0.9rem',
-        backgroundColor: '#1a1a1a',
+        backgroundColor: theme.colors.primaryBg,
         padding: '4px 8px',
         borderRadius: '4px',
-        border: '1px solid #333'
+        border: `1px solid ${theme.colors.border}`
     },
     contextLink: {
-        color: '#3498db',
+        color: theme.colors.accent,
         textDecoration: 'none',
         fontSize: '0.9rem',
-        backgroundColor: '#1a1a1a',
+        backgroundColor: theme.colors.primaryBg,
         padding: '4px 8px',
         borderRadius: '4px',
-        border: '1px solid #333',
+        border: `1px solid ${theme.colors.border}`,
         transition: 'all 0.2s ease'
     },
     snsLogo: {
@@ -212,7 +212,7 @@ const getStyles = (theme) => ({
         height: '48px',
         borderRadius: '50%',
         objectFit: 'cover',
-        border: '2px solid #3a3a3a',
+        border: `2px solid ${theme.colors.border}`,
         cursor: 'pointer',
         transition: 'all 0.2s ease'
     },
@@ -227,13 +227,13 @@ const getStyles = (theme) => ({
         width: '48px',
         height: '48px',
         borderRadius: '50%',
-        backgroundColor: '#4a4a4a',
-        border: '2px solid #3a3a3a',
+        backgroundColor: theme.colors.border,
+        border: `2px solid ${theme.colors.border}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         fontSize: '0.8rem',
-        color: '#888',
+        color: theme.colors.mutedText,
         cursor: 'pointer',
         transition: 'all 0.2s ease'
     },
@@ -241,7 +241,7 @@ const getStyles = (theme) => ({
         marginLeft: '68px' // Make room for the logo
     },
     loadMoreButton: {
-        backgroundColor: '#3498db',
+        backgroundColor: theme.colors.accent,
         color: 'white',
         border: 'none',
         borderRadius: '8px',
@@ -258,10 +258,10 @@ const getStyles = (theme) => ({
         justifyContent: 'center',
         alignItems: 'center',
         padding: '40px',
-        color: '#888'
+        color: theme.colors.mutedText
     },
     errorMessage: {
-        backgroundColor: '#e74c3c',
+        backgroundColor: theme.colors.error,
         color: 'white',
         padding: '15px',
         borderRadius: '8px',
@@ -271,12 +271,12 @@ const getStyles = (theme) => ({
     emptyState: {
         textAlign: 'center',
         padding: '60px 20px',
-        color: '#888'
+        color: theme.colors.mutedText
     },
     emptyStateTitle: {
         fontSize: '1.5rem',
         marginBottom: '10px',
-        color: '#ccc'
+        color: theme.colors.secondaryText
     },
     emptyStateDescription: {
         fontSize: '1rem',
@@ -287,7 +287,7 @@ const getStyles = (theme) => ({
         top: '80px', // Below header
         left: '50%',
         transform: 'translateX(-50%)',
-        backgroundColor: '#1DA1F2', // Twitter blue
+        backgroundColor: theme.colors.accent, // Twitter blue
         color: 'white',
         padding: '12px 24px',
         borderRadius: '25px',
@@ -305,8 +305,8 @@ const getStyles = (theme) => ({
         gap: '4px',
         maxHeight: '200px',
         overflowY: 'auto',
-        backgroundColor: '#1a1a1a',
-        border: '1px solid #3a3a3a',
+        backgroundColor: theme.colors.primaryBg,
+        border: `1px solid ${theme.colors.border}`,
         borderRadius: '4px',
         padding: '8px'
     },
@@ -321,11 +321,11 @@ const getStyles = (theme) => ({
     },
     checkbox: {
         cursor: 'pointer',
-        accentColor: '#3498db',
+        accentColor: theme.colors.accent,
         gridColumn: '1'
     },
     checkboxText: {
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '0.9rem',
         userSelect: 'none',
         gridColumn: '3'
@@ -369,13 +369,13 @@ const getStyles = (theme) => ({
     snsToggleButton: {
         backgroundColor: 'transparent',
         border: 'none',
-        color: '#3498db',
+        color: theme.colors.accent,
         cursor: 'pointer',
         fontSize: '0.8rem',
         padding: '2px 4px'
     },
     clearAllButton: {
-        backgroundColor: '#666',
+        backgroundColor: theme.colors.mutedText,
         color: 'white',
         border: 'none',
         borderRadius: '4px',
@@ -397,8 +397,8 @@ const getStyles = (theme) => ({
         width: '100%'
     },
     clearSnsButton: {
-        backgroundColor: '#666',
-        color: '#ccc',
+        backgroundColor: theme.colors.mutedText,
+        color: theme.colors.secondaryText,
         border: 'none',
         borderRadius: '4px',
         padding: '6px 12px',
@@ -414,15 +414,15 @@ const getStyles = (theme) => ({
         height: '20px',
         borderRadius: '50%',
         objectFit: 'cover',
-        border: '1px solid #3a3a3a',
+        border: `1px solid ${theme.colors.border}`,
         gridColumn: '2'
     },
     snsLogoPlaceholderSmall: {
         width: '20px',
         height: '20px',
         borderRadius: '50%',
-        backgroundColor: '#4a4a4a',
-        border: '1px solid #3a3a3a',
+        backgroundColor: theme.colors.border,
+        border: `1px solid ${theme.colors.border}`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -836,12 +836,12 @@ function Feed() {
     const getTypeColor = (type) => {
         const typeStr = extractVariant(type);
         const colors = {
-            forum: '#e67e22',
+            forum: theme.colors.warning,
             topic: '#9b59b6',
-            thread: '#2ecc71',
-            post: '#3498db'
+            thread: theme.colors.success,
+            post: theme.colors.accent
         };
-        return colors[typeStr] || '#3498db';
+        return colors[typeStr] || theme.colors.accent;
     };
 
     // Fetch polls async for feed items
@@ -1496,7 +1496,7 @@ function Feed() {
                                 style={{...getStyles(theme).feedItemType, backgroundColor: typeColor}}
                                 onClick={handleItemClick}
                                 onMouseEnter={(e) => {
-                                    e.target.style.backgroundColor = '#2980b9';
+                                    e.target.style.backgroundColor = theme.colors.accentHover;
                                     e.target.style.transform = 'translateY(-1px)';
                                 }}
                                 onMouseLeave={(e) => {
@@ -1526,10 +1526,10 @@ function Feed() {
                         style={getStyles(theme).feedItemTitle}
                         onClick={handleItemClick}
                         onMouseEnter={(e) => {
-                            e.target.style.color = '#3498db';
+                            e.target.style.color = theme.colors.accent;
                         }}
                         onMouseLeave={(e) => {
-                            e.target.style.color = '#ffffff';
+                            e.target.style.color = theme.colors.primaryText;
                         }}
                         title={`Go to ${typeDisplayText.toLowerCase()}`}
                     >
@@ -1548,16 +1548,16 @@ function Feed() {
                     {/* Replied-to post information */}
                     {item.replied_to_post && item.replied_to_post.length > 0 && (
                         <div style={{
-                            backgroundColor: '#3a3a3a',
-                            border: '1px solid #4a4a4a',
+                            backgroundColor: theme.colors.secondaryBg,
+                            border: `1px solid ${theme.colors.border}`,
                             borderRadius: '8px',
                             padding: '12px',
                             margin: '12px 0',
-                            borderLeft: '4px solid #3498db'
+                            borderLeft: `4px solid ${theme.colors.accent}`
                         }}>
                             <div style={{
                                 fontSize: '0.85rem',
-                                color: '#888',
+                                color: theme.colors.mutedText,
                                 marginBottom: '6px'
                             }}>
                                 💬 Replying to:
@@ -1565,7 +1565,7 @@ function Feed() {
                             {item.replied_to_post[0].title && item.replied_to_post[0].title.length > 0 && (
                                 <div style={{
                                     fontSize: '0.9rem',
-                                    color: '#ffffff',
+                                    color: theme.colors.primaryText,
                                     fontWeight: '500',
                                     marginBottom: '4px'
                                 }}>
@@ -1574,7 +1574,7 @@ function Feed() {
                             )}
                             <div style={{
                                 fontSize: '0.85rem',
-                                color: '#ccc',
+                                color: theme.colors.secondaryText,
                                 lineHeight: '1.4'
                             }}>
                                 {(() => {
@@ -1609,10 +1609,10 @@ function Feed() {
                                 } else {
                                     return (
                                         <div style={{
-                                            backgroundColor: '#2a2a2a',
+                                            backgroundColor: theme.colors.secondaryBg,
                                             borderRadius: '6px',
                                             padding: '20px',
-                                            border: '1px solid #444',
+                                            border: `1px solid ${theme.colors.border}`,
                                             fontSize: '0.85rem',
                                             color: '#9b59b6'
                                         }}>
@@ -1658,11 +1658,11 @@ function Feed() {
                     style={getStyles(theme).newItemsNotification}
                     onClick={handleShowNewItems}
                     onMouseEnter={(e) => {
-                        e.target.style.backgroundColor = '#1991DA';
+                        e.target.style.backgroundColor = theme.colors.accentHover;
                         e.target.style.transform = 'translateX(-50%) translateY(-2px)';
                     }}
                     onMouseLeave={(e) => {
-                        e.target.style.backgroundColor = '#1DA1F2';
+                        e.target.style.backgroundColor = theme.colors.accent;
                         e.target.style.transform = 'translateX(-50%) translateY(0)';
                     }}
                 >
@@ -1770,7 +1770,7 @@ function Feed() {
                         
                         return (
                             <div style={{
-                                borderTop: '1px solid #3a3a3a',
+                                borderTop: `1px solid ${theme.colors.border}`,
                                 paddingTop: '20px',
                                 display: 'flex',
                                 flexDirection: 'column',
@@ -1819,12 +1819,12 @@ function Feed() {
                                                         width: '40px',
                                                         height: '40px',
                                                         borderRadius: '50%',
-                                                        backgroundColor: '#4a4a4a',
+                                                        backgroundColor: theme.colors.border,
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         justifyContent: 'center',
                                                         fontSize: '12px',
-                                                        color: '#ccc',
+                                                        color: theme.colors.secondaryText,
                                                         boxShadow: '0 2px 12px rgba(0, 0, 0, 0.4)',
                                                         border: '2px solid #3a3a3a'
                                                     }}>
@@ -1848,12 +1848,12 @@ function Feed() {
                                                         width: '40px',
                                                         height: '40px',
                                                         borderRadius: '50%',
-                                                        backgroundColor: '#4a4a4a',
+                                                        backgroundColor: theme.colors.border,
                                                         display: 'flex',
                                                         alignItems: 'center',
                                                         justifyContent: 'center',
                                                         fontSize: '11px',
-                                                        color: '#ffffff',
+                                                        color: theme.colors.primaryText,
                                                         fontWeight: 'bold',
                                                         boxShadow: '0 2px 12px rgba(0, 0, 0, 0.4)',
                                                         border: '2px solid #3a3a3a'
@@ -1872,12 +1872,12 @@ function Feed() {
                                             width: '40px',
                                             height: '40px',
                                             borderRadius: '50%',
-                                            backgroundColor: '#555',
+                                            backgroundColor: theme.colors.mutedText,
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                             fontSize: '11px',
-                                            color: '#ffffff',
+                                            color: theme.colors.primaryText,
                                             fontWeight: 'bold',
                                             boxShadow: '0 2px 12px rgba(0, 0, 0, 0.4)',
                                             border: '2px solid #3a3a3a'
@@ -1942,16 +1942,16 @@ function Feed() {
                                             style={getStyles(theme).filterInput}
                                         />
                                     </div>
-                                </div>
-                                
-                                {/* Filter Buttons */}
-                                <div style={getStyles(theme).filterRow}>
-                                    <button onClick={applyFilters} style={getStyles(theme).applyButton}>
-                                        Apply Filters
-                                    </button>
-                                    <button onClick={clearFilters} style={getStyles(theme).clearButton}>
-                                        Clear Filters
-                                    </button>
+                                    
+                                    {/* Filter Buttons */}
+                                    <div style={getStyles(theme).filterRow}>
+                                        <button onClick={applyFilters} style={getStyles(theme).applyButton}>
+                                            Apply Filters
+                                        </button>
+                                        <button onClick={clearFilters} style={getStyles(theme).clearButton}>
+                                            Clear Filters
+                                        </button>
+                                    </div>
                                 </div>
                                 
                                 {/* Right Column (or bottom on narrow): SNS List */}
@@ -1961,7 +1961,7 @@ function Feed() {
                                             <label style={getStyles(theme).filterLabel}>
                                                 SNS (Select Multiple)
                                                 {selectedSnsList.length > 0 && (
-                                                    <span style={{ color: '#3498db', marginLeft: '8px' }}>
+                                                    <span style={{ color: theme.colors.accent, marginLeft: '8px' }}>
                                                         ({selectedSnsList.length} selected)
                                                     </span>
                                                 )}
@@ -1988,7 +1988,7 @@ function Feed() {
                                                                 key={sns.root_canister_id} 
                                                                 style={getStyles(theme).snsCheckboxWithLogo}
                                                                 onMouseEnter={(e) => {
-                                                                    e.target.style.backgroundColor = '#2a2a2a';
+                                                                    e.target.style.backgroundColor = theme.colors.secondaryBg;
                                                                 }}
                                                                 onMouseLeave={(e) => {
                                                                     e.target.style.backgroundColor = 'transparent';
@@ -2042,10 +2042,10 @@ function Feed() {
                                                         onClick={clearAllSns}
                                                         style={getStyles(theme).clearSnsButton}
                                                         onMouseEnter={(e) => {
-                                                            e.target.style.backgroundColor = '#555';
+                                                            e.target.style.backgroundColor = theme.colors.mutedText;
                                                         }}
                                                         onMouseLeave={(e) => {
-                                                            e.target.style.backgroundColor = '#666';
+                                                            e.target.style.backgroundColor = theme.colors.mutedText;
                                                         }}
                                                     >
                                                         Clear SNS Selection
@@ -2146,7 +2146,7 @@ function Feed() {
                                     <div style={{
                                         textAlign: 'center',
                                         padding: '40px 20px',
-                                        color: '#888',
+                                        color: theme.colors.mutedText,
                                         fontSize: '1rem'
                                     }}>
                                         You've reached the end of the feed
