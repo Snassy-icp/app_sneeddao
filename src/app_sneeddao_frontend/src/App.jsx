@@ -86,7 +86,7 @@ function App() {
                 <GlobalNamingSetup />
                 <Layout>
                   <Routes>
-                    <Route path="/" element={<Login />} />
+                    <Route path="/" element={<Feed />} />
                     <Route path="/wallet" element={<Wallet />} />
                     <Route path="/doc" element={<Doc />} />
                     <Route path="/help" element={<Help />} />

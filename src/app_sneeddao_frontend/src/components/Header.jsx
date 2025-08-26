@@ -32,7 +32,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         const path = location.pathname;
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) return 'Me';
-        if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
+        if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
         if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path)) return 'Me';
         if (['/wallet'].includes(path)) return 'Wallet';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
@@ -41,6 +41,31 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         return 'Hub';
     });
+
+    // Update active section when location changes
+    useEffect(() => {
+        const path = location.pathname;
+        // Check /msg paths first to avoid conflicts
+        if (path.startsWith('/msg')) {
+            setActiveSection('Me');
+        } else if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
+            setActiveSection('Hub');
+        } else if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path)) {
+            setActiveSection('Me');
+        } else if (['/wallet'].includes(path)) {
+            setActiveSection('Wallet');
+        } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
+            setActiveSection('DAO');
+        } else if (['/sneedlock', '/sneedlock_info'].includes(path)) {
+            setActiveSection('Locks');
+        } else if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || path.startsWith('/tools/')) {
+            setActiveSection('Tools');
+        } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
+            setActiveSection('Admin');
+        } else {
+            setActiveSection('Hub'); // Fall back to Hub section
+        }
+    }, [location.pathname]);
 
     // Silent admin check - don't redirect, just check status
     const { isAdmin, loading: adminLoading } = useAdminCheck({ 
@@ -241,6 +266,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         // Direct path match
         if (currentPath === itemPath) return true;
         
+        // Special case: root path "/" should highlight Feed submenu item
+        if (itemPath === '/feed' && currentPath === '/') {
+            return true;
+        }
+        
         // Legacy page mappings
         const legacyMappings = {
             '/proposals': ['/proposal'],
@@ -353,7 +383,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         display: 'flex',
                         alignItems: 'center',
                         fontSize: '18px',
-                        marginRight: '8px',
+                        marginRight: '4px',
                         transition: 'background-color 0.2s ease'
                     }}
                     onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
