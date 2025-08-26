@@ -4,6 +4,7 @@ import { useSns } from '../contexts/SnsContext';
 import { useForum } from '../contexts/ForumContext';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
+import { useTheme } from '../contexts/ThemeContext';
 import { getPrincipalName, setPrincipalName, setPrincipalNickname, getPrincipalNickname, getPostsByUser, getRepliesToUser, getThreadsByUser, getPostsByThread } from '../utils/BackendUtils';
 import PrincipalInput from '../components/PrincipalInput';
 import { Principal } from '@dfinity/principal';
@@ -36,6 +37,7 @@ const spinKeyframes = `
 `;
 
 export default function PrincipalPage() {
+    const { theme } = useTheme();
     const { identity } = useAuth();
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
     const { principalNames, principalNicknames } = useNaming();
@@ -555,18 +557,18 @@ export default function PrincipalPage() {
 
     if (!stablePrincipalId.current) {
         return (
-            <div className='page-container'>
+            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
                 <Header showSnsDropdown={true} />
                 <main className="wallet-container">
                     {/* Search Section */}
                     <div 
                         ref={searchContainerRef}
                         style={{ 
-                            backgroundColor: '#2a2a2a',
+                            backgroundColor: theme.colors.secondaryBg,
                             borderRadius: '8px',
                             padding: '20px',
                             marginBottom: '20px',
-                            border: '1px solid #3a3a3a',
+                            border: `1px solid ${theme.colors.border}`,
                             position: 'relative'
                         }}
                     >
@@ -577,7 +579,7 @@ export default function PrincipalPage() {
                             marginBottom: '15px'
                         }}>
                             <h2 style={{ 
-                                color: '#ffffff',
+                                color: theme.colors.primaryText,
                                 margin: '0',
                                 fontSize: '18px',
                                 fontWeight: '500'
@@ -593,8 +595,8 @@ export default function PrincipalPage() {
                                         setShowSearchResults(false);
                                     }}
                                     style={{
-                                        backgroundColor: '#27ae60',
-                                        color: '#ffffff',
+                                        backgroundColor: theme.colors.success,
+                                        color: theme.colors.primaryText,
                                         border: 'none',
                                         borderRadius: '4px',
                                         padding: '8px 12px',
@@ -632,8 +634,8 @@ export default function PrincipalPage() {
                     </div>
 
                     <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>No Principal Selected</h1>
-                        <p style={{ color: '#888' }}>Use the search box above to find a principal.</p>
+                        <h1 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>No Principal Selected</h1>
+                        <p style={{ color: theme.colors.mutedText }}>Use the search box above to find a principal.</p>
                     </div>
                 </main>
             </div>
@@ -641,18 +643,18 @@ export default function PrincipalPage() {
     }
 
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header showSnsDropdown={true} />
             <main className="wallet-container">
                 {/* Search Section */}
                 <div 
                     ref={searchContainerRef}
                     style={{ 
-                        backgroundColor: '#2a2a2a',
+                        backgroundColor: theme.colors.secondaryBg,
                         borderRadius: '8px',
                         padding: '20px',
                         marginBottom: '20px',
-                        border: '1px solid #3a3a3a',
+                        border: `1px solid ${theme.colors.border}`,
                         position: 'relative'
                     }}
                 >
@@ -663,7 +665,7 @@ export default function PrincipalPage() {
                         marginBottom: '15px'
                     }}>
                         <h2 style={{ 
-                            color: '#ffffff',
+                            color: theme.colors.primaryText,
                             margin: '0',
                             fontSize: '18px',
                             fontWeight: '500'
@@ -679,8 +681,8 @@ export default function PrincipalPage() {
                                     setShowSearchResults(false);
                                 }}
                                 style={{
-                                    backgroundColor: '#27ae60',
-                                    color: '#ffffff',
+                                    backgroundColor: theme.colors.success,
+                                    color: theme.colors.primaryText,
                                     border: 'none',
                                     borderRadius: '4px',
                                     padding: '8px 12px',
@@ -719,27 +721,27 @@ export default function PrincipalPage() {
 
                 {!stablePrincipalId.current ? (
                     <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>No Principal Selected</h1>
-                        <p style={{ color: '#888' }}>Use the search box above to find a principal.</p>
+                        <h1 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>No Principal Selected</h1>
+                        <p style={{ color: theme.colors.mutedText }}>Use the search box above to find a principal.</p>
                     </div>
                 ) : (
                     <>
                         <div style={{ 
-                            backgroundColor: '#2a2a2a',
+                            backgroundColor: theme.colors.secondaryBg,
                             borderRadius: '8px',
                             padding: '20px',
                             marginBottom: '30px',
-                            border: '1px solid #3a3a3a'
+                            border: `1px solid ${theme.colors.border}`
                         }}>
                             {loading ? (
-                                <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
                                     Loading...
                                 </div>
                             ) : error ? (
                                 <div style={{ 
-                                    backgroundColor: 'rgba(231, 76, 60, 0.2)', 
-                                    border: '1px solid #e74c3c',
-                                    color: '#e74c3c',
+                                    backgroundColor: `${theme.colors.error}20`, 
+                                    border: `1px solid ${theme.colors.error}`,
+                                    color: theme.colors.error,
                                     padding: '15px',
                                     borderRadius: '6px',
                                     marginBottom: '20px'
@@ -758,7 +760,7 @@ export default function PrincipalPage() {
                                     }}>
                                         <div>
                                             <h2 style={{ 
-                                                color: '#ffffff',
+                                                color: theme.colors.primaryText,
                                                 margin: '0 0 5px 0',
                                                 fontSize: '18px',
                                                 fontWeight: '500'
@@ -788,8 +790,8 @@ export default function PrincipalPage() {
                                                     <button
                                                         onClick={() => setEditingNickname(true)}
                                                         style={{
-                                                            backgroundColor: '#95a5a6',
-                                                            color: '#ffffff',
+                                                            backgroundColor: theme.colors.mutedText,
+                                                            color: theme.colors.primaryText,
                                                             border: 'none',
                                                             borderRadius: '4px',
                                                             padding: '8px 12px',
