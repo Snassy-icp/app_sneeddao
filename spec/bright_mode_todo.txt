@@ -180,3 +180,7 @@
   - New/highlighted items properly styled with theme accent colors
   - Principal display with names and nicknames using appropriate text colors
   - Responsive design working across mobile and desktop layouts
+  - **Text Contrast Fix**: Fixed bright text on bright background issues in Posts page
+  - **Card Visibility**: Enhanced card borders and backgrounds for better distinction from page background
+  - **Tips Layout**: Fixed logo and amount left-alignment in Tips page table columns
+  - **Date Text**: Made date text darker using theme.colors.secondaryText for better readability

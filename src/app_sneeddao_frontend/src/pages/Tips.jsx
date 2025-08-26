@@ -234,7 +234,7 @@ const Tips = () => {
         return (
             <tr key={tip.id} className={`tip-row ${isNew ? 'tip-new' : ''}`}>
                 <td className="tip-amount">
-                    <div className="tip-amount-container">
+                    <div className="tip-amount-container" style={{ justifyContent: 'flex-start', alignItems: 'center' }}>
                         {isLoadingToken ? (
                             <span className="loading-indicator">⏳</span>
                         ) : logo ? (
@@ -286,7 +286,7 @@ const Tips = () => {
                         )}
                     </div>
                 </td>
-                <td className="tip-date">
+                <td className="tip-date" style={{ color: theme.colors.secondaryText }}>
                     {formatDate(tip.created_at)}
                 </td>
             </tr>

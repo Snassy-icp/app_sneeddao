@@ -298,6 +298,11 @@ const Posts = () => {
                 key={post.id} 
                 className={`post-item ${isNegative ? 'negative-score' : ''} ${isNew ? 'reply-new' : ''}`}
                 onClick={() => navigateToPost(post)}
+                style={{
+                    backgroundColor: theme.colors.secondaryBg,
+                    border: `1px solid ${theme.colors.border}`,
+                    color: theme.colors.primaryText
+                }}
             >
                 <div className="post-header">
                     <div className="post-meta">
@@ -331,7 +336,7 @@ const Posts = () => {
                             <span className="reply-indicator">Reply from {getPrincipalDisplay(post.created_by)}</span>
                         )}
                         {!isReply && post.title && post.title.length > 0 && (
-                            <span className="post-title">{post.title[0]}</span>
+                            <span className="post-title" style={{ color: theme.colors.primaryText }}>{post.title[0]}</span>
                         )}
                         <span className="post-date">{formatDate(post.created_at)}</span>
                     </div>
@@ -345,7 +350,7 @@ const Posts = () => {
                     </div>
                 </div>
                 <div className="post-body">
-                    <p>{post.body}</p>
+                    <p style={{ color: theme.colors.secondaryText }}>{post.body}</p>
                 </div>
                 {post.reply_to_post_id && post.reply_to_post_id.length > 0 && (
                     <div className="reply-context">
@@ -377,6 +382,11 @@ const Posts = () => {
                 key={thread.id} 
                 className="post-item thread-item"
                 onClick={() => navigateToThread(thread)}
+                style={{
+                    backgroundColor: theme.colors.secondaryBg,
+                    border: `1px solid ${theme.colors.border}`,
+                    color: theme.colors.primaryText
+                }}
             >
                 <div className="post-header">
                     <div className="post-meta">
@@ -407,7 +417,7 @@ const Posts = () => {
                             Thread #{Number(thread.id)}
                         </a>
                         {thread.title && (
-                            <span className="post-title">{thread.title}</span>
+                            <span className="post-title" style={{ color: theme.colors.primaryText }}>{thread.title}</span>
                         )}
                         <span className="post-date">{formatDate(thread.created_at)}</span>
                     </div>
@@ -432,7 +442,7 @@ const Posts = () => {
                     </div>
                 </div>
                 <div className="post-body">
-                    <p>{thread.body}</p>
+                    <p style={{ color: theme.colors.secondaryText }}>{thread.body}</p>
                 </div>
             </div>
         );
