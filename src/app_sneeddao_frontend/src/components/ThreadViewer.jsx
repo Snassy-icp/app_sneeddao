@@ -130,6 +130,7 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
 
 // ReplyForm component
 const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, principalDisplayInfo, textLimits }) => {
+    const { theme } = useTheme();
     const [replyText, setReplyText] = useState('');
     
     // Get display name for the user being replied to
@@ -2371,8 +2372,8 @@ function ThreadViewer({
                                         alignItems: 'center',
                                         gap: '6px',
                                         padding: '8px 12px',
-                                        backgroundColor: sortBy === option.value ? 'rgba(52, 152, 219, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                                        border: `1px solid ${sortBy === option.value ? 'rgba(52, 152, 219, 0.5)' : 'rgba(255, 255, 255, 0.1)'}`,
+                                        backgroundColor: sortBy === option.value ? theme.colors.accentHover : theme.colors.secondaryBg,
+                                        border: `1px solid ${sortBy === option.value ? theme.colors.accent : theme.colors.border}`,
                                         borderRadius: '6px',
                                         cursor: 'pointer',
                                         fontSize: '0.85rem',
@@ -2430,7 +2431,7 @@ function ThreadViewer({
                             Voting Neurons
                         </h4>
                         <p style={{
-                            color: 'rgba(255, 255, 255, 0.7)',
+                            color: theme.colors.secondaryText,
                             fontSize: '0.9rem',
                             marginBottom: '15px',
                             margin: '0 0 15px 0'
@@ -2525,7 +2526,7 @@ function ThreadViewer({
                         border: '1px solid rgba(255, 215, 0, 0.3)',
                         borderRadius: '6px',
                         fontSize: '0.85rem',
-                        color: 'rgba(255, 255, 255, 0.8)'
+                        color: theme.colors.primaryText
                     }}>
                         <strong>Total Selected Voting Power:</strong> {formatVotingPowerDisplay(totalVotingPower)}
                     </div>
@@ -2747,7 +2748,7 @@ function ThreadViewer({
                             {/* Post body - hide when editing */}
                             {editingPost !== Number(post.id) && (
                                 <div className="post-body">
-                                    <p style={{ whiteSpace: 'pre-wrap' }}>{post.body}</p>
+                                    <p style={{ whiteSpace: 'pre-wrap', color: theme.colors.primaryText }}>{post.body}</p>
                                 </div>
                             )}
                             

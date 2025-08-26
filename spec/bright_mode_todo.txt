@@ -113,3 +113,6 @@
 - ✅ **Thread Settings Panel** - Fixed all white text issues in settings
 - ✅ **Tips Display Component** - Added theme support for tip badges and tooltips
 - ✅ **Negative Score Posts** - Fixed dark backgrounds for posts with negative scores
+- ✅ **Post Body Text** - Fixed white text on white background for post content
+- ✅ **Settings Panel Complete** - Fixed all remaining white text (neurons, voting power, sorting)
+- ✅ **ReplyForm Theme Error** - Fixed "theme is not defined" error in reply forms
