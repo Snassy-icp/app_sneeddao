@@ -611,10 +611,10 @@ function Proposals() {
                                 </div>
                                 {expandedSummaries.has(proposal.id[0].id.toString()) && (
                                     <div style={{ 
-                                        backgroundColor: '#3a3a3a', 
+                                        backgroundColor: theme.colors.border, 
                                         padding: '15px', 
                                         borderRadius: '6px',
-                                        color: '#888', 
+                                        color: theme.colors.mutedText, 
                                         margin: '0 0 10px 0'
                                     }}>
                                         <ReactMarkdown>

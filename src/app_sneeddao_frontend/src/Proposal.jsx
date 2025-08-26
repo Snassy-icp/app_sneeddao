@@ -814,16 +814,16 @@ function Proposal() {
                         </div>
                     </div>
 
-                    {error && <div style={{ color: '#e74c3c', marginBottom: '20px' }}>{error}</div>}
+                    {error && <div style={getStyles(theme).error}>{error}</div>}
 
                     {loading && (
-                        <div style={{ color: '#ffffff', textAlign: 'center', padding: '20px' }}>
+                        <div style={getStyles(theme).loading}>
                             Loading...
                         </div>
                     )}
 
                     {proposalData && !loading && !error && (
-                        <div style={{ color: '#ffffff' }}>
+                        <div style={getStyles(theme).content}>
                             <div 
                                 onClick={() => setIsProposalExpanded(!isProposalExpanded)}
                                 style={{
@@ -831,9 +831,7 @@ function Proposal() {
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: '10px',
-                                    padding: '10px',
-                                    backgroundColor: '#3a3a3a',
-                                    borderRadius: '6px',
+                                    ...getStyles(theme).expandToggle,
                                     marginBottom: isProposalExpanded ? '10px' : '0'
                                 }}
                             >
@@ -846,7 +844,7 @@ function Proposal() {
                             </div>
                             
                             {isProposalExpanded && (
-                                <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px', marginTop: '10px' }}>
+                                <div style={getStyles(theme).expandedContent}>
                                     <p><strong>SNS:</strong> {selectedSns?.name || 'Unknown SNS'}</p>
                                     <p><strong>Topic:</strong> {getTopicName(proposalData)}</p>
                                     <p><strong>Title:</strong> {proposalData.proposal?.[0]?.title || 'No title'}</p>
@@ -912,9 +910,7 @@ function Proposal() {
                                         </span>
                                     </p>
                                     <p><strong>Summary:</strong> <div style={{ 
-                                        backgroundColor: '#2a2a2a', 
-                                        padding: '10px', 
-                                        borderRadius: '4px',
+                                        ...getStyles(theme).summaryBox,
                                         marginTop: '5px',
                                         wordBreak: 'break-word',
                                         overflowWrap: 'anywhere',
