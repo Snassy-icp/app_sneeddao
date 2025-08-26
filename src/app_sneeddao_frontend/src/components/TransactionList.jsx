@@ -271,7 +271,9 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
     const { identity } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
-    const [displayedTransactions, setDisplayedTransactions] = useState([]); // Current page of transactions
+    const [rawTransactions, setRawTransactions] = useState([]); // Raw transactions from server (ledger mode)
+    const [allTransactions, setAllTransactions] = useState([]); // All transactions for specific principal (index mode)
+    const [displayedTransactions, setDisplayedTransactions] = useState([]); // Filtered and sorted transactions
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [page, setPage] = useState(0);
@@ -485,34 +487,8 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                 }
             }
 
-            // Apply type filter if needed
-            const filteredTxs = selectedType === TransactionType.ALL 
-                ? txs 
-                : txs.filter(tx => tx?.kind === selectedType);
-
-            // Apply from/to filters
-            const filteredByAddress = filteredTxs.filter(tx => {
-                const fromPrincipal = getFromPrincipal(tx);
-                const toPrincipal = getToPrincipal(tx);
-
-                const fromMatches = matchesPrincipalFilter(
-                    fromPrincipal,
-                    fromFilter,
-                    fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null
-                );
-
-                const toMatches = matchesPrincipalFilter(
-                    toPrincipal,
-                    toFilter,
-                    toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null
-                );
-
-                return filterOperator === 'and' ? (fromMatches && toMatches) : (fromMatches || toMatches);
-            });
-
-            // Sort transactions
-            const sortedTxs = sortTransactions(filteredByAddress);
-            setDisplayedTransactions(sortedTxs);
+            // Store raw transactions - filtering will be done separately
+            setRawTransactions(txs);
 
         } catch (err) {
             setError('Failed to fetch transactions');
@@ -561,7 +537,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
             console.log("Total transactions fetched:", allTxs.length);
             setAllTransactions(allTxs);
             setTotalTransactions(allTxs.length);
-            updateDisplayedTransactions(allTxs, 0, selectedType, pageSize);
+            // Filtering will be handled by the separate useEffect
         } catch (err) {
             setError('Failed to fetch transactions from index');
             console.error('Error fetching from index:', err);
@@ -619,14 +595,49 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
             // Use ledger for general transaction list
             fetchLedgerTransactions();
         }
-    }, [ledgerCanisterId, indexCanisterId, principalId, page, pageSize, selectedType, fromFilter, toFilter, filterOperator]);
+    }, [ledgerCanisterId, indexCanisterId, principalId, page, pageSize]);
 
-    // Effect to update displayed transactions when filters change (for index transactions)
+    // Effect to filter and sort transactions client-side
     useEffect(() => {
         if (principalId && allTransactions.length > 0) {
+            // For index transactions (specific principal)
             updateDisplayedTransactions(allTransactions, page, selectedType, pageSize);
+        } else if (!principalId && rawTransactions.length > 0) {
+            // For ledger transactions (all transactions) - filter client-side
+            let filteredTxs = rawTransactions;
+
+            // Apply type filter
+            if (selectedType !== TransactionType.ALL) {
+                filteredTxs = filteredTxs.filter(tx => tx?.kind === selectedType);
+            }
+
+            // Apply from/to filters
+            if (fromFilter || toFilter) {
+                filteredTxs = filteredTxs.filter(tx => {
+                    const fromPrincipal = getFromPrincipal(tx);
+                    const toPrincipal = getToPrincipal(tx);
+
+                    const fromMatches = matchesPrincipalFilter(
+                        fromPrincipal,
+                        fromFilter,
+                        fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null
+                    );
+
+                    const toMatches = matchesPrincipalFilter(
+                        toPrincipal,
+                        toFilter,
+                        toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null
+                    );
+
+                    return filterOperator === 'and' ? (fromMatches && toMatches) : (fromMatches || toMatches);
+                });
+            }
+
+            // Sort transactions
+            const sortedTxs = sortTransactions(filteredTxs);
+            setDisplayedTransactions(sortedTxs);
         }
-    }, [page, selectedType, pageSize, sortConfig, fromFilter, toFilter, filterOperator]);
+    }, [rawTransactions, allTransactions, principalId, page, selectedType, pageSize, sortConfig, fromFilter, toFilter, filterOperator, principalDisplayInfo]);
 
     // Add effect to fetch principal display info
     useEffect(() => {
@@ -1042,7 +1053,6 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 value={fromFilter}
                                 onChange={(value) => {
                                     setFromFilter(value);
-                                    setPage(0);
                                 }}
                                 placeholder="Filter by sender"
                             />
@@ -1054,7 +1064,6 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 value={filterOperator}
                                 onChange={(e) => {
                                     setFilterOperator(e.target.value);
-                                    setPage(0);
                                 }}
                                 style={styles.filterSelect}
                             >
@@ -1069,7 +1078,6 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 value={toFilter}
                                 onChange={(value) => {
                                     setToFilter(value);
-                                    setPage(0);
                                 }}
                                 placeholder="Filter by recipient"
                             />
@@ -1081,7 +1089,6 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 value={selectedType}
                                 onChange={(e) => {
                                     setSelectedType(e.target.value);
-                                    setPage(0);
                                 }}
                                 style={styles.filterSelect}
                             >
