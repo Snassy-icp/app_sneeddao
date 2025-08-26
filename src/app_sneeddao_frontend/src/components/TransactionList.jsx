@@ -129,8 +129,9 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
             display: 'flex',
             flexDirection: 'column',
             gap: '4px',
-            minWidth: '200px',
-            flex: '1 1 200px'
+            minWidth: '180px',
+            flex: '1 1 180px',
+            maxWidth: '250px'
         },
         compactFilterGroup: {
             display: 'flex',
@@ -317,11 +318,12 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                         flex-wrap: wrap !important;
                     }
                     .transaction-filter-group {
-                        flex: 1 1 45% !important;
-                        min-width: 200px !important;
+                        flex: 1 1 40% !important;
+                        min-width: 180px !important;
+                        max-width: 220px !important;
                     }
                     .transaction-compact-filter-group {
-                        flex: 1 1 25% !important;
+                        flex: 1 1 20% !important;
                         min-width: 120px !important;
                     }
                 }

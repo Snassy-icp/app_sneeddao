@@ -202,7 +202,12 @@ const PrincipalInput = ({
     }, []);
 
     return (
-        <div style={{ position: 'relative', ...style }}>
+        <div style={{ 
+            position: 'relative', 
+            width: '100%',
+            maxWidth: '300px',
+            ...style 
+        }}>
             <input
                 ref={inputRef}
                 type="text"
@@ -221,7 +226,8 @@ const PrincipalInput = ({
                     color: theme.colors.primaryText,
                     fontSize: '14px',
                     outline: 'none',
-                    transition: 'border-color 0.2s ease'
+                    transition: 'border-color 0.2s ease',
+                    boxSizing: 'border-box'
                 }}
             />
             
