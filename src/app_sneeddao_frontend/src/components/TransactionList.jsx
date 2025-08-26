@@ -111,6 +111,142 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
             justifyContent: 'center',
             padding: '20px',
             color: theme.colors.mutedText
+        },
+        filtersContainer: {
+            display: 'flex',
+            gap: '20px',
+            alignItems: 'center',
+            marginBottom: '20px'
+        },
+        filterGroup: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+        },
+        filterLabel: {
+            color: theme.colors.mutedText,
+            fontSize: '14px'
+        },
+        filterInput: {
+            backgroundColor: theme.colors.tertiaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '4px',
+            padding: '8px 12px',
+            color: theme.colors.primaryText,
+            width: '200px'
+        },
+        filterSelect: {
+            backgroundColor: theme.colors.tertiaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '4px',
+            padding: '8px',
+            color: theme.colors.primaryText,
+            cursor: 'pointer',
+            fontSize: '14px',
+            minWidth: '80px'
+        },
+        headerTitle: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            cursor: 'pointer',
+            userSelect: 'none'
+        },
+        collapseIcon: {
+            fontSize: '18px',
+            color: theme.colors.mutedText,
+            transition: 'transform 0.2s'
+        },
+        collapsedIcon: {
+            transform: 'rotate(-90deg)'
+        },
+        tableContainer: {
+            display: 'block'
+        },
+        cardsContainer: {
+            display: 'none'
+        },
+        transactionCard: {
+            backgroundColor: theme.colors.secondaryBg,
+            borderRadius: '8px',
+            padding: '15px',
+            marginBottom: '10px',
+            border: `1px solid ${theme.colors.border}`
+        },
+        cardHeader: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '10px'
+        },
+        cardType: {
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            textTransform: 'uppercase'
+        },
+        cardField: {
+            marginBottom: '8px'
+        },
+        cardLabel: {
+            color: theme.colors.mutedText,
+            fontSize: '12px',
+            marginBottom: '2px'
+        },
+        cardValue: {
+            color: theme.colors.primaryText,
+            fontSize: '14px',
+            wordBreak: 'break-all'
+        },
+        paginationControls: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+        },
+        select: {
+            backgroundColor: theme.colors.tertiaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '4px',
+            padding: '8px',
+            color: theme.colors.primaryText,
+            cursor: 'pointer'
+        },
+        sortableHeader: {
+            cursor: 'pointer',
+            userSelect: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+        },
+        sortIcon: {
+            fontSize: '12px',
+            opacity: 0.7
+        },
+        sortableHeaderGroup: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px'
+        },
+        sortableSubHeader: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            cursor: 'pointer'
+        },
+        headerDivider: {
+            color: theme.colors.mutedText,
+            userSelect: 'none'
+        },
+        principalCell: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px'
+        },
+        subaccount: {
+            fontSize: '12px',
+            color: theme.colors.mutedText,
+            wordBreak: 'break-all'
         }
     };
 
