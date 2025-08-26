@@ -6,6 +6,7 @@ import { createActor as createSnsLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createSnsIndexActor } from 'external/sns_index';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { Link } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
@@ -24,211 +25,11 @@ const validateNameInput = (input) => {
 const PAGE_SIZES = [10, 20, 50, 100];
 const FETCH_SIZE = 100; // How many transactions to fetch per request
 
-const styles = {
-    container: {
-        backgroundColor: '#2a2a2a',
-        borderRadius: '8px',
-        padding: '20px',
-        marginTop: '20px'
-    },
-    header: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '20px'
-    },
-    filters: {
-        display: 'flex',
-        gap: '10px',
-        marginBottom: '20px'
-    },
-    filterButton: {
-        backgroundColor: '#3a3a3a',
-        border: '1px solid #4a4a4a',
-        borderRadius: '4px',
-        padding: '8px 16px',
-        color: '#fff',
-        cursor: 'pointer'
-    },
-    filterButtonActive: {
-        backgroundColor: '#3498db',
-        border: '1px solid #2980b9'
-    },
-    table: {
-        width: '100%',
-        borderCollapse: 'collapse'
-    },
-    th: {
-        textAlign: 'left',
-        padding: '12px',
-        borderBottom: '1px solid #3a3a3a',
-        color: '#888'
-    },
-    td: {
-        padding: '12px',
-        borderBottom: '1px solid #3a3a3a',
-        color: '#fff'
-    },
-    pagination: {
-        display: 'flex',
-        justifyContent: 'center',
-        gap: '10px',
-        marginTop: '20px'
-    },
-    pageButton: {
-        backgroundColor: '#3a3a3a',
-        border: '1px solid #4a4a4a',
-        borderRadius: '4px',
-        padding: '8px 16px',
-        color: '#fff',
-        cursor: 'pointer'
-    },
-    pageButtonDisabled: {
-        opacity: 0.5,
-        cursor: 'not-allowed'
-    },
-    loadingSpinner: {
-        display: 'flex',
-        justifyContent: 'center',
-        padding: '20px',
-        color: '#888'
-    },
-    principalCell: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '4px'
-    },
-    subaccount: {
-        fontSize: '12px',
-        color: '#888',
-        wordBreak: 'break-all'
-    },
-    paginationControls: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px'
-    },
-    select: {
-        backgroundColor: '#3a3a3a',
-        border: '1px solid #4a4a4a',
-        borderRadius: '4px',
-        padding: '8px',
-        color: '#fff',
-        cursor: 'pointer'
-    },
-    sortableHeader: {
-        cursor: 'pointer',
-        userSelect: 'none',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '4px'
-    },
-    sortIcon: {
-        fontSize: '12px',
-        opacity: 0.7
-    },
-    sortableHeaderGroup: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '16px'
-    },
-    sortableSubHeader: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '4px',
-        cursor: 'pointer'
-    },
-    headerDivider: {
-        color: '#666',
-        userSelect: 'none'
-    },
-    filterInput: {
-        backgroundColor: '#3a3a3a',
-        border: '1px solid #4a4a4a',
-        borderRadius: '4px',
-        padding: '8px 12px',
-        color: '#fff',
-        width: '200px'
-    },
-    filterGroup: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px'
-    },
-    filterLabel: {
-        color: '#888',
-        fontSize: '14px'
-    },
-    filtersContainer: {
-        display: 'flex',
-        gap: '20px',
-        alignItems: 'center',
-        marginBottom: '20px'
-    },
-    filterSelect: {
-        backgroundColor: '#3a3a3a',
-        border: '1px solid #4a4a4a',
-        borderRadius: '4px',
-        padding: '8px',
-        color: '#fff',
-        cursor: 'pointer',
-        fontSize: '14px',
-        minWidth: '80px'
-    },
-    headerTitle: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        cursor: 'pointer',
-        userSelect: 'none'
-    },
-    collapseIcon: {
-        fontSize: '18px',
-        color: '#888',
-        transition: 'transform 0.2s'
-    },
-    collapsedIcon: {
-        transform: 'rotate(-90deg)'
-    },
-    tableContainer: {
-        display: 'block'
-    },
-    cardsContainer: {
-        display: 'none'
-    },
-    transactionCard: {
-        backgroundColor: '#2a2a2a',
-        borderRadius: '8px',
-        padding: '15px',
-        marginBottom: '10px',
-        border: '1px solid #3a3a3a'
-    },
-    cardHeader: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '10px'
-    },
-    cardType: {
-        padding: '4px 8px',
-        borderRadius: '4px',
-        fontSize: '12px',
-        fontWeight: 'bold',
-        textTransform: 'uppercase'
-    },
-    cardField: {
-        marginBottom: '8px'
-    },
-    cardLabel: {
-        color: '#888',
-        fontSize: '12px',
-        marginBottom: '2px'
-    },
-    cardValue: {
-        color: '#fff',
-        fontSize: '14px',
-        wordBreak: 'break-all'
-    }
+const TRANSACTION_TYPES = {
+    TRANSFER: 'transfer',
+    MINT: 'mint',
+    BURN: 'burn',
+    APPROVE: 'approve'
 };
 
 const TransactionType = {
@@ -240,6 +41,138 @@ const TransactionType = {
 };
 
 function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, onToggleCollapse }) {
+    const { theme } = useTheme();
+    
+    const styles = {
+        container: {
+            backgroundColor: theme.colors.secondaryBg,
+            borderRadius: '8px',
+            padding: '20px',
+            marginTop: '20px'
+        },
+        header: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '20px'
+        },
+        filters: {
+            display: 'flex',
+            gap: '10px',
+            marginBottom: '20px'
+        },
+        filterButton: {
+            backgroundColor: theme.colors.tertiaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '4px',
+            padding: '8px 16px',
+            color: theme.colors.primaryText,
+            cursor: 'pointer'
+        },
+        filterButtonActive: {
+            backgroundColor: theme.colors.accent,
+            border: `1px solid ${theme.colors.accent}`
+        },
+        table: {
+            width: '100%',
+            borderCollapse: 'collapse'
+        },
+        th: {
+            textAlign: 'left',
+            padding: '12px',
+            borderBottom: `1px solid ${theme.colors.border}`,
+            color: theme.colors.mutedText
+        },
+        td: {
+            padding: '12px',
+            borderBottom: `1px solid ${theme.colors.border}`,
+            color: theme.colors.primaryText
+        },
+        pagination: {
+            display: 'flex',
+            justifyContent: 'center',
+            gap: '10px',
+            marginTop: '20px'
+        },
+        pageButton: {
+            backgroundColor: theme.colors.tertiaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '4px',
+            padding: '8px 16px',
+            color: theme.colors.primaryText,
+            cursor: 'pointer'
+        },
+        pageButtonDisabled: {
+            opacity: 0.5,
+            cursor: 'not-allowed'
+        },
+        loadingSpinner: {
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '20px',
+            color: theme.colors.mutedText
+        }
+    };
+
+    // Add responsive CSS for table/cards switching
+    React.useEffect(() => {
+        const mediaQueryCSS = `
+            <style id="transaction-responsive-css">
+                @media (max-width: 768px) {
+                    .transaction-table-container { display: none !important; }
+                    .transaction-cards-container { display: block !important; }
+                }
+                @media (min-width: 769px) {
+                    .transaction-table-container { display: block !important; }
+                    .transaction-cards-container { display: none !important; }
+                }
+            </style>
+        `;
+
+        // Remove existing style tag if it exists
+        const existingStyle = document.getElementById('transaction-responsive-css');
+        if (existingStyle) {
+            existingStyle.remove();
+        }
+
+        // Add new style tag
+        document.head.insertAdjacentHTML('beforeend', mediaQueryCSS);
+
+        return () => {
+            const styleElement = document.getElementById('transaction-responsive-css');
+            if (styleElement) {
+                styleElement.remove();
+            }
+        };
+    }, []);
+    const { identity } = useAuth();
+    const { principalNames, principalNicknames } = useNaming();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [displayedTransactions, setDisplayedTransactions] = useState([]); // Current page of transactions
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [page, setPage] = useState(0);
+    const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
+    const [selectedType, setSelectedType] = useState(TransactionType.ALL);
+    const [ledgerCanisterId, setLedgerCanisterId] = useState(null);
+    const [indexCanisterId, setIndexCanisterId] = useState(null);
+    const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    const [sortConfig, setSortConfig] = useState({
+        key: 'timestamp',
+        direction: 'desc'
+    });
+    const [fromFilter, setFromFilter] = useState('');
+    const [toFilter, setToFilter] = useState('');
+    const [filterOperator, setFilterOperator] = useState('and');
+    const [totalTransactions, setTotalTransactions] = useState(0);
+    const [startTxIndex, setStartTxIndex] = useState(() => {
+        const urlStart = searchParams.get('start');
+        return urlStart ? parseInt(urlStart) : 0;
+    });
+    const [txIndexInput, setTxIndexInput] = useState(() => {
+        const urlStart = searchParams.get('start');
+        return urlStart ? urlStart : '';
+    });
     // Add responsive CSS for table/cards switching
     React.useEffect(() => {
         const mediaQueryCSS = `
@@ -270,35 +203,6 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
             if (style) style.remove();
         };
     }, []);
-    const { identity } = useAuth();
-    const { principalNames, principalNicknames } = useNaming();
-    const [searchParams, setSearchParams] = useSearchParams();
-    const [allTransactions, setAllTransactions] = useState([]); // Store all fetched transactions
-    const [displayedTransactions, setDisplayedTransactions] = useState([]); // Current page of transactions
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [page, setPage] = useState(0);
-    const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
-    const [selectedType, setSelectedType] = useState(TransactionType.ALL);
-    const [ledgerCanisterId, setLedgerCanisterId] = useState(null);
-    const [indexCanisterId, setIndexCanisterId] = useState(null);
-    const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
-    const [sortConfig, setSortConfig] = useState({
-        key: 'timestamp',
-        direction: 'desc'
-    });
-    const [fromFilter, setFromFilter] = useState('');
-    const [toFilter, setToFilter] = useState('');
-    const [filterOperator, setFilterOperator] = useState('and');
-    const [totalTransactions, setTotalTransactions] = useState(0);
-    const [startTxIndex, setStartTxIndex] = useState(() => {
-        const urlStart = searchParams.get('start');
-        return urlStart ? parseInt(urlStart) : 0;
-    });
-    const [txIndexInput, setTxIndexInput] = useState(() => {
-        const urlStart = searchParams.get('start');
-        return urlStart ? urlStart : '';
-    });
 
     // Effect to sync page with URL start parameter and input field
     useEffect(() => {

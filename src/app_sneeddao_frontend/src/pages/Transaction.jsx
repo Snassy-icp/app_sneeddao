@@ -5,6 +5,7 @@ import { createActor as createSnsArchiveActor } from 'external/sns_archive';
 import { createActor as createSnsLedgerActor } from 'external/icrc1_ledger';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import Header from '../components/Header';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
@@ -13,140 +14,8 @@ import { formatAmount } from '../utils/StringUtils';
 import { getTokenLogo } from '../utils/TokenUtils';
 import { Principal } from '@dfinity/principal';
 
-const styles = {
-    container: {
-        maxWidth: '1200px',
-        margin: '0 auto',
-        padding: '2rem'
-    },
-    card: {
-        backgroundColor: '#2a2a2a',
-        borderRadius: '8px',
-        padding: '20px',
-        marginBottom: '20px',
-        border: '1px solid #3a3a3a'
-    },
-    searchBox: {
-        display: 'flex',
-        gap: '10px',
-        marginBottom: '20px'
-    },
-    input: {
-        backgroundColor: '#3a3a3a',
-        border: '1px solid #4a4a4a',
-        borderRadius: '4px',
-        padding: '8px 12px',
-        color: '#fff',
-        flex: 1
-    },
-    button: {
-        backgroundColor: '#3498db',
-        color: '#fff',
-        border: 'none',
-        borderRadius: '4px',
-        padding: '8px 16px',
-        cursor: 'pointer'
-    },
-    label: {
-        color: '#888',
-        fontSize: '14px',
-        marginBottom: '4px'
-    },
-    value: {
-        color: '#fff',
-        fontSize: '16px'
-    },
-    section: {
-        marginBottom: '20px'
-    },
-    error: {
-        backgroundColor: 'rgba(231, 76, 60, 0.2)',
-        border: '1px solid #e74c3c',
-        color: '#e74c3c',
-        padding: '15px',
-        borderRadius: '6px',
-        marginBottom: '20px'
-    },
-    loading: {
-        color: '#888',
-        textAlign: 'center',
-        padding: '20px'
-    },
-    detailRow: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '4px',
-        marginBottom: '16px'
-    },
-    accountInfo: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px',
-        padding: '12px',
-        backgroundColor: '#222',
-        borderRadius: '4px',
-        marginTop: '8px'
-    },
-    subaccount: {
-        fontSize: '12px',
-        color: '#888',
-        wordBreak: 'break-all'
-    },
-    tokenInfo: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        padding: '12px',
-        backgroundColor: '#222',
-        borderRadius: '4px',
-        marginBottom: '20px'
-    },
-    tokenLogo: {
-        width: '32px',
-        height: '32px',
-        borderRadius: '50%',
-        objectFit: 'cover'
-    },
-    tokenDetails: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '4px'
-    },
-    tokenName: {
-        color: '#fff',
-        fontSize: '16px',
-        fontWeight: 'bold'
-    },
-    tokenSymbol: {
-        color: '#888',
-        fontSize: '14px'
-    },
-    navigationButtons: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        gap: '10px',
-        marginTop: '20px'
-    },
-    navButton: {
-        backgroundColor: '#3498db',
-        color: '#ffffff',
-        border: 'none',
-        borderRadius: '4px',
-        padding: '8px 16px',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        transition: 'background-color 0.2s'
-    },
-    navButtonDisabled: {
-        backgroundColor: '#2c3e50',
-        cursor: 'not-allowed',
-        opacity: 0.7
-    }
-};
-
 function Transaction() {
+    const { theme } = useTheme();
     const { identity } = useAuth();
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
     const { principalNames, principalNicknames } = useNaming();
@@ -163,6 +32,139 @@ function Transaction() {
         logo: '',
         decimals: 8
     });
+
+    const styles = {
+        container: {
+            maxWidth: '1200px',
+            margin: '0 auto',
+            padding: '2rem'
+        },
+        card: {
+            backgroundColor: theme.colors.secondaryBg,
+            borderRadius: '8px',
+            padding: '20px',
+            marginBottom: '20px',
+            border: `1px solid ${theme.colors.border}`
+        },
+        searchBox: {
+            display: 'flex',
+            gap: '10px',
+            marginBottom: '20px'
+        },
+        input: {
+            backgroundColor: theme.colors.tertiaryBg,
+            border: `1px solid ${theme.colors.border}`,
+            borderRadius: '4px',
+            padding: '8px 12px',
+            color: theme.colors.primaryText,
+            flex: 1
+        },
+        button: {
+            backgroundColor: theme.colors.accent,
+            color: theme.colors.primaryText,
+            border: 'none',
+            borderRadius: '4px',
+            padding: '8px 16px',
+            cursor: 'pointer'
+        },
+        label: {
+            color: theme.colors.mutedText,
+            fontSize: '14px',
+            marginBottom: '4px'
+        },
+        value: {
+            color: theme.colors.primaryText,
+            fontSize: '16px'
+        },
+        section: {
+            marginBottom: '20px'
+        },
+        error: {
+            backgroundColor: `${theme.colors.error}20`,
+            border: `1px solid ${theme.colors.error}`,
+            color: theme.colors.error,
+            padding: '15px',
+            borderRadius: '6px',
+            marginBottom: '20px'
+        },
+        loading: {
+            color: theme.colors.mutedText,
+            textAlign: 'center',
+            padding: '20px'
+        },
+        detailRow: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+            marginBottom: '16px'
+        },
+        accountInfo: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            padding: '12px',
+            backgroundColor: theme.colors.primaryBg,
+            borderRadius: '4px',
+            marginTop: '8px'
+        },
+        subaccount: {
+            fontSize: '12px',
+            color: theme.colors.mutedText,
+            wordBreak: 'break-all'
+        },
+        tokenInfo: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '12px',
+            backgroundColor: theme.colors.primaryBg,
+            borderRadius: '4px',
+            marginBottom: '20px'
+        },
+        tokenLogo: {
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            objectFit: 'cover'
+        },
+        tokenDetails: {
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px'
+        },
+        tokenName: {
+            color: theme.colors.primaryText,
+            fontSize: '16px',
+            fontWeight: 'bold'
+        },
+        tokenSymbol: {
+            color: theme.colors.mutedText,
+            fontSize: '14px'
+        },
+        navigationButtons: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '10px',
+            marginTop: '20px'
+        },
+        navButton: {
+            backgroundColor: theme.colors.accent,
+            color: theme.colors.primaryText,
+            border: 'none',
+            borderRadius: '4px',
+            padding: '8px 16px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            transition: 'background-color 0.2s'
+        },
+        navButtonDisabled: {
+            backgroundColor: theme.colors.mutedText,
+            cursor: 'not-allowed',
+            opacity: 0.7
+        }
+    };
 
     const fetchTransaction = async () => {
         if (!currentId) return;
@@ -436,7 +438,7 @@ function Transaction() {
             return (
                 <div style={styles.accountInfo}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ color: '#888' }}>{label}:</span>
+                        <span style={{ color: theme.colors.mutedText }}>{label}:</span>
                         <PrincipalDisplay
                             principal={account.owner}
                             displayInfo={account.owner ? principalDisplayInfo.get(account.owner.toString()) : null}
@@ -477,7 +479,7 @@ function Transaction() {
     }, [currentId, archiveCanisterId]);
 
     return (
-        <div className="page-container">
+        <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header showSnsDropdown={true} />
             <main style={styles.container}>
                 <div style={styles.card}>
