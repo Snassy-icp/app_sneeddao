@@ -378,12 +378,12 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         border: 'none',
                         color: '#fff',
                         cursor: 'pointer',
-                        padding: '8px',
+                        padding: '4px',
                         borderRadius: '4px',
                         display: 'flex',
                         alignItems: 'center',
                         fontSize: '18px',
-                        marginRight: '4px',
+                        marginRight: '0px',
                         transition: 'background-color 0.2s ease'
                     }}
                     onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
@@ -401,7 +401,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         border: 'none',
                         color: '#fff',
                         cursor: 'pointer',
-                        padding: '8px',
+                        padding: '4px',
                         borderRadius: '4px',
                         display: 'flex',
                         alignItems: 'center',
