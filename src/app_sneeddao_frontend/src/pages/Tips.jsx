@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useTokenMetadata } from '../hooks/useTokenMetadata';
 import { useNaming } from '../NamingContext';
 import { useTipNotifications } from '../hooks/useTipNotifications';
@@ -18,6 +19,7 @@ import Header from '../components/Header';
 import './Tips.css';
 
 const Tips = () => {
+    const { theme } = useTheme();
     const navigate = useNavigate();
     const { isAuthenticated, identity } = useAuth();
     const { createForumActor } = useForum();
@@ -305,8 +307,8 @@ const Tips = () => {
 
         return (
             <div key={tip.id} className={`tip-card ${isNew ? 'tip-new' : ''}`} style={{
-                backgroundColor: '#2a2a2a',
-                border: isNew ? '2px solid #f39c12' : '1px solid #444',
+                backgroundColor: theme.colors.secondaryBg,
+                border: isNew ? `2px solid ${theme.colors.accent}` : `1px solid ${theme.colors.border}`,
                 borderRadius: '8px',
                 padding: '16px',
                 marginBottom: '12px',
@@ -321,7 +323,7 @@ const Tips = () => {
                     gap: '8px',
                     fontSize: '14px'
                 }}>
-                    <span style={{ color: '#888', minWidth: '40px' }}>Amount:</span>
+                    <span style={{ color: theme.colors.mutedText, minWidth: '40px' }}>Amount:</span>
                     <div style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -336,7 +338,7 @@ const Tips = () => {
                         ) : (
                             <span style={{ fontSize: '20px' }}>💎</span>
                         )}
-                        <span style={{ color: '#fff' }}>
+                        <span style={{ color: theme.colors.primaryText }}>
                             {isLoadingToken ? 'Loading...' : formatTokenAmount(tip.amount, tokenId)}
                         </span>
                     </div>
@@ -349,19 +351,19 @@ const Tips = () => {
                     gap: '8px',
                     fontSize: '14px'
                 }}>
-                    <span style={{ color: '#888', minWidth: '40px' }}>
+                    <span style={{ color: theme.colors.mutedText, minWidth: '40px' }}>
                         {isReceived ? 'From:' : 'To:'}
                     </span>
-                    <span style={{ color: '#fff' }}>
+                    <span style={{ color: theme.colors.primaryText }}>
                         {typeof formattedPrincipal === 'string' ? (
                             formattedPrincipal
                         ) : formattedPrincipal?.name || formattedPrincipal?.nickname ? (
                             <div>
                                 {formattedPrincipal.name && (
-                                    <span style={{ color: '#3498db' }}>{formattedPrincipal.name}</span>
+                                    <span style={{ color: theme.colors.accent }}>{formattedPrincipal.name}</span>
                                 )}
                                 {formattedPrincipal.nickname && (
-                                    <span style={{ color: '#e67e22', marginLeft: '4px' }}>"{formattedPrincipal.nickname}"</span>
+                                    <span style={{ color: theme.colors.accent, marginLeft: '4px' }}>"{formattedPrincipal.nickname}"</span>
                                 )}
                             </div>
                         ) : (
@@ -377,14 +379,14 @@ const Tips = () => {
                     gap: '8px',
                     fontSize: '14px'
                 }}>
-                    <span style={{ color: '#888', minWidth: '40px' }}>Post:</span>
+                    <span style={{ color: theme.colors.mutedText, minWidth: '40px' }}>Post:</span>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         <button 
                             onClick={() => navigate(`/post?postid=${tip.post_id}`)}
                             style={{
                                 background: 'none',
-                                border: '1px solid #3498db',
-                                color: '#3498db',
+                                border: `1px solid ${theme.colors.accent}`,
+                                color: theme.colors.accent,
                                 padding: '4px 8px',
                                 borderRadius: '4px',
                                 fontSize: '12px',
@@ -399,8 +401,8 @@ const Tips = () => {
                                 onClick={() => navigate(`/thread?threadid=${tip.thread_id}`)}
                                 style={{
                                     background: 'none',
-                                    border: '1px solid #27ae60',
-                                    color: '#27ae60',
+                                    border: `1px solid ${theme.colors.success}`,
+                                    color: theme.colors.success,
                                     padding: '4px 8px',
                                     borderRadius: '4px',
                                     fontSize: '12px',
@@ -420,7 +422,7 @@ const Tips = () => {
                     alignItems: 'center',
                     gap: '8px',
                     fontSize: '12px',
-                    color: '#888'
+                    color: theme.colors.mutedText
                 }}>
                     <span style={{ minWidth: '40px' }}>Date:</span>
                     <span>{formatDate(tip.created_at)}</span>
@@ -431,7 +433,7 @@ const Tips = () => {
 
     if (!isAuthenticated) {
         return (
-            <div className="tips-page">
+            <div className="tips-page" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
                 <Header showSnsDropdown={false} />
                 <div className="tips-container">
                     <div className="tips-content">
@@ -445,7 +447,7 @@ const Tips = () => {
     }
 
     return (
-        <div className="tips-page">
+        <div className="tips-page" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header showSnsDropdown={false} />
             
             {/* Tips Tabs - SMS style */}

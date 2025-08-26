@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { 
     getPostsByUser, 
@@ -17,6 +18,7 @@ import Header from '../components/Header';
 import './Posts.css';
 
 const Posts = () => {
+    const { theme } = useTheme();
     const navigate = useNavigate();
     const { isAuthenticated, identity } = useAuth();
     const { createForumActor } = useForum();
@@ -303,23 +305,23 @@ const Posts = () => {
                             href={`/post?postid=${post.id}`}
                             className="post-id-link"
                             style={{
-                                color: '#3c6382 !important',
+                                color: `${theme.colors.accent} !important`,
                                 textDecoration: 'none',
                                 fontWeight: '600',
                                 fontSize: '0.9rem',
                                 display: 'inline-block',
                                 padding: '2px 4px',
                                 borderRadius: '3px',
-                                backgroundColor: 'rgba(60, 99, 130, 0.1)',
+                                backgroundColor: `${theme.colors.accent}20`,
                                 border: '1px solid rgba(60, 99, 130, 0.3)'
                             }}
                             onMouseEnter={(e) => {
                                 e.target.style.textDecoration = 'underline';
-                                e.target.style.backgroundColor = 'rgba(60, 99, 130, 0.2)';
+                                e.target.style.backgroundColor = `${theme.colors.accent}30`;
                             }}
                             onMouseLeave={(e) => {
                                 e.target.style.textDecoration = 'none';
-                                e.target.style.backgroundColor = 'rgba(60, 99, 130, 0.1)';
+                                e.target.style.backgroundColor = `${theme.colors.accent}20`;
                             }}
                             onClick={(e) => e.stopPropagation()} // Prevent triggering the parent onClick
                         >
@@ -350,7 +352,7 @@ const Posts = () => {
                         <span>In reply to <a 
                             href={`/post?postid=${post.reply_to_post_id[0]}`}
                             style={{
-                                color: '#3c6382',
+                                color: theme.colors.accent,
                                 textDecoration: 'none',
                                 fontWeight: '500'
                             }}
@@ -382,23 +384,23 @@ const Posts = () => {
                             href={`/thread?threadid=${thread.id}`}
                             className="post-id-link"
                             style={{
-                                color: '#27ae60 !important',
+                                color: `${theme.colors.success} !important`,
                                 textDecoration: 'none',
                                 fontWeight: '600',
                                 fontSize: '0.9rem',
                                 display: 'inline-block',
                                 padding: '2px 4px',
                                 borderRadius: '3px',
-                                backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                                backgroundColor: `${theme.colors.success}20`,
                                 border: '1px solid rgba(39, 174, 96, 0.3)'
                             }}
                             onMouseEnter={(e) => {
                                 e.target.style.textDecoration = 'underline';
-                                e.target.style.backgroundColor = 'rgba(39, 174, 96, 0.2)';
+                                e.target.style.backgroundColor = `${theme.colors.success}30`;
                             }}
                             onMouseLeave={(e) => {
                                 e.target.style.textDecoration = 'none';
-                                e.target.style.backgroundColor = 'rgba(39, 174, 96, 0.1)';
+                                e.target.style.backgroundColor = `${theme.colors.success}20`;
                             }}
                             onClick={(e) => e.stopPropagation()}
                         >
@@ -412,7 +414,7 @@ const Posts = () => {
                     <div className="post-scores">
                         {postCount !== undefined ? (
                             <span className="post-count" style={{ 
-                                color: '#888', 
+                                color: theme.colors.mutedText, 
                                 fontSize: '0.9rem',
                                 fontWeight: '500'
                             }}>
@@ -420,7 +422,7 @@ const Posts = () => {
                             </span>
                         ) : (
                             <span className="post-count-loading" style={{ 
-                                color: '#666', 
+                                color: theme.colors.mutedText, 
                                 fontSize: '0.8rem',
                                 fontStyle: 'italic'
                             }}>
@@ -451,7 +453,7 @@ const Posts = () => {
     }
 
     return (
-        <div className="posts-page">
+        <div className="posts-page" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             
             {/* Posts Tabs - SMS style */}
@@ -462,7 +464,7 @@ const Posts = () => {
                     display: 'flex', 
                     gap: '10px', 
                     marginBottom: '20px',
-                    borderBottom: '1px solid #3a3a3a',
+                    borderBottom: `1px solid ${theme.colors.border}`,
                     paddingBottom: '0'
                 }}>
                     {[
@@ -474,14 +476,14 @@ const Posts = () => {
                             key={tab.key}
                             onClick={() => setActiveTab(tab.key)}
                             style={{
-                                background: activeTab === tab.key ? '#3498db' : 'transparent',
-                                color: activeTab === tab.key ? '#ffffff' : '#888',
+                                background: activeTab === tab.key ? theme.colors.accent : 'transparent',
+                                color: activeTab === tab.key ? theme.colors.primaryText : theme.colors.mutedText,
                                 border: 'none',
                                 borderRadius: '4px 4px 0 0',
                                 padding: '12px 20px',
                                 cursor: 'pointer',
                                 fontSize: '16px',
-                                borderBottom: activeTab === tab.key ? '2px solid #3498db' : '2px solid transparent'
+                                borderBottom: activeTab === tab.key ? `2px solid ${theme.colors.accent}` : '2px solid transparent'
                             }}
                         >
                             {tab.label} ({tab.count})
