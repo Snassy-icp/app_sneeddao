@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
+import { useTheme } from '../contexts/ThemeContext';
 import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
@@ -14,6 +15,7 @@ import {
 import PrincipalInput from '../components/PrincipalInput';
 
 const SMS = () => {
+    const { theme } = useTheme();
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { identity, isAuthenticated } = useAuth();
@@ -433,12 +435,12 @@ const SMS = () => {
 
     if (!isAuthenticated) {
         return (
-            <div className='page-container'>
+            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
                 <Header />
                 <main className="wallet-container">
                     <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Please Connect Your Wallet</h1>
-                        <p style={{ color: '#888' }}>You need to connect your wallet to access your messages.</p>
+                        <h1 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>Please Connect Your Wallet</h1>
+                        <p style={{ color: theme.colors.mutedText }}>You need to connect your wallet to access your messages.</p>
                     </div>
                 </main>
             </div>
@@ -446,14 +448,14 @@ const SMS = () => {
     }
 
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main className="wallet-container">
                 {error && (
                     <div style={{ 
-                        backgroundColor: 'rgba(231, 76, 60, 0.2)', 
-                        border: '1px solid #e74c3c',
-                        color: '#e74c3c',
+                        backgroundColor: `${theme.colors.error}20`, 
+                        border: `1px solid ${theme.colors.error}`,
+                        color: theme.colors.error,
                         padding: '15px',
                         borderRadius: '6px',
                         marginBottom: '20px'
@@ -470,7 +472,7 @@ const SMS = () => {
                     flexWrap: 'wrap',
                     gap: '15px',
                     marginBottom: '20px',
-                    borderBottom: '1px solid #3a3a3a',
+                    borderBottom: `1px solid ${theme.colors.border}`,
                     paddingBottom: '0'
                 }}>
                     <div style={{ 
@@ -487,14 +489,14 @@ const SMS = () => {
                                 key={tab.key}
                                 onClick={() => setSelectedTab(tab.key)}
                                 style={{
-                                    background: selectedTab === tab.key ? '#3498db' : 'transparent',
-                                    color: selectedTab === tab.key ? '#ffffff' : '#888',
+                                    background: selectedTab === tab.key ? theme.colors.accent : 'transparent',
+                                    color: selectedTab === tab.key ? theme.colors.primaryText : theme.colors.mutedText,
                                     border: 'none',
                                     borderRadius: '4px 4px 0 0',
                                     padding: '12px 20px',
                                     cursor: 'pointer',
                                     fontSize: '16px',
-                                    borderBottom: selectedTab === tab.key ? '2px solid #3498db' : '2px solid transparent'
+                                    borderBottom: selectedTab === tab.key ? `2px solid ${theme.colors.accent}` : '2px solid transparent'
                                 }}
                             >
                                 {tab.label}
@@ -506,8 +508,8 @@ const SMS = () => {
                     <button
                         onClick={() => setShowComposeModal(true)}
                         style={{
-                            backgroundColor: '#3498db',
-                            color: '#ffffff',
+                            backgroundColor: theme.colors.accent,
+                            color: theme.colors.primaryText,
                             border: 'none',
                             borderRadius: '8px',
                             padding: '12px 24px',
@@ -527,17 +529,17 @@ const SMS = () => {
 
                 {/* Messages List */}
                 {loading ? (
-                    <div style={{ textAlign: 'center', padding: '40px 20px', color: '#ffffff' }}>
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: theme.colors.primaryText }}>
                         Loading messages...
                     </div>
                 ) : messages.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px 20px', color: '#888' }}>
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: theme.colors.mutedText }}>
                         <p>No messages found.</p>
                         <button
                             onClick={() => setShowComposeModal(true)}
                             style={{
-                                backgroundColor: '#3498db',
-                                color: '#ffffff',
+                                backgroundColor: theme.colors.accent,
+                                color: theme.colors.primaryText,
                                 border: 'none',
                                 borderRadius: '6px',
                                 padding: '10px 20px',
@@ -596,7 +598,7 @@ const SMS = () => {
                                 }}>
                                     <div style={{ flex: 1 }}>
                                         <div style={{ 
-                                            color: '#ffffff', 
+                                            color: theme.colors.primaryText, 
                                             fontSize: '18px', 
                                             fontWeight: '500',
                                             marginBottom: '5px'
@@ -604,7 +606,7 @@ const SMS = () => {
                                             {message.subject}
                                         </div>
                                         <div style={{ 
-                                            color: '#888', 
+                                            color: theme.colors.mutedText, 
                                             fontSize: '14px',
                                             marginBottom: '5px',
                                             display: 'flex',
@@ -616,11 +618,11 @@ const SMS = () => {
                                                 principal={message.sender}
                                                 displayInfo={principalDisplayInfo.get(message.sender.toString())}
                                                 showCopyButton={false}
-                                                style={{ color: '#888', fontSize: '14px' }}
+                                                style={{ color: theme.colors.mutedText, fontSize: '14px' }}
                                             />
                                         </div>
                                         <div style={{ 
-                                            color: '#888', 
+                                            color: theme.colors.mutedText, 
                                             fontSize: '14px',
                                             display: 'flex',
                                             alignItems: 'center',
@@ -634,7 +636,7 @@ const SMS = () => {
                                                         principal={recipient}
                                                         displayInfo={principalDisplayInfo.get(recipient.toString())}
                                                         showCopyButton={false}
-                                                        style={{ color: '#888', fontSize: '14px' }}
+                                                        style={{ color: theme.colors.mutedText, fontSize: '14px' }}
                                                     />
                                                     {index < message.recipients.length - 1 && <span>,</span>}
                                                 </React.Fragment>
@@ -642,7 +644,7 @@ const SMS = () => {
                                         </div>
                                     </div>
                                     <div style={{ 
-                                        color: '#888', 
+                                        color: theme.colors.mutedText, 
                                         fontSize: '12px',
                                         textAlign: 'right'
                                     }}>
@@ -673,7 +675,7 @@ const SMS = () => {
                                         }}
                                         style={{
                                             backgroundColor: '#2ecc71',
-                                            color: '#ffffff',
+                                            color: theme.colors.primaryText,
                                             border: 'none',
                                             borderRadius: '4px',
                                             padding: '6px 12px',
@@ -720,7 +722,7 @@ const SMS = () => {
                                 alignItems: 'center',
                                 marginBottom: '20px'
                             }}>
-                                <h2 style={{ color: '#ffffff', margin: 0 }}>
+                                <h2 style={{ color: theme.colors.primaryText, margin: 0 }}>
                                     {composeForm.replyTo ? 'Reply to Message' : 'Compose Message'}
                                 </h2>
                                 <button
@@ -733,7 +735,7 @@ const SMS = () => {
                                     style={{
                                         background: 'none',
                                         border: 'none',
-                                        color: '#888',
+                                        color: theme.colors.mutedText,
                                         cursor: 'pointer',
                                         fontSize: '24px'
                                     }}
@@ -744,7 +746,7 @@ const SMS = () => {
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                 <div>
-                                    <label style={{ color: '#ffffff', display: 'block', marginBottom: '10px', fontSize: '16px' }}>
+                                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '10px', fontSize: '16px' }}>
                                         Recipients:
                                     </label>
                                     {composeForm.recipients.map((recipient, index) => (
@@ -808,7 +810,7 @@ const SMS = () => {
                                 </div>
 
                                 <div>
-                                    <label style={{ color: '#ffffff', display: 'block', marginBottom: '5px' }}>
+                                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '5px' }}>
                                         Subject:
                                     </label>
                                     <input
@@ -823,14 +825,14 @@ const SMS = () => {
                                             backgroundColor: '#3a3a3a',
                                             border: '1px solid #4a4a4a',
                                             borderRadius: '4px',
-                                            color: '#ffffff',
+                                            color: theme.colors.primaryText,
                                             fontSize: '14px'
                                         }}
                                     />
                                 </div>
 
                                 <div>
-                                    <label style={{ color: '#ffffff', display: 'block', marginBottom: '5px' }}>
+                                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '5px' }}>
                                         Message:
                                     </label>
                                     <textarea
@@ -845,7 +847,7 @@ const SMS = () => {
                                             backgroundColor: '#3a3a3a',
                                             border: '1px solid #4a4a4a',
                                             borderRadius: '4px',
-                                            color: '#ffffff',
+                                            color: theme.colors.primaryText,
                                             fontSize: '14px',
                                             resize: 'vertical'
                                         }}
@@ -883,7 +885,7 @@ const SMS = () => {
                                         disabled={submitting}
                                         style={{
                                             backgroundColor: '#6c757d',
-                                            color: '#ffffff',
+                                            color: theme.colors.primaryText,
                                             border: 'none',
                                             borderRadius: '6px',
                                             padding: '10px 20px',
@@ -897,8 +899,8 @@ const SMS = () => {
                                         onClick={sendMessage}
                                         disabled={!isFormValid()}
                                         style={{
-                                            backgroundColor: '#3498db',
-                                            color: '#ffffff',
+                                            backgroundColor: theme.colors.accent,
+                                            color: theme.colors.primaryText,
                                             border: 'none',
                                             borderRadius: '6px',
                                             padding: '10px 20px',
@@ -971,7 +973,7 @@ const SMS = () => {
                                 marginBottom: '20px'
                             }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, marginRight: '15px' }}>
-                                    <h2 style={{ color: '#ffffff', margin: 0, fontSize: '20px' }}>
+                                    <h2 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '20px' }}>
                                         {truncateSubject(selectedMessage.subject)}
                                     </h2>
                                     <button
@@ -1001,7 +1003,7 @@ const SMS = () => {
                                     style={{
                                         background: 'none',
                                         border: 'none',
-                                        color: '#888',
+                                        color: theme.colors.mutedText,
                                         cursor: 'pointer',
                                         fontSize: '24px'
                                     }}
@@ -1017,7 +1019,7 @@ const SMS = () => {
                                     style={{
                                         background: 'none',
                                         border: '1px solid #3a3a3a',
-                                        color: '#888',
+                                        color: theme.colors.mutedText,
                                         cursor: 'pointer',
                                         fontSize: '14px',
                                         padding: '8px 12px',
@@ -1046,14 +1048,14 @@ const SMS = () => {
                                         border: '1px solid #3a3a3a'
                                     }}>
                                         <div style={{ marginBottom: '15px' }}>
-                                            <strong style={{ color: '#888' }}>Subject:</strong>
-                                            <div style={{ color: '#ffffff', fontSize: '16px', marginTop: '5px' }}>
+                                            <strong style={{ color: theme.colors.mutedText }}>Subject:</strong>
+                                            <div style={{ color: theme.colors.primaryText, fontSize: '16px', marginTop: '5px' }}>
                                                 {selectedMessage.subject}
                                             </div>
                                         </div>
 
                                         <div style={{ marginBottom: '15px' }}>
-                                            <strong style={{ color: '#888' }}>From:</strong>
+                                            <strong style={{ color: theme.colors.mutedText }}>From:</strong>
                                             <div style={{ marginTop: '8px' }}>
                                                 <PrincipalDisplay 
                                                     principal={selectedMessage.sender}
@@ -1065,7 +1067,7 @@ const SMS = () => {
                                         </div>
 
                                         <div style={{ marginBottom: '15px' }}>
-                                            <strong style={{ color: '#888' }}>To:</strong>
+                                            <strong style={{ color: theme.colors.mutedText }}>To:</strong>
                                             <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                 {selectedMessage.recipients.map((recipient, index) => (
                                                     <PrincipalDisplay 
@@ -1080,8 +1082,8 @@ const SMS = () => {
                                         </div>
 
                                         <div style={{ marginBottom: '0' }}>
-                                            <strong style={{ color: '#888' }}>Date:</strong>
-                                            <div style={{ color: '#ffffff', marginTop: '5px' }}>
+                                            <strong style={{ color: theme.colors.mutedText }}>Date:</strong>
+                                            <div style={{ color: theme.colors.primaryText, marginTop: '5px' }}>
                                                 {formatDate(selectedMessage.created_at)}
                                             </div>
                                         </div>
@@ -1089,9 +1091,9 @@ const SMS = () => {
                                 )}
 
                                 <div style={{ marginBottom: '20px' }}>
-                                    <strong style={{ color: '#888' }}>Message:</strong>
+                                    <strong style={{ color: theme.colors.mutedText }}>Message:</strong>
                                     <div style={{ 
-                                        color: '#ffffff', 
+                                        color: theme.colors.primaryText, 
                                         marginTop: '10px',
                                         backgroundColor: '#1a1a1a',
                                         padding: '15px',
@@ -1115,8 +1117,8 @@ const SMS = () => {
                                 <button
                                     onClick={() => replyToMessage(selectedMessage)}
                                     style={{
-                                        backgroundColor: '#3498db',
-                                        color: '#ffffff',
+                                        backgroundColor: theme.colors.accent,
+                                        color: theme.colors.primaryText,
                                         border: 'none',
                                         borderRadius: '6px',
                                         padding: '10px 20px',
@@ -1132,7 +1134,7 @@ const SMS = () => {
                                     onClick={() => replyToAllMessage(selectedMessage)}
                                     style={{
                                         backgroundColor: '#9b59b6',
-                                        color: '#ffffff',
+                                        color: theme.colors.primaryText,
                                         border: 'none',
                                         borderRadius: '6px',
                                         padding: '10px 20px',
@@ -1153,7 +1155,7 @@ const SMS = () => {
                                         }}
                                         style={{
                                             backgroundColor: '#e74c3c',
-                                            color: '#ffffff',
+                                            color: theme.colors.primaryText,
                                             border: 'none',
                                             borderRadius: '6px',
                                             padding: '10px 20px',
@@ -1173,7 +1175,7 @@ const SMS = () => {
                                     }}
                                     style={{
                                         backgroundColor: '#6c757d',
-                                        color: '#ffffff',
+                                        color: theme.colors.primaryText,
                                         border: 'none',
                                         borderRadius: '6px',
                                         padding: '10px 20px',

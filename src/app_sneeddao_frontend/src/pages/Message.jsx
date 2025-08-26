@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
+import { useTheme } from '../contexts/ThemeContext';
 import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 
 const Message = () => {
+    const { theme } = useTheme();
     const { id } = useParams();
     const navigate = useNavigate();
     const { identity, isAuthenticated } = useAuth();
@@ -562,8 +564,8 @@ const Message = () => {
                             onClick={() => loadAllParents(messageId)}
                             disabled={loadingState.loadingParent}
                             style={{
-                                backgroundColor: '#8e44ad',
-                                color: '#ffffff',
+                                backgroundColor: theme.colors.accent,
+                                color: theme.colors.primaryText,
                                 border: 'none',
                                 borderRadius: '4px',
                                 padding: '6px 12px',
@@ -580,8 +582,8 @@ const Message = () => {
                 {/* Message Container */}
                 <div
                     style={{
-                        backgroundColor: isFocused ? 'rgba(52, 152, 219, 0.1)' : '#2a2a2a',
-                        border: isFocused ? '2px solid #3498db' : '1px solid #3a3a3a',
+                        backgroundColor: isFocused ? `${theme.colors.accent}20` : theme.colors.secondaryBg,
+                        border: isFocused ? `2px solid ${theme.colors.accent}` : `1px solid ${theme.colors.border}`,
                         borderRadius: '8px',
                         padding: '15px',
                         marginBottom: '10px',
@@ -597,7 +599,7 @@ const Message = () => {
                             left: '8px',
                             cursor: 'pointer',
                             fontSize: '14px',
-                            color: '#888',
+                            color: theme.colors.mutedText,
                             userSelect: 'none',
                             zIndex: 10,
                             width: '20px',
@@ -608,7 +610,7 @@ const Message = () => {
                             borderRadius: '3px',
                             transition: 'background-color 0.2s'
                         }}
-                        onMouseEnter={(e) => e.target.style.backgroundColor = '#444'}
+                        onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.tertiaryBg}
                         onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                         title={isCollapsed ? 'Expand message' : 'Collapse message'}
                     >
@@ -620,8 +622,8 @@ const Message = () => {
                             position: 'absolute',
                             top: '-10px',
                             left: '35px', // Moved right to avoid arrow
-                            backgroundColor: '#3498db',
-                            color: 'white',
+                            backgroundColor: theme.colors.accent,
+                            color: theme.colors.primaryText,
                             padding: '4px 12px',
                             borderRadius: '12px',
                             fontSize: '12px',
@@ -643,7 +645,7 @@ const Message = () => {
                     }}>
                         <div style={{ flex: 1, minWidth: '200px' }}>
                             <h4 style={{ 
-                                color: '#ffffff', 
+                                color: theme.colors.primaryText, 
                                 margin: '0', 
                                 fontSize: '16px',
                                 cursor: isCollapsed ? 'pointer' : 'default',
@@ -655,7 +657,7 @@ const Message = () => {
                                 {message.subject}
                             </h4>
                             <span style={{ 
-                                color: '#3498db', 
+                                color: theme.colors.accent, 
                                 fontSize: '12px', 
                                 marginLeft: '8px',
                                 cursor: 'pointer'
@@ -666,7 +668,7 @@ const Message = () => {
                                 #{message.id.toString()}
                             </span>
                             <span style={{ 
-                                color: '#888', 
+                                color: theme.colors.mutedText, 
                                 fontSize: '12px', 
                                 marginLeft: '8px'
                             }}>
@@ -676,7 +678,7 @@ const Message = () => {
                             <span
                                 onClick={() => toggleHeaderCollapse(messageId)}
                                 style={{
-                                    color: '#888',
+                                    color: theme.colors.mutedText,
                                     fontSize: '12px',
                                     marginLeft: '8px',
                                     cursor: 'pointer',
@@ -694,23 +696,23 @@ const Message = () => {
                             {!isCollapsed && !isHeaderCollapsed && (
                                 <>
                                     <div style={{ marginTop: '5px', marginBottom: '3px' }}>
-                                        <span style={{ color: '#888', fontSize: '12px' }}>From: </span>
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>From: </span>
                                         <PrincipalDisplay 
                                             principal={message.sender} 
                                             displayInfo={principalDisplayInfo.get(message.sender.toString())}
                                             showCopyButton={false}
-                                            style={{ color: '#ffffff', fontSize: '14px' }}
+                                            style={{ color: theme.colors.primaryText, fontSize: '14px' }}
                                         />
                                     </div>
                                     <div style={{ marginBottom: '5px' }}>
-                                        <span style={{ color: '#888', fontSize: '12px' }}>To: </span>
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>To: </span>
                                         {message.recipients.map((recipient, idx) => (
                                             <span key={idx}>
                                                 <PrincipalDisplay 
                                                     principal={recipient} 
                                                     displayInfo={principalDisplayInfo.get(recipient.toString())}
                                                     showCopyButton={false}
-                                                    style={{ color: '#ffffff', fontSize: '14px' }}
+                                                    style={{ color: theme.colors.primaryText, fontSize: '14px' }}
                                                 />
                                                 {idx < message.recipients.length - 1 && ', '}
                                             </span>
@@ -741,7 +743,7 @@ const Message = () => {
                                         style={{
                                             background: 'none',
                                             border: 'none',
-                                            color: '#3498db',
+                                            color: theme.colors.accent,
                                             cursor: 'pointer',
                                             fontSize: '12px',
                                             marginTop: '5px'
@@ -764,8 +766,8 @@ const Message = () => {
                                 <button
                                     onClick={() => navigate(`/sms?reply=${message.id}`)}
                                     style={{
-                                        backgroundColor: '#3498db',
-                                        color: '#ffffff',
+                                        backgroundColor: theme.colors.accent,
+                                        color: theme.colors.primaryText,
                                         border: 'none',
                                         borderRadius: '4px',
                                         padding: '6px 12px',
@@ -788,10 +790,10 @@ const Message = () => {
 
     if (!isAuthenticated) {
         return (
-            <div className='page-container'>
+            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
                 <Header />
                 <div style={{ padding: '20px', textAlign: 'center' }}>
-                    <h2>Please connect your wallet to view messages</h2>
+                    <h2 style={{ color: theme.colors.primaryText }}>Please connect your wallet to view messages</h2>
                 </div>
             </div>
         );
@@ -799,10 +801,10 @@ const Message = () => {
 
     if (loading) {
         return (
-            <div className='page-container'>
+            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
                 <Header />
                 <div style={{ padding: '20px', textAlign: 'center' }}>
-                    <div>Loading message...</div>
+                    <div style={{ color: theme.colors.primaryText }}>Loading message...</div>
                 </div>
             </div>
         );
@@ -810,13 +812,13 @@ const Message = () => {
 
     if (error) {
         return (
-            <div className='page-container'>
+            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
                 <Header />
                 <div style={{ padding: '20px' }}>
                     <div style={{ 
-                        backgroundColor: 'rgba(231, 76, 60, 0.2)', 
-                        border: '1px solid #e74c3c',
-                        color: '#e74c3c',
+                        backgroundColor: `${theme.colors.error}20`, 
+                        border: `1px solid ${theme.colors.error}`,
+                        color: theme.colors.error,
                         padding: '15px',
                         borderRadius: '6px',
                         marginBottom: '20px'
@@ -826,8 +828,8 @@ const Message = () => {
                     <button 
                         onClick={() => navigate('/sms')}
                         style={{
-                            backgroundColor: '#3498db',
-                            color: '#ffffff',
+                            backgroundColor: theme.colors.accent,
+                            color: theme.colors.primaryText,
                             border: 'none',
                             borderRadius: '6px',
                             padding: '10px 20px',
@@ -842,7 +844,7 @@ const Message = () => {
     }
 
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto' }}>
                 {/* Navigation */}
@@ -850,8 +852,8 @@ const Message = () => {
                     <button 
                         onClick={() => navigate('/sms')}
                         style={{
-                            backgroundColor: '#3498db',
-                            color: '#ffffff',
+                            backgroundColor: theme.colors.accent,
+                            color: theme.colors.primaryText,
                             border: 'none',
                             borderRadius: '6px',
                             padding: '8px 16px',
@@ -861,7 +863,7 @@ const Message = () => {
                         ← Back to Messages
                     </button>
                     
-                    <span style={{ color: '#888' }}>Message Thread</span>
+                    <span style={{ color: theme.colors.mutedText }}>Message Thread</span>
                     
                     {/* Global Expand/Collapse Controls */}
                     {messageTree.size > 1 && (
@@ -870,7 +872,7 @@ const Message = () => {
                                 onClick={expandAll}
                                 style={{
                                     backgroundColor: '#27ae60',
-                                    color: '#ffffff',
+                                    color: theme.colors.primaryText,
                                     border: 'none',
                                     borderRadius: '4px',
                                     padding: '6px 12px',
@@ -884,7 +886,7 @@ const Message = () => {
                                 onClick={collapseAll}
                                 style={{
                                     backgroundColor: '#e67e22',
-                                    color: '#ffffff',
+                                    color: theme.colors.primaryText,
                                     border: 'none',
                                     borderRadius: '4px',
                                     padding: '6px 12px',
