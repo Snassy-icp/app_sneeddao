@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import { useNaming } from '../NamingContext';
 import ThreadViewer from '../components/ThreadViewer';
@@ -17,6 +18,7 @@ const Post = () => {
     const postId = searchParams.get('postid'); // Get post ID from query params
     const { createForumActor } = useForum();
     const { isAuthenticated, identity } = useAuth();
+    const { theme } = useTheme();
     const { selectedSnsRoot } = useSns();
     const { principalNames, principalNicknames } = useNaming();
     const navigate = useNavigate();
@@ -312,7 +314,7 @@ const Post = () => {
 
     if (!postId) {
         return (
-            <div className="post-page">
+            <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
                 <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                 <div className="post-container">
                     <div className="error-state">
@@ -326,7 +328,7 @@ const Post = () => {
 
     if (loading) {
         return (
-            <div className="post-page">
+            <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
                 <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                 <div className="post-container">
                     <div className="loading-state">
@@ -340,7 +342,7 @@ const Post = () => {
 
     if (error) {
         return (
-            <div className="post-page">
+            <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
                 <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                 <div className="post-container">
                     <div className="error-state">
@@ -357,7 +359,7 @@ const Post = () => {
         // If we're not loading and have no error, but still no threadId, then post wasn't found
         if (!loading && !error) {
             return (
-                <div className="post-page">
+                <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
                     <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                     <div className="post-container">
                         <div className="error-state">
@@ -373,13 +375,13 @@ const Post = () => {
     }
 
     return (
-        <div className="post-page">
+        <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             
             {/* Header-like Forum Section - Looks like part of header but scrolls with page */}
             {forumInfo && (
                 <div style={{
-                    backgroundColor: '#1a1a1a', // Match header background
+                    backgroundColor: theme.colors.headerBg, // Match header background
                     borderBottom: '1px solid rgba(255,255,255,0.1)',
                     padding: '12px 0',
                     position: 'sticky',
@@ -400,7 +402,7 @@ const Post = () => {
                                 width: '32px',
                                 height: '32px',
                                 borderRadius: '50%',
-                                backgroundColor: '#4a4a4a',
+                                backgroundColor: theme.colors.border,
                                 border: '2px solid #3a3a3a',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -428,7 +430,7 @@ const Post = () => {
                                 width: '32px',
                                 height: '32px',
                                 borderRadius: '50%',
-                                backgroundColor: '#4a4a4a',
+                                backgroundColor: theme.colors.border,
                                 border: '2px solid #3a3a3a',
                                 display: 'flex',
                                 alignItems: 'center',

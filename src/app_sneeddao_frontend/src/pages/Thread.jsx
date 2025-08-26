@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useForum } from '../contexts/ForumContext';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import ThreadViewer from '../components/ThreadViewer';
 import Header from '../components/Header';
@@ -14,6 +15,7 @@ const Thread = () => {
     const threadId = searchParams.get('threadid'); // Get thread ID from query params
     const { createForumActor } = useForum();
     const { isAuthenticated, identity } = useAuth();
+    const { theme } = useTheme();
     const { selectedSnsRoot } = useSns();
     
     const [topicInfo, setTopicInfo] = useState(null);
@@ -140,7 +142,7 @@ const Thread = () => {
 
     if (!threadId) {
         return (
-            <div className="thread-page">
+            <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
                 <Header showSnsDropdown={true} />
                 <div className="thread-container">
                     <div className="error-state">
@@ -153,13 +155,13 @@ const Thread = () => {
     }
 
     return (
-        <div className="thread-page">
+        <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
             <Header showSnsDropdown={true} />
             
             {/* Header-like Forum Section - Looks like part of header but scrolls with page */}
             {forumInfo && (
                 <div style={{
-                    backgroundColor: '#1a1a1a', // Match header background
+                    backgroundColor: theme.colors.headerBg, // Match header background
                     borderBottom: '1px solid rgba(255,255,255,0.1)',
                     padding: '12px 0',
                     position: 'sticky',
@@ -180,7 +182,7 @@ const Thread = () => {
                                 width: '32px',
                                 height: '32px',
                                 borderRadius: '50%',
-                                backgroundColor: '#4a4a4a',
+                                backgroundColor: theme.colors.border,
                                 border: '2px solid #3a3a3a',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -208,7 +210,7 @@ const Thread = () => {
                                 width: '32px',
                                 height: '32px',
                                 borderRadius: '50%',
-                                backgroundColor: '#4a4a4a',
+                                backgroundColor: theme.colors.border,
                                 border: '2px solid #3a3a3a',
                                 display: 'flex',
                                 alignItems: 'center',

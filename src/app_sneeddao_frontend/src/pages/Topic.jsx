@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
 import { createActor, canisterId } from 'declarations/sneed_sns_forum';
@@ -12,7 +13,7 @@ import { getSnsById, fetchSnsLogo, getAllSnses } from '../utils/SnsUtils';
 import { getPostsByThread } from '../utils/BackendUtils';
 import { HttpAgent } from '@dfinity/agent';
 
-const styles = {
+const getStyles = (theme) => ({
     container: {
         maxWidth: '1200px',
         margin: '0 auto',
@@ -23,11 +24,11 @@ const styles = {
         fontSize: '0.9rem'
     },
     breadcrumbLink: {
-        color: '#3498db',
+        color: theme.colors.accent,
         textDecoration: 'none'
     },
     breadcrumbSeparator: {
-        color: '#888',
+        color: theme.colors.mutedText,
         margin: '0 8px'
     },
     currentPage: {
@@ -37,26 +38,26 @@ const styles = {
         marginBottom: '30px'
     },
     title: {
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '2.2rem',
         marginBottom: '10px',
         fontWeight: '600'
     },
     description: {
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '1.1rem',
         lineHeight: '1.6',
         marginBottom: '20px'
     },
     meta: {
-        color: '#888',
+        color: theme.colors.mutedText,
         fontSize: '0.9rem'
     },
     section: {
         marginBottom: '40px'
     },
     sectionTitle: {
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '1.5rem',
         marginBottom: '20px',
         fontWeight: '500'
@@ -82,13 +83,13 @@ const styles = {
         transform: 'translateY(-1px)'
     },
     subtopicTitle: {
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '1.1rem',
         fontWeight: '500',
         marginBottom: '8px'
     },
     subtopicDescription: {
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '0.9rem',
         lineHeight: '1.4'
     },
@@ -108,13 +109,13 @@ const styles = {
         backgroundColor: '#333'
     },
     threadTitle: {
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '1.1rem',
         fontWeight: '500',
         marginBottom: '8px'
     },
     threadBody: {
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '0.95rem',
         lineHeight: '1.5',
         marginBottom: '10px',
@@ -140,7 +141,7 @@ const styles = {
     },
     pageButton: {
         backgroundColor: '#3498db',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         border: 'none',
         borderRadius: '4px',
         padding: '8px 12px',
@@ -154,7 +155,7 @@ const styles = {
         opacity: 0.6
     },
     pageInfo: {
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '0.9rem'
     },
     createThreadSection: {
@@ -181,7 +182,7 @@ const styles = {
         border: '1px solid #4a4a4a',
         borderRadius: '6px',
         padding: '14px 16px',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '1rem',
         transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
         fontFamily: 'inherit',
@@ -194,7 +195,7 @@ const styles = {
         border: '1px solid #4a4a4a',
         borderRadius: '6px',
         padding: '14px 16px',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         fontSize: '1rem',
         minHeight: '140px',
         resize: 'vertical',
@@ -221,7 +222,7 @@ const styles = {
     },
     submitButton: {
         backgroundColor: '#3498db',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         border: 'none',
         borderRadius: '6px',
         padding: '14px 28px',
@@ -247,7 +248,7 @@ const styles = {
     },
     loading: {
         textAlign: 'center',
-        color: '#888',
+        color: theme.colors.mutedText,
         fontSize: '1.1rem',
         padding: '40px'
     },
@@ -262,7 +263,7 @@ const styles = {
     },
     noContent: {
         textAlign: 'center',
-        color: '#888',
+        color: theme.colors.mutedText,
         fontSize: '1rem',
         padding: '30px'
     },
@@ -276,13 +277,13 @@ const styles = {
         textAlign: 'center'
     },
     preproposalsPromptTitle: {
-        color: '#3498db',
+        color: theme.colors.accent,
         fontSize: '1.3rem',
         fontWeight: '600',
         marginBottom: '10px'
     },
     preproposalsPromptMessage: {
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '1rem',
         marginBottom: '20px',
         lineHeight: '1.5'
@@ -295,7 +296,7 @@ const styles = {
     },
     createPreproposalsButton: {
         backgroundColor: '#3498db',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         border: 'none',
         borderRadius: '6px',
         padding: '10px 20px',
@@ -306,7 +307,7 @@ const styles = {
     },
     dismissButton: {
         backgroundColor: 'transparent',
-        color: '#888',
+        color: theme.colors.mutedText,
         border: '1px solid #555',
         borderRadius: '6px',
         padding: '10px 20px',
@@ -318,12 +319,13 @@ const styles = {
         opacity: 0.6,
         cursor: 'not-allowed'
     }
-};
+});
 
 function Topic() {
     const { topicId } = useParams();
     const [searchParams, setSearchParams] = useSearchParams();
     const { identity } = useAuth();
+    const { theme } = useTheme();
     const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
     const navigate = useNavigate();
 
@@ -1107,10 +1109,10 @@ function Topic() {
 
     if (loading) {
         return (
-            <div className='page-container'>
+            <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
                 <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                 <main className="wallet-container">
-                    <div style={styles.loading}>Loading topic...</div>
+                    <div style={getStyles(theme).loading}>Loading topic...</div>
                 </main>
             </div>
         );
@@ -1118,23 +1120,23 @@ function Topic() {
 
     if (error && !topic) {
         return (
-            <div className='page-container'>
+            <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
                 <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                 <main className="wallet-container">
-                    <div style={styles.error}>{error}</div>
+                    <div style={getStyles(theme).error}>{error}</div>
                 </main>
             </div>
         );
     }
 
     return (
-        <div className='page-container'>
+        <div style={{ background: theme.colors.primaryGradient, color: theme.colors.primaryText, minHeight: '100vh' }}>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             
             {/* Header-like Forum Section - Looks like part of header but scrolls with page */}
             {forumInfo && (
                 <div style={{
-                    backgroundColor: '#1a1a1a', // Match header background
+                    backgroundColor: theme.colors.headerBg, // Match header background
                     borderBottom: '1px solid rgba(255,255,255,0.1)',
                     padding: '12px 0',
                     position: 'sticky',
@@ -1161,7 +1163,7 @@ function Topic() {
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 fontSize: '0.6rem',
-                                color: '#888',
+                                color: theme.colors.mutedText,
                                 fontWeight: '600'
                             }}>
                                 ...
@@ -1189,7 +1191,7 @@ function Topic() {
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 fontSize: '0.6rem',
-                                color: '#888',
+                                color: theme.colors.mutedText,
                                 fontWeight: '600'
                             }}>
                                 {snsInfo?.name?.substring(0, 2).toUpperCase() || 'SNS'}
@@ -1198,7 +1200,7 @@ function Topic() {
                         
                         {/* Forum Title */}
                         <h1 style={{
-                            color: '#ffffff',
+                            color: theme.colors.primaryText,
                             fontSize: '1.5rem',
                             fontWeight: '600',
                             margin: 0,
@@ -1211,53 +1213,53 @@ function Topic() {
             )}
             
             <main className="wallet-container">
-                <div style={styles.container}>
+                <div style={getStyles(theme).container}>
                     {/* Breadcrumb */}
                     {!breadcrumbLoading && (
-                        <div style={styles.breadcrumb}>
+                        <div style={getStyles(theme).breadcrumb}>
                             <Link 
                                 to={forumInfo?.sns_root_canister_id?.length > 0 
                                     ? `/forum?sns=${forumInfo.sns_root_canister_id[0].toText()}`
                                     : "/forum"
                                 } 
-                                style={styles.breadcrumbLink}
+                                style={getStyles(theme).breadcrumbLink}
                             >
                                 Forum
                             </Link>
-                            <span style={styles.breadcrumbSeparator}>›</span>
-                            <span style={styles.currentPage}>{topic?.title}</span>
+                            <span style={getStyles(theme).breadcrumbSeparator}>›</span>
+                            <span style={getStyles(theme).currentPage}>{topic?.title}</span>
                         </div>
                     )}
 
                     {/* Topic Header */}
-                    <div style={styles.header}>
-                        <h1 style={styles.title}>{topic?.title}</h1>
-                        <p style={styles.description}>
+                    <div style={getStyles(theme).header}>
+                        <h1 style={getStyles(theme).title}>{topic?.title}</h1>
+                        <p style={getStyles(theme).description}>
                             {topic?.description || 'No description available'}
                         </p>
-                        <div style={styles.meta}>
+                        <div style={getStyles(theme).meta}>
                             Created {formatDate(topic?.created_at)} • Last updated {formatDate(topic?.updated_at)}
                         </div>
                     </div>
 
                     {/* Subtopics */}
                     {subtopics.length > 0 && (
-                        <div style={styles.section}>
-                            <h2 style={styles.sectionTitle}>Subtopics</h2>
-                            <div style={styles.subtopicsGrid}>
+                        <div style={getStyles(theme).section}>
+                            <h2 style={getStyles(theme).sectionTitle}>Subtopics</h2>
+                            <div style={getStyles(theme).subtopicsGrid}>
                                 {subtopics.map((subtopic) => (
                                     <Link
                                         key={subtopic.id}
                                         to={`/topic/${subtopic.id}`}
                                         style={{
-                                            ...styles.subtopicCard,
-                                            ...(hoveredCard === subtopic.id ? styles.subtopicCardHover : {})
+                                            ...getStyles(theme).subtopicCard,
+                                            ...(hoveredCard === subtopic.id ? getStyles(theme).subtopicCardHover : {})
                                         }}
                                         onMouseEnter={() => setHoveredCard(subtopic.id)}
                                         onMouseLeave={() => setHoveredCard(null)}
                                     >
-                                        <h4 style={styles.subtopicTitle}>{subtopic.title}</h4>
-                                        <p style={styles.subtopicDescription}>
+                                        <h4 style={getStyles(theme).subtopicTitle}>{subtopic.title}</h4>
+                                        <p style={getStyles(theme).subtopicDescription}>
                                             {subtopic.description || 'No description available'}
                                         </p>
 
@@ -1296,19 +1298,19 @@ function Topic() {
 
                     {/* Preproposals Topic Prompt */}
                     {showPreproposalsPrompt && (
-                        <div style={styles.preproposalsPrompt}>
-                            <h3 style={styles.preproposalsPromptTitle}>Create Preproposals Topic?</h3>
-                            <p style={styles.preproposalsPromptMessage}>
+                        <div style={getStyles(theme).preproposalsPrompt}>
+                            <h3 style={getStyles(theme).preproposalsPromptTitle}>Create Preproposals Topic?</h3>
+                            <p style={getStyles(theme).preproposalsPromptMessage}>
                                 This Governance topic does not have a "Preproposals" subtopic yet. Would you like to create it? 
                                 This will provide a space for discussing potential proposals before formal submission.
                             </p>
-                            <div style={styles.preproposalsPromptButtons}>
+                            <div style={getStyles(theme).preproposalsPromptButtons}>
                                 <button 
                                     onClick={handleCreatePreproposalsTopic}
                                     disabled={creatingPreproposals}
                                     style={{
-                                        ...styles.createPreproposalsButton,
-                                        ...(creatingPreproposals ? styles.buttonDisabled : {})
+                                        ...getStyles(theme).createPreproposalsButton,
+                                        ...(creatingPreproposals ? getStyles(theme).buttonDisabled : {})
                                     }}
                                 >
                                     {creatingPreproposals ? 'Creating...' : 'Create Preproposals Topic'}
@@ -1317,8 +1319,8 @@ function Topic() {
                                     onClick={() => setShowPreproposalsPrompt(false)}
                                     disabled={creatingPreproposals}
                                     style={{
-                                        ...styles.dismissButton,
-                                        ...(creatingPreproposals ? styles.buttonDisabled : {})
+                                        ...getStyles(theme).dismissButton,
+                                        ...(creatingPreproposals ? getStyles(theme).buttonDisabled : {})
                                     }}
                                 >
                                     Maybe Later
@@ -1328,11 +1330,11 @@ function Topic() {
                     )}
 
                     {/* Threads */}
-                    <div style={styles.section}>
-                        <h2 style={styles.sectionTitle}>Threads ({totalThreads})</h2>
+                    <div style={getStyles(theme).section}>
+                        <h2 style={getStyles(theme).sectionTitle}>Threads ({totalThreads})</h2>
                         
                         {error && (
-                            <div style={styles.error}>{error}</div>
+                            <div style={getStyles(theme).error}>{error}</div>
                         )}
 
                         {/* Filter Controls - Above threads */}
@@ -1368,7 +1370,7 @@ function Topic() {
                                                     onChange={(e) => handleThreadsPerPageChange(Number(e.target.value))}
                                                     style={{
                                                         backgroundColor: '#2a2a2a',
-                                                        color: '#ffffff',
+                                                        color: theme.colors.primaryText,
                                                         border: '1px solid #444',
                                                         borderRadius: '4px',
                                                         padding: '4px 8px',
@@ -1397,7 +1399,7 @@ function Topic() {
                                                     }}
                                                     style={{
                                                         backgroundColor: '#2a2a2a',
-                                                        color: '#ffffff',
+                                                        color: theme.colors.primaryText,
                                                         border: '1px solid #444',
                                                         borderRadius: '4px',
                                                         padding: '4px 8px',
@@ -1414,24 +1416,24 @@ function Topic() {
 
                                         {/* Pagination - Right side */}
                                         {totalPages > 1 && (
-                                            <div style={styles.pagination}>
+                                            <div style={getStyles(theme).pagination}>
                                                 <button
                                                     style={{
-                                                        ...styles.pageButton,
-                                                        ...(currentPage === 0 ? styles.pageButtonDisabled : {})
+                                                        ...getStyles(theme).pageButton,
+                                                        ...(currentPage === 0 ? getStyles(theme).pageButtonDisabled : {})
                                                     }}
                                                     onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
                                                     disabled={currentPage === 0}
                                                 >
                                                     Previous
                                                 </button>
-                                                <span style={styles.pageInfo}>
+                                                <span style={getStyles(theme).pageInfo}>
                                                     Page {currentPage + 1} of {totalPages}
                                                 </span>
                                                 <button
                                                     style={{
-                                                        ...styles.pageButton,
-                                                        ...(currentPage >= totalPages - 1 ? styles.pageButtonDisabled : {})
+                                                        ...getStyles(theme).pageButton,
+                                                        ...(currentPage >= totalPages - 1 ? getStyles(theme).pageButtonDisabled : {})
                                                     }}
                                                     onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
                                                     disabled={currentPage >= totalPages - 1}
@@ -1464,7 +1466,7 @@ function Topic() {
                                                     onChange={(e) => handleThreadsPerPageChange(Number(e.target.value))}
                                                     style={{
                                                         backgroundColor: '#2a2a2a',
-                                                        color: '#ffffff',
+                                                        color: theme.colors.primaryText,
                                                         border: '1px solid #444',
                                                         borderRadius: '4px',
                                                         padding: '6px 8px',
@@ -1496,7 +1498,7 @@ function Topic() {
                                                     }}
                                                     style={{
                                                         backgroundColor: '#2a2a2a',
-                                                        color: '#ffffff',
+                                                        color: theme.colors.primaryText,
                                                         border: '1px solid #444',
                                                         borderRadius: '4px',
                                                         padding: '6px 8px',
@@ -1525,8 +1527,8 @@ function Topic() {
                                             }}>
                                                 <button
                                                     style={{
-                                                        ...styles.pageButton,
-                                                        ...(currentPage === 0 ? styles.pageButtonDisabled : {}),
+                                                        ...getStyles(theme).pageButton,
+                                                        ...(currentPage === 0 ? getStyles(theme).pageButtonDisabled : {}),
                                                         padding: '6px 10px',
                                                         fontSize: '13px'
                                                     }}
@@ -1536,7 +1538,7 @@ function Topic() {
                                                     Prev
                                                 </button>
                                                 <span style={{
-                                                    ...styles.pageInfo,
+                                                    ...getStyles(theme).pageInfo,
                                                     fontSize: '13px',
                                                     whiteSpace: 'nowrap'
                                                 }}>
@@ -1544,8 +1546,8 @@ function Topic() {
                                                 </span>
                                                 <button
                                                     style={{
-                                                        ...styles.pageButton,
-                                                        ...(currentPage >= totalPages - 1 ? styles.pageButtonDisabled : {}),
+                                                        ...getStyles(theme).pageButton,
+                                                        ...(currentPage >= totalPages - 1 ? getStyles(theme).pageButtonDisabled : {}),
                                                         padding: '6px 10px',
                                                         fontSize: '13px'
                                                     }}
@@ -1562,13 +1564,13 @@ function Topic() {
                         )}
 
                         {threads.length > 0 ? (
-                            <div style={styles.threadsContainer}>
+                            <div style={getStyles(theme).threadsContainer}>
                                 {threads.map((thread, index) => (
                                     <div
                                         key={thread.id}
                                         style={{
-                                            ...styles.threadItem,
-                                            ...(hoveredThread === thread.id ? styles.threadItemHover : {}),
+                                            ...getStyles(theme).threadItem,
+                                            ...(hoveredThread === thread.id ? getStyles(theme).threadItemHover : {}),
                                             ...(index === threads.length - 1 ? { borderBottom: 'none' } : {})
                                         }}
                                         onMouseEnter={() => setHoveredThread(thread.id)}
@@ -1578,7 +1580,7 @@ function Topic() {
                                             navigate(`/thread?threadid=${threadIdStr}`);
                                         }}
                                     >
-                                        <h3 style={styles.threadTitle}>
+                                        <h3 style={getStyles(theme).threadTitle}>
                                             {thread.title || `Thread #${thread.id}`}
                                             {hasUnreadPosts(thread) && (
                                                 <span style={{
@@ -1610,7 +1612,7 @@ function Topic() {
                                                 </span>
                                             )}
                                         </h3>
-                                        <p style={{...styles.threadBody, whiteSpace: 'pre-wrap'}}>{thread.body}</p>
+                                        <p style={{...getStyles(theme).threadBody, whiteSpace: 'pre-wrap'}}>{thread.body}</p>
                                         
                                         {/* Show proposal link if this thread is linked to a proposal */}
                                         {threadProposals.has(thread.id.toString()) && (
@@ -1628,7 +1630,7 @@ function Topic() {
                                                 <a 
                                                     href={`/proposal?proposalid=${threadProposals.get(thread.id.toString()).proposalId}&sns=${selectedSnsRoot || ''}`}
                                                     style={{
-                                                        color: '#3498db',
+                                                        color: theme.colors.accent,
                                                         textDecoration: 'none',
                                                         fontWeight: '500'
                                                     }}
@@ -1647,7 +1649,7 @@ function Topic() {
                                             </div>
                                         )}
                                         
-                                        <div style={styles.threadMeta}>
+                                        <div style={getStyles(theme).threadMeta}>
                                             <span>Created {formatTimeAgo(thread.created_at)}</span>
                                             {(() => {
                                                 // Use backend-provided total post count if available, fallback to async count
@@ -1673,7 +1675,7 @@ function Topic() {
 
                             </div>
                         ) : (
-                            <div style={styles.noContent}>
+                            <div style={getStyles(theme).noContent}>
                                 <p>No threads in this topic yet.</p>
                                 <p>Be the first to start a discussion!</p>
                             </div>
@@ -1692,7 +1694,7 @@ function Topic() {
                             style={{
                                 width: '100%',
                                 backgroundColor: '#2a2a2a',
-                                color: '#ffffff',
+                                color: theme.colors.primaryText,
                                 border: `1px solid ${textLimits && createThreadTitle.length > textLimits.thread_title_max_length ? '#e74c3c' : '#444'}`,
                                 borderRadius: '4px',
                                 padding: '10px',
@@ -1722,7 +1724,7 @@ function Topic() {
                             style={{
                                 width: '100%',
                                 backgroundColor: '#2a2a2a',
-                                color: '#ffffff',
+                                color: theme.colors.primaryText,
                                 border: `1px solid ${textLimits && createThreadBody.length > textLimits.thread_body_max_length ? '#e74c3c' : '#444'}`,
                                 borderRadius: '4px',
                                 padding: '10px',
@@ -1763,7 +1765,7 @@ function Topic() {
                                     }}
                                 />
                                 <label htmlFor="includePoll" style={{ 
-                                    color: '#ffffff', 
+                                    color: theme.colors.primaryText, 
                                     fontSize: '16px', 
                                     fontWeight: '500',
                                     cursor: 'pointer'
@@ -1791,7 +1793,7 @@ function Topic() {
                                         style={{
                                             width: '100%',
                                             backgroundColor: '#2a2a2a',
-                                            color: '#ffffff',
+                                            color: theme.colors.primaryText,
                                             border: `1px solid ${textLimits && pollTitle.length > textLimits.post_title_max_length ? '#e74c3c' : '#444'}`,
                                             borderRadius: '4px',
                                             padding: '10px',
@@ -1819,7 +1821,7 @@ function Topic() {
                                         style={{
                                             width: '100%',
                                             backgroundColor: '#2a2a2a',
-                                            color: '#ffffff',
+                                            color: theme.colors.primaryText,
                                             border: `1px solid ${textLimits && pollBody.length > textLimits.post_body_max_length ? '#e74c3c' : '#444'}`,
                                             borderRadius: '4px',
                                             padding: '10px',
@@ -1860,7 +1862,7 @@ function Topic() {
                                                         style={{
                                                             width: '100%',
                                                             backgroundColor: '#2a2a2a',
-                                                            color: '#ffffff',
+                                                            color: theme.colors.primaryText,
                                                             border: '1px solid #444',
                                                             borderRadius: '4px',
                                                             padding: '8px',
@@ -1877,7 +1879,7 @@ function Topic() {
                                                         style={{
                                                             width: '100%',
                                                             backgroundColor: '#2a2a2a',
-                                                            color: '#ffffff',
+                                                            color: theme.colors.primaryText,
                                                             border: '1px solid #444',
                                                             borderRadius: '4px',
                                                             padding: '8px',
@@ -1895,7 +1897,7 @@ function Topic() {
                                                         disabled={submitting}
                                                         style={{
                                                             backgroundColor: '#e74c3c',
-                                                            color: '#ffffff',
+                                                            color: theme.colors.primaryText,
                                                             border: 'none',
                                                             borderRadius: '4px',
                                                             padding: '8px',
@@ -1916,7 +1918,7 @@ function Topic() {
                                                 disabled={submitting}
                                                 style={{
                                                     backgroundColor: '#3498db',
-                                                    color: '#ffffff',
+                                                    color: theme.colors.primaryText,
                                                     border: 'none',
                                                     borderRadius: '4px',
                                                     padding: '6px 12px',
@@ -1938,7 +1940,7 @@ function Topic() {
                                     }}>
                                         <div>
                                             <label style={{ 
-                                                color: '#ccc', 
+                                                color: theme.colors.secondaryText, 
                                                 fontSize: '12px', 
                                                 display: 'block', 
                                                 marginBottom: '5px' 
@@ -1953,7 +1955,7 @@ function Topic() {
                                                 style={{
                                                     width: '100%',
                                                     backgroundColor: '#2a2a2a',
-                                                    color: '#ffffff',
+                                                    color: theme.colors.primaryText,
                                                     border: '1px solid #444',
                                                     borderRadius: '4px',
                                                     padding: '8px',
@@ -1965,7 +1967,7 @@ function Topic() {
                                         </div>
                                         <div>
                                             <label style={{ 
-                                                color: '#ccc', 
+                                                color: theme.colors.secondaryText, 
                                                 fontSize: '12px', 
                                                 display: 'block', 
                                                 marginBottom: '5px' 
@@ -1979,7 +1981,7 @@ function Topic() {
                                                 style={{
                                                     width: '100%',
                                                     backgroundColor: '#2a2a2a',
-                                                    color: '#ffffff',
+                                                    color: theme.colors.primaryText,
                                                     border: '1px solid #444',
                                                     borderRadius: '4px',
                                                     padding: '8px',
@@ -1991,7 +1993,7 @@ function Topic() {
                                         </div>
                                         <div>
                                             <label style={{ 
-                                                color: '#ccc', 
+                                                color: theme.colors.secondaryText, 
                                                 fontSize: '12px', 
                                                 display: 'block', 
                                                 marginBottom: '5px' 
@@ -2004,7 +2006,7 @@ function Topic() {
                                                 style={{
                                                     width: '100%',
                                                     backgroundColor: '#2a2a2a',
-                                                    color: '#ffffff',
+                                                    color: theme.colors.primaryText,
                                                     border: '1px solid #444',
                                                     borderRadius: '4px',
                                                     padding: '8px',
@@ -2030,7 +2032,7 @@ function Topic() {
                                     {/* Allow Vote Changes */}
                                     <div style={{ marginTop: '15px' }}>
                                         <label style={{ 
-                                            color: '#ccc', 
+                                            color: theme.colors.secondaryText, 
                                             fontSize: '14px', 
                                             display: 'flex', 
                                             alignItems: 'center',
@@ -2050,7 +2052,7 @@ function Topic() {
                                         </label>
                                         <div style={{ 
                                             fontSize: '12px', 
-                                            color: '#888', 
+                                            color: theme.colors.mutedText, 
                                             marginTop: '5px',
                                             marginLeft: '28px'
                                         }}>
@@ -2075,7 +2077,7 @@ function Topic() {
                                     backgroundColor: (submitting || !createThreadTitle.trim() || !createThreadBody.trim() || 
                                                      (textLimits && (createThreadTitle.length > textLimits.thread_title_max_length || 
                                                                     createThreadBody.length > textLimits.thread_body_max_length))) ? '#666' : '#2ecc71',
-                                    color: '#ffffff',
+                                    color: theme.colors.primaryText,
                                     border: 'none',
                                     borderRadius: '4px',
                                     padding: '8px 16px',
@@ -2094,7 +2096,7 @@ function Topic() {
                                     disabled={submitting}
                                     style={{
                                         backgroundColor: 'transparent',
-                                        color: '#888',
+                                        color: theme.colors.mutedText,
                                         border: '1px solid #555',
                                         borderRadius: '4px',
                                         padding: '8px 16px',
