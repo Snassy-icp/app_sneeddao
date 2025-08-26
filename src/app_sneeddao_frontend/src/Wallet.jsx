@@ -10,6 +10,7 @@ import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId 
 import { createActor as createSgldtActor } from 'external/sgldt';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
+import { useTheme } from './contexts/ThemeContext';
 import PrincipalBox from './PrincipalBox';
 import './Wallet.css';
 import SendTokenModal from './SendTokenModal';
@@ -78,14 +79,14 @@ const EmptyPositionCard = ({ position, onRemove }) => {
 };
 
 // Collapsible section header component
-const SectionHeader = ({ title, isExpanded, onToggle, onAdd, addButtonText }) => {
+const SectionHeader = ({ title, isExpanded, onToggle, onAdd, addButtonText, theme }) => {
     return (
         <div style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '16px 0',
-            borderBottom: '1px solid #3a3a3a',
+            borderBottom: `1px solid ${theme.colors.border}`,
             marginBottom: '20px',
             cursor: 'pointer'
         }} onClick={onToggle}>
@@ -95,11 +96,11 @@ const SectionHeader = ({ title, isExpanded, onToggle, onAdd, addButtonText }) =>
                 gap: '12px',
                 fontSize: '1.5rem',
                 fontWeight: '600',
-                color: '#ffffff'
+                color: theme.colors.primaryText
             }}>
                 <span style={{
                     fontSize: '1.2rem',
-                    color: '#bdc3c7',
+                    color: theme.colors.secondaryText,
                     transition: 'transform 0.2s ease'
                 }}>
                     {isExpanded ? '▼' : '▶'}
@@ -113,8 +114,8 @@ const SectionHeader = ({ title, isExpanded, onToggle, onAdd, addButtonText }) =>
                         onAdd();
                     }}
                     style={{
-                        backgroundColor: '#3498db',
-                        color: '#ffffff',
+                        backgroundColor: theme.colors.accent,
+                        color: theme.colors.primaryText,
                         border: 'none',
                         borderRadius: '6px',
                         padding: '8px 16px',
@@ -123,8 +124,8 @@ const SectionHeader = ({ title, isExpanded, onToggle, onAdd, addButtonText }) =>
                         fontWeight: '500',
                         transition: 'background-color 0.2s ease'
                     }}
-                    onMouseEnter={(e) => e.target.style.backgroundColor = '#2980b9'}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = '#3498db'}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = theme.colors.accentHover}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = theme.colors.accent}
                 >
                     {addButtonText}
                 </button>
@@ -146,6 +147,7 @@ var summed_locks = {};
 
 function Wallet() {
     const { identity, isAuthenticated, logout } = useAuth();
+    const { theme } = useTheme();
     const navigate = useNavigate();
     const location = useLocation();
     const [tokens, setTokens] = useState([]);
@@ -1340,15 +1342,28 @@ function Wallet() {
     });
 
     return (
-        <div className='page-container'>
+        <div 
+            className='page-container'
+            style={{
+                background: theme.colors.primaryGradient,
+                color: theme.colors.primaryText,
+                minHeight: '100vh'
+            }}
+        >
             <Header showTotalValue={totalDollarValue} />
-            <div className="wallet-container">
+            <div 
+                className="wallet-container"
+                style={{
+                    backgroundColor: 'transparent'
+                }}
+            >
                 <SectionHeader 
                     title="Tokens"
                     isExpanded={tokensExpanded}
                     onToggle={() => setTokensExpanded(!tokensExpanded)}
                     onAdd={() => setShowAddLedgerModal(true)}
                     addButtonText="Add Token"
+                    theme={theme}
                 />
                 {tokensExpanded && (
                     <div className="card-grid">
@@ -1393,6 +1408,7 @@ function Wallet() {
                     onToggle={() => setPositionsExpanded(!positionsExpanded)}
                     onAdd={() => setShowAddSwapModal(true)}
                     addButtonText="Add Swap Pair"
+                    theme={theme}
                 />
                 {positionsExpanded && (
                     <div className="card-grid">                
@@ -1438,14 +1454,15 @@ function Wallet() {
                             console.warn('Could not save disclaimer state to localStorage:', error);
                         }
                     }}
+                    theme={theme}
                 />
                 {isSneedLockExpanded && (
                     <div style={{ marginBottom: '20px' }}>
                         <div style={{ 
-                            backgroundColor: '#2c2c2c', 
+                            backgroundColor: theme.colors.secondaryBg, 
                             borderRadius: '8px', 
                             padding: '20px',
-                            color: '#ffffff'
+                            color: theme.colors.primaryText
                         }}>
                             <p>Sneed Lock 2.0 is a new version of Sneed Lock that is permissionless, offers timed locks, and is integrated directly into the Sneed Wallet.</p>
                             <p>After registering a token or liquidity position, you can lock it for a specified time period by clicking the lock icon in the token or position card. You can also transfer tokens and positions to a different address (unless locked).</p>

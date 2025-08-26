@@ -386,7 +386,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     style={{
                         background: 'none',
                         border: 'none',
-                        color: '#fff',
+                        color: theme.colors.primaryText,
                         cursor: 'pointer',
                         padding: '4px',
                         borderRadius: '4px',
@@ -480,7 +480,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     {/* Show loading state if on admin page and waiting for admin check */}
                     {isOnAdminPage && adminLoading ? (
                         <div style={{
-                            color: '#888',
+                            color: theme.colors.mutedText,
                             fontSize: '16px',
                             fontStyle: 'italic'
                         }}>
@@ -494,7 +494,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                     key={item.name}
                                     to={item.path}
                                     style={{
-                                        color: isActive ? '#3498db' : '#888',
+                                        color: isActive ? theme.colors.accent : theme.colors.mutedText,
                                         textDecoration: 'none',
                                         fontSize: '16px',
                                         fontWeight: isActive ? 'bold' : 'normal',
@@ -510,7 +510,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                             left: 0,
                                             width: '100%',
                                             height: '2px',
-                                            background: '#3498db',
+                                            background: theme.colors.accent,
                                             borderRadius: '2px'
                                         }} />
                                     )}
@@ -520,7 +520,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     )}
                     {showTotalValue && (
                         <div style={{ 
-                            color: '#fff',
+                            color: theme.colors.primaryText,
                             fontSize: '16px',
                             fontWeight: 'bold',
                             marginLeft: '20px'
@@ -549,7 +549,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         alignItems: 'center',
                         gap: '20px',
                         fontSize: '12px',
-                        color: '#888'
+                        color: theme.colors.mutedText
                     }}>
                         <div style={{ 
                             fontSize: '10px', 
@@ -558,7 +558,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             Your Neurons
                         </div>
                         {neuronsLoading ? (
-                            <div style={{ color: '#888', fontStyle: 'italic' }}>
+                            <div style={{ color: theme.colors.mutedText, fontStyle: 'italic' }}>
                                 Loading neurons...
                             </div>
                         ) : (
@@ -603,11 +603,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                                 }}
                                                 title="Neurons where you have hotkey permission - can vote on SNS proposals"
                                             >
-                                                <span style={{ color: '#3498db' }}>
+                                                <span style={{ color: theme.colors.accent }}>
                                                     {hotkeyNeurons.length} hotkeyed
                                                 </span>
-                                                <span style={{ color: '#666' }}>•</span>
-                                                <span style={{ color: '#3498db' }}>
+                                                <span style={{ color: theme.colors.mutedText }}>•</span>
+                                                <span style={{ color: theme.colors.accent }}>
                                                     {nervousSystemParameters ? 
                                                         formatVotingPower(hotkeyedVP) : 
                                                         'Loading...'
@@ -623,11 +623,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                                 }}
                                                 title="All neurons you can access (owned + hotkeyed) - for forum voting"
                                             >
-                                                <span style={{ color: '#2ecc71' }}>
+                                                <span style={{ color: theme.colors.success }}>
                                                     {allNeurons.length} reachable
                                                 </span>
-                                                <span style={{ color: '#666' }}>•</span>
-                                                <span style={{ color: '#2ecc71' }}>
+                                                <span style={{ color: theme.colors.mutedText }}>•</span>
+                                                <span style={{ color: theme.colors.success }}>
                                                     {nervousSystemParameters ? 
                                                         formatVotingPower(reachableVP) : 
                                                         'Loading...'
@@ -753,7 +753,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                                 key={section}
                                 onClick={() => handleSectionClick(section)}
                                 style={{
-                                    color: '#fff',
+                                    color: theme.colors.primaryText,
                                     textDecoration: 'none',
                                     padding: '12px 16px',
                                     borderRadius: '8px',
