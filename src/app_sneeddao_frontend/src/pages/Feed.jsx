@@ -485,7 +485,7 @@ function Feed() {
     // Create forum actor
     const createForumActor = () => {
         return createActor(canisterId, {
-            agentOptions: { identity }
+            agentOptions: identity ? { identity } : {}
         });
     };
 
@@ -542,8 +542,8 @@ function Feed() {
             const highestChecked = getHighestCheckedId();
             
             if (lastSeen) {
-                // currentCounter is the next ID to be assigned, so the last created item has ID (currentCounter - 1)
-                const lastCreatedId = currentCounter - 1n;
+                // currentCounter appears to be the current highest ID, not the next ID to be assigned
+                const lastCreatedId = currentCounter;
                 
                 // Skip checking if we've already checked up to this ID
                 if (highestChecked && lastCreatedId <= highestChecked) {
@@ -1144,28 +1144,26 @@ function Feed() {
 
     // Load initial feed
     useEffect(() => {
-        if (identity) {
-            // Check for cached scroll position first
-            const scrollPositionId = getScrollPositionId();
-            
-            if (scrollPositionId) {
-                console.log('Loading feed from cached scroll position:', scrollPositionId);
-                loadFeed(scrollPositionId, 'initial');
+        // Check for cached scroll position first
+        const scrollPositionId = getScrollPositionId();
+        
+        if (scrollPositionId) {
+            console.log('Loading feed from cached scroll position:', scrollPositionId);
+            loadFeed(scrollPositionId, 'initial');
+        } else {
+            // Check for URL parameter (manual navigation)
+            const startFromParam = searchParams.get('startFrom');
+            if (startFromParam) {
+                console.log('Loading feed starting from URL parameter:', startFromParam);
+                const startId = BigInt(startFromParam);
+                loadFeed(startId, 'initial');
             } else {
-                // Check for URL parameter (manual navigation)
-                const startFromParam = searchParams.get('startFrom');
-                if (startFromParam) {
-                    console.log('Loading feed starting from URL parameter:', startFromParam);
-                    const startId = BigInt(startFromParam);
-                    loadFeed(startId, 'initial');
-                } else {
-                    // Default: load from the top
-                    console.log('Loading feed from the top');
-                    loadFeed(null, 'initial');
-                }
+                // Default: load from the top
+                console.log('Loading feed from the top');
+                loadFeed(null, 'initial');
             }
         }
-    }, [identity, appliedFilters, searchParams]);
+    }, [appliedFilters, searchParams]);
 
     // Initialize last seen ID from localStorage
     useEffect(() => {
@@ -1176,7 +1174,7 @@ function Feed() {
         }
     }, []);
 
-    // Periodic check for new items
+    // Periodic check for new items (only when authenticated)
     useEffect(() => {
         if (!identity) return;
 
