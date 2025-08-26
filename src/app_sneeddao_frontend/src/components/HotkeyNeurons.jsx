@@ -393,14 +393,14 @@ const HotkeyNeurons = ({
 
     const styles = {
         section: {
-            backgroundColor: '#2a2a2a',
+            backgroundColor: theme.colors.secondaryBg,
             borderRadius: '8px',
             padding: '0px',
             marginBottom: '20px',
-            border: '1px solid #3a3a3a'
+            border: `1px solid ${theme.colors.border}`
         },
         sectionHeader: {
-            backgroundColor: '#3a3a3a',
+            backgroundColor: theme.colors.tertiaryBg,
             borderRadius: '6px',
             padding: '10px',
             cursor: showExpandButton ? 'pointer' : 'default',
@@ -410,7 +410,7 @@ const HotkeyNeurons = ({
             marginBottom: isExpanded ? '15px' : '0px'
         },
         heading: {
-            color: '#ffffff',
+            color: theme.colors.primaryText,
             fontSize: '1.5em',
             margin: 0,
             display: 'flex',
@@ -422,8 +422,8 @@ const HotkeyNeurons = ({
             width: '16px',
             height: '16px',
             borderRadius: '50%',
-            backgroundColor: '#3498db',
-            color: 'white',
+            backgroundColor: theme.colors.accent,
+            color: theme.colors.primaryText,
             fontSize: '12px',
             textAlign: 'center',
             lineHeight: '16px',
@@ -433,7 +433,7 @@ const HotkeyNeurons = ({
         expandButton: {
             backgroundColor: 'transparent',
             border: 'none',
-            color: '#ffffff',
+            color: theme.colors.primaryText,
             cursor: 'pointer',
             fontSize: '1.2em',
             padding: '5px',
@@ -453,12 +453,12 @@ const HotkeyNeurons = ({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            color: '#888',
+            color: theme.colors.mutedText,
             fontSize: '14px'
         },
         spinner: {
-            border: '3px solid #3a3a3a',
-            borderTop: '3px solid #3498db',
+            border: `3px solid ${theme.colors.border}`,
+            borderTop: `3px solid ${theme.colors.accent}`,
             borderRadius: '50%',
             width: '30px',
             height: '30px',
@@ -466,20 +466,20 @@ const HotkeyNeurons = ({
         },
         noNeuronsMessage: {
             textAlign: 'center',
-            color: '#888',
+            color: theme.colors.mutedText,
             padding: '20px'
         },
         instructionsList: {
             textAlign: 'left',
-            color: '#ccc',
+            color: theme.colors.secondaryText,
             marginTop: '15px'
         },
         principalCode: {
-            backgroundColor: '#3a3a3a',
+            backgroundColor: theme.colors.tertiaryBg,
             padding: '2px 6px',
             borderRadius: '3px',
             fontFamily: 'monospace',
-            color: '#3498db'
+            color: theme.colors.accent
         },
         voteButton: {
             padding: '6px 12px',
@@ -491,19 +491,19 @@ const HotkeyNeurons = ({
             minWidth: '60px'
         },
         adoptButton: {
-            backgroundColor: '#2ecc71',
-            color: 'white'
+            backgroundColor: theme.colors.success,
+            color: theme.colors.primaryText
         },
         rejectButton: {
-            backgroundColor: '#e74c3c',
-            color: 'white'
+            backgroundColor: theme.colors.error,
+            color: theme.colors.primaryText
         },
         voteAllContainer: {
             display: 'flex',
             gap: '10px',
             marginBottom: '15px',
             padding: '15px',
-            backgroundColor: '#3a3a3a',
+            backgroundColor: theme.colors.tertiaryBg,
             borderRadius: '6px',
             alignItems: 'center'
         },
@@ -558,8 +558,8 @@ const HotkeyNeurons = ({
                     <button 
                         onClick={() => window.location.reload()}
                         style={{
-                            backgroundColor: '#3498db',
-                            color: 'white',
+                            backgroundColor: theme.colors.accent,
+                            color: theme.colors.primaryText,
                             border: 'none',
                             padding: '10px 20px',
                             borderRadius: '4px',
@@ -618,7 +618,7 @@ const HotkeyNeurons = ({
                         {/* Vote All buttons for open proposals */}
                         {proposalData && isProposalOpenForVoting() && (
                             <div style={styles.voteAllContainer}>
-                                <span style={{ color: '#ffffff', fontWeight: 'bold' }}>Vote with all eligible neurons:</span>
+                                <span style={{ color: theme.colors.primaryText, fontWeight: 'bold' }}>Vote with all eligible neurons:</span>
                                 <button 
                                     style={{
                                         ...styles.voteAllButton, 
@@ -676,8 +676,8 @@ const HotkeyNeurons = ({
                             if (hotkeyedNeurons.length > 0) {
                                 return (
                                     <div style={{
-                                        backgroundColor: '#1a1a1a',
-                                        border: '1px solid #2ecc71',
+                                        backgroundColor: theme.colors.primaryBg,
+                                        border: `1px solid ${theme.colors.success}`,
                                         borderRadius: '6px',
                                         padding: '12px',
                                         marginTop: '15px',
@@ -689,11 +689,11 @@ const HotkeyNeurons = ({
                                             alignItems: 'center',
                                             fontSize: '14px'
                                         }}>
-                                            <span style={{ color: '#888' }}>
+                                            <span style={{ color: theme.colors.mutedText }}>
                                                 Total Hotkeyed Voting Power:
                                             </span>
                                             <span style={{ 
-                                                color: '#2ecc71', 
+                                                color: theme.colors.success, 
                                                 fontWeight: 'bold',
                                                 fontSize: '16px'
                                             }}>
@@ -705,7 +705,7 @@ const HotkeyNeurons = ({
                                         </div>
                                         <div style={{
                                             fontSize: '12px',
-                                            color: '#666',
+                                            color: theme.colors.mutedText,
                                             marginTop: '4px'
                                         }}>
                                             From {hotkeyedNeurons.length} hotkeyed neuron{hotkeyedNeurons.length !== 1 ? 's' : ''} 
@@ -722,14 +722,14 @@ const HotkeyNeurons = ({
                         <div style={{marginTop: showVotingStats ? '20px' : '0'}}>
                             {(hotkeyNeurons?.neurons_by_owner || []).map(([owner, neurons], index) => (
                                 <div key={owner} style={{
-                                    backgroundColor: '#3a3a3a',
+                                    backgroundColor: theme.colors.tertiaryBg,
                                     borderRadius: '6px',
                                     padding: '15px',
                                     marginBottom: '15px'
                                 }}>
                                     <div style={{
                                         ...styles.statusItem,
-                                        borderBottom: '1px solid #4a4a4a',
+                                        borderBottom: `1px solid ${theme.colors.border}`,
                                         paddingBottom: '10px',
                                         marginBottom: '10px'
                                     }}>
@@ -739,7 +739,7 @@ const HotkeyNeurons = ({
                                     <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
                                         {neurons.map((neuron, neuronIndex) => (
                                             <div key={neuronIndex} style={{
-                                                backgroundColor: '#2a2a2a',
+                                                backgroundColor: theme.colors.secondaryBg,
                                                 borderRadius: '4px',
                                                 padding: '10px'
                                             }}>
@@ -763,26 +763,26 @@ const HotkeyNeurons = ({
                                                     marginTop: '10px'
                                                 }}>
                                                     <div>
-                                                        <div style={{ color: '#888' }}>Created</div>
-                                                        <div style={{ color: '#ffffff' }}>
+                                                        <div style={{ color: theme.colors.mutedText }}>Created</div>
+                                                        <div style={{ color: theme.colors.primaryText }}>
                                                             {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
                                                         </div>
                                                     </div>
                                                     <div>
-                                                        <div style={{ color: '#888' }}>Dissolve State</div>
-                                                        <div style={{ color: '#ffffff' }}>{getDissolveState(neuron)}</div>
+                                                        <div style={{ color: theme.colors.mutedText }}>Dissolve State</div>
+                                                        <div style={{ color: theme.colors.primaryText }}>{getDissolveState(neuron)}</div>
                                                     </div>
                                                     <div>
-                                                        <div style={{ color: '#888' }}>Maturity</div>
-                                                        <div style={{ color: '#ffffff' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
+                                                        <div style={{ color: theme.colors.mutedText }}>Maturity</div>
+                                                        <div style={{ color: theme.colors.primaryText }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
                                                     </div>
                                                     <div>
-                                                        <div style={{ color: '#888' }}>Staked Amount</div>
-                                                        <div style={{ color: '#ffffff' }}>{formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}</div>
+                                                        <div style={{ color: theme.colors.mutedText }}>Staked Amount</div>
+                                                        <div style={{ color: theme.colors.primaryText }}>{formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}</div>
                                                     </div>
                                                     <div>
-                                                        <div style={{ color: '#888' }}>Voting Power</div>
-                                                        <div style={{ color: '#ffffff' }}>
+                                                        <div style={{ color: theme.colors.mutedText }}>Voting Power</div>
+                                                        <div style={{ color: theme.colors.primaryText }}>
                                                             {nervousSystemParameters ? 
                                                                 formatVotingPower(calculateVotingPower(neuron, nervousSystemParameters)) :
                                                                 (Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2) + 'x'
@@ -795,13 +795,13 @@ const HotkeyNeurons = ({
                                                     ) && (
                                                         <div style={{ gridColumn: '1 / -1' }}>
                                                             <div style={{ 
-                                                                color: '#888',
+                                                                color: theme.colors.mutedText,
                                                                 fontSize: '14px',
                                                                 display: 'flex',
                                                                 alignItems: 'center',
                                                                 gap: '5px'
                                                             }}>
-                                                                <span style={{ color: '#2ecc71' }}>🔑 Hotkey Access</span>
+                                                                <span style={{ color: theme.colors.success }}>🔑 Hotkey Access</span>
                                                             </div>
                                                             
                                                             {/* Voting section for proposals */}
@@ -840,10 +840,10 @@ const HotkeyNeurons = ({
                                                                                     alignItems: 'center',
                                                                                     gap: '8px',
                                                                                     padding: '8px',
-                                                                                    backgroundColor: '#1a1a1a',
+                                                                                    backgroundColor: theme.colors.primaryBg,
                                                                                     borderRadius: '4px'
                                                                                 }}>
-                                                                                    <span style={{ color: '#888' }}>Vote:</span>
+                                                                                    <span style={{ color: theme.colors.mutedText }}>Vote:</span>
                                                                                     <span style={{ 
                                                                                         color: voteInfo.color,
                                                                                         fontWeight: 'bold'
@@ -858,9 +858,9 @@ const HotkeyNeurons = ({
                                                                             return (
                                                                                 <div style={{
                                                                                     padding: '8px',
-                                                                                    backgroundColor: '#1a1a1a',
+                                                                                    backgroundColor: theme.colors.primaryBg,
                                                                                     borderRadius: '4px',
-                                                                                    color: '#888'
+                                                                                    color: theme.colors.mutedText
                                                                                 }}>
                                                                                     Proposal not open for voting
                                                                                 </div>
@@ -874,18 +874,18 @@ const HotkeyNeurons = ({
                                                                                     alignItems: 'center',
                                                                                     gap: '8px',
                                                                                     padding: '8px',
-                                                                                    backgroundColor: '#1a1a1a',
+                                                                                    backgroundColor: theme.colors.primaryBg,
                                                                                     borderRadius: '4px'
                                                                                 }}>
                                                                                     <div style={{
                                                                                         width: '16px',
                                                                                         height: '16px',
-                                                                                        border: '2px solid #3498db',
+                                                                                        border: `2px solid ${theme.colors.accent}`,
                                                                                         borderTop: '2px solid transparent',
                                                                                         borderRadius: '50%',
                                                                                         animation: 'spin 1s linear infinite'
                                                                                     }} />
-                                                                                    <span style={{ color: '#3498db' }}>Voting...</span>
+                                                                                    <span style={{ color: theme.colors.accent }}>Voting...</span>
                                                                                 </div>
                                                                             );
                                                                         }
@@ -894,9 +894,9 @@ const HotkeyNeurons = ({
                                                                             return (
                                                                                 <div style={{
                                                                                     padding: '8px',
-                                                                                    backgroundColor: '#1a1a1a',
+                                                                                    backgroundColor: theme.colors.primaryBg,
                                                                                     borderRadius: '4px',
-                                                                                    color: '#2ecc71'
+                                                                                    color: theme.colors.success
                                                                                 }}>
                                                                                     ✓ Vote submitted successfully
                                                                                 </div>
@@ -909,10 +909,10 @@ const HotkeyNeurons = ({
                                                                                     display: 'flex',
                                                                                     gap: '8px',
                                                                                     padding: '8px',
-                                                                                    backgroundColor: '#1a1a1a',
+                                                                                    backgroundColor: theme.colors.primaryBg,
                                                                                     borderRadius: '4px'
                                                                                 }}>
-                                                                                    <span style={{ color: '#e74c3c' }}>✗ Voting failed</span>
+                                                                                    <span style={{ color: theme.colors.error }}>✗ Voting failed</span>
                                                                                     <button 
                                                                                         style={{...styles.voteButton, ...styles.adoptButton}}
                                                                                         onClick={() => voteWithNeuron(neuronId, 1)}
@@ -935,10 +935,10 @@ const HotkeyNeurons = ({
                                                                                 display: 'flex',
                                                                                 gap: '8px',
                                                                                 padding: '8px',
-                                                                                backgroundColor: '#1a1a1a',
+                                                                                backgroundColor: theme.colors.primaryBg,
                                                                                 borderRadius: '4px'
                                                                             }}>
-                                                                                <span style={{ color: '#888', alignSelf: 'center' }}>Vote:</span>
+                                                                                <span style={{ color: theme.colors.mutedText, alignSelf: 'center' }}>Vote:</span>
                                                                                 <button 
                                                                                     style={{...styles.voteButton, ...styles.adoptButton}}
                                                                                     onClick={() => voteWithNeuron(neuronId, 1)}
