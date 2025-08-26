@@ -542,8 +542,8 @@ function Feed() {
             const highestChecked = getHighestCheckedId();
             
             if (lastSeen) {
-                // currentCounter appears to be the current highest ID, not the next ID to be assigned
-                const lastCreatedId = currentCounter;
+                // currentCounter is the next ID to be assigned, so the last created item has ID (currentCounter - 1)
+                const lastCreatedId = currentCounter - 1n;
                 
                 // Skip checking if we've already checked up to this ID
                 if (highestChecked && lastCreatedId <= highestChecked) {
@@ -557,10 +557,11 @@ function Feed() {
                     
                     if (!hasSnsFilter) {
                         // No SNS filter - simple count based on ID difference
+                        // Count items with IDs greater than lastSeen (exclude lastSeen itself)
                         const newCount = Number(lastCreatedId - lastSeen);
                         setNewItemsCount(newCount);
                         setShowNewItemsNotification(true);
-                        console.log(`Found ${newCount} new items (no SNS filter). Last created ID: ${lastCreatedId}, last seen: ${lastSeen}`);
+                        console.log(`🐛 Found ${newCount} new items (no SNS filter). Last created ID: ${lastCreatedId}, last seen: ${lastSeen}`);
                         saveHighestCheckedId(lastCreatedId);
                         return;
                     }

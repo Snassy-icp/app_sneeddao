@@ -37,7 +37,7 @@ const Thread = () => {
     // Fetch topic information for breadcrumb
     useEffect(() => {
         const fetchTopicInfo = async () => {
-            if (!threadId) {
+            if (!forumActor || !threadId) {
                 setBreadcrumbLoading(false);
                 return;
             }
