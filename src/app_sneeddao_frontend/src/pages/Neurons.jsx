@@ -10,9 +10,11 @@ import { formatNeuronIdLink, formatE8s, getDissolveState, uint8ArrayToHex } from
 import { calculateVotingPower, formatVotingPower } from '../utils/VotingPowerUtils';
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { useNaming } from '../NamingContext';
+import { useTheme } from '../contexts/ThemeContext';
 import NeuronInput from '../components/NeuronInput';
 
 function Neurons() {
+    const { theme } = useTheme();
     const { identity } = useAuth();
     const { selectedSnsRoot, updateSelectedSns } = useSns();
     const navigate = useNavigate();
@@ -681,12 +683,12 @@ function Neurons() {
     };
 
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             <main className="wallet-container">
                 {/* Stats boxes at the top */}
                 <div style={{ 
-                    backgroundColor: '#2a2a2a',
+                    backgroundColor: theme.colors.secondaryBg,
                     borderRadius: '8px',
                     padding: '20px',
                     marginBottom: '20px'
@@ -698,70 +700,70 @@ function Neurons() {
                         textAlign: 'center'
                     }}>
                         <div>
-                            <div style={{ color: '#888', marginBottom: '8px' }}>Total Active Stake</div>
-                            <div style={{ color: '#ffffff', fontSize: '24px', fontWeight: 'bold' }}>
+                            <div style={{ color: theme.colors.mutedText, marginBottom: '8px' }}>Total Active Stake</div>
+                            <div style={{ color: theme.colors.primaryText, fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8sAsInteger(totalStake)} {tokenSymbol}
                                 {totalSupply && (
-                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
+                                    <div style={{ fontSize: '14px', color: theme.colors.mutedText, marginTop: '2px' }}>
                                         ({calculatePercentage(totalStake)}% of supply)
                                     </div>
                                 )}
                             </div>
-                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
+                            <div style={{ color: theme.colors.mutedText, marginTop: '4px', fontSize: '14px' }}>
                                 {totalCount} neurons total
                             </div>
-                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
+                            <div style={{ color: theme.colors.mutedText, marginTop: '2px', fontSize: '14px' }}>
                                 ({totalWithStakeCount} with stake)
                             </div>
                         </div>
                         <div>
-                            <div style={{ color: '#888', marginBottom: '8px' }}>Not Dissolving</div>
-                            <div style={{ color: '#2ecc71', fontSize: '24px', fontWeight: 'bold' }}>
+                            <div style={{ color: theme.colors.mutedText, marginBottom: '8px' }}>Not Dissolving</div>
+                            <div style={{ color: theme.colors.success, fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8sAsInteger(stakes.notDissolvingStake)} {tokenSymbol}
                                 {totalSupply && (
-                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
+                                    <div style={{ fontSize: '14px', color: theme.colors.mutedText, marginTop: '2px' }}>
                                         ({calculatePercentage(stakes.notDissolvingStake)}% of supply)
                                     </div>
                                 )}
                             </div>
-                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
+                            <div style={{ color: theme.colors.mutedText, marginTop: '4px', fontSize: '14px' }}>
                                 {stakes.notDissolvingCount} neurons
                             </div>
-                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
+                            <div style={{ color: theme.colors.mutedText, marginTop: '2px', fontSize: '14px' }}>
                                 ({stakes.notDissolvingWithStakeCount} with stake)
                             </div>
                         </div>
                         <div>
-                            <div style={{ color: '#888', marginBottom: '8px' }}>Dissolving</div>
-                            <div style={{ color: '#f1c40f', fontSize: '24px', fontWeight: 'bold' }}>
+                            <div style={{ color: theme.colors.mutedText, marginBottom: '8px' }}>Dissolving</div>
+                            <div style={{ color: theme.colors.warning, fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8sAsInteger(stakes.dissolvingStake)} {tokenSymbol}
                                 {totalSupply && (
-                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
+                                    <div style={{ fontSize: '14px', color: theme.colors.mutedText, marginTop: '2px' }}>
                                         ({calculatePercentage(stakes.dissolvingStake)}% of supply)
                                     </div>
                                 )}
                             </div>
-                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
+                            <div style={{ color: theme.colors.mutedText, marginTop: '4px', fontSize: '14px' }}>
                                 {stakes.dissolvingCount} neurons
                             </div>
-                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
+                            <div style={{ color: theme.colors.mutedText, marginTop: '2px', fontSize: '14px' }}>
                                 ({stakes.dissolvingWithStakeCount} with stake)
                             </div>
                         </div>
                         <div>
-                            <div style={{ color: '#888', marginBottom: '8px' }}>Dissolved</div>
-                            <div style={{ color: '#e74c3c', fontSize: '24px', fontWeight: 'bold' }}>
+                            <div style={{ color: theme.colors.mutedText, marginBottom: '8px' }}>Dissolved</div>
+                            <div style={{ color: theme.colors.error, fontSize: '24px', fontWeight: 'bold' }}>
                                 {formatE8sAsInteger(stakes.dissolvedStake)} {tokenSymbol}
                                 {totalSupply && (
-                                    <div style={{ fontSize: '14px', color: '#888', marginTop: '2px' }}>
+                                    <div style={{ fontSize: '14px', color: theme.colors.mutedText, marginTop: '2px' }}>
                                         ({calculatePercentage(stakes.dissolvedStake)}% of supply)
                                     </div>
                                 )}
                             </div>
-                            <div style={{ color: '#888', marginTop: '4px', fontSize: '14px' }}>
+                            <div style={{ color: theme.colors.mutedText, marginTop: '4px', fontSize: '14px' }}>
                                 {stakes.dissolvedCount} neurons
                             </div>
-                            <div style={{ color: '#888', marginTop: '2px', fontSize: '14px' }}>
+                            <div style={{ color: theme.colors.mutedText, marginTop: '2px', fontSize: '14px' }}>
                                 ({stakes.dissolvedWithStakeCount} with stake)
                             </div>
                         </div>
@@ -777,14 +779,14 @@ function Neurons() {
                         flexWrap: 'wrap',
                         gap: '15px'
                     }}>
-                        <h1 style={{ color: '#ffffff', margin: '0' }}>Neurons</h1>
+                        <h1 style={{ color: theme.colors.primaryText, margin: '0' }}>Neurons</h1>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                             <button
                                 onClick={handleRefresh}
                                 style={{
-                                    backgroundColor: '#3a3a3a',
-                                    color: '#fff',
-                                    border: '1px solid #4a4a4a',
+                                    backgroundColor: theme.colors.tertiaryBg,
+                                    color: theme.colors.primaryText,
+                                    border: `1px solid ${theme.colors.border}`,
                                     borderRadius: '4px',
                                     padding: '8px 12px',
                                     cursor: 'pointer',
@@ -803,14 +805,14 @@ function Neurons() {
                                 Refresh
                             </button>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <label style={{ color: '#ffffff', fontSize: '14px' }}>Items per page:</label>
+                                <label style={{ color: theme.colors.primaryText, fontSize: '14px' }}>Items per page:</label>
                                 <select
                                     value={itemsPerPage}
                                     onChange={handleItemsPerPageChange}
                                     style={{
-                                        backgroundColor: '#3a3a3a',
-                                        color: '#fff',
-                                        border: '1px solid #4a4a4a',
+                                        backgroundColor: theme.colors.tertiaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: `1px solid ${theme.colors.border}`,
                                         borderRadius: '4px',
                                         padding: '4px 8px'
                                     }}
@@ -842,9 +844,9 @@ function Neurons() {
                             value={dissolveFilter}
                             onChange={(e) => setDissolveFilter(e.target.value)}
                             style={{
-                                backgroundColor: '#3a3a3a',
-                                color: '#ffffff',
-                                border: '1px solid #4a4a4a',
+                                backgroundColor: theme.colors.tertiaryBg,
+                                color: theme.colors.primaryText,
+                                border: `1px solid ${theme.colors.border}`,
                                 borderRadius: '4px',
                                 padding: '8px 12px',
                                 minWidth: '150px'
@@ -866,7 +868,7 @@ function Neurons() {
                             display: 'flex', 
                             alignItems: 'center', 
                             gap: '6px',
-                            color: '#ffffff',
+                            color: theme.colors.primaryText,
                             fontSize: '14px',
                             cursor: 'pointer'
                         }}>
@@ -875,7 +877,7 @@ function Neurons() {
                                 checked={hideUnnamed}
                                 onChange={(e) => setHideUnnamed(e.target.checked)}
                                 style={{
-                                    accentColor: '#3498db'
+                                    accentColor: theme.colors.accent
                                 }}
                             />
                             Hide Unnamed
@@ -884,7 +886,7 @@ function Neurons() {
                             display: 'flex', 
                             alignItems: 'center', 
                             gap: '6px',
-                            color: '#ffffff',
+                            color: theme.colors.primaryText,
                             fontSize: '14px',
                             cursor: 'pointer'
                         }}>
@@ -893,7 +895,7 @@ function Neurons() {
                                 checked={hideUnverified}
                                 onChange={(e) => setHideUnverified(e.target.checked)}
                                 style={{
-                                    accentColor: '#3498db'
+                                    accentColor: theme.colors.accent
                                 }}
                             />
                             Hide Unverified
@@ -901,14 +903,14 @@ function Neurons() {
                     </div>
                 </div>
 
-                {error && <div style={{ color: '#e74c3c', marginBottom: '20px' }}>{error}</div>}
+                {error && <div style={{ color: theme.colors.error, marginBottom: '20px' }}>{error}</div>}
 
                 {/* Stakes Display */}
 
 
                 {/* Sortable Headers */}
                 <div style={{ 
-                    backgroundColor: '#2a2a2a',
+                    backgroundColor: theme.colors.secondaryBg,
                     borderRadius: '8px',
                     padding: '15px 20px',
                     marginBottom: '20px',
@@ -917,7 +919,7 @@ function Neurons() {
                     gap: '15px',
                     flexWrap: 'wrap'
                 }}>
-                    <div style={{ color: '#888', fontSize: '14px', fontWeight: 'bold' }}>Sort by:</div>
+                    <div style={{ color: theme.colors.mutedText, fontSize: '14px', fontWeight: 'bold' }}>Sort by:</div>
                     <div 
                         onClick={() => handleSort('stake')}
                         style={{
@@ -926,12 +928,12 @@ function Neurons() {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
-                            color: sortConfig.key === 'stake' ? '#3498db' : '#ffffff',
+                            color: sortConfig.key === 'stake' ? theme.colors.accent : theme.colors.primaryText,
                             fontWeight: sortConfig.key === 'stake' ? 'bold' : 'normal',
                             padding: '8px 12px',
                             borderRadius: '4px',
-                            backgroundColor: sortConfig.key === 'stake' ? 'rgba(52, 152, 219, 0.1)' : 'transparent',
-                            border: sortConfig.key === 'stake' ? '1px solid #3498db' : '1px solid transparent'
+                            backgroundColor: sortConfig.key === 'stake' ? theme.colors.accentHover : 'transparent',
+                            border: sortConfig.key === 'stake' ? `1px solid ${theme.colors.accent}` : '1px solid transparent'
                         }}
                     >
                         Stake
@@ -945,12 +947,12 @@ function Neurons() {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
-                            color: sortConfig.key === 'name' ? '#3498db' : '#ffffff',
+                            color: sortConfig.key === 'name' ? theme.colors.accent : theme.colors.primaryText,
                             fontWeight: sortConfig.key === 'name' ? 'bold' : 'normal',
                             padding: '8px 12px',
                             borderRadius: '4px',
-                            backgroundColor: sortConfig.key === 'name' ? 'rgba(52, 152, 219, 0.1)' : 'transparent',
-                            border: sortConfig.key === 'name' ? '1px solid #3498db' : '1px solid transparent'
+                            backgroundColor: sortConfig.key === 'name' ? theme.colors.accentHover : 'transparent',
+                            border: sortConfig.key === 'name' ? `1px solid ${theme.colors.accent}` : '1px solid transparent'
                         }}
                     >
                         Name
@@ -964,12 +966,12 @@ function Neurons() {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
-                            color: sortConfig.key === 'lock' ? '#3498db' : '#ffffff',
+                            color: sortConfig.key === 'lock' ? theme.colors.accent : theme.colors.primaryText,
                             fontWeight: sortConfig.key === 'lock' ? 'bold' : 'normal',
                             padding: '8px 12px',
                             borderRadius: '4px',
-                            backgroundColor: sortConfig.key === 'lock' ? 'rgba(52, 152, 219, 0.1)' : 'transparent',
-                            border: sortConfig.key === 'lock' ? '1px solid #3498db' : '1px solid transparent'
+                            backgroundColor: sortConfig.key === 'lock' ? theme.colors.accentHover : 'transparent',
+                            border: sortConfig.key === 'lock' ? `1px solid ${theme.colors.accent}` : '1px solid transparent'
                         }}
                     >
                         Lock
@@ -983,12 +985,12 @@ function Neurons() {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
-                            color: sortConfig.key === 'votingPower' ? '#3498db' : '#ffffff',
+                            color: sortConfig.key === 'votingPower' ? theme.colors.accent : theme.colors.primaryText,
                             fontWeight: sortConfig.key === 'votingPower' ? 'bold' : 'normal',
                             padding: '8px 12px',
                             borderRadius: '4px',
-                            backgroundColor: sortConfig.key === 'votingPower' ? 'rgba(52, 152, 219, 0.1)' : 'transparent',
-                            border: sortConfig.key === 'votingPower' ? '1px solid #3498db' : '1px solid transparent'
+                            backgroundColor: sortConfig.key === 'votingPower' ? theme.colors.accentHover : 'transparent',
+                            border: sortConfig.key === 'votingPower' ? `1px solid ${theme.colors.accent}` : '1px solid transparent'
                         }}
                     >
                         Voting Power
@@ -998,7 +1000,7 @@ function Neurons() {
 
                 {loading ? (
                     <div style={{ 
-                        color: '#ffffff', 
+                        color: theme.colors.primaryText, 
                         textAlign: 'center', 
                         padding: '20px',
                         display: 'flex',
@@ -1009,7 +1011,7 @@ function Neurons() {
                         <div className="spinner" style={{ 
                             width: '32px', 
                             height: '32px',
-                            border: '3px solid #3498db',
+                            border: `3px solid ${theme.colors.accent}`,
                             borderTop: '3px solid transparent',
                             borderRadius: '50%',
                             animation: 'spin 1s linear infinite'
@@ -1021,7 +1023,7 @@ function Neurons() {
                         <div style={{
                             width: '100%',
                             maxWidth: '400px',
-                            backgroundColor: '#2a2a2a',
+                            backgroundColor: theme.colors.secondaryBg,
                             borderRadius: '4px',
                             overflow: 'hidden',
                             height: '8px',
@@ -1029,12 +1031,12 @@ function Neurons() {
                         }}>
                             <div style={{
                                 width: `${loadingProgress.percent}%`,
-                                backgroundColor: '#3498db',
+                                backgroundColor: theme.colors.accent,
                                 height: '100%',
                                 transition: 'width 0.3s ease'
                             }} />
                         </div>
-                        <div style={{ color: '#888', fontSize: '14px' }}>
+                        <div style={{ color: theme.colors.mutedText, fontSize: '14px' }}>
                             {loadingProgress.count > 0 && (
                                 <>Found {loadingProgress.count} neurons</>
                             )}
@@ -1049,7 +1051,7 @@ function Neurons() {
                             <div
                                 key={index}
                                 style={{
-                                    backgroundColor: '#2a2a2a',
+                                    backgroundColor: theme.colors.secondaryBg,
                                     borderRadius: '8px',
                                     padding: '20px',
                                     marginBottom: '15px'
@@ -1061,22 +1063,22 @@ function Neurons() {
                                     gap: '20px'
                                 }}>
                                     <div>
-                                        <div style={{ color: '#888', marginBottom: '4px' }}>Neuron ID</div>
+                                        <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Neuron ID</div>
                                         <div>{formatNeuronIdLink(neuron.id[0].id, selectedSnsRoot)}</div>
                                     </div>
                                     <div>
-                                        <div style={{ color: '#888', marginBottom: '4px' }}>Stake</div>
-                                        <div style={{ color: '#ffffff', fontSize: '18px', fontWeight: 'bold' }}>
+                                        <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Stake</div>
+                                        <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: 'bold' }}>
                                             {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
                                         </div>
                                     </div>
                                     <div>
-                                        <div style={{ color: '#888', marginBottom: '4px' }}>Dissolve State</div>
-                                        <div style={{ color: '#ffffff' }}>{getDissolveState(neuron)}</div>
+                                        <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Dissolve State</div>
+                                        <div style={{ color: theme.colors.primaryText }}>{getDissolveState(neuron)}</div>
                                     </div>
                                     <div>
-                                        <div style={{ color: '#888', marginBottom: '4px' }}>Voting Power</div>
-                                        <div style={{ color: '#ffffff' }}>
+                                        <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Voting Power</div>
+                                        <div style={{ color: theme.colors.primaryText }}>
                                             {nervousSystemParameters ? 
                                                 formatVotingPower(calculateVotingPower(neuron, nervousSystemParameters)) :
                                                 `${(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x`
@@ -1098,8 +1100,8 @@ function Neurons() {
                                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                                 disabled={currentPage === 1}
                                 style={{
-                                    backgroundColor: '#3498db',
-                                    color: '#ffffff',
+                                    backgroundColor: theme.colors.accent,
+                                    color: theme.colors.primaryText,
                                     border: 'none',
                                     borderRadius: '4px',
                                     padding: '8px 16px',
@@ -1109,15 +1111,15 @@ function Neurons() {
                             >
                                 Previous
                             </button>
-                            <span style={{ color: '#ffffff', alignSelf: 'center' }}>
+                            <span style={{ color: theme.colors.primaryText, alignSelf: 'center' }}>
                                 Page {currentPage} of {Math.ceil(filteredNeurons.length / itemsPerPage)}
                             </span>
                             <button
                                 onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredNeurons.length / itemsPerPage), prev + 1))}
                                 disabled={currentPage === Math.ceil(filteredNeurons.length / itemsPerPage)}
                                 style={{
-                                    backgroundColor: '#3498db',
-                                    color: '#ffffff',
+                                    backgroundColor: theme.colors.accent,
+                                    color: theme.colors.primaryText,
                                     border: 'none',
                                     borderRadius: '4px',
                                     padding: '8px 16px',

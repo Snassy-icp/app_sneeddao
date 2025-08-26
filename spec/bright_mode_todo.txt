@@ -20,8 +20,8 @@
 - [x] **Hub Page** (/hub) - Central hub ✅ (partially complete)
 - [ ] **Me Page** (/me) - User profile/dashboard
 - [ ] **DAO Page** (/dao) - DAO information
-- [ ] **Proposals Page** (/proposals) - Governance proposals
-- [ ] **Neurons Page** (/neurons) - Neuron management
+- [x] **Proposals Page** (/proposals) - Governance proposals ✅
+- [x] **Neurons Page** (/neurons) - Neuron management ✅
 - [ ] **Transactions Page** (/transactions) - Transaction history
 - [ ] **Tips Page** (/tips) - Tipping system
 - [ ] **Posts Page** (/posts) - User posts
@@ -128,3 +128,9 @@
 - ✅ **HotkeyNeurons Component** - Added theme support to Vote with Your Neurons section
 - ✅ **Discussion Component** - Added theme support to Discussion section and header
 - ✅ **Voting History Section** - Completed theming of voting history component with full theme support
+- ✅ **Proposals Pages Complete** - Both /proposals and /proposal pages fully themed with bright mode support
+- ✅ **Neurons Pages Complete** - Both /neurons and /neuron pages fully themed with bright mode support
+- ✅ **Neuron Components** - NeuronDisplay, NeuronInput, and related components fully themed
+- ✅ **Background Fix** - Fixed page background to properly use theme gradient instead of solid color
+- ✅ **BigInt Error Fix** - Fixed TypeError on /neuron page by adding explicit Number() conversions
+- ✅ **Page Container Background Fix** - Added inline styles to /neurons and /neuron page containers to override CSS conflicts

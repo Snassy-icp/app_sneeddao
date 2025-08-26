@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNaming } from '../NamingContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { formatNeuronDisplayWithContext, uint8ArrayToHex } from '../utils/NeuronUtils';
 
 const NeuronInput = ({ 
@@ -10,6 +11,7 @@ const NeuronInput = ({
     disabled = false,
     snsRoot = null
 }) => {
+    const { theme } = useTheme();
     const { neuronNames, neuronNicknames, verifiedNames } = useNaming();
     const [inputValue, setInputValue] = useState(value);
     const [showDropdown, setShowDropdown] = useState(false);
@@ -256,10 +258,10 @@ const NeuronInput = ({
                 style={{
                     width: '100%',
                     padding: '8px 12px',
-                    border: `2px solid ${isValid ? '#2ecc71' : '#3a3a3a'}`,
+                    border: `2px solid ${isValid ? theme.colors.success : theme.colors.border}`,
                     borderRadius: '4px',
-                    backgroundColor: '#2a2a2a',
-                    color: '#ffffff',
+                    backgroundColor: theme.colors.secondaryBg,
+                    color: theme.colors.primaryText,
                     fontSize: '14px',
                     outline: 'none',
                     transition: 'border-color 0.2s ease'
@@ -271,7 +273,7 @@ const NeuronInput = ({
                 <div style={{
                     marginTop: '4px',
                     fontSize: '12px',
-                    color: '#888'
+                    color: theme.colors.mutedText
                 }}>
                     {(() => {
                         try {
@@ -310,14 +312,14 @@ const NeuronInput = ({
                         top: '100%',
                         left: 0,
                         right: 0,
-                        backgroundColor: '#2a2a2a',
-                        border: '1px solid #3a3a3a',
+                        backgroundColor: theme.colors.secondaryBg,
+                        border: `1px solid ${theme.colors.border}`,
                         borderRadius: '4px',
                         maxHeight: '300px',
                         overflowY: 'auto',
                         zIndex: 1000,
                         marginTop: '2px',
-                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
+                        boxShadow: theme.colors.cardShadow
                     }}
                 >
                     {searchResults.map((item, index) => (
@@ -327,12 +329,12 @@ const NeuronInput = ({
                             style={{
                                 padding: '8px 12px',
                                 cursor: 'pointer',
-                                borderBottom: index < searchResults.length - 1 ? '1px solid #3a3a3a' : 'none',
+                                borderBottom: index < searchResults.length - 1 ? `1px solid ${theme.colors.border}` : 'none',
                                 backgroundColor: 'transparent',
                                 transition: 'background-color 0.2s ease'
                             }}
                             onMouseEnter={(e) => {
-                                e.target.style.backgroundColor = '#3a3a3a';
+                                e.target.style.backgroundColor = theme.colors.accentHover;
                                 e.stopPropagation();
                             }}
                             onMouseLeave={(e) => {
@@ -357,7 +359,7 @@ const NeuronInput = ({
                                     );
                                 } catch (e) {
                                     return (
-                                        <span style={{ color: '#888', fontFamily: 'monospace' }}>
+                                        <span style={{ color: theme.colors.mutedText, fontFamily: 'monospace' }}>
                                             {item.neuronIdHex}
                                         </span>
                                     );

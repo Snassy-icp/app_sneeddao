@@ -9,6 +9,7 @@ import './Wallet.css';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses, clearSnsCache } from './utils/SnsUtils';
 import { formatProposalIdLink, uint8ArrayToHex, getNeuronColor, getOwnerPrincipals, formatNeuronIdLink } from './utils/NeuronUtils';
 import { useNaming } from './NamingContext';
+import { useTheme } from './contexts/ThemeContext';
 import { setNeuronNickname } from './utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
@@ -24,6 +25,7 @@ const spinKeyframes = `
 `;
 
 function Neuron() {
+    const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
     const { selectedSnsRoot, updateSelectedSns, SNEED_SNS_ROOT } = useSns();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -429,12 +431,12 @@ function Neuron() {
     }, [selectedSnsRoot, identity]);
 
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header showSnsDropdown={true} />
             <main className="wallet-container">
-                <h1 style={{ color: '#ffffff' }}>Neuron Details</h1>
+                <h1 style={{ color: theme.colors.primaryText }}>Neuron Details</h1>
                 
-                <section style={{ backgroundColor: '#2a2a2a', borderRadius: '8px', padding: '20px', marginTop: '20px' }}>
+                <section style={{ backgroundColor: theme.colors.secondaryBg, borderRadius: '8px', padding: '20px', marginTop: '20px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                         <div style={{ 
                             display: 'flex', 
@@ -450,18 +452,18 @@ function Neuron() {
                             </div>
                         </div>
                     </div>
-                    {error && <div style={{ color: '#e74c3c', marginTop: '10px' }}>{error}</div>}
+                    {error && <div style={{ color: theme.colors.error, marginTop: '10px' }}>{error}</div>}
 
                     {loading && (
-                        <div style={{ color: '#ffffff', textAlign: 'center', padding: '20px' }}>
+                        <div style={{ color: theme.colors.primaryText, textAlign: 'center', padding: '20px' }}>
                             Loading...
                         </div>
                     )}
 
                     {neuronData && !loading && (
-                        <div style={{ color: '#ffffff' }}>
+                        <div style={{ color: theme.colors.primaryText }}>
                             <h2>Neuron Information</h2>
-                            <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px', marginTop: '10px' }}>
+                            <div style={{ backgroundColor: theme.colors.tertiaryBg, padding: '15px', borderRadius: '6px', marginTop: '10px' }}>
                                 <div style={{ marginBottom: '15px' }}>
                                     <div style={{ 
                                         display: 'flex', 
@@ -472,7 +474,7 @@ function Neuron() {
                                         <div style={{ 
                                             fontFamily: 'monospace',
                                             fontSize: '16px',
-                                            color: '#888',
+                                            color: theme.colors.mutedText,
                                             wordBreak: 'break-all',
                                             overflowWrap: 'anywhere',
                                             lineHeight: '1.4',
@@ -488,7 +490,7 @@ function Neuron() {
                                                 border: 'none',
                                                 padding: '4px',
                                                 cursor: 'pointer',
-                                                color: '#888',
+                                                color: theme.colors.mutedText,
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 flexShrink: 0
@@ -566,10 +568,10 @@ function Neuron() {
                                                                     maxLength={32}
                                                                     placeholder="Enter nickname (max 32 chars)"
                                                                     style={{
-                                                                        backgroundColor: '#2a2a2a',
-                                                                        border: `1px solid ${inputError ? '#e74c3c' : '#4a4a4a'}`,
+                                                                        backgroundColor: theme.colors.secondaryBg,
+                                                                        border: `1px solid ${inputError ? theme.colors.error : theme.colors.border}`,
                                                                         borderRadius: '4px',
-                                                                        color: '#ffffff',
+                                                                        color: theme.colors.primaryText,
                                                                         padding: '8px',
                                                                         width: '100%',
                                                                         fontSize: '14px'
@@ -577,7 +579,7 @@ function Neuron() {
                                                                 />
                                                                 {inputError && (
                                                                     <div style={{
-                                                                        color: '#e74c3c',
+                                                                        color: theme.colors.error,
                                                                         fontSize: '12px',
                                                                         marginTop: '4px'
                                                                     }}>
@@ -585,7 +587,7 @@ function Neuron() {
                                                                     </div>
                                                                 )}
                                                                 <div style={{
-                                                                    color: '#888',
+                                                                    color: theme.colors.mutedText,
                                                                     fontSize: '12px',
                                                                     marginTop: '4px'
                                                                 }}>
@@ -601,8 +603,8 @@ function Neuron() {
                                                                     onClick={handleNicknameSubmit}
                                                                     disabled={isSubmitting}
                                                                     style={{
-                                                                        backgroundColor: '#95a5a6',
-                                                                        color: '#ffffff',
+                                                                        backgroundColor: theme.colors.mutedText,
+                                                                        color: theme.colors.primaryText,
                                                                         border: 'none',
                                                                         borderRadius: '4px',
                                                                         padding: '8px 12px',
@@ -634,8 +636,8 @@ function Neuron() {
                                                                     }}
                                                                     disabled={isSubmitting}
                                                                     style={{
-                                                                        backgroundColor: '#e74c3c',
-                                                                        color: '#ffffff',
+                                                                        backgroundColor: theme.colors.error,
+                                                                        color: theme.colors.primaryText,
                                                                         border: 'none',
                                                                         borderRadius: '4px',
                                                                         padding: '8px 12px',
@@ -661,7 +663,7 @@ function Neuron() {
                                                                         border: 'none',
                                                                         padding: '4px',
                                                                         cursor: 'pointer',
-                                                                        color: '#888',
+                                                                        color: theme.colors.mutedText,
                                                                         display: 'flex',
                                                                         alignItems: 'center'
                                                                     }}
@@ -686,7 +688,7 @@ function Neuron() {
                                     Voting Power: {
                                         nervousSystemParameters 
                                             ? formatVotingPower(calculateVotingPower(neuronData, nervousSystemParameters))
-                                            : `${(Number(neuronData.cached_neuron_stake_e8s) / 100000000 * (neuronData.voting_power_percentage_multiplier / 100)).toFixed(2)}`
+                                            : `${(Number(neuronData.cached_neuron_stake_e8s) / 100000000 * (Number(neuronData.voting_power_percentage_multiplier) / 100)).toFixed(2)}`
                                     }
                                 </div>
 
@@ -745,10 +747,10 @@ function Neuron() {
                                         if (!hasFollowees && !hasTopicFollowees) {
                                             return (
                                                 <div style={{ 
-                                                    color: '#888',
+                                                    color: theme.colors.mutedText,
                                                     fontStyle: 'italic',
                                                     padding: '10px',
-                                                    backgroundColor: '#3a3a3a',
+                                                    backgroundColor: theme.colors.tertiaryBg,
                                                     borderRadius: '4px'
                                                 }}>
                                                     This neuron is not following any other neurons for voting
@@ -766,13 +768,13 @@ function Neuron() {
                                                         </h4>
                                                         {neuronData.followees.map(([functionId, followees], index) => (
                                                             <div key={index} style={{
-                                                                backgroundColor: '#3a3a3a',
+                                                                backgroundColor: theme.colors.tertiaryBg,
                                                                 padding: '10px',
                                                                 borderRadius: '4px',
                                                                 marginBottom: '8px'
                                                             }}>
                                                                 <div style={{ 
-                                                                    color: '#888',
+                                                                    color: theme.colors.mutedText,
                                                                     fontSize: '12px',
                                                                     marginBottom: '6px'
                                                                 }}>
@@ -807,13 +809,13 @@ function Neuron() {
                                                         </h4>
                                                         {neuronData.topic_followees[0].topic_id_to_followees.map(([topicId, topicFollowees], index) => (
                                                             <div key={index} style={{
-                                                                backgroundColor: '#3a3a3a',
+                                                                backgroundColor: theme.colors.tertiaryBg,
                                                                 padding: '10px',
                                                                 borderRadius: '4px',
                                                                 marginBottom: '8px'
                                                             }}>
                                                                 <div style={{ 
-                                                                    color: '#888',
+                                                                    color: theme.colors.mutedText,
                                                                     fontSize: '12px',
                                                                     marginBottom: '6px'
                                                                 }}>
@@ -840,7 +842,7 @@ function Neuron() {
                                                                                 {formatNeuronIdLink(followeeIdHex, selectedSnsRoot, getDisplayName)}
                                                                                 {followee.alias && followee.alias[0] && (
                                                                                     <span style={{ 
-                                                                                        color: '#888',
+                                                                                        color: theme.colors.mutedText,
                                                                                         fontSize: '12px',
                                                                                         fontStyle: 'italic'
                                                                                     }}>
@@ -887,13 +889,13 @@ function Neuron() {
                                         </button>
                                     </div>
                                     {isVotingHistoryExpanded && (
-                                        <div style={{ backgroundColor: '#3a3a3a', padding: '15px', borderRadius: '6px' }}>
+                                        <div style={{ backgroundColor: theme.colors.tertiaryBg, padding: '15px', borderRadius: '6px' }}>
                                             <div style={{
                                                 display: 'flex',
                                                 gap: '20px',
                                                 marginBottom: '15px',
                                                 padding: '10px',
-                                                backgroundColor: '#2a2a2a',
+                                                backgroundColor: theme.colors.secondaryBg,
                                                 borderRadius: '4px',
                                                 flexWrap: 'wrap',
                                                 alignItems: 'center',
@@ -922,7 +924,7 @@ function Neuron() {
                                                         display: 'flex', 
                                                         alignItems: 'center', 
                                                         gap: '8px',
-                                                        color: '#e74c3c',
+                                                        color: theme.colors.error,
                                                         cursor: 'pointer'
                                                     }}>
                                                         <input
@@ -936,7 +938,7 @@ function Neuron() {
                                                         display: 'flex', 
                                                         alignItems: 'center', 
                                                         gap: '8px',
-                                                        color: '#888',
+                                                        color: theme.colors.mutedText,
                                                         cursor: 'pointer'
                                                     }}>
                                                         <input
@@ -953,7 +955,7 @@ function Neuron() {
                                                     gap: '8px'
                                                 }}>
                                                     <label style={{
-                                                        color: '#888',
+                                                        color: theme.colors.mutedText,
                                                         fontSize: '14px'
                                                     }}>
                                                         Sort by:
@@ -962,7 +964,7 @@ function Neuron() {
                                                         value={sortBy}
                                                         onChange={(e) => setSortBy(e.target.value)}
                                                         style={{
-                                                            backgroundColor: '#3a3a3a',
+                                                            backgroundColor: theme.colors.tertiaryBg,
                                                             color: '#fff',
                                                             border: '1px solid #4a4a4a',
                                                             borderRadius: '4px',
@@ -981,7 +983,7 @@ function Neuron() {
                                                     key={index}
                                                     style={{
                                                         padding: '10px',
-                                                        backgroundColor: '#2a2a2a',
+                                                        backgroundColor: theme.colors.secondaryBg,
                                                         marginBottom: '10px',
                                                         borderRadius: '4px'
                                                     }}

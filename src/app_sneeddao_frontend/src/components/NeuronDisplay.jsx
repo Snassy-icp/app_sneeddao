@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { getNeuronColor, uint8ArrayToHex } from '../utils/NeuronUtils';
+import { useTheme } from '../contexts/ThemeContext';
 import NeuronContextMenu from './NeuronContextMenu';
 import NeuronNicknameDialog from './NeuronNicknameDialog';
 
@@ -15,6 +16,7 @@ export const NeuronDisplay = React.memo(({
     style = {},
     noLink = false
 }) => {
+    const { theme } = useTheme();
     const [contextMenuOpen, setContextMenuOpen] = useState(false);
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
     const [nicknameDialogOpen, setNicknameDialogOpen] = useState(false);
@@ -157,7 +159,7 @@ export const NeuronDisplay = React.memo(({
                     isVerified && React.createElement('span', {
                         key: 'verified',
                         style: { 
-                            color: '#2ecc71',
+                            color: theme.colors.success,
                             cursor: 'help',
                             fontSize: '14px'
                         },
@@ -197,7 +199,7 @@ export const NeuronDisplay = React.memo(({
                     border: 'none',
                     padding: '4px',
                     cursor: 'pointer',
-                    color: '#888',
+                    color: theme.colors.mutedText,
                     display: 'flex',
                     alignItems: 'center',
                     flexShrink: 0
