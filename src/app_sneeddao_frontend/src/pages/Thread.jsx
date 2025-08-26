@@ -225,7 +225,7 @@ const Thread = () => {
                         
                         {/* Forum Title */}
                         <h1 style={{
-                            color: '#ffffff',
+                            color: theme.colors.primaryText,
                             fontSize: '1.5rem',
                             fontWeight: '600',
                             margin: 0,
@@ -247,31 +247,31 @@ const Thread = () => {
                         <Link 
                             to="/forum" 
                             style={{
-                                color: '#3498db',
+                                color: theme.colors.accent,
                                 textDecoration: 'none'
                             }}
                         >
                             Forum
                         </Link>
                         <span style={{
-                            color: '#888',
+                            color: theme.colors.mutedText,
                             margin: '0 8px'
                         }}>›</span>
                         <Link 
                             to={`/topic/${topicInfo.id}`}
                             style={{
-                                color: '#3498db',
+                                color: theme.colors.accent,
                                 textDecoration: 'none'
                             }}
                         >
                             {topicInfo.title}
                         </Link>
                         <span style={{
-                            color: '#888',
+                            color: theme.colors.mutedText,
                             margin: '0 8px'
                         }}>›</span>
                         <span style={{
-                            color: '#ccc'
+                            color: theme.colors.secondaryText
                         }}>
                             Thread
                         </span>
