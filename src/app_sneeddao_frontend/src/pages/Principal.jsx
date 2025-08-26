@@ -1126,7 +1126,7 @@ export default function PrincipalPage() {
 
                                     {/* Content */}
                                     {loadingPosts ? (
-                                        <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                        <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
                                             Loading posts...
                                         </div>
                                     ) : postsError ? (
@@ -1144,7 +1144,7 @@ export default function PrincipalPage() {
                                         <div>
                                             {postsActiveTab === 'posts' ? (
                                                 userPosts.length === 0 ? (
-                                                    <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                                    <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
                                                         No posts found
                                                     </div>
                                                 ) : (
@@ -1170,8 +1170,8 @@ export default function PrincipalPage() {
 
                                                             return (
                                                                 <div key={post.id} style={{
-                                                                    backgroundColor: '#1a1a1a',
-                                                                    border: '1px solid #3a3a3a',
+                                                                    backgroundColor: theme.colors.tertiaryBg,
+                                                                    border: `1px solid ${theme.colors.border}`,
                                                                     borderRadius: '6px',
                                                                     padding: '15px'
                                                                 }}>
@@ -1179,7 +1179,7 @@ export default function PrincipalPage() {
                                                                         <Link 
                                                                             to={`/post?postid=${post.id}`}
                                                                             style={{
-                                                                                color: '#3c6382',
+                                                                                color: theme.colors.accent,
                                                                                 textDecoration: 'none',
                                                                                 fontWeight: '600',
                                                                                 fontSize: '14px',
@@ -1199,21 +1199,21 @@ export default function PrincipalPage() {
                                                                         >
                                                                             #{Number(post.id)}
                                                                         </Link>
-                                                                        <div style={{ color: '#888', fontSize: '12px', textAlign: 'right' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px', textAlign: 'right' }}>
                                                                             {new Date(Number(post.created_at) / 1000000).toLocaleDateString()}
                                                                             <br />
-                                                                            <span style={{ color: Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? '#27ae60' : '#e74c3c' }}>
+                                                                            <span style={{ color: Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? theme.colors.success : theme.colors.error }}>
                                                                                 {Number(post.upvote_score) - Number(post.downvote_score) >= 0 ? '+' : ''}{formatScore(Number(post.upvote_score) - Number(post.downvote_score))}
                                                                             </span>
                                                                             {' '}
-                                                                            <span style={{ color: '#666' }}>
+                                                                            <span style={{ color: theme.colors.mutedText }}>
                                                                                 (↑{formatScore(post.upvote_score)} ↓{formatScore(post.downvote_score)})
                                                                             </span>
                                                                         </div>
                                                                     </div>
                                                                     {post.title && post.title.length > 0 && (
                                                                         <div style={{ 
-                                                                            color: '#fff', 
+                                                                            color: theme.colors.primaryText, 
                                                                             fontSize: '16px',
                                                                             fontWeight: '500',
                                                                             marginBottom: '10px'
@@ -1221,7 +1221,7 @@ export default function PrincipalPage() {
                                                                             {post.title[0]}
                                                                         </div>
                                                                     )}
-                                                                    <div style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.5' }}>
+                                                                    <div style={{ color: theme.colors.secondaryText, fontSize: '14px', lineHeight: '1.5' }}>
                                                                         {displayBody}
                                                                         {shouldTruncate && (
                                                                             <button
@@ -1229,7 +1229,7 @@ export default function PrincipalPage() {
                                                                                 style={{
                                                                                     background: 'none',
                                                                                     border: 'none',
-                                                                                    color: '#3498db',
+                                                                                    color: theme.colors.accent,
                                                                                     cursor: 'pointer',
                                                                                     fontSize: '14px',
                                                                                     marginLeft: '5px',
@@ -1247,7 +1247,7 @@ export default function PrincipalPage() {
                                                 )
                                             ) : (
                                                 userThreads.length === 0 ? (
-                                                    <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                                    <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
                                                         No threads found
                                                     </div>
                                                 ) : (
@@ -1273,8 +1273,8 @@ export default function PrincipalPage() {
 
                                                             return (
                                                                 <div key={thread.id} style={{
-                                                                    backgroundColor: '#1a1a1a',
-                                                                    border: '1px solid #3a3a3a',
+                                                                    backgroundColor: theme.colors.tertiaryBg,
+                                                                    border: `1px solid ${theme.colors.border}`,
                                                                     borderRadius: '6px',
                                                                     padding: '15px'
                                                                 }}>
@@ -1283,7 +1283,7 @@ export default function PrincipalPage() {
                                                                             <Link 
                                                                                 to={`/thread?threadid=${thread.id}`}
                                                                                 style={{
-                                                                                    color: '#3c6382',
+                                                                                    color: theme.colors.accent,
                                                                                     textDecoration: 'none',
                                                                                     fontWeight: '600',
                                                                                     fontSize: '14px',
@@ -1303,19 +1303,19 @@ export default function PrincipalPage() {
                                                                             >
                                                                                 Thread #{Number(thread.id)}
                                                                             </Link>
-                                                                            <span style={{ color: '#27ae60', fontSize: '12px' }}>Created</span>
+                                                                            <span style={{ color: theme.colors.success, fontSize: '12px' }}>Created</span>
                                                                         </div>
-                                                                        <div style={{ color: '#888', fontSize: '12px', textAlign: 'right' }}>
+                                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px', textAlign: 'right' }}>
                                                                             {new Date(Number(thread.created_at) / 1000000).toLocaleDateString()}
                                                                             <br />
                                                                             {(() => {
                                                                                 const postCount = threadPostCounts.get(thread.id.toString());
                                                                                 return postCount !== undefined ? (
-                                                                                    <span style={{ color: '#888', fontSize: '11px' }}>
+                                                                                    <span style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
                                                                                         {postCount} post{postCount !== 1 ? 's' : ''}
                                                                                     </span>
                                                                                 ) : (
-                                                                                    <span style={{ color: '#666', fontSize: '10px', fontStyle: 'italic' }}>
+                                                                                    <span style={{ color: theme.colors.mutedText, fontSize: '10px', fontStyle: 'italic' }}>
                                                                                         Loading...
                                                                                     </span>
                                                                                 );
@@ -1324,7 +1324,7 @@ export default function PrincipalPage() {
                                                                     </div>
                                                                     {thread.title && (
                                                                         <div style={{ 
-                                                                            color: '#fff', 
+                                                                            color: theme.colors.primaryText, 
                                                                             fontSize: '16px',
                                                                             fontWeight: '500',
                                                                             marginBottom: '10px'
@@ -1332,7 +1332,7 @@ export default function PrincipalPage() {
                                                                             {thread.title}
                                                                         </div>
                                                                     )}
-                                                                    <div style={{ color: '#ccc', fontSize: '14px', lineHeight: '1.5' }}>
+                                                                    <div style={{ color: theme.colors.secondaryText, fontSize: '14px', lineHeight: '1.5' }}>
                                                                         {displayBody}
                                                                         {shouldTruncate && (
                                                                             <button
@@ -1340,7 +1340,7 @@ export default function PrincipalPage() {
                                                                                 style={{
                                                                                     background: 'none',
                                                                                     border: 'none',
-                                                                                    color: '#3498db',
+                                                                                    color: theme.colors.accent,
                                                                                     cursor: 'pointer',
                                                                                     fontSize: '14px',
                                                                                     marginLeft: '5px',
@@ -1417,7 +1417,7 @@ export default function PrincipalPage() {
                                             {neuronError}
                                         </div>
                                     ) : neurons.length === 0 ? (
-                                        <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                                        <div style={{ textAlign: 'center', padding: '20px', color: theme.colors.mutedText }}>
                                             No neurons found where this principal is a hotkey.
                                         </div>
                                     ) : (
@@ -1434,10 +1434,10 @@ export default function PrincipalPage() {
                                                     <div
                                                         key={neuronId}
                                                         style={{
-                                                            backgroundColor: '#2a2a2a',
+                                                            backgroundColor: theme.colors.tertiaryBg,
                                                             borderRadius: '8px',
                                                             padding: '20px',
-                                                            border: '1px solid #3a3a3a'
+                                                            border: `1px solid ${theme.colors.border}`
                                                         }}
                                                     >
                                                         <div style={{ marginBottom: '15px' }}>
@@ -1456,7 +1456,7 @@ export default function PrincipalPage() {
                                                             <div style={{ 
                                                                 fontSize: '24px',
                                                                 fontWeight: 'bold',
-                                                                color: '#3498db'
+                                                                color: theme.colors.accent
                                                             }}>
                                                                 {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
                                                             </div>
@@ -1469,26 +1469,26 @@ export default function PrincipalPage() {
                                                             fontSize: '14px'
                                                         }}>
                                                             <div>
-                                                                <div style={{ color: '#888' }}>Created</div>
-                                                                <div style={{ color: '#ffffff' }}>
+                                                                <div style={{ color: theme.colors.mutedText }}>Created</div>
+                                                                <div style={{ color: theme.colors.primaryText }}>
                                                                     {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
                                                                 </div>
                                                             </div>
                                                             <div>
-                                                                <div style={{ color: '#888' }}>Dissolve State</div>
-                                                                <div style={{ color: '#ffffff' }}>{getDissolveState(neuron)}</div>
+                                                                <div style={{ color: theme.colors.mutedText }}>Dissolve State</div>
+                                                                <div style={{ color: theme.colors.primaryText }}>{getDissolveState(neuron)}</div>
                                                             </div>
                                                             <div>
-                                                                <div style={{ color: '#888' }}>Maturity</div>
-                                                                <div style={{ color: '#ffffff' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
+                                                                <div style={{ color: theme.colors.mutedText }}>Maturity</div>
+                                                                <div style={{ color: theme.colors.primaryText }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
                                                             </div>
                                                             <div>
-                                                                <div style={{ color: '#888' }}>Voting Power</div>
-                                                                <div style={{ color: '#ffffff' }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
+                                                                <div style={{ color: theme.colors.mutedText }}>Voting Power</div>
+                                                                <div style={{ color: theme.colors.primaryText }}>{(Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2)}x</div>
                                                             </div>
                                                             {/* Add permissions section */}
                                                             <div style={{ gridColumn: '1 / -1' }}>
-                                                                <div style={{ color: '#888', marginBottom: '8px' }}>Permissions</div>
+                                                                <div style={{ color: theme.colors.mutedText, marginBottom: '8px' }}>Permissions</div>
                                                                 {/* Owner */}
                                                                 {getOwnerPrincipals(neuron).length > 0 && (
                                                                     <div style={{ 
@@ -1497,7 +1497,7 @@ export default function PrincipalPage() {
                                                                         alignItems: 'center',
                                                                         gap: '8px'
                                                                     }}>
-                                                                        <span style={{ color: '#888' }}>Owner:</span>
+                                                                        <span style={{ color: theme.colors.mutedText }}>Owner:</span>
                                                                         <PrincipalDisplay 
                                                                             principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
                                                                             displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
@@ -1515,7 +1515,7 @@ export default function PrincipalPage() {
                                                                             gap: '8px',
                                                                             marginBottom: index < neuron.permissions.length - 1 ? '8px' : 0
                                                                         }}>
-                                                                            <span style={{ color: '#888', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                            <span style={{ color: theme.colors.mutedText, display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                                                 🔑 Hotkey:
                                                                             </span>
                                                                             <PrincipalDisplay 

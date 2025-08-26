@@ -149,3 +149,6 @@
   - Hotkeyed Neurons section with proper error and loading states
   - All form inputs, buttons, and interactive elements themed
   - Search functionality and "My Principal" button properly styled
+  - Individual post/thread cards with proper backgrounds and text colors
+  - Individual neuron cards with complete theme integration
+  - Upvote/downvote score colors and all interactive elements themed
