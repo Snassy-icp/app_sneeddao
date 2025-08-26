@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
@@ -339,6 +339,29 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 {showSnsDropdown && (
                     <SnsDropdown onSnsChange={onSnsChange} />
                 )}
+
+                {/* Feed Link */}
+                <button
+                    onClick={() => navigate('/feed')}
+                    style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        padding: '8px',
+                        borderRadius: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontSize: '18px',
+                        marginRight: '8px',
+                        transition: 'background-color 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                    title="Go to Feed"
+                >
+                    <FaRss size={16} />
+                </button>
 
                 {/* Wallet Link */}
                 <button
