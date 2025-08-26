@@ -107,3 +107,6 @@
 - ✅ **User Dropdown** - Updated PrincipalBox component and CSS with theme variables
 - ✅ **Subtle Highlight Colors** - Made accent/hover colors less garrish and more refined
 - ✅ **SNS Dropdown Hover Bug** - Fixed hover effect leaving traces behind
+- ✅ **ThreadViewer Component** - Complete theme support for thread content, posts, and interactions
+- ✅ **Thread View Buttons** - Fixed Flat/Tree/Settings button visibility and styling
+- ✅ **Thread Descriptions** - Fixed thread header and description text visibility

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import { useNeurons } from '../contexts/NeuronsContext';
 import { useAdminCheck } from '../hooks/useAdminCheck';
@@ -41,8 +42,8 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
     const isOverLimit = isTitleOverLimit || isBodyOverLimit;
     
     return (
-        <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
-            <h4 style={{ color: '#9b59b6', marginBottom: '10px' }}>Edit Post</h4>
+        <div style={{ marginTop: '15px', padding: '15px', backgroundColor: theme.colors.secondaryBg, borderRadius: '4px' }}>
+            <h4 style={{ color: theme.colors.accent, marginBottom: '10px' }}>Edit Post</h4>
             <input
                 type="text"
                 placeholder="Post Title (optional)"
@@ -50,10 +51,10 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
                 onChange={(e) => setTitle(e.target.value)}
                 style={{
                     width: '100%',
-                    backgroundColor: '#2a2a2a',
-                    border: `1px solid ${isTitleOverLimit ? '#e74c3c' : '#4a4a4a'}`,
+                    backgroundColor: theme.colors.primaryBg,
+                    border: `1px solid ${isTitleOverLimit ? theme.colors.error : theme.colors.border}`,
                     borderRadius: '4px',
-                    color: '#ffffff',
+                    color: theme.colors.primaryText,
                     padding: '10px',
                     fontSize: '14px',
                     marginBottom: '5px'
@@ -61,7 +62,7 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
             />
             <div style={{ 
                 fontSize: '12px', 
-                color: isTitleOverLimit ? '#e74c3c' : (maxTitleLength - title.length) < 20 ? '#f39c12' : '#888',
+                color: isTitleOverLimit ? theme.colors.error : (maxTitleLength - title.length) < 20 ? theme.colors.warning : theme.colors.mutedText,
                 marginBottom: '10px',
                 textAlign: 'right'
             }}>
@@ -75,10 +76,10 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
                 style={{
                     width: '100%',
                     minHeight: '120px',
-                    backgroundColor: '#2a2a2a',
-                    border: `1px solid ${isBodyOverLimit ? '#e74c3c' : '#4a4a4a'}`,
+                    backgroundColor: theme.colors.primaryBg,
+                    border: `1px solid ${isBodyOverLimit ? theme.colors.error : theme.colors.border}`,
                     borderRadius: '4px',
-                    color: '#ffffff',
+                    color: theme.colors.primaryText,
                     padding: '10px',
                     fontSize: '14px',
                     resize: 'vertical',
@@ -87,7 +88,7 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
             />
             <div style={{ 
                 fontSize: '12px', 
-                color: isBodyOverLimit ? '#e74c3c' : (maxBodyLength - body.length) < 100 ? '#f39c12' : '#888',
+                color: isBodyOverLimit ? theme.colors.error : (maxBodyLength - body.length) < 100 ? theme.colors.warning : theme.colors.mutedText,
                 marginBottom: '10px',
                 textAlign: 'right'
             }}>
@@ -100,8 +101,8 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
                     disabled={!body.trim() || submittingEdit || isOverLimit}
                     style={{
                         padding: '8px 16px',
-                        backgroundColor: (body.trim() && !submittingEdit && !isOverLimit) ? '#9b59b6' : '#333',
-                        color: (body.trim() && !submittingEdit && !isOverLimit) ? 'white' : '#666',
+                        backgroundColor: (body.trim() && !submittingEdit && !isOverLimit) ? theme.colors.accent : theme.colors.mutedText,
+                        color: theme.colors.primaryText,
                         border: 'none',
                         borderRadius: '4px',
                         cursor: (body.trim() && !submittingEdit && !isOverLimit) ? 'pointer' : 'not-allowed'
@@ -113,8 +114,8 @@ const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdi
                     onClick={onCancel}
                     style={{
                         padding: '8px 16px',
-                        backgroundColor: '#666',
-                        color: 'white',
+                        backgroundColor: theme.colors.mutedText,
+                        color: theme.colors.primaryText,
                         border: 'none',
                         borderRadius: '4px',
                         cursor: 'pointer'
@@ -141,7 +142,7 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
     const remainingChars = maxLength - replyText.length;
     
     return (
-        <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#1a1a1a', borderRadius: '4px' }}>
+        <div style={{ marginTop: '15px', padding: '15px', backgroundColor: theme.colors.primaryBg, borderRadius: '4px' }}>
             <textarea
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
@@ -149,10 +150,10 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
                 style={{
                     width: '100%',
                     minHeight: '80px',
-                    backgroundColor: '#2a2a2a',
-                    border: `1px solid ${isOverLimit ? '#e74c3c' : '#4a4a4a'}`,
+                    backgroundColor: theme.colors.secondaryBg,
+                    border: `1px solid ${isOverLimit ? theme.colors.error : '#4a4a4a'}`,
                     borderRadius: '4px',
-                    color: '#ffffff',
+                    color: theme.colors.primaryText,
                     padding: '10px',
                     fontSize: '14px',
                     resize: 'vertical',
@@ -169,7 +170,7 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
             }}>
                 <div style={{ 
                     fontSize: '12px', 
-                    color: isOverLimit ? '#e74c3c' : '#888'
+                    color: isOverLimit ? theme.colors.error : theme.colors.mutedText
                 }}>
                     {remainingChars} characters remaining
                 </div>
@@ -180,7 +181,7 @@ const ReplyForm = ({ postId, onSubmit, onCancel, submittingComment, createdBy, p
                         disabled={!replyText.trim() || submittingComment || isOverLimit}
                         style={{
                             padding: '8px 16px',
-                            backgroundColor: (replyText.trim() && !submittingComment && !isOverLimit) ? '#3498db' : '#666',
+                            backgroundColor: (replyText.trim() && !submittingComment && !isOverLimit) ? theme.colors.accent : '#666',
                             color: 'white',
                             border: 'none',
                             borderRadius: '4px',
@@ -229,6 +230,7 @@ function ThreadViewer({
 }) {
     const { principalNames, principalNicknames } = useNaming();
     const { identity } = useAuth();
+    const { theme } = useTheme();
     
     // Text limits hook
     const { textLimits, loading: textLimitsLoading } = useTextLimits(forumActor);
@@ -1602,7 +1604,7 @@ function ThreadViewer({
         
         const isUpvote = voteType === 'up';
         const hasVotes = isUpvote ? hasUpvotes : hasDownvotes;
-        const activeColor = isUpvote ? '#2ecc71' : '#e74c3c';
+        const activeColor = isUpvote ? theme.colors.success : theme.colors.error;
         const defaultColor = '#6b8eb8';
         
         return {
@@ -1986,8 +1988,8 @@ function ThreadViewer({
                     <button
                         onClick={() => setShowPollForm(prev => new Map(prev.set('thread', true)))}
                         style={{
-                            backgroundColor: '#3498db',
-                            color: '#ffffff',
+                            backgroundColor: theme.colors.accent,
+                            color: theme.colors.primaryText,
                             border: 'none',
                             borderRadius: '4px',
                             padding: '8px 16px',
@@ -2026,18 +2028,18 @@ function ThreadViewer({
                         padding: '8px 0',
                         borderTop: '1px solid #3a3a3a',
                         fontSize: '0.9rem',
-                        color: '#ccc'
+                        color: theme.colors.secondaryText
                     }}>
                         <span>Created by: </span>
                         <PrincipalDisplay 
                             principal={threadDetails.created_by}
                             displayInfo={principalDisplayInfo.get(threadDetails.created_by.toString())}
                             showCopyButton={false}
-                            style={{ color: '#3498db', fontWeight: '500' }}
+                            style={{ color: theme.colors.accent, fontWeight: '500' }}
                             short={isNarrowScreen}
                         />
                         {threadDetails.created_at && (
-                            <span style={{ marginLeft: '12px', color: '#888' }}>
+                            <span style={{ marginLeft: '12px', color: theme.colors.mutedText }}>
                                 {new Date(Number(threadDetails.created_at / 1000000n)).toLocaleDateString()}
                             </span>
                         )}
@@ -2053,7 +2055,7 @@ function ThreadViewer({
                         fontSize: '0.9rem'
                     }}>
                         <div style={{ 
-                            color: '#3498db',
+                            color: theme.colors.accent,
                             fontWeight: '600',
                             marginBottom: '4px',
                             display: 'flex',
@@ -2063,11 +2065,11 @@ function ThreadViewer({
                             <span>📋</span>
                             <span>Proposal Discussion</span>
                         </div>
-                        <div style={{ color: '#ccc' }}>
+                        <div style={{ color: theme.colors.secondaryText }}>
                             This thread is discussing{' '}
                             {hideProposalLink ? (
                                 <span style={{
-                                    color: '#3498db',
+                                    color: theme.colors.accent,
                                     fontWeight: '500'
                                 }}>
                                     Proposal #{proposalInfo.proposalId}
@@ -2078,7 +2080,7 @@ function ThreadViewer({
                                 <a 
                                     href={`/proposal?proposalid=${proposalInfo.proposalId}&sns=${proposalInfo.snsRoot || selectedSnsRoot || ''}`}
                                     style={{
-                                        color: '#3498db',
+                                        color: theme.colors.accent,
                                         textDecoration: 'none',
                                         fontWeight: '500'
                                     }}
@@ -2091,7 +2093,7 @@ function ThreadViewer({
                                 </a>
                             )}
                             {!proposalInfo.proposalData && (
-                                <span style={{ color: '#888', fontSize: '0.8rem', marginLeft: '8px' }}>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.8rem', marginLeft: '8px' }}>
                                     (Loading proposal details...)
                                 </span>
                             )}
@@ -2118,7 +2120,7 @@ function ThreadViewer({
                             Viewing <a 
                                 href={`/post?postid=${focusedPostId}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
                                 style={{
-                                    color: '#3498db',
+                                    color: theme.colors.accent,
                                     textDecoration: 'none',
                                     fontWeight: '500'
                                 }}
@@ -2131,7 +2133,7 @@ function ThreadViewer({
                         <a 
                             href={`/thread?threadid=${threadId}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
                             style={{
-                                color: '#3498db',
+                                color: theme.colors.accent,
                                 fontSize: '13px',
                                 textDecoration: 'none',
                                 fontWeight: '500',
@@ -2156,8 +2158,8 @@ function ThreadViewer({
                         <button
                             onClick={() => setShowCommentForm(true)}
                             style={{
-                                backgroundColor: '#3498db',
-                                color: '#ffffff',
+                                backgroundColor: theme.colors.accent,
+                                color: theme.colors.primaryText,
                                 border: 'none',
                                 borderRadius: '4px',
                                 padding: '10px 20px',
@@ -2177,9 +2179,9 @@ function ThreadViewer({
                                 placeholder="Title (optional)"
                                 style={{
                                     width: '100%',
-                                    backgroundColor: '#2a2a2a',
-                                    color: '#ffffff',
-                                    border: `1px solid ${textLimits && commentTitle.length > textLimits.max_title_length ? '#e74c3c' : '#444'}`,
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
+                                    border: `1px solid ${textLimits && commentTitle.length > textLimits.max_title_length ? theme.colors.error : '#444'}`,
                                     borderRadius: '4px',
                                     padding: '10px',
                                     marginBottom: '5px',
@@ -2189,8 +2191,8 @@ function ThreadViewer({
                             {textLimits && (
                                 <div style={{
                                     fontSize: '12px',
-                                    color: commentTitle.length > textLimits.max_title_length ? '#e74c3c' : 
-                                           (textLimits.max_title_length - commentTitle.length) < 20 ? '#f39c12' : '#888',
+                                    color: commentTitle.length > textLimits.max_title_length ? theme.colors.error : 
+                                           (textLimits.max_title_length - commentTitle.length) < 20 ? theme.colors.warning : theme.colors.mutedText,
                                     marginBottom: '10px'
                                 }}>
                                     Title: {commentTitle.length}/{textLimits.max_title_length} characters
@@ -2205,9 +2207,9 @@ function ThreadViewer({
                                 placeholder="Write your comment here..."
                                 style={{
                                     width: '100%',
-                                    backgroundColor: '#2a2a2a',
-                                    color: '#ffffff',
-                                    border: `1px solid ${textLimits && commentText.length > textLimits.max_body_length ? '#e74c3c' : '#444'}`,
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
+                                    border: `1px solid ${textLimits && commentText.length > textLimits.max_body_length ? theme.colors.error : '#444'}`,
                                     borderRadius: '4px',
                                     padding: '10px',
                                     fontSize: '14px',
@@ -2219,8 +2221,8 @@ function ThreadViewer({
                             {textLimits && (
                                 <div style={{
                                     fontSize: '12px',
-                                    color: commentText.length > textLimits.max_body_length ? '#e74c3c' : 
-                                           (textLimits.max_body_length - commentText.length) < 100 ? '#f39c12' : '#888',
+                                    color: commentText.length > textLimits.max_body_length ? theme.colors.error : 
+                                           (textLimits.max_body_length - commentText.length) < 100 ? theme.colors.warning : theme.colors.mutedText,
                                     marginBottom: '10px'
                                 }}>
                                     Body: {commentText.length}/{textLimits.max_body_length} characters
@@ -2243,7 +2245,7 @@ function ThreadViewer({
                                     }}
                                     style={{
                                         backgroundColor: '#666',
-                                        color: '#ffffff',
+                                        color: theme.colors.primaryText,
                                         border: 'none',
                                         borderRadius: '4px',
                                         padding: '8px 16px',
@@ -2261,8 +2263,8 @@ function ThreadViewer({
                                     style={{
                                         backgroundColor: (submittingComment || !commentText.trim() || 
                                                          (textLimits && (commentTitle.length > textLimits.max_title_length || 
-                                                                        commentText.length > textLimits.max_body_length))) ? '#666' : '#2ecc71',
-                                        color: '#ffffff',
+                                                                        commentText.length > textLimits.max_body_length))) ? '#666' : theme.colors.success,
+                                        color: theme.colors.primaryText,
                                         border: 'none',
                                         borderRadius: '4px',
                                         padding: '8px 16px',
@@ -2402,7 +2404,7 @@ function ThreadViewer({
                                         }}
                                         style={{
                                             margin: 0,
-                                            accentColor: '#3498db'
+                                            accentColor: theme.colors.accent
                                         }}
                                     />
                                     <span style={{ 
@@ -2485,7 +2487,7 @@ function ThreadViewer({
                                         />
                                         <div style={{ flex: 1 }}>
                                             <div style={{
-                                                color: '#ffffff',
+                                                color: theme.colors.primaryText,
                                                 fontSize: '0.9rem',
                                                 fontWeight: '500'
                                             }}>
@@ -2590,7 +2592,7 @@ function ThreadViewer({
                 className={`post-item ${isFocused ? 'focused-post' : ''}`} 
                 style={{ 
                     marginLeft: isFlat ? 0 : `${depth * 20}px`,
-                    backgroundColor: isUnread ? '#3a2a4a' : (isNegative ? '#3a2a2a' : (isFocused ? '#2f3542' : '#2a2a2a')),
+                    backgroundColor: isUnread ? '#3a2a4a' : (isNegative ? '#3a2a2a' : (isFocused ? '#2f3542' : theme.colors.secondaryBg)),
                     borderColor: isUnread ? '#9b59b6' : (isFocused ? '#3c6382' : (isNegative ? '#8b4513' : '#4a4a4a')),
                     borderWidth: isUnread ? '2px' : (isFocused ? '2px' : '1px'),
                     borderStyle: 'solid',
@@ -2625,7 +2627,7 @@ function ThreadViewer({
                                     setCollapsedPosts(newCollapsed);
                                 }}
                                 style={{
-                                    color: '#888',
+                                    color: theme.colors.mutedText,
                                     cursor: 'pointer',
                                     fontSize: '12px',
                                     userSelect: 'none',
@@ -2640,7 +2642,7 @@ function ThreadViewer({
                             href={`/post?postid=${post.id}${selectedSnsRoot ? `&sns=${selectedSnsRoot}` : ''}`}
                             className="post-id"
                             style={{
-                                color: '#3498db',
+                                color: theme.colors.accent,
                                 textDecoration: 'none',
                                 fontWeight: '500',
                                 flexShrink: 0
@@ -2653,7 +2655,7 @@ function ThreadViewer({
                         {post.title && <h4 style={{ margin: 0, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{post.title}</h4>}
                         {isUnread && (
                             <span style={{
-                                backgroundColor: '#e74c3c',
+                                backgroundColor: theme.colors.error,
                                 color: 'white',
                                 fontSize: '0.65rem',
                                 padding: '2px 6px',
@@ -2720,7 +2722,7 @@ function ThreadViewer({
                                             style={{
                                                 background: 'none',
                                                 border: 'none',
-                                                color: '#3498db',
+                                                color: theme.colors.accent,
                                                 textDecoration: 'none',
                                                 fontWeight: '500',
                                                 cursor: 'pointer',
@@ -2815,7 +2817,7 @@ function ThreadViewer({
                                 {/* Score Display - Shows total post score */}
                                 <span style={{ 
                                     color: (Number(post.upvote_score) - Number(post.downvote_score)) > 0 ? '#6b8e6b' : 
-                                           (Number(post.upvote_score) - Number(post.downvote_score)) < 0 ? '#b85c5c' : '#888',
+                                           (Number(post.upvote_score) - Number(post.downvote_score)) < 0 ? '#b85c5c' : theme.colors.mutedText,
                                     fontSize: '14px',
                                     fontWeight: 'bold',
                                     minWidth: '60px',
@@ -2899,7 +2901,7 @@ function ThreadViewer({
                                     style={{
                                         backgroundColor: 'transparent',
                                         border: 'none',
-                                        color: '#f39c12',
+                                        color: theme.colors.warning,
                                         borderRadius: '4px',
                                         padding: '4px 8px',
                                         cursor: 'pointer',
@@ -2924,7 +2926,7 @@ function ThreadViewer({
                                     style={{
                                         backgroundColor: 'transparent',
                                         border: 'none',
-                                        color: '#2ecc71',
+                                        color: theme.colors.success,
                                         borderRadius: '4px',
                                         padding: '4px 8px',
                                         cursor: 'pointer',
@@ -2969,7 +2971,7 @@ function ThreadViewer({
                                     style={{
                                         backgroundColor: 'transparent',
                                         border: 'none',
-                                        color: deletingPost === Number(post.id) ? '#888' : '#e74c3c',
+                                        color: deletingPost === Number(post.id) ? theme.colors.mutedText : theme.colors.error,
                                         borderRadius: '4px',
                                         padding: '4px 8px',
                                         cursor: deletingPost === Number(post.id) ? 'not-allowed' : 'pointer',
@@ -2992,7 +2994,7 @@ function ThreadViewer({
                                     style={{
                                         backgroundColor: 'transparent',
                                         border: 'none',
-                                        color: '#3498db',
+                                        color: theme.colors.accent,
                                         borderRadius: '4px',
                                         padding: '4px 8px',
                                         cursor: 'pointer',
