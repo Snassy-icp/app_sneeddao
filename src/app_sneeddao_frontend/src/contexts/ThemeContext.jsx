@@ -30,8 +30,8 @@ export const themes = {
       linkText: '#3498db',
       
       // Accents
-      accent: '#3498db',
-      accentHover: '#2980b9',
+      accent: '#4a90e2',
+      accentHover: 'rgba(74, 144, 226, 0.2)',
       success: '#2ecc71',
       warning: '#f39c12',
       error: '#e74c3c',
@@ -44,7 +44,7 @@ export const themes = {
       // Gradients
       primaryGradient: 'linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%)',
       cardGradient: 'linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.1) 100%)',
-      accentGradient: 'linear-gradient(to right, rgba(52, 152, 219, 0.2), rgba(52, 152, 219, 0.1))',
+      accentGradient: 'linear-gradient(to right, rgba(74, 144, 226, 0.15), rgba(74, 144, 226, 0.08))',
       
       // Shadows
       cardShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.829)',
@@ -69,8 +69,8 @@ export const themes = {
       linkText: '#0d6efd',
       
       // Accents
-      accent: '#0d6efd',
-      accentHover: '#0b5ed7',
+      accent: '#6c5ce7',
+      accentHover: 'rgba(108, 92, 231, 0.15)',
       success: '#198754',
       warning: '#fd7e14',
       error: '#dc3545',
@@ -83,7 +83,7 @@ export const themes = {
       // Gradients
       primaryGradient: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
       cardGradient: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 249, 250, 0.8) 100%)',
-      accentGradient: 'linear-gradient(to right, rgba(13, 110, 253, 0.1), rgba(13, 110, 253, 0.05))',
+      accentGradient: 'linear-gradient(to right, rgba(108, 92, 231, 0.12), rgba(108, 92, 231, 0.06))',
       
       // Shadows
       cardShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.1)',

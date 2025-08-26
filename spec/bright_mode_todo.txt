@@ -105,3 +105,5 @@
 - ✅ **SNS Dropdown** - Added theme support to header dropdown menu
 - ✅ **Main Menu Dropdown** - Fixed left sidebar menu background and styling
 - ✅ **User Dropdown** - Updated PrincipalBox component and CSS with theme variables
+- ✅ **Subtle Highlight Colors** - Made accent/hover colors less garrish and more refined
+- ✅ **SNS Dropdown Hover Bug** - Fixed hover effect leaving traces behind

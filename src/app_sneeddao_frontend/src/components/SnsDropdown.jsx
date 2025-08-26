@@ -280,18 +280,13 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                                         display: 'flex',
                                         alignItems: 'center',
                                         gap: '8px',
-                                        width: '100%',
-                                        ':hover': {
-                                            backgroundColor: theme.colors.accentHover
-                                        }
+                                        width: '100%'
                                     }}
                                     onMouseEnter={(e) => {
                                         e.target.style.backgroundColor = theme.colors.accentHover;
                                     }}
                                     onMouseLeave={(e) => {
-                                        if (selectedSnsRoot !== sns.rootCanisterId) {
-                                            e.target.style.backgroundColor = 'transparent';
-                                        }
+                                        e.target.style.backgroundColor = selectedSnsRoot === sns.rootCanisterId ? theme.colors.accentHover : 'transparent';
                                     }}
                                 >
                                     <div style={{
