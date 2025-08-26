@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
 import PrincipalBox from '../PrincipalBox';
 import SnsDropdown from './SnsDropdown';
+import ThemeToggle from './ThemeToggle';
 import { useAdminCheck } from '../hooks/useAdminCheck';
 import { useNeurons } from '../contexts/NeuronsContext';
 import { useSns } from '../contexts/SnsContext';
@@ -19,6 +21,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     const location = useLocation();
     const navigate = useNavigate();
     const { isAuthenticated, identity, login, logout } = useAuth();
+    const { theme } = useTheme();
     const { selectedSnsRoot } = useSns();
     const { getAllNeurons, getHotkeyNeurons, loading: neuronsLoading } = useNeurons();
     const { newTipCount } = useTipNotifications();
@@ -294,7 +297,14 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
     };
 
     return (
-        <header className="site-header" style={{ flexDirection: 'column' }}>
+        <header 
+            className="site-header" 
+            style={{ 
+                flexDirection: 'column',
+                backgroundColor: theme.colors.headerBg,
+                borderBottom: `1px solid ${theme.colors.border}`
+            }}
+        >
             {/* Top Row: Logo, Menu Title, SNS Dropdown, Login - All on same row */}
             <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '15px' }}>
                 <img
@@ -312,7 +322,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 
                 <div 
                     style={{ 
-                        color: '#fff',
+                        color: theme.colors.primaryText,
                         fontSize: '24px',
                         fontWeight: 'bold',
                         display: 'flex',
@@ -344,7 +354,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         style={{
                             background: 'none',
                             border: 'none',
-                            color: '#888',
+                            color: theme.colors.mutedText,
                             cursor: 'pointer',
                             padding: '4px',
                             borderRadius: '4px',
@@ -354,10 +364,10 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                             transition: 'color 0.2s ease'
                         }}
                         onMouseEnter={(e) => {
-                            e.currentTarget.style.color = '#fff';
+                            e.currentTarget.style.color = theme.colors.primaryText;
                         }}
                         onMouseLeave={(e) => {
-                            e.currentTarget.style.color = '#888';
+                            e.currentTarget.style.color = theme.colors.mutedText;
                         }}
                         title={isHeaderCollapsed ? "Expand header sections" : "Collapse header sections"}
                     >
@@ -394,12 +404,15 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 </button>
 
                 {/* Wallet Link */}
+                {/* Theme Toggle */}
+                <ThemeToggle size="medium" />
+                
                 <button
                     onClick={() => navigate('/wallet')}
                     style={{
                         background: 'none',
                         border: 'none',
-                        color: '#fff',
+                        color: theme.colors.primaryText,
                         cursor: 'pointer',
                         padding: '4px',
                         borderRadius: '4px',
@@ -430,7 +443,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                         style={{
                             background: 'none',
                             border: 'none',
-                            color: '#fff',
+                            color: theme.colors.primaryText,
                             cursor: 'pointer',
                             padding: '8px',
                             borderRadius: '4px',

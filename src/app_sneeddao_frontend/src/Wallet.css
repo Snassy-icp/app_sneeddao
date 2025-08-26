@@ -1,11 +1,11 @@
 /* Wallet.css */
 body {
     font-family: "Fira Code", monospace;
-    color: white;
+    color: var(--color-primaryText);
     margin: 0;
     padding: 0;
     min-height: 100vh;
-    background: #1a1a1a; /* Simple solid background color */
+    background: var(--color-primaryBg);
 }
 
 .page-container {
@@ -18,7 +18,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: #000000;
+    background-color: var(--color-headerBg);
     padding: 10px 20px;
     position: sticky;
     top: 0;
@@ -31,18 +31,18 @@ body {
 }
 
 .help-link {
-    color: #ffffff;
+    color: var(--color-primaryText);
     text-decoration: none;
     font-size: 0.9rem;
     padding: 5px 10px;
     margin-right: 15px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid var(--color-border);
     border-radius: 5px;
     transition: all 0.3s ease;
 }
 
 .help-link:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: var(--color-secondaryBg);
 }
 
 .logo img {
@@ -69,14 +69,9 @@ body {
 }
 
 .card {
-    background-color: rgba(255, 255, 255, 0.2);  /* Fallback */
-    background: linear-gradient(
-        135deg,
-        rgba(255, 255, 255, 0.2) 0%,
-        rgba(255, 255, 255, 0.1) 100%
-    );
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.829);
+    background: var(--color-cardGradient);
+    border: 1px solid var(--color-border);
+    box-shadow: var(--color-cardShadow);
     transition: all 0.3s ease;
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);

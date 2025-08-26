@@ -18,6 +18,7 @@ import { NamingProvider, useNaming } from './NamingContext';
 import { SnsProvider } from './contexts/SnsContext';
 import { ForumProvider } from './contexts/ForumContext';
 import { NeuronsProvider } from './contexts/NeuronsContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/Layout';
 
 // Import new pages
@@ -77,14 +78,15 @@ function GlobalNamingSetup() {
 
 function App() {
   return (
-    <AuthProvider>
-      <SnsProvider>
-        <NeuronsProvider>
-          <ForumProvider>
-            <Router>
-              <NamingProvider>
-                <GlobalNamingSetup />
-                <Layout>
+    <ThemeProvider>
+      <AuthProvider>
+        <SnsProvider>
+          <NeuronsProvider>
+            <ForumProvider>
+              <Router>
+                <NamingProvider>
+                  <GlobalNamingSetup />
+                  <Layout>
                   <Routes>
                     <Route path="/" element={<Feed />} />
                     <Route path="/wallet" element={<Wallet />} />
@@ -147,13 +149,14 @@ function App() {
                     <Route path="/admin/forum" element={<AdminForum />} />
                     <Route path="/admin/sms" element={<SmsAdmin />} />
                   </Routes>
-                </Layout>
-              </NamingProvider>
-            </Router>
-          </ForumProvider>
-        </NeuronsProvider>
-      </SnsProvider>
-    </AuthProvider>
+                  </Layout>
+                </NamingProvider>
+              </Router>
+            </ForumProvider>
+          </NeuronsProvider>
+        </SnsProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

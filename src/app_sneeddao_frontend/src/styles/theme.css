@@ -1,0 +1,146 @@
+/* Global Theme CSS Variables */
+:root {
+  /* Default dark theme colors */
+  --color-primaryBg: #1a1a1a;
+  --color-secondaryBg: #2a2a2a;
+  --color-tertiaryBg: #3a3a3a;
+  --color-headerBg: #000000;
+  --color-cardBg: rgba(255, 255, 255, 0.1);
+  --color-modalBg: rgba(0, 0, 0, 0.8);
+  
+  --color-primaryText: #ffffff;
+  --color-secondaryText: #cccccc;
+  --color-mutedText: #888888;
+  --color-linkText: #3498db;
+  
+  --color-accent: #3498db;
+  --color-accentHover: #2980b9;
+  --color-success: #2ecc71;
+  --color-warning: #f39c12;
+  --color-error: #e74c3c;
+  --color-gold: #ffd700;
+  
+  --color-border: rgba(255, 255, 255, 0.18);
+  --color-borderHover: #3498db;
+  
+  --color-primaryGradient: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+  --color-cardGradient: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.1) 100%);
+  --color-accentGradient: linear-gradient(to right, rgba(52, 152, 219, 0.2), rgba(52, 152, 219, 0.1));
+  
+  --color-cardShadow: 0 8px 32px 0 rgba(0, 0, 0, 0.829);
+  --color-accentShadow: 0 4px 15px rgba(60, 99, 130, 0.3);
+}
+
+/* Global body styling with theme support */
+body {
+  font-family: "Fira Code", monospace;
+  color: var(--color-primaryText);
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: var(--color-primaryGradient);
+  transition: all 0.3s ease;
+}
+
+/* Update existing site-header class to use theme variables */
+.site-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--color-headerBg);
+  padding: 10px 20px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  border-bottom: 1px solid var(--color-border);
+  transition: all 0.3s ease;
+}
+
+/* Update card styling to use theme variables */
+.card {
+  background: var(--color-cardGradient);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--color-cardShadow);
+  transition: all 0.3s ease;
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  border-radius: 16px;
+  padding: 12px;
+  position: relative;
+  text-align: left;
+  box-sizing: border-box;
+  min-width: 280px;
+  overflow: visible;
+}
+
+.card:hover {
+  border-color: var(--color-borderHover);
+  box-shadow: var(--color-accentShadow);
+}
+
+/* Link styling with theme support */
+a {
+  color: var(--color-linkText);
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--color-accentHover);
+}
+
+/* Button styling with theme support */
+button {
+  transition: all 0.2s ease;
+}
+
+/* Input styling with theme support */
+input, textarea, select {
+  background-color: var(--color-secondaryBg);
+  border: 1px solid var(--color-border);
+  color: var(--color-primaryText);
+  transition: all 0.2s ease;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--color-accent);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+/* Modal and overlay styling */
+.modal-overlay {
+  background-color: var(--color-modalBg);
+}
+
+/* Loading spinner with theme colors */
+.spinner {
+  border: 4px solid var(--color-border);
+  border-top: 4px solid var(--color-accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Error text styling */
+.error-text {
+  color: var(--color-error);
+}
+
+/* Success text styling */
+.success-text {
+  color: var(--color-success);
+}
+
+/* Warning text styling */
+.warning-text {
+  color: var(--color-warning);
+}
+
+/* Muted text styling */
+.muted-text {
+  color: var(--color-mutedText);
+}
