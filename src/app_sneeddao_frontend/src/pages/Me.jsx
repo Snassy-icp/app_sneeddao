@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
+import { useTheme } from '../contexts/ThemeContext';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
@@ -39,6 +40,7 @@ const spinKeyframes = `
 `;
 
 export default function Me() {
+    const { theme } = useTheme();
     const { identity } = useAuth();
     const { selectedSnsRoot, updateSelectedSns } = useSns();
     const navigate = useNavigate();
@@ -422,12 +424,12 @@ export default function Me() {
 
     if (!identity) {
         return (
-            <div className='page-container'>
+            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
                 <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
                 <main className="wallet-container">
                     <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Please Connect Your Wallet</h1>
-                        <p style={{ color: '#888' }}>You need to connect your wallet to view your neurons.</p>
+                        <h1 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>Please Connect Your Wallet</h1>
+                        <p style={{ color: theme.colors.mutedText }}>You need to connect your wallet to view your neurons.</p>
                     </div>
                 </main>
             </div>
@@ -435,7 +437,7 @@ export default function Me() {
     }
 
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
             <main className="wallet-container">
                 {/* Principal ID section */}
@@ -444,14 +446,14 @@ export default function Me() {
                 }}>
                     {/* Principal ID card */}
                     <div style={{ 
-                        backgroundColor: '#2a2a2a',
+                        backgroundColor: theme.colors.secondaryBg,
                         borderRadius: '8px',
                         padding: '20px',
-                        border: '1px solid #3a3a3a'
+                        border: `1px solid ${theme.colors.border}`
                     }}>
                         <div style={{ marginBottom: '15px' }}>
                             <h2 style={{ 
-                                color: '#ffffff',
+                                color: theme.colors.primaryText,
                                 margin: '0 0 5px 0',
                                 fontSize: '18px',
                                 fontWeight: '500'
@@ -460,7 +462,7 @@ export default function Me() {
                             </h2>
                             <div style={{ 
                                 fontFamily: 'monospace',
-                                color: '#888',
+                                color: theme.colors.mutedText,
                                 fontSize: '14px'
                             }}>
                                 {identity?.getPrincipal().toString()}
@@ -469,7 +471,7 @@ export default function Me() {
 
                         {principalName && !editingPrincipalName && (
                             <div style={{ 
-                                color: '#3498db',
+                                color: theme.colors.accent,
                                 fontSize: '18px',
                                 fontWeight: 'bold',
                                 display: 'flex',
@@ -496,8 +498,8 @@ export default function Me() {
                             <button
                                 onClick={() => setEditingPrincipalName(true)}
                                 style={{
-                                    backgroundColor: '#3498db',
-                                    color: '#ffffff',
+                                    backgroundColor: theme.colors.accent,
+                                    color: theme.colors.primaryText,
                                     border: 'none',
                                     borderRadius: '4px',
                                     padding: '8px 12px',
@@ -513,7 +515,7 @@ export default function Me() {
                         <div style={{
                             marginTop: '15px',
                             marginBottom: '15px',
-                            color: '#cccccc',
+                            color: theme.colors.secondaryText,
                             fontSize: '14px',
                             lineHeight: '1.6'
                         }}>
@@ -521,7 +523,7 @@ export default function Me() {
                             <Link
                                 to="/wallet"
                                 style={{
-                                    color: '#3498db',
+                                    color: theme.colors.accent,
                                     textDecoration: 'none'
                                 }}
                                 onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
@@ -533,7 +535,7 @@ export default function Me() {
                             <Link
                                 to="/posts"
                                 style={{
-                                    color: '#3498db',
+                                    color: theme.colors.accent,
                                     textDecoration: 'none'
                                 }}
                                 onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
@@ -545,7 +547,7 @@ export default function Me() {
                             <Link
                                 to="/tips"
                                 style={{
-                                    color: '#3498db',
+                                    color: theme.colors.accent,
                                     textDecoration: 'none'
                                 }}
                                 onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
@@ -557,7 +559,7 @@ export default function Me() {
                             <Link
                                 to="/sms"
                                 style={{
-                                    color: '#3498db',
+                                    color: theme.colors.accent,
                                     textDecoration: 'none'
                                 }}
                                 onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
@@ -569,7 +571,7 @@ export default function Me() {
                             <Link
                                 to="/rewards"
                                 style={{
-                                    color: '#3498db',
+                                    color: theme.colors.accent,
                                     textDecoration: 'none'
                                 }}
                                 onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
@@ -581,7 +583,7 @@ export default function Me() {
                             <Link
                                 to={`/sneedlock_info?owner=${identity?.getPrincipal().toString()}`}
                                 style={{
-                                    color: '#3498db',
+                                    color: theme.colors.accent,
                                     textDecoration: 'none'
                                 }}
                                 onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
@@ -610,17 +612,17 @@ export default function Me() {
                                         maxLength={32}
                                         placeholder="Enter your name (max 32 chars)"
                                         style={{
-                                            backgroundColor: '#3a3a3a',
-                                            border: `1px solid ${principalNameError ? '#e74c3c' : '#4a4a4a'}`,
+                                            backgroundColor: theme.colors.tertiaryBg,
+                                            border: `1px solid ${principalNameError ? theme.colors.error : theme.colors.border}`,
                                             borderRadius: '4px',
-                                            color: '#ffffff',
+                                            color: theme.colors.primaryText,
                                             padding: '8px',
                                             width: '100%'
                                         }}
                                     />
                                     {principalNameError && (
                                         <div style={{
-                                            color: '#e74c3c',
+                                            color: theme.colors.error,
                                             fontSize: '12px',
                                             marginTop: '4px'
                                         }}>
@@ -628,7 +630,7 @@ export default function Me() {
                                         </div>
                                     )}
                                     <div style={{
-                                        color: '#888',
+                                        color: theme.colors.mutedText,
                                         fontSize: '12px',
                                         marginTop: '4px'
                                     }}>
@@ -644,8 +646,8 @@ export default function Me() {
                                         onClick={handlePrincipalNameSubmit}
                                         disabled={isSubmittingPrincipalName}
                                         style={{
-                                            backgroundColor: '#3498db',
-                                            color: '#ffffff',
+                                            backgroundColor: theme.colors.accent,
+                                            color: theme.colors.primaryText,
                                             border: 'none',
                                             borderRadius: '4px',
                                             padding: '8px 12px',
@@ -677,8 +679,8 @@ export default function Me() {
                                         }}
                                         disabled={isSubmittingPrincipalName}
                                         style={{
-                                            backgroundColor: '#e74c3c',
-                                            color: '#ffffff',
+                                            backgroundColor: theme.colors.error,
+                                            color: theme.colors.primaryText,
                                             border: 'none',
                                             borderRadius: '4px',
                                             padding: '8px 12px',
@@ -697,13 +699,13 @@ export default function Me() {
 
                 </div>
 
-                <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>My Neurons</h1>
+                <h1 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>My Neurons</h1>
 
                 {error && (
                     <div style={{ 
-                        backgroundColor: 'rgba(231, 76, 60, 0.2)', 
-                        border: '1px solid #e74c3c',
-                        color: '#e74c3c',
+                        backgroundColor: `${theme.colors.error}20`, 
+                        border: `1px solid ${theme.colors.error}`,
+                        color: theme.colors.error,
                         padding: '15px',
                         borderRadius: '6px',
                         marginBottom: '20px'
@@ -713,11 +715,11 @@ export default function Me() {
                 )}
 
                 {loading ? (
-                    <div style={{ textAlign: 'center', padding: '40px 20px', color: '#ffffff' }}>
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: theme.colors.primaryText }}>
                         Loading...
                     </div>
                 ) : neurons.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px 20px', color: '#888' }}>
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: theme.colors.mutedText }}>
                         <p>No neurons found for this SNS.</p>
                     </div>
                 ) : (
@@ -732,7 +734,7 @@ export default function Me() {
                                         justifyContent: 'space-between',
                                         alignItems: 'center',
                                         padding: '15px',
-                                        backgroundColor: '#2a2a2a',
+                                        backgroundColor: theme.colors.secondaryBg,
                                         borderRadius: '8px',
                                         marginBottom: '15px'
                                     }}
@@ -745,7 +747,7 @@ export default function Me() {
                                         }}>▶</span>
                                         <h2 style={{ 
                                             margin: 0, 
-                                            color: '#ffffff',
+                                            color: theme.colors.primaryText,
                                             fontSize: '16px',
                                             fontWeight: '500'
                                         }}>
@@ -755,7 +757,7 @@ export default function Me() {
                                                     style={{ 
                                                         marginLeft: '8px',
                                                         fontSize: '14px',
-                                                        color: '#888',
+                                                        color: theme.colors.mutedText,
                                                         cursor: 'help',
                                                         fontWeight: 'normal'
                                                     }}
@@ -766,7 +768,7 @@ export default function Me() {
                                             )}
                                         </h2>
                                     </div>
-                                    <div style={{ color: '#3498db', fontSize: '18px', fontWeight: 'bold' }}>
+                                    <div style={{ color: theme.colors.accent, fontSize: '18px', fontWeight: 'bold' }}>
                                         {formatE8s(group.totalStake)} {tokenSymbol}
                                     </div>
                                 </div>
@@ -793,7 +795,7 @@ export default function Me() {
                                                 <div
                                                     key={neuronId}
                                                     style={{
-                                                        backgroundColor: '#2a2a2a',
+                                                        backgroundColor: theme.colors.secondaryBg,
                                                         borderRadius: '8px',
                                                         padding: '20px',
                                                         border: '1px solid #3a3a3a'
@@ -807,7 +809,7 @@ export default function Me() {
                                                                     display: 'flex', 
                                                                     alignItems: 'center',
                                                                     fontFamily: 'monospace',
-                                                                    color: '#888',
+                                                                    color: theme.colors.mutedText,
                                                                     fontSize: '14px',
                                                                     textDecoration: 'none'
                                                                 }}
@@ -827,7 +829,7 @@ export default function Me() {
                                                                     border: 'none',
                                                                     padding: '4px',
                                                                     cursor: 'pointer',
-                                                                    color: '#888',
+                                                                    color: theme.colors.mutedText,
                                                                     display: 'flex',
                                                                     alignItems: 'center'
                                                                 }}
@@ -847,7 +849,7 @@ export default function Me() {
                                                                         border: 'none',
                                                                         padding: '4px',
                                                                         cursor: 'pointer',
-                                                                        color: '#888',
+                                                                        color: theme.colors.mutedText,
                                                                         display: 'flex',
                                                                         alignItems: 'center'
                                                                     }}
@@ -859,7 +861,7 @@ export default function Me() {
                                                         </div>
                                                         {name && (
                                                             <div style={{ 
-                                                                color: '#3498db',
+                                                                color: theme.colors.accent,
                                                                 fontSize: '18px',
                                                                 fontWeight: 'bold',
                                                                 marginBottom: '5px',
@@ -893,7 +895,7 @@ export default function Me() {
                                                         )}
                                                         <div
                                                             style={{
-                                                                color: '#888',
+                                                                color: theme.colors.mutedText,
                                                                 cursor: 'help',
                                                                 fontSize: '14px'
                                                             }}
@@ -920,17 +922,17 @@ export default function Me() {
                                                                         maxLength={32}
                                                                         placeholder="Enter neuron name (max 32 chars)"
                                                                         style={{
-                                                                            backgroundColor: '#3a3a3a',
-                                                                            border: `1px solid ${inputError ? '#e74c3c' : '#4a4a4a'}`,
+                                                                            backgroundColor: theme.colors.tertiaryBg,
+                                                                            border: `1px solid ${inputError ? theme.colors.error : theme.colors.border}`,
                                                                             borderRadius: '4px',
-                                                                            color: '#ffffff',
+                                                                            color: theme.colors.primaryText,
                                                                             padding: '8px',
                                                                             width: '100%'
                                                                         }}
                                                                     />
                                                                     {inputError && (
                                                                         <div style={{
-                                                                            color: '#e74c3c',
+                                                                            color: theme.colors.error,
                                                                             fontSize: '12px',
                                                                             marginTop: '4px'
                                                                         }}>
@@ -938,7 +940,7 @@ export default function Me() {
                                                                         </div>
                                                                     )}
                                                                     <div style={{
-                                                                        color: '#888',
+                                                                        color: theme.colors.mutedText,
                                                                         fontSize: '12px',
                                                                         marginTop: '4px'
                                                                     }}>
@@ -955,7 +957,7 @@ export default function Me() {
                                                                         disabled={isSubmitting}
                                                                         style={{
                                                                             backgroundColor: '#95a5a6',
-                                                                            color: '#ffffff',
+                                                                            color: theme.colors.primaryText,
                                                                             border: 'none',
                                                                             borderRadius: '4px',
                                                                             padding: '8px 12px',
@@ -986,8 +988,8 @@ export default function Me() {
                                                                             onClick={() => handleNameSubmit(neuronId, false)}
                                                                             disabled={isSubmitting}
                                                                             style={{
-                                                                                backgroundColor: '#3498db',
-                                                                                color: '#ffffff',
+                                                                                backgroundColor: theme.colors.accent,
+                                                                                color: theme.colors.primaryText,
                                                                                 border: 'none',
                                                                                 borderRadius: '4px',
                                                                                 padding: '8px 12px',
@@ -1021,8 +1023,8 @@ export default function Me() {
                                                                         }}
                                                                         disabled={isSubmitting}
                                                                         style={{
-                                                                            backgroundColor: '#e74c3c',
-                                                                            color: '#ffffff',
+                                                                            backgroundColor: theme.colors.error,
+                                                                            color: theme.colors.primaryText,
                                                                             border: 'none',
                                                                             borderRadius: '4px',
                                                                             padding: '8px 12px',
@@ -1039,7 +1041,7 @@ export default function Me() {
                                                         <div style={{ 
                                                             fontSize: '24px',
                                                             fontWeight: 'bold',
-                                                            color: '#3498db'
+                                                            color: theme.colors.accent
                                                         }}>
                                                             {formatE8s(neuron.cached_neuron_stake_e8s)} {tokenSymbol}
                                                         </div>
@@ -1052,22 +1054,22 @@ export default function Me() {
                                                         fontSize: '14px'
                                                     }}>
                                                         <div>
-                                                            <div style={{ color: '#888' }}>Created</div>
-                                                            <div style={{ color: '#ffffff' }}>
+                                                            <div style={{ color: theme.colors.mutedText }}>Created</div>
+                                                            <div style={{ color: theme.colors.primaryText }}>
                                                                 {new Date(Number(neuron.created_timestamp_seconds) * 1000).toLocaleDateString()}
                                                             </div>
                                                         </div>
                                                         <div>
-                                                            <div style={{ color: '#888' }}>Dissolve State</div>
-                                                            <div style={{ color: '#ffffff' }}>{getDissolveState(neuron)}</div>
+                                                            <div style={{ color: theme.colors.mutedText }}>Dissolve State</div>
+                                                            <div style={{ color: theme.colors.primaryText }}>{getDissolveState(neuron)}</div>
                                                         </div>
                                                         <div>
-                                                            <div style={{ color: '#888' }}>Maturity</div>
-                                                            <div style={{ color: '#ffffff' }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
+                                                            <div style={{ color: theme.colors.mutedText }}>Maturity</div>
+                                                            <div style={{ color: theme.colors.primaryText }}>{formatE8s(neuron.maturity_e8s_equivalent)} {tokenSymbol}</div>
                                                         </div>
                                                         <div>
-                                                            <div style={{ color: '#888' }}>Voting Power</div>
-                                                            <div style={{ color: '#ffffff' }}>
+                                                            <div style={{ color: theme.colors.mutedText }}>Voting Power</div>
+                                                            <div style={{ color: theme.colors.primaryText }}>
                                                                 {nervousSystemParameters ? 
                                                                     formatVotingPower(calculateVotingPower(neuron, nervousSystemParameters)) :
                                                                     (Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2) + 'x'
@@ -1076,7 +1078,7 @@ export default function Me() {
                                                         </div>
                                                         {/* Replace debug info with permissions */}
                                                         <div style={{ gridColumn: '1 / -1' }}>
-                                                            <div style={{ color: '#888', marginBottom: '8px' }}>Permissions</div>
+                                                            <div style={{ color: theme.colors.mutedText, marginBottom: '8px' }}>Permissions</div>
                                                             {/* Owner */}
                                                             {getOwnerPrincipals(neuron).length > 0 && (
                                                                 <div style={{ 
@@ -1085,7 +1087,7 @@ export default function Me() {
                                                                     alignItems: 'center',
                                                                     gap: '8px'
                                                                 }}>
-                                                                    <span style={{ color: '#888' }}>Owner:</span>
+                                                                    <span style={{ color: theme.colors.mutedText }}>Owner:</span>
                                                                     <PrincipalDisplay 
                                                                         principal={getOwnerPrincipals(neuron)[0]}
                                                                         displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0]?.toString())}
@@ -1103,7 +1105,7 @@ export default function Me() {
                                                                         gap: '8px',
                                                                         marginBottom: index < neuron.permissions.length - 1 ? '8px' : 0
                                                                     }}>
-                                                                        <span style={{ color: '#888', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                        <span style={{ color: theme.colors.mutedText, display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                                             🔑 Hotkey:
                                                                         </span>
                                                                         <PrincipalDisplay 
