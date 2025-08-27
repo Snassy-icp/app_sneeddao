@@ -27,25 +27,30 @@ import { get_token_conversion_rates } from './utils/TokenUtils';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { createActor as createNeutriniteDappActor } from 'external/neutrinite_dapp';
 import Header from './components/Header';
+import { useTheme } from './contexts/ThemeContext';
 
 // Styles for the expandable sections
-const styles = {
+const getStyles = (theme) => ({
     section: {
-        backgroundColor: '#2a2a2a',
-        borderRadius: '8px',
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '12px',
         padding: '20px',
         marginTop: '20px',
-        color: '#ffffff'
+        color: theme.colors.primaryText,
+        boxShadow: theme.colors.cardShadow
     },
     expandableHeader: {
-        backgroundColor: '#2d3436',
+        background: theme.colors.tertiaryBg,
+        border: `1px solid ${theme.colors.border}`,
         padding: '12px 16px',
         marginBottom: '8px',
-        borderRadius: '6px',
+        borderRadius: '8px',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        transition: 'all 0.3s ease'
     },
     headerLeft: {
         display: 'flex',
@@ -60,10 +65,13 @@ const styles = {
         padding: '10px'
     },
     item: {
-        backgroundColor: '#3a3a3a',
-        borderRadius: '4px',
+        background: theme.colors.tertiaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '8px',
         padding: '15px',
-        marginBottom: '10px'
+        marginBottom: '10px',
+        boxShadow: theme.colors.cardShadow,
+        transition: 'all 0.3s ease'
     },
     itemHeader: {
         cursor: 'pointer',
@@ -85,12 +93,14 @@ const styles = {
         position: 'relative',  // Establish positioning context
         width: '100%',
         height: '600px',
-        backgroundColor: '#1a1a1a',
-        borderRadius: '8px'
+        background: theme.colors.primaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '12px',
+        boxShadow: theme.colors.cardShadow
         // Remove the conflicting flex: '1 1 auto' from here
     },
     link: {
-        color: '#3498db',
+        color: theme.colors.accent,
         textDecoration: 'none',
         '&:hover': {
             textDecoration: 'underline'
@@ -99,19 +109,22 @@ const styles = {
     detailsSection: {
         marginTop: '10px',
         padding: '10px',
-        backgroundColor: '#2a2a2a',
-        borderRadius: '4px'
+        background: theme.colors.secondaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '6px'
     },
     canisterId: {
         fontFamily: 'monospace',
-        backgroundColor: '#1a1a1a',
-        padding: '4px 8px',
-        borderRadius: '4px',
-        fontSize: '0.9em'
+        background: theme.colors.tertiaryBg,
+        color: theme.colors.primaryText,
+        padding: '6px 10px',
+        borderRadius: '6px',
+        fontSize: '0.9em',
+        border: `1px solid ${theme.colors.border}`
     },
     spinner: {
-        border: '4px solid rgba(255, 255, 255, 0.3)',
-        borderTop: '4px solid #3498db',
+        border: `4px solid ${theme.colors.border}`,
+        borderTop: `4px solid ${theme.colors.accent}`,
         borderRadius: '50%',
         width: '20px',
         height: '20px',
@@ -123,7 +136,7 @@ const styles = {
         marginBottom: '5px'
     },
     infoIcon: {
-        color: '#3498db',
+        color: theme.colors.accent,
         cursor: 'help',
         fontSize: '16px',
         display: 'inline-flex',
@@ -161,53 +174,66 @@ const styles = {
         height: '20px',
         marginRight: '8px'
     },
-};
+});
 
 // Node styles
-const nodeStyles = {
+const getNodeStyles = (theme) => ({
     infrastructure: {
-        background: '#2d3436',
-        color: '#fff',
-        border: '1px solid #0984e3',
+        background: theme.colors.tertiaryBg,
+        color: theme.colors.primaryText,
+        border: `1px solid ${theme.colors.accent}`,
         borderRadius: '8px',
         padding: '10px',
         width: 180,
     },
     tokenManagement: {
-        background: '#2d3436',
-        color: '#fff',
-        border: '1px solid #00b894',
+        background: theme.colors.tertiaryBg,
+        color: theme.colors.primaryText,
+        border: `1px solid ${theme.colors.success}`,
         borderRadius: '8px',
         padding: '10px',
         width: 180,
     },
     revenue: {
-        background: '#2d3436',
-        color: '#fff',
-        border: '1px solid #fdcb6e',
+        background: theme.colors.tertiaryBg,
+        color: theme.colors.primaryText,
+        border: `1px solid ${theme.colors.warning}`,
         borderRadius: '8px',
         padding: '10px',
         width: 180,
     }
-};
+});
 
 // Edge styles
-const edgeStyles = {
+const getEdgeStyles = (theme) => ({
     icp: {
-        stroke: '#0984e3',
+        stroke: theme.colors.accent,
         strokeWidth: 2,
         animated: true,
     },
     sneed: {
-        stroke: '#00b894',
+        stroke: theme.colors.success,
         strokeWidth: 2,
         animated: true,
     },
     various: {
-        stroke: '#fdcb6e',
+        stroke: theme.colors.warning,
         strokeWidth: 2,
         animated: true,
     },
+});
+
+// Default styles for global usage (will be overridden in component)
+const edgeStyles = {
+    icp: { stroke: '#0984e3', strokeWidth: 2, animated: true },
+    sneed: { stroke: '#00b894', strokeWidth: 2, animated: true },
+    various: { stroke: '#fdcb6e', strokeWidth: 2, animated: true }
+};
+
+const nodeStyles = {
+    infrastructure: { background: '#2d3436', color: '#fff', border: '1px solid #0984e3', borderRadius: '8px', padding: '10px', width: 180 },
+    tokenManagement: { background: '#2d3436', color: '#fff', border: '1px solid #00b894', borderRadius: '8px', padding: '10px', width: 180 },
+    revenue: { background: '#2d3436', color: '#fff', border: '1px solid #fdcb6e', borderRadius: '8px', padding: '10px', width: 180 }
 };
 
 // Custom animated token component
@@ -1415,6 +1441,11 @@ const initialEdges = [
 
 function RLLInfo() {
     const { identity, isAuthenticated, logout } = useAuth();
+    const { theme } = useTheme();
+    const styles = getStyles(theme);
+    // Override global styles with theme-aware versions
+    const themedNodeStyles = getNodeStyles(theme);
+    const themedEdgeStyles = getEdgeStyles(theme);
     const [expandedSections, setExpandedSections] = useState({});
     const [expandedItems, setExpandedItems] = useState({});
     const [tooltip, setTooltip] = useState(null);
@@ -2852,7 +2883,7 @@ function RLLInfo() {
     };
 
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main className="rllinfo-container" style={{
                 width: '100%',
@@ -2862,7 +2893,7 @@ function RLLInfo() {
                 overflow: 'hidden'  // Prevent overflow issues
             }}>
                 <h1 style={{ 
-                    color: '#ffffff', 
+                    color: theme.colors.primaryText, 
                     display: 'flex', 
                     alignItems: 'center', 
                     gap: '8px',
