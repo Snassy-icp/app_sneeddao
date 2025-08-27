@@ -102,7 +102,7 @@ body {
 }
 
 .card-header:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+    background: var(--color-tertiaryBg);
     border-radius: 8px;
 }
 
@@ -207,7 +207,8 @@ body {
     flex-direction: column;
     margin-bottom: 15px;
     padding: 10px;
-    background-color: rgba(255, 255, 255, 0.05);
+    background: var(--color-secondaryBg);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
 }
 
@@ -268,9 +269,9 @@ body {
 }
 
 .withdraw-button {
-    background-color: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    color: white;
+    background: var(--color-tertiaryBg);
+    border: 1px solid var(--color-border);
+    color: var(--color-primaryText);
     padding: 5px 10px;
     border-radius: 5px;
     font-size: 0.8rem;
@@ -280,13 +281,15 @@ body {
 }
 
 .withdraw-button:hover {
-    background-color: rgba(255, 255, 255, 0.2);
+    background: var(--color-accent);
+    border-color: var(--color-accentHover);
 }
 
 .debug-section {
     margin-bottom: 15px;
     padding: 10px;
-    background-color: rgba(255, 255, 255, 0.03);
+    background: var(--color-secondaryBg);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
     font-size: 0.8rem;
 }
@@ -327,16 +330,17 @@ body {
     margin: 5px;
     padding: 3px;
     cursor: pointer;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--color-tertiaryBg);
     border-radius: 8px;
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    border: 1px solid var(--color-border);
     transition: all 0.3s ease;
 }
 
 .add-ledger-card:hover, .add-swap-card:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--color-accent);
+    border-color: var(--color-accentHover);
 }
 
 .add-plus-sign {
@@ -379,10 +383,12 @@ body {
 
 
 .locks-section {
-    background-color: rgba(255, 255, 255, 0.1);
+    background: var(--color-tertiaryBg);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 10px;
     margin-top: 15px;
+    box-shadow: var(--color-cardShadow);
 }
 
 .locks-header {
@@ -392,10 +398,11 @@ body {
 }
 
 .lock-item {
-    background-color: rgba(0, 0, 0, 0.2);
+    background: var(--color-secondaryBg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
     margin-bottom: 10px;
     padding: 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .lock-item:last-child {
@@ -418,11 +425,11 @@ body {
 }
 
 .disclaimer {
-    background-color: rgba(255, 255, 255, 0.1);
+    background: var(--color-cardGradient);
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    border: 1px solid var(--color-border);
+    box-shadow: var(--color-cardShadow);
     border-radius: 16px;
     padding: 15px;
     margin-bottom: 20px;
@@ -445,8 +452,8 @@ body {
 
 .tooltip {
     visibility: hidden;
-    background-color: rgba(0, 0, 0, 0.8);
-    color: white;
+    background: var(--color-modalBg);
+    color: var(--color-primaryText);
     text-align: center;
     padding: 5px 10px;
     border-radius: 6px;
@@ -481,28 +488,29 @@ body {
     flex: 1;
     padding: 10px;
     border-radius: 5px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
+    border: 1px solid var(--color-border);
+    background: var(--color-tertiaryBg);
+    color: var(--color-primaryText);
     font-family: inherit;
 }
 
 .token-input::placeholder {
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--color-mutedText);
 }
 
 .submit-button {
     padding: 10px 20px;
     border-radius: 5px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
+    border: 1px solid var(--color-border);
+    background: var(--color-tertiaryBg);
+    color: var(--color-primaryText);
     cursor: pointer;
     transition: all 0.3s ease;
 }
 
 .submit-button:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--color-accent);
+    border-color: var(--color-accentHover);
 }
 
 .token-overview {
@@ -514,11 +522,11 @@ body {
 }
 
 .locks-section h2 {
-    color: white;
+    color: var(--color-primaryText);
     font-size: 1.5rem;
     margin-bottom: 20px;
     padding-bottom: 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid var(--color-border);
 }
 
 .locks-grid {
