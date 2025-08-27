@@ -551,7 +551,10 @@ function Proposals() {
                                                     proposal.proposer[0].id, 
                                                     selectedSnsRoot, 
                                                     getNeuronDisplayInfo(proposal.proposer[0].id),
-                                                    { onNicknameUpdate: handleNicknameUpdate }
+                                                    { 
+                                                        onNicknameUpdate: handleNicknameUpdate,
+                                                        isAuthenticated: isAuthenticated
+                                                    }
                                                 ) : 
                                                 <span style={{ color: theme.colors.mutedText }}>Unknown</span>
                                             }

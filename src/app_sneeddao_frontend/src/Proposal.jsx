@@ -843,7 +843,10 @@ function Proposal() {
                                                 proposalData.proposer[0].id, 
                                                 selectedSnsRoot, 
                                                 getNeuronDisplayInfo(proposalData.proposer[0].id),
-                                                { onNicknameUpdate: handleNicknameUpdate }
+                                                { 
+                                                    onNicknameUpdate: handleNicknameUpdate,
+                                                    isAuthenticated: isAuthenticated
+                                                }
                                             ) : 
                                             <span>Unknown</span>
                                         }
@@ -1119,7 +1122,10 @@ function Proposal() {
                                                                     neuronId, 
                                                                     selectedSnsRoot, 
                                                                     getNeuronDisplayInfo(neuronId),
-                                                                    { onNicknameUpdate: handleNicknameUpdate }
+                                                                    { 
+                                                                        onNicknameUpdate: handleNicknameUpdate,
+                                                                        isAuthenticated: isAuthenticated
+                                                                    }
                                                                 )}
                                                             </div>
                                                             <div style={{ 

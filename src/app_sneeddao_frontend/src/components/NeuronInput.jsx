@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../AuthContext';
 import { formatNeuronDisplayWithContext, uint8ArrayToHex } from '../utils/NeuronUtils';
 
 const NeuronInput = ({ 
@@ -13,6 +14,7 @@ const NeuronInput = ({
 }) => {
     const { theme } = useTheme();
     const { neuronNames, neuronNicknames, verifiedNames } = useNaming();
+    const { isAuthenticated } = useAuth();
     const [inputValue, setInputValue] = useState(value);
     const [showDropdown, setShowDropdown] = useState(false);
     const [isValid, setIsValid] = useState(false);
@@ -293,7 +295,8 @@ const NeuronInput = ({
                                 { 
                                     onNicknameUpdate: handleNicknameUpdate,
                                     style: { fontSize: '12px' },
-                                    noLink: true
+                                    noLink: true,
+                                    isAuthenticated: isAuthenticated
                                 }
                             );
                         } catch (e) {
@@ -354,7 +357,8 @@ const NeuronInput = ({
                                         { 
                                             onNicknameUpdate: handleNicknameUpdate,
                                             style: { fontSize: '14px' },
-                                            noLink: true
+                                            noLink: true,
+                                            isAuthenticated: isAuthenticated
                                         }
                                     );
                                 } catch (e) {

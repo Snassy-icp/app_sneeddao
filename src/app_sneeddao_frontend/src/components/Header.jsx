@@ -39,7 +39,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path)) return 'Me';
         if (['/wallet'].includes(path)) return 'Wallet';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
-        if (['/sneedlock', '/sneedlock_info'].includes(path)) return 'Locks';
+        if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path)) return 'Locks';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         return 'Hub';
@@ -59,7 +59,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Wallet');
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
-        } else if (['/sneedlock', '/sneedlock_info'].includes(path)) {
+        } else if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path)) {
             setActiveSection('Locks');
         } else if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || path.startsWith('/tools/')) {
             setActiveSection('Tools');
@@ -106,7 +106,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Wallet');
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
-        } else if (['/sneedlock', '/sneedlock_info'].includes(path)) {
+        } else if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path)) {
             setActiveSection('Locks');
         } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
             setActiveSection('Admin');
@@ -204,6 +204,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/sneedlock',
             subMenu: [
                 { name: 'Locks', path: '/sneedlock' },
+                { name: 'Lock', path: '/tokenlock' },
                 { name: 'Dashboard', path: '/sneedlock_info' }
             ]
         }
@@ -290,6 +291,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         
         // Special handling for message routes (dynamic paths)
         if (itemPath === '/sms' && currentPath.startsWith('/msg')) {
+            return true;
+        }
+        
+        // Special handling for Lock submenu item - highlight for both tokenlock and positionlock
+        if (itemPath === '/tokenlock' && ['/tokenlock', '/positionlock'].includes(currentPath)) {
             return true;
         }
         
