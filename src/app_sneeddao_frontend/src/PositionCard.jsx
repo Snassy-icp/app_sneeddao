@@ -2,12 +2,17 @@ import React, { useState } from 'react';
 import { formatAmount, getUSD } from './utils/StringUtils';
 import { bigDateToReadable } from './utils/DateUtils';
 import { getIcpSwapLink, isLockedPosition, getPositionTVL } from './utils/PositionUtils';
-import { PrincipalDisplay, getPrincipalDisplayInfo } from './utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { useTheme } from './contexts/ThemeContext';
+import { useNaming } from './NamingContext';
+import { useAuth } from './AuthContext';
+import { Principal } from '@dfinity/principal';
 
 const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, withdraw_position_rewards, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
 
     const { theme } = useTheme();
+    const { principalNames, principalNicknames } = useNaming();
+    const { isAuthenticated } = useAuth();
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [locksExpanded, setLocksExpanded] = useState(defaultLocksExpanded);
 
@@ -320,13 +325,18 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 <div className="lock-details">
                                     <span className="lock-label">SneedLock Owner:</span>
                                     <span className="lock-value">
-                            <PrincipalDisplay 
-                                principal={positionDetails.owner}
-                                showCopyButton={true}
+                                        <PrincipalDisplay 
+                                            principal={Principal.fromText(positionDetails.owner)}
+                                            showCopyButton={true}
                                             short={true}
                                             enableContextMenu={true}
-                                displayInfo={getPrincipalDisplayInfo(positionDetails.owner)}
-                            />
+                                            isAuthenticated={isAuthenticated}
+                                            displayInfo={getPrincipalDisplayInfoFromContext(
+                                                Principal.fromText(positionDetails.owner), 
+                                                principalNames, 
+                                                principalNicknames
+                                            )}
+                                        />
                                     </span>
                                 </div>
                         </div>

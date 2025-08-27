@@ -87,6 +87,7 @@ export const PrincipalDisplay = React.memo(({
     short = false, 
     noLink = false,
     enableContextMenu = true,
+    isAuthenticated = false,
     onNicknameUpdate = null 
 }) => {
     const [contextMenuOpen, setContextMenuOpen] = useState(false);
@@ -263,7 +264,8 @@ export const PrincipalDisplay = React.memo(({
                 principalId: principalId,
                 currentNickname: currentNickname,
                 onSendMessage: handleSendMessage,
-                onSetNickname: handleSetNickname
+                onSetNickname: handleSetNickname,
+                isAuthenticated: isAuthenticated
             }),
             // Message dialog
             React.createElement(MessageDialog, {
@@ -377,7 +379,8 @@ export const PrincipalDisplay = React.memo(({
             principalId: principalId,
             currentNickname: currentNickname,
             onSendMessage: handleSendMessage,
-            onSetNickname: handleSetNickname
+            onSetNickname: handleSetNickname,
+            isAuthenticated: isAuthenticated
         }),
         // Message dialog
         React.createElement(MessageDialog, {
@@ -401,6 +404,7 @@ export const PrincipalDisplay = React.memo(({
         JSON.stringify(prevProps.displayInfo) === JSON.stringify(nextProps.displayInfo) &&
         prevProps.showCopyButton === nextProps.showCopyButton &&
         prevProps.enableContextMenu === nextProps.enableContextMenu &&
+        prevProps.isAuthenticated === nextProps.isAuthenticated &&
         JSON.stringify(prevProps.style) === JSON.stringify(nextProps.style) &&
         prevProps.short === nextProps.short &&
         prevProps.noLink === nextProps.noLink

@@ -5,6 +5,7 @@ import { rewardAmountOrZero, availableOrZero, get_available_backend } from './ut
 import { PrincipalDisplay } from './utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import { useTheme } from './contexts/ThemeContext';
+import { useAuth } from './AuthContext';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -15,6 +16,7 @@ console.log('TokenCard constants:', { GLDT_CANISTER_ID, SGLDT_CANISTER_ID });
 const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend }) => {
 
     const { theme } = useTheme();
+    const { isAuthenticated } = useAuth();
     const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(false);
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [locksExpanded, setLocksExpanded] = useState(defaultLocksExpanded);
@@ -448,6 +450,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                             showCopyButton={true}
                                                             short={true}
                                                             enableContextMenu={true}
+                                                            isAuthenticated={isAuthenticated}
                                                             style={{ display: 'inline-flex' }}
                                                         />
                                                     </span>
