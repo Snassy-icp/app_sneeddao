@@ -5,8 +5,10 @@ import { Principal } from "@dfinity/principal";
 import ConfirmationModal from './ConfirmationModal';
 import { formatAmount } from './utils/StringUtils';
 import PrincipalInput from './components/PrincipalInput';
+import { useTheme } from './contexts/ThemeContext';
 
 function SendTokenModal({ show, onClose, onSend, token }) {
+  const { theme } = useTheme();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -141,40 +143,216 @@ function SendTokenModal({ show, onClose, onSend, token }) {
   }
 
   return (
-    <div className="modal-backdrop">
-      <div className="modal-content">
-        <h2>Send {token.symbol} Token</h2>
-        <label>
-          Recipient Address:
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      background: theme.colors.modalBg,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        boxShadow: theme.colors.cardShadow,
+        borderRadius: '16px',
+        padding: '32px',
+        width: '450px',
+        maxWidth: '90vw',
+        maxHeight: '90vh',
+        overflow: 'auto'
+      }}>
+        <h2 style={{
+          color: theme.colors.primaryText,
+          marginTop: '0',
+          marginBottom: '24px',
+          fontSize: '1.5rem',
+          fontWeight: '600'
+        }}>
+          Send {token.symbol} Token
+        </h2>
+        
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{
+            display: 'block',
+            color: theme.colors.primaryText,
+            marginBottom: '8px',
+            fontWeight: '500'
+          }}>
+            Recipient Address:
+          </label>
           <PrincipalInput
             value={recipient}
             onChange={setRecipient}
             placeholder="Enter recipient principal"
+            style={{
+              width: '100%',
+              padding: '12px',
+              background: theme.colors.secondaryBg,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: '8px',
+              color: theme.colors.primaryText,
+              fontSize: '0.9rem',
+              boxSizing: 'border-box'
+            }}
           />
-        </label>
-        <label>
-          Amount:
-          <div className="amount-input-container">
+        </div>
+
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{
+            display: 'block',
+            color: theme.colors.primaryText,
+            marginBottom: '8px',
+            fontWeight: '500'
+          }}>
+            Amount:
+          </label>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
             <input 
               type="number" 
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+              style={{
+                flex: '1',
+                padding: '12px',
+                background: theme.colors.secondaryBg,
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: '8px',
+                color: theme.colors.primaryText,
+                fontSize: '0.9rem',
+                boxSizing: 'border-box'
+              }}
             />
-            <button className="max-button" onClick={handleSetMax}>MAX</button>
+            <button 
+              onClick={handleSetMax}
+              style={{
+                background: theme.colors.accent,
+                color: theme.colors.primaryBg,
+                border: 'none',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: '600',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = theme.colors.accentHover;
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = theme.colors.accent;
+              }}
+            >
+              MAX
+            </button>
           </div>
-        </label>
-        <label>
-          Fee: {formatAmount(token.fee, token.decimals)} {token.symbol}
-        </label>
-        {errorText && <p className="error-text">{errorText}</p>}
+        </div>
+
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{
+            display: 'block',
+            color: theme.colors.secondaryText,
+            fontSize: '0.9rem'
+          }}>
+            Fee: {formatAmount(token.fee, token.decimals)} {token.symbol}
+          </label>
+        </div>
+
+        {errorText && (
+          <p style={{
+            color: theme.colors.error,
+            marginBottom: '20px',
+            padding: '12px',
+            background: `${theme.colors.error}15`,
+            border: `1px solid ${theme.colors.error}30`,
+            borderRadius: '8px',
+            fontSize: '0.9rem'
+          }}>
+            {errorText}
+          </p>
+        )}
+
         {isLoading ? (
-            <div className="spinner"></div>
-          ) : (
-            <div className="button-group">
-              <button onClick={handleSend} disabled={isLoading}>Send</button>
-              <button className="cancel-button" onClick={onClose} disabled={isLoading}>Cancel</button>
-            </div>
-          )}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '20px'
+          }}>
+            <div className="spinner" style={{
+              width: '24px',
+              height: '24px',
+              border: `3px solid ${theme.colors.border}`,
+              borderTop: `3px solid ${theme.colors.accent}`,
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }}></div>
+          </div>
+        ) : (
+          <div style={{
+            display: 'flex',
+            gap: '12px',
+            marginTop: '24px'
+          }}>
+            <button 
+              onClick={handleSend} 
+              disabled={isLoading}
+              style={{
+                flex: '1',
+                background: theme.colors.accent,
+                color: theme.colors.primaryBg,
+                border: 'none',
+                borderRadius: '8px',
+                padding: '12px 24px',
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                fontWeight: '600',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = theme.colors.accentHover;
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = theme.colors.accent;
+              }}
+            >
+              Send
+            </button>
+            <button 
+              onClick={onClose} 
+              disabled={isLoading}
+              style={{
+                flex: '1',
+                background: theme.colors.secondaryBg,
+                color: theme.colors.mutedText,
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: '8px',
+                padding: '12px 24px',
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                fontWeight: '500',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = theme.colors.tertiaryBg;
+                e.target.style.color = theme.colors.primaryText;
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = theme.colors.secondaryBg;
+                e.target.style.color = theme.colors.mutedText;
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
       <ConfirmationModal
           show={showConfirmModal}

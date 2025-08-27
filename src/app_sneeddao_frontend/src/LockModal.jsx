@@ -4,10 +4,12 @@ import './LockModal.css';
 import ConfirmationModal from './ConfirmationModal';
 import { get_short_timezone, format_duration, dateToReadable, getInitialExpiry } from './utils/DateUtils';
 import { formatAmount } from './utils/StringUtils';
+import { useTheme } from './contexts/ThemeContext';
 
 const SNEED_CANISTER_ID = 'hvgxa-wqaaa-aaaaq-aacia-cai';
 
 function LockModal({ show, onClose, token, locks, onAddLock }) {
+    const { theme } = useTheme();
     const [newLockAmount, setNewLockAmount] = useState('');
     const [newLockExpiry, setNewLockExpiry] = useState(getInitialExpiry());
     const [isLoading, setIsLoading] = useState(false);
@@ -118,52 +120,212 @@ function LockModal({ show, onClose, token, locks, onAddLock }) {
     };
 
     return (
-        <div className="modal-backdrop">
-            <div className="modal-content">
-                <h2>{token ? `Lock ${token.symbol}` : 'All Lock Details'}</h2>
-                {/* {locks[token.ledger_canister_id] && locks[token.ledger_canister_id].length === 0 ? (
-                    <p>No locks found.</p>
-                ) : (
-                    <ul className="lock-list">
-                        {locks[token.ledger_canister_id]?.map((lock, index) => (
-                            <li key={index} className="lock-item">
-                                <p>Amount: {lock.amount.toString()}</p>
-                                <p>Expiration ({get_short_timezone()}): {new Date(Number(lock.expiry)).toLocaleString()}</p>
-                            </li>
-                        ))}
-                    </ul>
-                )}              */}
-                <h3>Add New Lock</h3>
-                <label>
-                    Amount:
-                    <div className="amount-input-container">
+        <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            background: theme.colors.modalBg,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+        }}>
+            <div style={{
+                background: theme.colors.cardGradient,
+                border: `1px solid ${theme.colors.border}`,
+                boxShadow: theme.colors.cardShadow,
+                borderRadius: '16px',
+                padding: '32px',
+                width: '450px',
+                maxWidth: '90vw',
+                maxHeight: '90vh',
+                overflow: 'auto'
+            }}>
+                <h2 style={{
+                    color: theme.colors.primaryText,
+                    marginTop: '0',
+                    marginBottom: '24px',
+                    fontSize: '1.5rem',
+                    fontWeight: '600'
+                }}>
+                    {token ? `Lock ${token.symbol}` : 'All Lock Details'}
+                </h2>
+
+                <h3 style={{
+                    color: theme.colors.primaryText,
+                    marginBottom: '20px',
+                    fontSize: '1.2rem',
+                    fontWeight: '500'
+                }}>
+                    Add New Lock
+                </h3>
+                
+                <div style={{ marginBottom: '20px' }}>
+                    <label style={{
+                        display: 'block',
+                        color: theme.colors.primaryText,
+                        marginBottom: '8px',
+                        fontWeight: '500'
+                    }}>
+                        Amount:
+                    </label>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px'
+                    }}>
                         <input 
                             type="number"
                             placeholder="Amount"
                             value={newLockAmount}
                             onChange={(e) => setNewLockAmount(e.target.value)}
+                            style={{
+                                flex: '1',
+                                padding: '12px',
+                                background: theme.colors.secondaryBg,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '8px',
+                                color: theme.colors.primaryText,
+                                fontSize: '0.9rem',
+                                boxSizing: 'border-box'
+                            }}
                         />
-                        <button className="max-button" onClick={handleSetMax}>MAX</button>
+                        <button 
+                            onClick={handleSetMax}
+                            style={{
+                                background: theme.colors.accent,
+                                color: theme.colors.primaryBg,
+                                border: 'none',
+                                borderRadius: '8px',
+                                padding: '12px 16px',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: '600',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.background = theme.colors.accentHover;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.background = theme.colors.accent;
+                            }}
+                        >
+                            MAX
+                        </button>
                     </div>
-                </label>
-                <label>
-                    Expiration ({get_short_timezone()}):
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                    <label style={{
+                        display: 'block',
+                        color: theme.colors.primaryText,
+                        marginBottom: '8px',
+                        fontWeight: '500'
+                    }}>
+                        Expiration ({get_short_timezone()}):
+                    </label>
                     <input
                         type="datetime-local"
                         value={newLockExpiry}
                         onChange={(e) => setNewLockExpiry(e.target.value)}
+                        style={{
+                            width: '100%',
+                            padding: '12px',
+                            background: theme.colors.secondaryBg,
+                            border: `1px solid ${theme.colors.border}`,
+                            borderRadius: '8px',
+                            color: theme.colors.primaryText,
+                            fontSize: '0.9rem',
+                            boxSizing: 'border-box'
+                        }}
                     />
-                </label>
-                {errorText && <p className="error-text">{errorText}</p>}
+                </div>
+
+                {errorText && (
+                    <p style={{
+                        color: theme.colors.error,
+                        marginBottom: '20px',
+                        padding: '12px',
+                        background: `${theme.colors.error}15`,
+                        border: `1px solid ${theme.colors.error}30`,
+                        borderRadius: '8px',
+                        fontSize: '0.9rem'
+                    }}>
+                        {errorText}
+                    </p>
+                )}
+
                 {isLoading ? (
-                    <div>
-                        <br />
-                        <div className="spinner"></div>
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        padding: '20px'
+                    }}>
+                        <div className="spinner" style={{
+                            width: '24px',
+                            height: '24px',
+                            border: `3px solid ${theme.colors.border}`,
+                            borderTop: `3px solid ${theme.colors.accent}`,
+                            borderRadius: '50%',
+                            animation: 'spin 1s linear infinite'
+                        }}></div>
                     </div>
                 ) : (
-                    <div className="button-group">  
-                        <button onClick={handleAddLock}>Add Lock</button>
-                        <button onClick={onClose}>Close</button>
+                    <div style={{
+                        display: 'flex',
+                        gap: '12px',
+                        marginTop: '24px'
+                    }}>
+                        <button 
+                            onClick={handleAddLock}
+                            style={{
+                                flex: '1',
+                                background: theme.colors.accent,
+                                color: theme.colors.primaryBg,
+                                border: 'none',
+                                borderRadius: '8px',
+                                padding: '12px 24px',
+                                cursor: 'pointer',
+                                fontSize: '0.95rem',
+                                fontWeight: '600',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.background = theme.colors.accentHover;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.background = theme.colors.accent;
+                            }}
+                        >
+                            Add Lock
+                        </button>
+                        <button 
+                            onClick={onClose}
+                            style={{
+                                flex: '1',
+                                background: theme.colors.secondaryBg,
+                                color: theme.colors.mutedText,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '8px',
+                                padding: '12px 24px',
+                                cursor: 'pointer',
+                                fontSize: '0.95rem',
+                                fontWeight: '500',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.background = theme.colors.tertiaryBg;
+                                e.target.style.color = theme.colors.primaryText;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.background = theme.colors.secondaryBg;
+                                e.target.style.color = theme.colors.mutedText;
+                            }}
+                        >
+                            Close
+                        </button>
                     </div>
                 )}
             </div>
