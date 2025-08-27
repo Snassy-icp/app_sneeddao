@@ -59,33 +59,106 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                 <>
                     {!hideButtons && (
                         <div className="action-buttons">
-                            <div className="tooltip-wrapper">
-                                <a href={getIcpSwapLink(position)} target="_blank">
-                                    <img src="icpswap.png" className="swap-link-button" alt="Position on ICPSwap" />
-                                </a>
-                                <span className="tooltip">View on ICPSwap</span>
-                            </div>
-                            <div className="tooltip-wrapper">
-                                <a className="link-button" href={getPositionLockUrl(position.swapCanisterId, positionDetails.positionId)} target="_blank">
-                                    <img src="link-chain.png" alt="Lock Link" />
-                                </a>
-                                <span className="tooltip">View Lock Details</span>
-                            </div>
+                            <a 
+                                href={getIcpSwapLink(position)} 
+                                target="_blank"
+                                style={{
+                                    background: theme.colors.accent,
+                                    color: theme.colors.primaryBg,
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '6px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    transition: 'all 0.2s ease',
+                                    textDecoration: 'none'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.background = theme.colors.accentHover;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.background = theme.colors.accent;
+                                }}
+                            >
+                                <img 
+                                    src="icpswap.png" 
+                                    alt="ICPSwap" 
+                                    style={{ width: '14px', height: '14px' }}
+                                />
+                                ICPSwap
+                            </a>
+                            <a 
+                                href={getPositionLockUrl(position.swapCanisterId, positionDetails.positionId)} 
+                                target="_blank"
+                                style={{
+                                    background: theme.colors.accent,
+                                    color: theme.colors.primaryBg,
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '6px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    transition: 'all 0.2s ease',
+                                    textDecoration: 'none'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.background = theme.colors.accentHover;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.background = theme.colors.accent;
+                                }}
+                            >
+                                <img 
+                                    src="link-chain.png" 
+                                    alt="View" 
+                                    style={{ width: '14px', height: '14px' }}
+                                />
+                                View
+                            </a>
                             {!isLockedPosition(positionDetails) && (
-                                <div className="tooltip-wrapper">
-                                    <button
-                                        className="send-button"
-                                        onClick={() =>
-                                            openSendLiquidityPositionModal({
-                                                swapCanisterId: position.swapCanisterId,
-                                                id: positionDetails.positionId,
-                                                frontendOwnership: positionDetails.frontendOwnership,
-                                                symbols: position.token0Symbol + '/' + position.token1Symbol})}
-                                    >
-                                        <img src="send-inverted.png" alt="Send" />
-                                    </button>
-                                    <span className="tooltip">Send Position</span>
-                                </div>
+                                <button
+                                    onClick={() =>
+                                        openSendLiquidityPositionModal({
+                                            swapCanisterId: position.swapCanisterId,
+                                            id: positionDetails.positionId,
+                                            frontendOwnership: positionDetails.frontendOwnership,
+                                            symbols: position.token0Symbol + '/' + position.token1Symbol})}
+                                    style={{
+                                        background: theme.colors.accent,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.background = theme.colors.accentHover;
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.background = theme.colors.accent;
+                                    }}
+                                >
+                                    <img 
+                                        src="send-inverted.png" 
+                                        alt="Send" 
+                                        style={{ width: '14px', height: '14px' }}
+                                    />
+                                    Send
+                                </button>
                             )}
 
                         </div>

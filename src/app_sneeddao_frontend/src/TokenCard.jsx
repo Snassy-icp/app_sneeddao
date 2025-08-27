@@ -75,19 +75,69 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     {!hideButtons && (
                 <div className="action-buttons">
 
-                    <div className="tooltip-wrapper">
-                        <a className="link-button" href={getTokenLockUrl(token.ledger_canister_id, locks[token.ledger_canister_id])} target="_blank">
-                            <img src="link-chain.png" alt="Lock Link" />
-                        </a>
-                        <span className="tooltip">View Lock Details</span>
-                    </div>
+                    <a 
+                        href={getTokenLockUrl(token.ledger_canister_id, locks[token.ledger_canister_id])} 
+                        target="_blank"
+                        style={{
+                            background: theme.colors.accent,
+                            color: theme.colors.primaryBg,
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '6px 12px',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            transition: 'all 0.2s ease',
+                            textDecoration: 'none'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.target.style.background = theme.colors.accentHover;
+                        }}
+                        onMouseLeave={(e) => {
+                            e.target.style.background = theme.colors.accent;
+                        }}
+                    >
+                        <img 
+                            src="link-chain.png" 
+                            alt="View" 
+                            style={{ width: '14px', height: '14px' }}
+                        />
+                        View
+                    </a>
                     {token.available > 0n && (
-                        <div className="tooltip-wrapper">
-                            <button className="send-button" onClick={() => openSendModal(token)}>
-                                <img src="send-inverted.png" alt="Send" />
-                            </button>
-                            <span className="tooltip">Send Tokens</span>
-                        </div>
+                        <button 
+                            onClick={() => openSendModal(token)}
+                            style={{
+                                background: theme.colors.accent,
+                                color: theme.colors.primaryBg,
+                                border: 'none',
+                                borderRadius: '6px',
+                                padding: '6px 12px',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: '500',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.background = theme.colors.accentHover;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.background = theme.colors.accent;
+                            }}
+                        >
+                            <img 
+                                src="send-inverted.png" 
+                                alt="Send" 
+                                style={{ width: '14px', height: '14px' }}
+                            />
+                            Send
+                        </button>
                     )}
 
 
