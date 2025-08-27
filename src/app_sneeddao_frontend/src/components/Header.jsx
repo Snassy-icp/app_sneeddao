@@ -97,10 +97,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Me');
         } else if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
             setActiveSection('Hub');
-        } else if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path)) {
+        } else if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet'].includes(path)) {
             setActiveSection('Me');
-        } else if (['/wallet'].includes(path)) {
-            setActiveSection('Wallet');
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
         } else if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path)) {
