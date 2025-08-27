@@ -211,6 +211,7 @@ function PositionLock() {
                         hideButtons={true}
                         hideUnclaimedFees={true}
                         defaultExpanded={true}
+                        defaultLocksExpanded={true}
                     />
                 )}
                 {showSpinner && (

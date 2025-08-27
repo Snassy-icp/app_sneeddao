@@ -124,6 +124,7 @@ function TokenLock() {
                         hideAvailable={true}
                         hideButtons={true}
                         defaultExpanded={true}
+                        defaultLocksExpanded={true}
                     />
                 )}
             </main>
