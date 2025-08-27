@@ -16,15 +16,18 @@ import PrincipalBox from './PrincipalBox';
 import { headerStyles } from './styles/HeaderStyles';
 import Header from './components/Header';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
+import { useTheme } from './contexts/ThemeContext';
 
 // Styles
-const styles = {
+const getStyles = (theme) => ({
     tokenBalances: {
-        backgroundColor: '#2a2a2a',
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
         borderRadius: '8px',
         padding: '20px',
         marginTop: '20px',
-        color: '#ffffff'
+        color: theme.colors.primaryText,
+        boxShadow: theme.colors.cardShadow
     },
     tokenList: {
         display: 'flex',
@@ -35,26 +38,28 @@ const styles = {
         display: 'flex',
         alignItems: 'center',
         padding: '15px',
-        backgroundColor: '#3a3a3a',
-        borderRadius: '6px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-        color: '#ffffff'
+        background: theme.colors.tertiaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '8px',
+        boxShadow: theme.colors.cardShadow,
+        color: theme.colors.primaryText,
+        transition: 'all 0.3s ease'
     },
     tokenSymbol: {
         fontWeight: 'bold',
         marginRight: 'auto',
-        color: '#ffffff'
+        color: theme.colors.primaryText
     },
     tokenBalance: {
         fontFamily: 'monospace',
         fontSize: '1.1em',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         display: 'flex',
         alignItems: 'center',
         gap: '10px'
     },
     heading: {
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         marginBottom: '15px',
         display: 'flex',
         alignItems: 'center',
@@ -62,7 +67,7 @@ const styles = {
         gap: '8px'
     },
     infoIcon: {
-        color: '#3498db',
+        color: theme.colors.accent,
         cursor: 'help',
         fontSize: '16px',
         display: 'inline-flex',
@@ -71,14 +76,15 @@ const styles = {
         width: '20px',
         height: '20px',
         borderRadius: '50%',
-        border: '1px solid #3498db',
-        marginLeft: 'auto'
+        border: `1px solid ${theme.colors.accent}`,
+        marginLeft: 'auto',
+        transition: 'all 0.3s ease'
     },
     spinner: {
         width: '20px',
         height: '20px',
-        border: '2px solid #f3f3f3',
-        borderTop: '2px solid #3498db',
+        border: `2px solid ${theme.colors.border}`,
+        borderTop: `2px solid ${theme.colors.accent}`,
         borderRadius: '50%',
         animation: 'spin 1s linear infinite',
     },
@@ -87,40 +93,44 @@ const styles = {
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
-        color: '#ffffff'
+        color: theme.colors.primaryText
     },
     checkbox: {
         cursor: 'pointer',
         width: '16px',
         height: '16px',
-        accentColor: '#3498db'
+        accentColor: theme.colors.accent
     },
     section: {
-        backgroundColor: '#2a2a2a',
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
         borderRadius: '8px',
         padding: '20px',
         marginTop: '20px',
-        color: '#ffffff'
+        color: theme.colors.primaryText,
+        boxShadow: theme.colors.cardShadow
     },
     distributionItem: {
         display: 'flex',
         alignItems: 'center',
         padding: '15px',
-        backgroundColor: '#3a3a3a',
-        borderRadius: '6px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-        color: '#ffffff',
-        marginBottom: '10px'
+        background: theme.colors.tertiaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '8px',
+        boxShadow: theme.colors.cardShadow,
+        color: theme.colors.primaryText,
+        marginBottom: '10px',
+        transition: 'all 0.3s ease'
     },
     distributionLabel: {
         fontWeight: 'bold',
         marginRight: 'auto',
-        color: '#ffffff'
+        color: theme.colors.primaryText
     },
     distributionValue: {
         fontFamily: 'monospace',
         fontSize: '1.1em',
-        color: '#ffffff'
+        color: theme.colors.primaryText
     },
     eventList: {
         display: 'flex',
@@ -131,10 +141,12 @@ const styles = {
         display: 'flex',
         flexDirection: 'column',
         padding: '15px',
-        backgroundColor: '#3a3a3a',
-        borderRadius: '6px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-        color: '#ffffff'
+        background: theme.colors.tertiaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '8px',
+        boxShadow: theme.colors.cardShadow,
+        color: theme.colors.primaryText,
+        transition: 'all 0.3s ease'
     },
     eventHeader: {
         display: 'flex',
@@ -160,7 +172,7 @@ const styles = {
     statusItem: {
         display: 'flex',
         justifyContent: 'space-between',
-        color: '#ffffff'
+        color: theme.colors.primaryText
     },
     cycleInfo: {
         display: 'flex',
@@ -185,7 +197,7 @@ const styles = {
     reconciliationItem: {
         display: 'flex',
         justifyContent: 'space-between',
-        color: '#ffffff'
+        color: theme.colors.primaryText
     },
     adminControls: {
         display: 'flex',
@@ -193,19 +205,24 @@ const styles = {
         gap: '10px'
     },
     adminButton: {
-        backgroundColor: '#3498db',
-        color: '#ffffff',
+        background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
+        color: theme.colors.primaryBg,
         border: 'none',
-        borderRadius: '4px',
-        padding: '8px 16px',
+        borderRadius: '6px',
+        padding: '10px 18px',
         cursor: 'pointer',
-        fontSize: '16px'
+        fontSize: '16px',
+        fontWeight: '600',
+        transition: 'all 0.3s ease',
+        boxShadow: theme.colors.accentShadow
     },
     noNeuronsMessage: {
-        backgroundColor: '#2a2a2a',
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
         padding: '20px',
         borderRadius: '8px',
-        color: '#ffffff'
+        color: theme.colors.primaryText,
+        boxShadow: theme.colors.cardShadow
     },
     instructionsList: {
         marginTop: '15px',
@@ -213,24 +230,27 @@ const styles = {
         lineHeight: '1.6'
     },
     principalCode: {
-        backgroundColor: '#3a3a3a',
-        padding: '4px 8px',
-        borderRadius: '4px',
+        background: theme.colors.tertiaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        padding: '6px 10px',
+        borderRadius: '6px',
         fontFamily: 'monospace',
-        wordBreak: 'break-all'
+        wordBreak: 'break-all',
+        color: theme.colors.primaryText
     },
     expandButton: {
         background: 'none',
         border: 'none',
-        color: '#3498db',
+        color: theme.colors.accent,
         cursor: 'pointer',
         fontSize: '20px',
-        padding: '0 10px'
+        padding: '0 10px',
+        transition: 'all 0.3s ease'
     },
     rllLogo: {
         fontSize: '2.5em',
         fontWeight: 'bold',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         textDecoration: 'none',
         marginLeft: '20px',
         display: 'flex',
@@ -241,13 +261,16 @@ const styles = {
         alignItems: 'center'
     },
     claimButton: {
-        backgroundColor: '#3498db',
-        color: '#ffffff',
+        background: `linear-gradient(135deg, ${theme.colors.success}, ${theme.colors.success}dd)`,
+        color: theme.colors.primaryBg,
         border: 'none',
-        borderRadius: '4px',
-        padding: '8px 16px',
+        borderRadius: '6px',
+        padding: '10px 18px',
         cursor: 'pointer',
-        fontSize: '16px'
+        fontSize: '16px',
+        fontWeight: '600',
+        transition: 'all 0.3s ease',
+        boxShadow: theme.colors.accentShadow
     },
     eventActions: {
         display: 'flex',
@@ -259,7 +282,7 @@ const styles = {
         flexDirection: 'column',
         gap: '15px'
     }
-};
+});
 
 // Token configurations
 const TOKENS = [
@@ -347,6 +370,8 @@ const formatDuration = (seconds) => {
 
 function RLL() {
     const { identity, isAuthenticated, logout, login } = useAuth();
+    const { theme } = useTheme();
+    const styles = getStyles(theme);
     const [tokens, setTokens] = useState([]);
     const [balances, setBalances] = useState({});
     const [loadingTokens, setLoadingTokens] = useState(true);
@@ -1216,10 +1241,10 @@ function RLL() {
     };
 
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main className="rll-container">
-                <h1 style={{ color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h1 style={{ color: theme.colors.primaryText, display: 'flex', alignItems: 'center', gap: '8px' }}>
                     Rewards Distribution Server
                     <span 
                         style={styles.infoIcon} 
@@ -1244,11 +1269,11 @@ function RLL() {
                     ) : eventStats && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                             {/* All Time Stats */}
-                            <div style={{ backgroundColor: '#3a3a3a', padding: '20px', borderRadius: '8px' }}>
-                                <h3 style={{ color: '#3498db', marginBottom: '15px' }}>All Time Statistics</h3>
+                            <div style={{ background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, padding: '20px', borderRadius: '8px', boxShadow: theme.colors.cardShadow }}>
+                                <h3 style={{ color: theme.colors.accent, marginBottom: '15px' }}>All Time Statistics</h3>
                                 
                                 <div style={{ marginBottom: '20px' }}>
-                                    <h4 style={{ color: '#2ecc71', marginBottom: '10px' }}>Server Distributions</h4>
+                                    <h4 style={{ color: theme.colors.success, marginBottom: '10px' }}>Server Distributions</h4>
                                     <div style={styles.statusItem}>
                                         <span>Total Count:</span>
                                         <span>{eventStats.all_time.server_distributions.total.toString()}</span>
@@ -1262,7 +1287,7 @@ function RLL() {
                                 </div>
 
                                 <div style={{ marginBottom: '20px' }}>
-                                    <h4 style={{ color: '#e74c3c', marginBottom: '10px' }}>User Distributions</h4>
+                                    <h4 style={{ color: theme.colors.error, marginBottom: '10px' }}>User Distributions</h4>
                                     <div style={styles.statusItem}>
                                         <span>Total Count:</span>
                                         <span>{eventStats.all_time.user_distributions.total.toString()}</span>
@@ -1280,7 +1305,7 @@ function RLL() {
                                 </div>
 
                                 <div>
-                                    <h4 style={{ color: '#f1c40f', marginBottom: '10px' }}>Claims</h4>
+                                    <h4 style={{ color: theme.colors.warning, marginBottom: '10px' }}>Claims</h4>
                                     <div style={styles.statusItem}>
                                         <span>Total Count:</span>
                                         <span>{eventStats.all_time.claims.pending.toString()}</span>
@@ -1293,16 +1318,16 @@ function RLL() {
                                     ))}
                                     <div style={styles.statusItem}>
                                         <span>Successful:</span>
-                                        <span style={{ color: '#2ecc71' }}>{eventStats.all_time.claims.successful.toString()}</span>
+                                        <span style={{ color: theme.colors.success }}>{eventStats.all_time.claims.successful.toString()}</span>
                                     </div>
                                     <div style={styles.statusItem}>
                                         <span>Failed:</span>
-                                        <span style={{ color: '#e74c3c' }}>{eventStats.all_time.claims.failed.toString()}</span>
+                                        <span style={{ color: theme.colors.error }}>{eventStats.all_time.claims.failed.toString()}</span>
                                     </div>
                                     {(eventStats.all_time.claims.pending - eventStats.all_time.claims.successful - eventStats.all_time.claims.failed) > 0 && (
                                         <div style={styles.statusItem}>
                                             <span>Pending:</span>
-                                            <span style={{ color: '#f1c40f' }}>
+                                            <span style={{ color: theme.colors.warning }}>
                                                 {(eventStats.all_time.claims.pending - eventStats.all_time.claims.successful - eventStats.all_time.claims.failed).toString()}
                                             </span>
                                         </div>
@@ -1315,9 +1340,9 @@ function RLL() {
                             </div>
 
                             {/* Last 24h Stats */}
-                            <div style={{ backgroundColor: '#3a3a3a', padding: '20px', borderRadius: '8px' }}>
+                            <div style={{ background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow, padding: '20px', borderRadius: '8px' }}>
                                 <h3 style={{ 
-                                    color: '#3498db', 
+                                    color: theme.colors.accent, 
                                     marginBottom: '15px',
                                     display: 'flex',
                                     alignItems: 'center',
@@ -1327,8 +1352,8 @@ function RLL() {
                                     {isDataIdentical() && (
                                         <span 
                                             style={{
-                                                backgroundColor: '#e74c3c',
-                                                color: '#ffffff',
+                                                background: `linear-gradient(135deg, ${theme.colors.error}, ${theme.colors.error}dd)`,
+                                                color: theme.colors.primaryBg,
                                                 fontSize: '12px',
                                                 padding: '4px 8px',
                                                 borderRadius: '4px',
@@ -1342,7 +1367,7 @@ function RLL() {
                                 </h3>
                                 
                                 <div style={{ marginBottom: '20px' }}>
-                                    <h4 style={{ color: '#2ecc71', marginBottom: '10px' }}>Server Distributions</h4>
+                                    <h4 style={{ color: theme.colors.success, marginBottom: '10px' }}>Server Distributions</h4>
                                     <div style={styles.statusItem}>
                                         <span>Total Count:</span>
                                         <span>{eventStats.last_24h.server_distributions.total.toString()}</span>
@@ -1356,7 +1381,7 @@ function RLL() {
                                 </div>
 
                                 <div style={{ marginBottom: '20px' }}>
-                                    <h4 style={{ color: '#e74c3c', marginBottom: '10px' }}>User Distributions</h4>
+                                    <h4 style={{ color: theme.colors.error, marginBottom: '10px' }}>User Distributions</h4>
                                     <div style={styles.statusItem}>
                                         <span>Total Count:</span>
                                         <span>{eventStats.last_24h.user_distributions.total.toString()}</span>
@@ -1374,7 +1399,7 @@ function RLL() {
                                 </div>
 
                                 <div>
-                                    <h4 style={{ color: '#f1c40f', marginBottom: '10px' }}>Claims</h4>
+                                    <h4 style={{ color: theme.colors.warning, marginBottom: '10px' }}>Claims</h4>
                                     <div style={styles.statusItem}>
                                         <span>Total Count:</span>
                                         <span>{eventStats.last_24h.claims.pending.toString()}</span>
@@ -1387,16 +1412,16 @@ function RLL() {
                                     ))}
                                     <div style={styles.statusItem}>
                                         <span>Successful:</span>
-                                        <span style={{ color: '#2ecc71' }}>{eventStats.last_24h.claims.successful.toString()}</span>
+                                        <span style={{ color: theme.colors.success }}>{eventStats.last_24h.claims.successful.toString()}</span>
                                     </div>
                                     <div style={styles.statusItem}>
                                         <span>Failed:</span>
-                                        <span style={{ color: '#e74c3c' }}>{eventStats.last_24h.claims.failed.toString()}</span>
+                                        <span style={{ color: theme.colors.error }}>{eventStats.last_24h.claims.failed.toString()}</span>
                                     </div>
                                     {(eventStats.last_24h.claims.pending - eventStats.last_24h.claims.successful - eventStats.last_24h.claims.failed) > 0 && (
                                         <div style={styles.statusItem}>
                                             <span>Pending:</span>
-                                            <span style={{ color: '#f1c40f' }}>
+                                            <span style={{ color: theme.colors.warning }}>
                                                 {(eventStats.last_24h.claims.pending - eventStats.last_24h.claims.successful - eventStats.last_24h.claims.failed).toString()}
                                             </span>
                                         </div>
@@ -1414,11 +1439,11 @@ function RLL() {
                 {/* Data Issue Warning */}
                 {eventStats && isDataIdentical() && (
                     <div style={{
-                        backgroundColor: '#e74c3c',
+                        background: `linear-gradient(135deg, ${theme.colors.error}, ${theme.colors.error}dd)`,
                         borderRadius: '8px',
                         padding: '15px',
                         marginTop: '20px',
-                        color: '#ffffff'
+                        color: theme.colors.primaryBg
                     }}>
                         <h3 style={{ margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             ⚠️ Data Issue Detected
@@ -1457,7 +1482,7 @@ function RLL() {
                             const totalDistributed = distributions && distributions[item.token_id.toString()];
                             return (
                                 <div key={item.token_id.toText()} style={{
-                                    backgroundColor: '#3a3a3a',
+                                    background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                     borderRadius: '6px',
                                     padding: '15px',
                                     marginBottom: '10px'
@@ -1489,7 +1514,7 @@ function RLL() {
                                         }}>{formatBalance(item.remaining, decimals)} {symbol}</span>
                                     </div>
                                     {Number(item.underflow) > 0 && (
-                                        <div style={{...styles.statusItem, color: '#e74c3c'}}>
+                                        <div style={{...styles.statusItem, color: theme.colors.error}}>
                                             <span>Underflow:</span>
                                             <span style={{fontFamily: 'monospace'}}>{formatBalance(item.underflow, decimals)} {symbol}</span>
                                         </div>
@@ -1693,7 +1718,7 @@ function RLL() {
                                 </span>
                             </h2>
                             <div style={{
-                                backgroundColor: '#3a3a3a',
+                                background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                 borderRadius: '6px',
                                 padding: '20px',
                                 marginBottom: '20px'
@@ -1706,8 +1731,8 @@ function RLL() {
                                         style={{
                                             width: '100%',
                                             padding: '8px',
-                                            backgroundColor: '#2a2a2a',
-                                            color: '#ffffff',
+                                            background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
+                                            color: theme.colors.primaryBg,
                                             border: '1px solid #4a4a4a',
                                             borderRadius: '4px',
                                             marginBottom: '10px'
@@ -1732,8 +1757,8 @@ function RLL() {
                                         style={{
                                             width: '100%',
                                             padding: '8px',
-                                            backgroundColor: '#2a2a2a',
-                                            color: '#ffffff',
+                                            background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
+                                            color: theme.colors.primaryBg,
                                             border: '1px solid #4a4a4a',
                                             borderRadius: '4px'
                                         }}
@@ -1750,8 +1775,8 @@ function RLL() {
                                         style={{
                                             width: '100%',
                                             padding: '8px',
-                                            backgroundColor: '#2a2a2a',
-                                            color: '#ffffff',
+                                            background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
+                                            color: theme.colors.primaryBg,
                                             border: '1px solid #4a4a4a',
                                             borderRadius: '4px'
                                         }}
@@ -1774,7 +1799,7 @@ function RLL() {
                                         disabled={!selectedToken}
                                         style={{
                                             ...styles.adminButton,
-                                            backgroundColor: '#e74c3c',
+                                            background: `linear-gradient(135deg, ${theme.colors.error}, ${theme.colors.error}dd)`,
                                             opacity: !selectedToken ? 0.5 : 1
                                         }}
                                     >
@@ -1800,7 +1825,7 @@ function RLL() {
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
                                     {/* Error Claims */}
                                     <div>
-                                        <h3 style={{ color: '#e74c3c', marginBottom: '15px' }}>Error Claims</h3>
+                                        <h3 style={{ color: theme.colors.error, marginBottom: '15px' }}>Error Claims</h3>
                                         {errorClaims.length > 0 ? (
                                             <div style={styles.eventList}>
                                                 {errorClaims.map((event, index) => (
@@ -1815,7 +1840,7 @@ function RLL() {
                                                             <span>Fee: {formatTokenAmount(event.fee, event.token_id)}</span>
                                                             <span>Hotkey: {event.hotkey.toString()}</span>
                                                             {event.error_message && (
-                                                                <span style={{ color: '#e74c3c' }}>
+                                                                <span style={{ color: theme.colors.error }}>
                                                                     Error: {event.error_message[0]}
                                                                 </span>
                                                             )}
@@ -1830,7 +1855,7 @@ function RLL() {
 
                                     {/* Unmatched Pending Claims */}
                                     <div>
-                                        <h3 style={{ color: '#f1c40f', marginBottom: '15px' }}>Unmatched Pending Claims</h3>
+                                        <h3 style={{ color: theme.colors.warning, marginBottom: '15px' }}>Unmatched Pending Claims</h3>
                                         {unmatchedPendingClaims.length > 0 ? (
                                             <div style={styles.eventList}>
                                                 {unmatchedPendingClaims.map((event, index) => (
@@ -1944,12 +1969,12 @@ function RLL() {
                         <div style={{
                             textAlign: 'center',
                             padding: '20px',
-                            backgroundColor: '#2a2a2a',
+                            background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                             borderRadius: '8px',
                             marginTop: '20px'
                         }}>
                             <p style={{ 
-                                color: '#ffffff', 
+                                color: theme.colors.primaryBg, 
                                 marginBottom: '20px',
                                 fontSize: '1.1em'
                             }}>
@@ -2000,14 +2025,14 @@ function RLL() {
                                 </span>
                             </h2>
                             <p style={{ 
-                                color: '#ffffff', 
+                                color: theme.colors.primaryBg, 
                                 marginBottom: '20px',
                                 fontSize: '1.1em'
                             }}>
                                 Claimed rewards are available in your SneedLock wallet <Link 
                                     to="/wallet"
                                     style={{ 
-                                        color: '#3498db',
+                                        color: theme.colors.accent,
                                         textDecoration: 'none',
                                         fontWeight: 'bold'
                                     }}
@@ -2115,7 +2140,7 @@ function RLL() {
                                                             )}
                                                             {events.map((event, idx) => (
                                                                 event.error_message && event.error_message.length > 0 && (
-                                                                    <span key={idx} style={{ color: '#e74c3c' }}>
+                                                                    <span key={idx} style={{ color: theme.colors.error }}>
                                                                         Message: {event.error_message[0]}
                                                                     </span>
                                                                 )
@@ -2126,7 +2151,7 @@ function RLL() {
                                             })}
                                     </div>
                                 ) : (
-                                    <p style={{ color: '#ffffff' }}>No claim history found</p>
+                                    <p style={{ color: theme.colors.primaryBg }}>No claim history found</p>
                                 )
                             )}
                         </section>
@@ -2173,7 +2198,7 @@ function RLL() {
                                         <div style={{marginTop: '20px'}}>
                                             {hotkeyNeurons.neurons_by_owner.map(([owner, neurons], index) => (
                                                 <div key={owner.toText()} style={{
-                                                    backgroundColor: '#3a3a3a',
+                                                    background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                                     borderRadius: '6px',
                                                     padding: '15px',
                                                     marginBottom: '15px'
@@ -2190,7 +2215,7 @@ function RLL() {
                                                     <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
                                                         {neurons.map((neuron, neuronIndex) => (
                                                             <div key={neuronIndex} style={{
-                                                                backgroundColor: '#2a2a2a',
+                                                                background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                                                 borderRadius: '4px',
                                                                 padding: '10px'
                                                             }}>
