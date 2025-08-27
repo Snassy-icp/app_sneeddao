@@ -113,6 +113,30 @@ function TokenLock() {
     return (
         <div className='page-container'>
             <Header customLogo="/sneedlock-logo4.png" />
+            <div style={{
+                textAlign: 'center',
+                padding: '2rem 1rem 1rem 1rem',
+                background: theme.colors.background
+            }}>
+                <h1 style={{
+                    fontSize: '2.5rem',
+                    fontWeight: '700',
+                    color: theme.colors.text,
+                    margin: '0 0 0.5rem 0',
+                    letterSpacing: '-0.025em'
+                }}>
+                    Sneed Lock 2.0
+                </h1>
+                <h2 style={{
+                    fontSize: '1.5rem',
+                    fontWeight: '500',
+                    color: theme.colors.textSecondary,
+                    margin: '0',
+                    letterSpacing: '-0.01em'
+                }}>
+                    Token Lock
+                </h2>
+            </div>
             <main className="wallet-container centered">
                 {token && (
                     <TokenCard
