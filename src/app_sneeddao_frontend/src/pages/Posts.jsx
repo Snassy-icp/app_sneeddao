@@ -340,6 +340,7 @@ const Posts = () => {
                                         principal={post.created_by.toString()}
                                         displayInfo={principalDisplayInfo.get(post.created_by.toString())}
                                         showCopyButton={true}
+                                        short={true}
                                         enableContextMenu={true}
                                         maxLength={20}
                                     />

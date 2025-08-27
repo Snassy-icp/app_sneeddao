@@ -701,6 +701,7 @@ const Message = () => {
                                             principal={message.sender} 
                                             displayInfo={principalDisplayInfo.get(message.sender.toString())}
                                             showCopyButton={false}
+                                            short={true}
                                             style={{ color: theme.colors.primaryText, fontSize: '14px' }}
                                         />
                                     </div>
@@ -712,6 +713,7 @@ const Message = () => {
                                                     principal={recipient} 
                                                     displayInfo={principalDisplayInfo.get(recipient.toString())}
                                                     showCopyButton={false}
+                                                    short={true}
                                                     style={{ color: theme.colors.primaryText, fontSize: '14px' }}
                                                 />
                                                 {idx < message.recipients.length - 1 && ', '}

@@ -2036,8 +2036,8 @@ function ThreadViewer({
                             principal={threadDetails.created_by}
                             displayInfo={principalDisplayInfo.get(threadDetails.created_by.toString())}
                             showCopyButton={false}
+                            short={true}
                             style={{ color: theme.colors.accent, fontWeight: '500' }}
-                            short={isNarrowScreen}
                         />
                         {threadDetails.created_at && (
                             <span style={{ marginLeft: '12px', color: theme.colors.mutedText }}>
@@ -2671,7 +2671,7 @@ function ThreadViewer({
                             principal={post.created_by} 
                             displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
                             showCopyButton={false}
-                            short={isNarrowScreen}
+                            short={true}
                         /></span>
                         <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                             {isNarrowScreen 

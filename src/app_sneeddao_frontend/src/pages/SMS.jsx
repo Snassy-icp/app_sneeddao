@@ -618,6 +618,7 @@ const SMS = () => {
                                                 principal={message.sender}
                                                 displayInfo={principalDisplayInfo.get(message.sender.toString())}
                                                 showCopyButton={false}
+                                                short={true}
                                                 style={{ color: theme.colors.mutedText, fontSize: '14px' }}
                                             />
                                         </div>
@@ -636,6 +637,7 @@ const SMS = () => {
                                                         principal={recipient}
                                                         displayInfo={principalDisplayInfo.get(recipient.toString())}
                                                         showCopyButton={false}
+                                                        short={true}
                                                         style={{ color: theme.colors.mutedText, fontSize: '14px' }}
                                                     />
                                                     {index < message.recipients.length - 1 && <span>,</span>}
@@ -1082,6 +1084,7 @@ const SMS = () => {
                                                     principal={selectedMessage.sender}
                                                     displayInfo={principalDisplayInfo.get(selectedMessage.sender.toString())}
                                                     showCopyButton={true}
+                                                    short={true}
                                                     style={{ color: '#3498db', fontSize: '14px' }}
                                                 />
                                             </div>
@@ -1095,6 +1098,7 @@ const SMS = () => {
                                                         key={recipient.toString()}
                                                         principal={recipient}
                                                         displayInfo={principalDisplayInfo.get(recipient.toString())}
+                                                        short={true}
                                                         showCopyButton={true}
                                                         style={{ color: '#3498db', fontSize: '14px' }}
                                                     />
