@@ -123,6 +123,7 @@ function TokenLock() {
                         showDebug={false}
                         hideAvailable={true}
                         hideButtons={true}
+                        defaultExpanded={true}
                     />
                 )}
             </main>

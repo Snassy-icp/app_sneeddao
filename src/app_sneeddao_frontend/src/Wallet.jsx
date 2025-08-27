@@ -65,12 +65,36 @@ const EmptyPositionCard = ({ position, onRemove }) => {
             {isExpanded && (
                 <>
                     <div className="action-buttons">
-                        <div className="tooltip-wrapper">
-                            <button className="remove-button" onClick={onRemove}>
-                                <img src="red-x-black.png" alt="Remove" />
-                            </button>
-                            <span className="tooltip">Remove Swap Pair</span>
-                        </div>
+                        <button 
+                            onClick={onRemove}
+                            style={{
+                                background: theme.colors.error,
+                                color: theme.colors.primaryBg,
+                                border: 'none',
+                                borderRadius: '6px',
+                                padding: '6px 12px',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: '500',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.background = theme.colors.errorHover || `${theme.colors.error}dd`;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.background = theme.colors.error;
+                            }}
+                        >
+                            <img 
+                                src="red-x-black.png" 
+                                alt="Remove" 
+                                style={{ width: '14px', height: '14px' }}
+                            />
+                            Remove
+                        </button>
                     </div>
                 </>
             )}

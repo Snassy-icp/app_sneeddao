@@ -210,6 +210,7 @@ function PositionLock() {
                         principalDisplayInfo={principalDisplayInfo}
                         hideButtons={true}
                         hideUnclaimedFees={true}
+                        defaultExpanded={true}
                     />
                 )}
                 {showSpinner && (

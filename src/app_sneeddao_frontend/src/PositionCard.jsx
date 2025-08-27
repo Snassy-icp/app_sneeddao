@@ -5,10 +5,10 @@ import { getIcpSwapLink, isLockedPosition, getPositionTVL } from './utils/Positi
 import { PrincipalDisplay, getPrincipalDisplayInfo } from './utils/PrincipalUtils';
 import { useTheme } from './contexts/ThemeContext';
 
-const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, withdraw_position_rewards, hideButtons, hideUnclaimedFees }) => {
+const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, withdraw_position_rewards, hideButtons, hideUnclaimedFees, defaultExpanded = false }) => {
 
     const { theme } = useTheme();
-    const [isExpanded, setIsExpanded] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [locksExpanded, setLocksExpanded] = useState(false);
 
     const handleHeaderClick = () => {
