@@ -4,6 +4,7 @@ import { dateToReadable, format_duration } from './utils/DateUtils'
 import { rewardAmountOrZero, availableOrZero, get_available_backend } from './utils/TokenUtils';
 import { PrincipalDisplay } from './utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
+import { useTheme } from './contexts/ThemeContext';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -13,6 +14,7 @@ console.log('TokenCard constants:', { GLDT_CANISTER_ID, SGLDT_CANISTER_ID });
 
 const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend }) => {
 
+    const { theme } = useTheme();
     const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -123,9 +125,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             <div className="balance-breakdown" style={{ 
                                 marginLeft: '20px', 
                                 padding: '10px', 
-                                backgroundColor: '#2c3e50', 
+                                background: theme.colors.tertiaryBg, 
                                 borderRadius: '4px',
-                                border: '1px solid #34495e'
+                                border: `1px solid ${theme.colors.border}`
                             }}>
                                 <div className="balance-breakdown-item" style={{ 
                                     display: 'flex', 
@@ -168,9 +170,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                 style={{
                                                     padding: '6px 10px',
                                                     fontSize: '12px',
-                                                    backgroundColor: '#007bff',
-                                                    color: 'white',
-                                                    border: '1px solid #0056b3',
+                                                    background: theme.colors.accent,
+                                                    color: theme.colors.primaryBg,
+                                                    border: `1px solid ${theme.colors.accentHover}`,
                                                     borderRadius: '3px',
                                                     cursor: 'pointer',
                                                     marginTop: '4px',
@@ -179,10 +181,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                     userSelect: 'none'
                                                 }}
                                                 onMouseEnter={(e) => {
-                                                    e.target.style.backgroundColor = '#0056b3';
+                                                    e.target.style.background = theme.colors.accentHover;
                                                 }}
                                                 onMouseLeave={(e) => {
-                                                    e.target.style.backgroundColor = '#007bff';
+                                                    e.target.style.background = theme.colors.accent;
                                                 }}
                                             >
                                                 Withdraw
@@ -285,7 +287,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 
                 if ((isGLDT || isSGLDT) && token.available > 0n && !hideButtons) {
                     return (
-                        <div className="wrap-unwrap-section" style={{ marginTop: '10px', padding: '10px 0', borderTop: '1px solid #eee' }}>
+                        <div className="wrap-unwrap-section" style={{ marginTop: '10px', padding: '10px 0', borderTop: `1px solid ${theme.colors.border}` }}>
                             {isGLDT && (
                                 <button 
                                     className="wrap-button-full" 
@@ -293,8 +295,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     style={{
                                         width: '100%',
                                         padding: '8px 16px',
-                                        backgroundColor: '#4CAF50',
-                                        color: 'white',
+                                        background: theme.colors.success,
+                                        color: theme.colors.primaryBg,
                                         border: 'none',
                                         borderRadius: '4px',
                                         cursor: 'pointer',
@@ -312,8 +314,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     style={{
                                         width: '100%',
                                         padding: '8px 16px',
-                                        backgroundColor: '#FF9800',
-                                        color: 'white',
+                                        background: theme.colors.warning,
+                                        color: theme.colors.primaryBg,
                                         border: 'none',
                                         borderRadius: '4px',
                                         cursor: 'pointer',

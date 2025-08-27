@@ -8,6 +8,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rates } from './utils/TokenUtils';
 import { getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { useNaming } from './NamingContext';
+import { useTheme } from './contexts/ThemeContext';
 import PositionCard from './PositionCard';
 import './Wallet.css';
 import { lockFromLocks } from './utils/PositionUtils';
@@ -15,6 +16,7 @@ import Header from './components/Header';
 import { useAuth } from './AuthContext';
 
 function PositionLock() {
+    const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
     const [positions, setPositions] = useState([]);
     const [showSpinner, setShowSpinner] = useState(true);

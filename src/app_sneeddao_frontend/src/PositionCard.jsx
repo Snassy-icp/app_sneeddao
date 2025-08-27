@@ -3,9 +3,11 @@ import { formatAmount, getUSD } from './utils/StringUtils';
 import { bigDateToReadable } from './utils/DateUtils';
 import { getIcpSwapLink, isLockedPosition, getPositionTVL } from './utils/PositionUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfo } from './utils/PrincipalUtils';
+import { useTheme } from './contexts/ThemeContext';
 
 const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, withdraw_position_rewards, hideButtons, hideUnclaimedFees }) => {
 
+    const { theme } = useTheme();
     const [isExpanded, setIsExpanded] = useState(false);
 
     const handleHeaderClick = () => {

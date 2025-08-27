@@ -6,19 +6,19 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--color-modalBg);
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .modal-content {
-    background: black;
+    background: var(--color-cardGradient);
     padding: 20px;
     border-radius: 8px;
     width: 400px;
     max-width: 80%;
-    border: 1px solid #ddd;
+    border: 1px solid var(--color-border);
 }
 
 .modal-content h2 {
@@ -46,8 +46,8 @@
 .modal-content button {
     padding: 10px;
     border: none;
-    background: #007bff;
-    color: white;
+    background: var(--color-accent);
+    color: var(--color-primaryBg);
     cursor: pointer;
     border-radius: 4px;
     flex: 1;
@@ -55,16 +55,16 @@
 }
 
 .modal-content button:hover {
-    background: #0056b3;
+    background: var(--color-accentHover);
 }
 
 .modal-content button:last-child {
-    background: #6c757d;
+    background: var(--color-mutedText);
     margin-right: 0;
 }
 
 .modal-content button:last-child:hover {
-    background: #5a6268;
+    background: var(--color-error);
 }
 
 .lock-list {
@@ -73,11 +73,11 @@
 }
 
 .lock-item {
-    background-color: #101010;
+    background: var(--color-secondaryBg);
     border-radius: 4px;
     margin-bottom: 10px;
     padding: 10px;
-    border: 1px solid #ddd;
+    border: 1px solid var(--color-border);
 }
 
 .lock-item p {

@@ -7,11 +7,13 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { getTokenLogo, get_token_conversion_rates } from './utils/TokenUtils';
 import { getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { useNaming } from './NamingContext';
+import { useTheme } from './contexts/ThemeContext';
 import TokenCard from './TokenCard';
 import './Wallet.css';
 import Header from './components/Header';
 
 function TokenLock() {
+    const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
     const [token, setToken] = useState(null);
     const [locks, setLocks] = useState({});
