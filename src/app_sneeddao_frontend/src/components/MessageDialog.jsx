@@ -310,7 +310,8 @@ const MessageDialog = ({
                             border: `1px solid ${theme.colors.border}`,
                             borderRadius: '4px',
                             color: theme.colors.primaryText,
-                            fontSize: '14px'
+                            fontSize: '14px',
+                            boxSizing: 'border-box'
                         }}
                     />
                 </div>
@@ -333,7 +334,8 @@ const MessageDialog = ({
                             borderRadius: '4px',
                             color: theme.colors.primaryText,
                             fontSize: '14px',
-                            resize: 'vertical'
+                            resize: 'vertical',
+                            boxSizing: 'border-box'
                         }}
                     />
                 </div>
