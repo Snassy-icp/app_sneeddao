@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId } from 'external/sneed_lock';
 import { createActor as createNeutriniteDappActor, canisterId as neutriniteCanisterId } from 'external/neutrinite_dapp';
@@ -13,17 +14,17 @@ import { canisterId as swapRunnerCanisterId } from 'external/swaprunner_backend'
 import { formatAmount } from '../utils/StringUtils';
 import { getTokenLogo, getTokenMetaForSwap } from '../utils/TokenUtils';
 
-const styles = {
+const getStyles = (theme) => ({
     container: {
         maxWidth: '1200px',
         margin: '0 auto',
         padding: '2rem',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
     },
     heading: {
         fontSize: '2.5rem',
         marginBottom: '2rem',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         textAlign: 'center',
     },
     grid: {
@@ -32,22 +33,26 @@ const styles = {
         gap: '2rem',
     },
     product: {
-        backgroundColor: '#2a2a2a',
-        borderRadius: '8px',
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        borderRadius: '12px',
         padding: '2rem',
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
+        boxShadow: theme.colors.cardShadow,
+        transition: 'all 0.3s ease',
     },
     productTitle: {
         fontSize: '2rem',
         marginBottom: '1rem',
-        color: '#3498db',
+        color: theme.colors.accent,
+        fontWeight: 'bold',
     },
     description: {
         fontSize: '1.1rem',
         lineHeight: '1.6',
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         marginBottom: '2rem',
     },
     statsSection: {
@@ -60,51 +65,52 @@ const styles = {
         marginBottom: '2rem',
     },
     stat: {
-        backgroundColor: '#3a3a3a',
+        background: theme.colors.tertiaryBg,
+        border: `1px solid ${theme.colors.border}`,
         padding: '1rem',
-        borderRadius: '6px',
+        borderRadius: '8px',
         textAlign: 'center',
+        transition: 'all 0.3s ease',
     },
     statValue: {
         fontSize: '1.5rem',
         fontWeight: 'bold',
-        color: '#3498db',
+        color: theme.colors.accent,
         marginBottom: '0.5rem',
     },
     statValuePending: {
         fontSize: '1.5rem',
         fontWeight: 'bold',
-        color: '#888',
+        color: theme.colors.mutedText,
         marginBottom: '0.5rem',
     },
     statLabel: {
-        color: '#888',
+        color: theme.colors.mutedText,
         fontSize: '0.9rem',
     },
     button: {
-        backgroundColor: '#3498db',
-        color: '#ffffff',
+        background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
+        color: theme.colors.primaryBg,
         border: 'none',
-        borderRadius: '4px',
+        borderRadius: '8px',
         padding: '1rem',
         fontSize: '1.1rem',
+        fontWeight: 'bold',
         cursor: 'pointer',
         textDecoration: 'none',
         textAlign: 'center',
-        transition: 'background-color 0.2s',
-        '&:hover': {
-            backgroundColor: '#2980b9',
-        },
+        transition: 'all 0.3s ease',
+        boxShadow: theme.colors.accentShadow,
     },
-};
+});
 
-const LoadingSpinner = () => (
+const LoadingSpinner = ({ theme }) => (
     <div style={{
         display: 'inline-block',
         width: '20px',
         height: '20px',
-        border: '2px solid #f3f3f3',
-        borderTop: '2px solid #3498db',
+        border: `2px solid ${theme.colors.border}`,
+        borderTop: `2px solid ${theme.colors.accent}`,
         borderRadius: '50%',
         animation: 'spin 1s linear infinite',
     }}>
@@ -119,9 +125,10 @@ const LoadingSpinner = () => (
     </div>
 );
 
-function StatCard({ value, label, isLoading, isParentComplete, isFinalValue }) {
+function StatCard({ value, label, isLoading, isParentComplete, isFinalValue, theme }) {
     const [displayValue, setDisplayValue] = useState('0');
     const [isComplete, setIsComplete] = useState(false);
+    const styles = getStyles(theme);
     
     useEffect(() => {
         if (isLoading) {
@@ -207,7 +214,7 @@ function StatCard({ value, label, isLoading, isParentComplete, isFinalValue }) {
     return (
         <div style={styles.stat}>
             <div style={isComplete ? styles.statValue : styles.statValuePending}>
-                {isLoading ? <LoadingSpinner /> : displayValue}
+                {isLoading ? <LoadingSpinner theme={theme} /> : displayValue}
             </div>
             <div style={styles.statLabel}>{label}</div>
         </div>
@@ -216,6 +223,8 @@ function StatCard({ value, label, isLoading, isParentComplete, isFinalValue }) {
 
 function Products() {
     const { identity } = useAuth();
+    const { theme } = useTheme();
+    const styles = getStyles(theme);
     const [sneedLockStats, setSneedLockStats] = useState({
         totalTokenLocks: 0,
         totalPositionLocks: 0,
@@ -600,7 +609,7 @@ function Products() {
     const isValueLoading = (value) => isLoading || value === 0;
 
     return (
-        <div className="page-container">
+        <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main style={styles.container}>
                 <h1 style={styles.heading}>Our Products</h1>
@@ -621,22 +630,26 @@ function Products() {
                                     value={sneedLockStats.totalTokenLocks.toString()} 
                                     label="Token Locks"
                                     isLoading={sneedLockStats.totalTokenLocks === 0}
+                                    theme={theme}
                                 />
                                 <StatCard 
                                     value={sneedLockStats.totalPositionLocks.toString()} 
                                     label="Position Locks"
                                     isLoading={sneedLockStats.totalPositionLocks === 0}
+                                    theme={theme}
                                 />
                                 <StatCard 
                                     value={sneedLockStats.activeUsers.toString()} 
                                     label="Active Users"
                                     isLoading={sneedLockStats.activeUsers === 0}
+                                    theme={theme}
                                 />
                                 <div ref={setTokenRef}>
                                     <StatCard 
                                         value={formatUSD(sneedLockStats.tokenLocksValue)} 
                                         label="Token Locks Value"
                                         isLoading={false}
+                                        theme={theme}
                                     />
                                 </div>
                                 <div ref={setPositionRef}>
@@ -645,6 +658,7 @@ function Products() {
                                         label="Pos. Locks Value"
                                         isLoading={false}
                                         isFinalValue={isLastPositionProcessed}
+                                        theme={theme}
                                     />
                                 </div>
                                 <StatCard 
@@ -652,10 +666,22 @@ function Products() {
                                     label="Total Value Locked"
                                     isLoading={false}
                                     isParentComplete={tokenValueComplete && positionValueComplete}
+                                    theme={theme}
                                 />
                             </div>
                             
-                            <Link to="/sneedlock" style={styles.button}>
+                            <Link 
+                                to="/sneedlock" 
+                                style={styles.button}
+                                onMouseEnter={(e) => {
+                                    e.target.style.transform = 'translateY(-2px)';
+                                    e.target.style.boxShadow = `0 8px 25px ${theme.colors.accent}40`;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.transform = 'translateY(0)';
+                                    e.target.style.boxShadow = theme.colors.accentShadow;
+                                }}
+                            >
                                 Launch SneedLock
                             </Link>
                         </div>
@@ -676,31 +702,37 @@ function Products() {
                                     value={swapRunnerStats.total_swaps.toString()} 
                                     label="Total Swaps"
                                     isLoading={swapRunnerStats.total_swaps === 0}
+                                    theme={theme}
                                 />
                                 <StatCard 
                                     value={swapRunnerStats.split_swaps.toString()} 
                                     label="Split Swaps"
                                     isLoading={swapRunnerStats.split_swaps === 0}
+                                    theme={theme}
                                 />
                                 <StatCard 
                                     value={swapRunnerStats.kong_swaps.toString()} 
                                     label="Kong Swaps"
                                     isLoading={swapRunnerStats.kong_swaps === 0}
+                                    theme={theme}
                                 />
                                 <StatCard 
                                     value={swapRunnerStats.icpswap_swaps.toString()} 
                                     label="ICPSwap Swaps"
                                     isLoading={swapRunnerStats.icpswap_swaps === 0}
+                                    theme={theme}
                                 />
                                 <StatCard 
                                     value={swapRunnerStats.unique_users.toString()} 
                                     label="Registered Users"
                                     isLoading={swapRunnerStats.unique_users === 0}
+                                    theme={theme}
                                 />
                                 <StatCard 
                                     value={swapRunnerStats.unique_traders.toString()} 
                                     label="Active Traders"
                                     isLoading={swapRunnerStats.unique_traders === 0}
+                                    theme={theme}
                                 />
                             </div>
                             
@@ -709,6 +741,14 @@ function Products() {
                                 target="_blank" 
                                 rel="noopener noreferrer" 
                                 style={styles.button}
+                                onMouseEnter={(e) => {
+                                    e.target.style.transform = 'translateY(-2px)';
+                                    e.target.style.boxShadow = `0 8px 25px ${theme.colors.accent}40`;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.transform = 'translateY(0)';
+                                    e.target.style.boxShadow = theme.colors.accentShadow;
+                                }}
                             >
                                 Visit SwapRunner
                             </a>
