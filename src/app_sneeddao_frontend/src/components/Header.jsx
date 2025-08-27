@@ -386,6 +386,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                     <SnsDropdown onSnsChange={onSnsChange} />
                 )}
 
+                {/* Theme Toggle */}
+                <ThemeToggle size="medium" />
+
                 {/* Feed Link */}
                 <button
                     onClick={() => navigate('/feed')}
@@ -410,8 +413,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 </button>
 
                 {/* Wallet Link */}
-                {/* Theme Toggle */}
-                <ThemeToggle size="medium" />
                 
                 <button
                     onClick={() => navigate('/wallet')}
