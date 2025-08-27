@@ -9,6 +9,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
 
     const { theme } = useTheme();
     const [isExpanded, setIsExpanded] = useState(false);
+    const [locksExpanded, setLocksExpanded] = useState(false);
 
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
@@ -86,20 +87,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                     <span className="tooltip">Send Position</span>
                                 </div>
                             )}
-                            <div className="tooltip-wrapper">
-                                <button className="lock-button" onClick={() => 
-                                    openLockPositionModal({
-                                        isLocked: isLockedPosition(positionDetails),
-                                        token0: position.token0,
-                                        token1: position.token1,
-                                        swapCanisterId: position.swapCanisterId,
-                                        id: positionDetails.positionId,
-                                        frontendOwnership: positionDetails.frontendOwnership,
-                                        symbols: position.token0Symbol + '/' + position.token1Symbol})}>
-                                    <img src="sneedlock-logo-cropped.png" alt="Lock Details" />
-                                </button>
-                                <span className="tooltip">Lock Position</span>
-                            </div>
+
                         </div>
                     )}
                     <div className="balance-section">
@@ -149,84 +137,181 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                 }
             </div>
             <div className="locks-section">
-                <div className="locks-header">Lock Expires</div>
-                <div className="lock-item">
-                    {isLockedPosition(positionDetails)
-                        ? bigDateToReadable(positionDetails.lockInfo.expiry)
-                        : 'No lock'}
-                </div>
-                {positionDetails.owner && (
-                    <>
-                        <div className="locks-header" style={{ marginTop: '10px' }}>SneedLock Owner</div>
-                        <div className="lock-item">
-                            <PrincipalDisplay 
-                                principal={positionDetails.owner}
-                                showCopyButton={true}
-                                displayInfo={getPrincipalDisplayInfo(positionDetails.owner)}
-                            />
-                        </div>
-                    </>
-                )}
-                {positionDetails.icpSwapOwner && (
-                    <>
-                        <div className="locks-header" style={{ 
-                            marginTop: '10px', 
-                            color: '#888',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px'
-                        }}>
-                            <span>ICPSwap Owner</span>
-                            {positionDetails.owner && (
-                                <span style={{
-                                    padding: '2px 8px',
-                                    borderRadius: '4px',
-                                    fontSize: '12px',
-                                    backgroundColor: 
-                                        positionDetails.ownershipStatus === 'match' ? 'rgba(46, 204, 113, 0.2)' :
-                                        positionDetails.ownershipStatus === 'locked' ? 'rgba(46, 204, 113, 0.2)' :
-                                        'rgba(231, 76, 60, 0.2)',
-                                    color: 
-                                        positionDetails.ownershipStatus === 'match' ? '#2ecc71' :
-                                        positionDetails.ownershipStatus === 'locked' ? '#2ecc71' :
-                                        '#e74c3c',
+                {/* Collapsible Locks Header */}
+                <div 
+                    className="locks-header" 
+                    onClick={() => setLocksExpanded(!locksExpanded)}
+                    style={{
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '12px 0',
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        marginBottom: locksExpanded ? '15px' : '0'
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                            Locks
+                        </span>
+                        <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                            ({isLockedPosition(positionDetails) ? '1 lock' : '0 locks'})
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        {/* Lock Button */}
+                        {!hideButtons && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    openLockPositionModal({
+                                        isLocked: isLockedPosition(positionDetails),
+                                        token0: position.token0,
+                                        token1: position.token1,
+                                        swapCanisterId: position.swapCanisterId,
+                                        id: positionDetails.positionId,
+                                        frontendOwnership: positionDetails.frontendOwnership,
+                                        symbols: position.token0Symbol + '/' + position.token1Symbol
+                                    });
+                                }}
+                                style={{
+                                    background: theme.colors.accent,
+                                    color: theme.colors.primaryBg,
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '6px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '4px'
-                                }}>
-                                    {positionDetails.ownershipStatus === 'match' ? '✓ Match!' :
-                                     positionDetails.ownershipStatus === 'locked' ? '✓ Match!' :
-                                     '✗ Mismatch!'}
-                                </span>
-                            )}
-                        </div>
-                        <div className="lock-item" style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '8px',
-                            color: '#fff',
-                            fontSize: '14px'
-                        }}>
-                            {/* ICPSwap owner is a hash, not a principal, so display it directly */}
-                            <div title={positionDetails.icpSwapOwner} style={{ cursor: 'help' }}>
-                                {truncateText(positionDetails.icpSwapOwner)}
-                            </div>
-                            <button 
-                                onClick={() => copyToClipboard(positionDetails.icpSwapOwner)}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    color: '#888',
-                                    cursor: 'pointer',
-                                    padding: '4px',
-                                    fontSize: '12px'
+                                    gap: '6px',
+                                    transition: 'all 0.2s ease'
                                 }}
-                                title="Copy to clipboard"
+                                onMouseEnter={(e) => {
+                                    e.target.style.background = theme.colors.accentHover;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.background = theme.colors.accent;
+                                }}
                             >
-                                📋
+                                <img 
+                                    src="sneedlock-logo-cropped.png" 
+                                    alt="Lock" 
+                                    style={{ width: '14px', height: '14px' }}
+                                />
+                                Lock
                             </button>
+                        )}
+                        {/* Expand/Collapse Indicator */}
+                        <span 
+                            style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '1.2rem',
+                                transform: locksExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                transition: 'transform 0.2s ease'
+                            }}
+                        >
+                            ▼
+                        </span>
+                    </div>
+                </div>
+
+                {/* Collapsible Locks Content */}
+                {locksExpanded && (
+                    <div>
+                        <div className="lock-item">
+                            <div className="lock-details">
+                                <span className="lock-label">Lock Expires:</span>
+                                <span className="lock-value">
+                                    {isLockedPosition(positionDetails)
+                                        ? bigDateToReadable(positionDetails.lockInfo.expiry)
+                                        : 'No lock'}
+                                </span>
+                            </div>
                         </div>
-                    </>
+                        {positionDetails.owner && (
+                            <div className="lock-item" style={{ marginTop: '10px' }}>
+                                <div className="lock-details">
+                                    <span className="lock-label">SneedLock Owner:</span>
+                                    <span className="lock-value">
+                                        <PrincipalDisplay 
+                                            principal={positionDetails.owner}
+                                            showCopyButton={true}
+                                            displayInfo={getPrincipalDisplayInfo(positionDetails.owner)}
+                                        />
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+                        {positionDetails.icpSwapOwner && (
+                            <div className="lock-item" style={{ marginTop: '10px' }}>
+                                <div className="lock-details">
+                                    <span className="lock-label" style={{ 
+                                        color: theme.colors.mutedText,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px'
+                                    }}>
+                                        <span>ICPSwap Owner</span>
+                                        {positionDetails.owner && (
+                                            <span style={{
+                                                padding: '2px 8px',
+                                                borderRadius: '4px',
+                                                fontSize: '12px',
+                                                background: 
+                                                    positionDetails.ownershipStatus === 'match' ? `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}10)` :
+                                                    positionDetails.ownershipStatus === 'locked' ? `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}10)` :
+                                                    `linear-gradient(135deg, ${theme.colors.error}20, ${theme.colors.error}10)`,
+                                                color: 
+                                                    positionDetails.ownershipStatus === 'match' ? theme.colors.success :
+                                                    positionDetails.ownershipStatus === 'locked' ? theme.colors.success :
+                                                    theme.colors.error,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                border: `1px solid ${
+                                                    positionDetails.ownershipStatus === 'match' ? theme.colors.success :
+                                                    positionDetails.ownershipStatus === 'locked' ? theme.colors.success :
+                                                    theme.colors.error
+                                                }30`
+                                            }}>
+                                                {positionDetails.ownershipStatus === 'match' ? '✓ Match!' :
+                                                 positionDetails.ownershipStatus === 'locked' ? '✓ Match!' :
+                                                 '✗ Mismatch!'}
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className="lock-value" style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '8px',
+                                        color: theme.colors.primaryText,
+                                        fontSize: '14px'
+                                    }}>
+                                        <div title={positionDetails.icpSwapOwner} style={{ cursor: 'help' }}>
+                                            {truncateText(positionDetails.icpSwapOwner)}
+                                        </div>
+                                        <button 
+                                            onClick={() => copyToClipboard(positionDetails.icpSwapOwner)}
+                                            style={{
+                                                background: 'none',
+                                                border: 'none',
+                                                color: theme.colors.mutedText,
+                                                cursor: 'pointer',
+                                                padding: '4px',
+                                                fontSize: '12px'
+                                            }}
+                                            title="Copy to clipboard"
+                                        >
+                                            📋
+                                        </button>
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 )}
             </div>
                 </>

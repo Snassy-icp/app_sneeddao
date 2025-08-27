@@ -17,6 +17,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const { theme } = useTheme();
     const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
+    const [locksExpanded, setLocksExpanded] = useState(false);
 
     // Debug logging for wrap/unwrap buttons
     console.log('TokenCard Debug:', {
@@ -88,14 +89,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             <span className="tooltip">Send Tokens</span>
                         </div>
                     )}
-                    {token.available > 0n && (
-                        <div className="tooltip-wrapper">
-                            <button className="lock-button" onClick={() => openLockModal(token)}>
-                                <img src="sneedlock-logo-cropped.png" alt="Lock" />
-                            </button>
-                            <span className="tooltip">Lock Tokens</span>
-                        </div>
-                    )}
+
 
                     {token.available + BigInt(token.locked) + rewardAmountOrZero(token) === 0n && (
                         <div className="tooltip-wrapper">
@@ -228,48 +222,135 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     <p>Backend: {formatAmount(token.balance_backend || 0n, token.decimals)}</p>
                 </div>
             )}
-            {lockDetailsLoading[token.ledger_canister_id] ? (
-                <div className="spinner-container">
-                    <div className="spinner"></div>
+            <div className="locks-section">
+                {/* Collapsible Locks Header */}
+                <div 
+                    className="locks-header" 
+                    onClick={() => setLocksExpanded(!locksExpanded)}
+                    style={{
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '12px 0',
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        marginBottom: locksExpanded ? '15px' : '0'
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                            Locks
+                        </span>
+                        {lockDetailsLoading[token.ledger_canister_id] ? (
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                (Loading...)
+                            </span>
+                        ) : (
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                ({locks[token.ledger_canister_id]?.length || 0} {locks[token.ledger_canister_id]?.length === 1 ? 'lock' : 'locks'})
+                            </span>
+                        )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        {/* Lock Button */}
+                        {token.available > 0n && !hideButtons && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    openLockModal(token);
+                                }}
+                                style={{
+                                    background: theme.colors.accent,
+                                    color: theme.colors.primaryBg,
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '6px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    transition: 'all 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.background = theme.colors.accentHover;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.background = theme.colors.accent;
+                                }}
+                            >
+                                <img 
+                                    src="sneedlock-logo-cropped.png" 
+                                    alt="Lock" 
+                                    style={{ width: '14px', height: '14px' }}
+                                />
+                                Lock
+                            </button>
+                        )}
+                        {/* Expand/Collapse Indicator */}
+                        <span 
+                            style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '1.2rem',
+                                transform: locksExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                transition: 'transform 0.2s ease'
+                            }}
+                        >
+                            ▼
+                        </span>
+                    </div>
                 </div>
-            ) : (
-                <div className="locks-section">
-                    <div className="locks-header">Locks</div>
-                    {locks[token.ledger_canister_id] && locks[token.ledger_canister_id].length > 0 ? (
-                        locks[token.ledger_canister_id].map((lock, lockIndex) => (
-                            <div key={lockIndex} className="lock-item">
-                                <div className="lock-details">
-                                    <span className="lock-label">Amount:</span>
-                                    <span className="lock-value">{formatAmount(lock.amount || 0n, token.decimals)}{getUSD(lock.amount || 0n, token.decimals, token.conversion_rate)}</span>
-                                </div>
-                                <div className="lock-details">
-                                    <span className="lock-label">Expires:</span>
-                                    <span className="lock-value">{dateToReadable(lock.expiry)}</span>
-                                </div>
-                                <div className="lock-details">
-                                    <span className="lock-label">Duration:</span>
-                                    <span className="lock-value">{format_duration(lock.expiry - new Date())}</span>
-                                </div>
-                                {lock.owner && (
-                                    <div className="lock-details">
-                                        <span className="lock-label">Owner:</span>
-                                        <span className="lock-value">
-                                            <PrincipalDisplay 
-                                                principal={Principal.fromText(lock.owner)}
-                                                displayInfo={principalDisplayInfo?.get(lock.owner)}
-                                                showCopyButton={true}
-                                                style={{ display: 'inline-flex' }}
-                                            />
-                                        </span>
-                                    </div>
-                                )}
+
+                {/* Collapsible Locks Content */}
+                {locksExpanded && (
+                    <div>
+                        {lockDetailsLoading[token.ledger_canister_id] ? (
+                            <div className="spinner-container">
+                                <div className="spinner"></div>
                             </div>
-                        ))
-                    ) : (
-                        <p>No locks</p>
-                    )}
-                </div>
-            )}
+                        ) : (
+                            <>
+                                {locks[token.ledger_canister_id] && locks[token.ledger_canister_id].length > 0 ? (
+                                    locks[token.ledger_canister_id].map((lock, lockIndex) => (
+                                        <div key={lockIndex} className="lock-item">
+                                            <div className="lock-details">
+                                                <span className="lock-label">Amount:</span>
+                                                <span className="lock-value">{formatAmount(lock.amount || 0n, token.decimals)}{getUSD(lock.amount || 0n, token.decimals, token.conversion_rate)}</span>
+                                            </div>
+                                            <div className="lock-details">
+                                                <span className="lock-label">Expires:</span>
+                                                <span className="lock-value">{dateToReadable(lock.expiry)}</span>
+                                            </div>
+                                            <div className="lock-details">
+                                                <span className="lock-label">Duration:</span>
+                                                <span className="lock-value">{format_duration(lock.expiry - new Date())}</span>
+                                            </div>
+                                            {lock.owner && (
+                                                <div className="lock-details">
+                                                    <span className="lock-label">Owner:</span>
+                                                    <span className="lock-value">
+                                                        <PrincipalDisplay 
+                                                            principal={Principal.fromText(lock.owner)}
+                                                            displayInfo={principalDisplayInfo?.get(lock.owner)}
+                                                            showCopyButton={true}
+                                                            style={{ display: 'inline-flex' }}
+                                                        />
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p style={{ color: theme.colors.mutedText, fontStyle: 'italic', margin: '10px 0' }}>
+                                        No locks found
+                                    </p>
+                                )}
+                            </>
+                        )}
+                    </div>
+                )}
+            </div>
             
             {/* Wrap/Unwrap buttons at bottom of card */}
             {(() => {
