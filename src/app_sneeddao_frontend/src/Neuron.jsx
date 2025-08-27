@@ -68,6 +68,25 @@ function Neuron() {
         }
     }, [searchParams, selectedSnsRoot, updateSelectedSns]);
 
+    // Listen for neuron ID parameter changes
+    useEffect(() => {
+        const neuronIdParam = searchParams.get('neuronid');
+        console.log('URL neuron ID changed:', { neuronIdParam, currentNeuronId });
+        
+        if (neuronIdParam && neuronIdParam !== currentNeuronId) {
+            console.log('Navigating to new neuron:', neuronIdParam);
+            
+            // Clear previous data when navigating to a new neuron
+            setNeuronData(null);
+            setVotingHistory(null);
+            setError('');
+            setPrincipalDisplayInfo(new Map());
+            
+            setCurrentNeuronId(neuronIdParam);
+            setNeuronIdInput(neuronIdParam);
+        }
+    }, [searchParams, currentNeuronId]);
+
     // Helper function to get display name
     const getDisplayName = (neuronId) => {
         const mapKey = `${selectedSnsRoot}:${neuronId}`;
