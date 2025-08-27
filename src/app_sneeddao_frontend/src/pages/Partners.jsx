@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import Header from '../components/Header';
+import { useTheme } from '../contexts/ThemeContext';
 
 function Partners() {
+    const { theme } = useTheme();
     const [partners, setPartners] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -41,18 +43,18 @@ function Partners() {
     };
 
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main className="wallet-container">
-                <h1 style={{ color: '#ffffff', marginBottom: '30px', textAlign: 'center' }}>Our Partners</h1>
+                <h1 style={{ color: theme.colors.primaryText, marginBottom: '30px', textAlign: 'center' }}>Our Partners</h1>
                 
                 {error && (
                     <div style={{ 
-                        backgroundColor: 'rgba(231, 76, 60, 0.2)', 
-                        border: '1px solid #e74c3c',
-                        color: '#e74c3c',
+                        backgroundColor: `${theme.colors.error}20`, 
+                        border: `1px solid ${theme.colors.error}`,
+                        color: theme.colors.error,
                         padding: '15px',
-                        borderRadius: '6px',
+                        borderRadius: '8px',
                         marginBottom: '20px',
                         textAlign: 'center'
                     }}>
@@ -64,7 +66,7 @@ function Partners() {
                     <div style={{ 
                         textAlign: 'center', 
                         padding: '40px 20px', 
-                        color: '#ffffff' 
+                        color: theme.colors.primaryText 
                     }}>
                         Loading partners...
                     </div>
@@ -72,7 +74,7 @@ function Partners() {
                     <div style={{ 
                         textAlign: 'center', 
                         padding: '40px 20px', 
-                        color: '#888' 
+                        color: theme.colors.mutedText 
                     }}>
                         <p>No partners to display yet.</p>
                         <p>Check back soon as we continue to grow our ecosystem!</p>
@@ -88,20 +90,21 @@ function Partners() {
                             <div
                                 key={partner.id}
                                 style={{
-                                    backgroundColor: '#2a2a2a',
+                                    background: theme.colors.cardGradient,
                                     borderRadius: '12px',
                                     padding: '25px',
-                                    border: '1px solid #3a3a3a',
-                                    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    boxShadow: theme.colors.cardShadow,
+                                    transition: 'all 0.3s ease',
                                     cursor: 'default'
                                 }}
                                 onMouseEnter={(e) => {
                                     e.currentTarget.style.transform = 'translateY(-5px)';
-                                    e.currentTarget.style.boxShadow = '0 8px 25px rgba(0, 0, 0, 0.3)';
+                                    e.currentTarget.style.boxShadow = `0 12px 35px ${theme.colors.accent}20`;
                                 }}
                                 onMouseLeave={(e) => {
                                     e.currentTarget.style.transform = 'translateY(0)';
-                                    e.currentTarget.style.boxShadow = 'none';
+                                    e.currentTarget.style.boxShadow = theme.colors.cardShadow;
                                 }}
                             >
                                 {/* Partner Logo and Name */}
@@ -121,7 +124,7 @@ function Partners() {
                                             height: '60px',
                                             borderRadius: '50%',
                                             objectFit: 'cover',
-                                            border: '2px solid #3a3a3a',
+                                            border: `2px solid ${theme.colors.border}`,
                                             flexShrink: 0
                                         }}
                                         onError={(e) => {
@@ -134,7 +137,7 @@ function Partners() {
                                         alignSelf: 'flex-start'
                                     }}>
                                         <h2 style={{
-                                            color: '#ffffff',
+                                            color: theme.colors.primaryText,
                                             margin: '0 0 8px 0',
                                             fontSize: '24px',
                                             fontWeight: 'bold',
@@ -156,21 +159,24 @@ function Partners() {
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         style={{
-                                                            backgroundColor: '#3498db',
-                                                            color: '#ffffff',
-                                                            padding: '4px 12px',
-                                                            borderRadius: '4px',
+                                                            background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
+                                                            color: theme.colors.primaryBg,
+                                                            padding: '6px 14px',
+                                                            borderRadius: '6px',
                                                             textDecoration: 'none',
                                                             fontSize: '12px',
-                                                            fontWeight: '500',
-                                                            transition: 'background-color 0.2s ease',
-                                                            display: 'inline-block'
+                                                            fontWeight: '600',
+                                                            transition: 'all 0.3s ease',
+                                                            display: 'inline-block',
+                                                            boxShadow: theme.colors.accentShadow
                                                         }}
                                                         onMouseEnter={(e) => {
-                                                            e.target.style.backgroundColor = '#2980b9';
+                                                            e.target.style.transform = 'translateY(-1px)';
+                                                            e.target.style.boxShadow = `0 6px 20px ${theme.colors.accent}40`;
                                                         }}
                                                         onMouseLeave={(e) => {
-                                                            e.target.style.backgroundColor = '#3498db';
+                                                            e.target.style.transform = 'translateY(0)';
+                                                            e.target.style.boxShadow = theme.colors.accentShadow;
                                                         }}
                                                     >
                                                         {link.title}
@@ -183,7 +189,7 @@ function Partners() {
 
                                 {/* Description */}
                                 <div style={{
-                                    color: '#cccccc',
+                                    color: theme.colors.secondaryText,
                                     fontSize: '16px',
                                     lineHeight: '1.6',
                                     marginBottom: '20px'

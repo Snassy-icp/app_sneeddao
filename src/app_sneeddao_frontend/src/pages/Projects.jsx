@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { createActor } from 'declarations/app_sneeddao_backend';
 import Header from '../components/Header';
+import { useTheme } from '../contexts/ThemeContext';
 
 function Projects() {
+    const { theme } = useTheme();
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -82,20 +84,21 @@ function Projects() {
         <div
             key={project.id}
             style={{
-                backgroundColor: '#2a2a2a',
+                background: theme.colors.cardGradient,
                 borderRadius: '12px',
                 padding: '24px',
-                border: '1px solid #3a3a3a',
+                border: `1px solid ${theme.colors.border}`,
+                boxShadow: theme.colors.cardShadow,
                 transition: 'all 0.3s ease',
                 cursor: 'default'
             }}
             onMouseEnter={(e) => {
-                e.target.style.backgroundColor = '#333333';
-                e.target.style.borderColor = '#4a4a4a';
+                e.target.style.transform = 'translateY(-3px)';
+                e.target.style.boxShadow = `0 8px 25px ${theme.colors.accent}20`;
             }}
             onMouseLeave={(e) => {
-                e.target.style.backgroundColor = '#2a2a2a';
-                e.target.style.borderColor = '#3a3a3a';
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = theme.colors.cardShadow;
             }}
         >
             {/* Header with logo, name, and links */}
@@ -110,13 +113,13 @@ function Projects() {
                                 height: '48px',
                                 borderRadius: '50%',
                                 objectFit: 'cover',
-                                border: '2px solid #4a4a4a'
+                                border: `2px solid ${theme.colors.border}`
                             }}
                         />
                     )}
                     <div style={{ flex: 1 }}>
                         <h3 style={{ 
-                            color: '#ffffff', 
+                            color: theme.colors.primaryText, 
                             margin: '0 0 4px 0',
                             fontSize: '20px',
                             fontWeight: '600'
@@ -124,12 +127,13 @@ function Projects() {
                             {project.name}
                         </h3>
                         <span style={{
-                            backgroundColor: '#4a4a4a',
-                            color: '#ffffff',
+                            backgroundColor: theme.colors.tertiaryBg,
+                            color: theme.colors.primaryText,
                             padding: '4px 12px',
                             borderRadius: '16px',
                             fontSize: '12px',
-                            fontWeight: '500'
+                            fontWeight: '500',
+                            border: `1px solid ${theme.colors.border}`
                         }}>
                             {getProjectTypeDisplay(project.project_type)}
                         </span>
@@ -146,20 +150,23 @@ function Projects() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 style={{
-                                    backgroundColor: '#3498db',
-                                    color: '#ffffff',
+                                    background: `linear-gradient(135deg, ${theme.colors.accent}, ${theme.colors.accent}dd)`,
+                                    color: theme.colors.primaryBg,
                                     textDecoration: 'none',
-                                    padding: '4px 12px',
-                                    borderRadius: '4px',
+                                    padding: '6px 14px',
+                                    borderRadius: '6px',
                                     fontSize: '12px',
-                                    fontWeight: '500',
-                                    transition: 'background-color 0.2s ease'
+                                    fontWeight: '600',
+                                    transition: 'all 0.3s ease',
+                                    boxShadow: theme.colors.accentShadow
                                 }}
                                 onMouseEnter={(e) => {
-                                    e.target.style.backgroundColor = '#2980b9';
+                                    e.target.style.transform = 'translateY(-1px)';
+                                    e.target.style.boxShadow = `0 6px 20px ${theme.colors.accent}40`;
                                 }}
                                 onMouseLeave={(e) => {
-                                    e.target.style.backgroundColor = '#3498db';
+                                    e.target.style.transform = 'translateY(0)';
+                                    e.target.style.boxShadow = theme.colors.accentShadow;
                                 }}
                             >
                                 {link.title}
@@ -171,7 +178,7 @@ function Projects() {
 
             {/* Description */}
             <p style={{ 
-                color: '#cccccc', 
+                color: theme.colors.secondaryText, 
                 margin: '0',
                 lineHeight: '1.6',
                 fontSize: '14px'
@@ -188,7 +195,7 @@ function Projects() {
             <div style={{ marginBottom: '40px' }}>
                 {showHeader && (
                     <h2 style={{ 
-                        color: '#ffffff', 
+                        color: theme.colors.primaryText, 
                         marginBottom: '24px',
                         fontSize: '24px',
                         fontWeight: '600'
@@ -209,12 +216,12 @@ function Projects() {
 
     if (loading) {
         return (
-            <div className='page-container'>
+            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
                 <Header />
                 <main className="wallet-container">
                     <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Projects</h1>
-                        <p style={{ color: '#888' }}>Loading projects...</p>
+                        <h1 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>Projects</h1>
+                        <p style={{ color: theme.colors.mutedText }}>Loading projects...</p>
                     </div>
                 </main>
             </div>
@@ -223,17 +230,17 @@ function Projects() {
 
     if (error) {
         return (
-            <div className='page-container'>
+            <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
                 <Header />
                 <main className="wallet-container">
                     <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                        <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Projects</h1>
+                        <h1 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>Projects</h1>
                         <div style={{
-                            backgroundColor: 'rgba(231, 76, 60, 0.2)',
-                            border: '1px solid #e74c3c',
-                            color: '#e74c3c',
+                            backgroundColor: `${theme.colors.error}20`,
+                            border: `1px solid ${theme.colors.error}`,
+                            color: theme.colors.error,
                             padding: '15px',
-                            borderRadius: '6px',
+                            borderRadius: '8px',
                             maxWidth: '400px',
                             margin: '0 auto'
                         }}>
@@ -249,12 +256,12 @@ function Projects() {
     const hasAnyProjects = projects.length > 0;
 
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main className="wallet-container">
                 <div style={{ marginBottom: '40px' }}>
                     <h1 style={{ 
-                        color: '#ffffff', 
+                        color: theme.colors.primaryText, 
                         marginBottom: '16px',
                         fontSize: '32px',
                         fontWeight: '700'
@@ -262,7 +269,7 @@ function Projects() {
                         Projects
                     </h1>
                     <p style={{ 
-                        color: '#888', 
+                        color: theme.colors.mutedText, 
                         fontSize: '16px',
                         lineHeight: '1.6',
                         maxWidth: '600px'
@@ -273,8 +280,8 @@ function Projects() {
 
                 {!hasAnyProjects ? (
                     <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                        <h2 style={{ color: '#ffffff', marginBottom: '16px' }}>No Projects Yet</h2>
-                        <p style={{ color: '#888' }}>
+                        <h2 style={{ color: theme.colors.primaryText, marginBottom: '16px' }}>No Projects Yet</h2>
+                        <p style={{ color: theme.colors.mutedText }}>
                             Projects will appear here as they are added to the ecosystem.
                         </p>
                     </div>
@@ -287,7 +294,7 @@ function Projects() {
                         {/* Forks under separate header */}
                         {groupedProjects.forks.length > 0 && (
                             <div style={{ 
-                                borderTop: '1px solid #3a3a3a', 
+                                borderTop: `1px solid ${theme.colors.border}`, 
                                 paddingTop: '40px',
                                 marginTop: '40px'
                             }}>
