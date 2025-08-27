@@ -202,7 +202,7 @@ function PositionLock() {
     return (
         <div className='page-container'>
             <Header customLogo="/sneedlock-logo4.png" />
-            <main className="wallet-container">
+            <main className="wallet-container centered">
                 {positions[0] && positions[0].details && (
                     <PositionCard
                         position={positions[0]}

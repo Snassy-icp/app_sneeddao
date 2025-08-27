@@ -113,7 +113,7 @@ function TokenLock() {
     return (
         <div className='page-container'>
             <Header customLogo="/sneedlock-logo4.png" />
-            <main className="wallet-container">
+            <main className="wallet-container centered">
                 {token && (
                     <TokenCard
                         token={token}

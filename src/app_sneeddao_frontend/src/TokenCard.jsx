@@ -63,7 +63,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     </div>
                     <div className="header-row-2">
                         <div className="amount-symbol">
-                            <span className="token-amount">{formatAmount(token.available || 0n, token.decimals)}</span>
+                            {!hideAvailable && (
+                                <span className="token-amount">{formatAmount(token.available || 0n, token.decimals)}</span>
+                            )}
                             <span className="token-symbol">{token.symbol}</span>
                         </div>
                         <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>

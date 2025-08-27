@@ -56,6 +56,13 @@ body {
     margin-top: 10px;
 }
 
+/* Center single cards on lock pages */
+.wallet-container.centered {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+}
+
 .card-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -82,6 +89,7 @@ body {
     text-align: left;
     box-sizing: border-box;
     min-width: 280px;
+    max-width: 800px;
     overflow: visible;
 }
 
