@@ -969,6 +969,7 @@ function SneedlockInfo() {
                                                                         principal={lock.owner} 
                                                                         displayInfo={principalDisplayInfo.get(lock.owner)}
                                                                         style={{ display: 'inline-flex' }}
+                                                                        short={true}
                                                                     />
                                                                 </div>
                                                             </div>
@@ -1028,6 +1029,7 @@ function SneedlockInfo() {
                                                                         principal={lock.owner} 
                                                                         displayInfo={principalDisplayInfo.get(lock.owner)}
                                                                         style={{ display: 'inline-flex' }}
+                                                                        short={true}
                                                                     />
                                                                 </div>
                                                             </div>

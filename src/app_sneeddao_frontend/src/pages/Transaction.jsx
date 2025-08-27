@@ -443,6 +443,7 @@ function Transaction() {
                             principal={account.owner}
                             displayInfo={account.owner ? principalDisplayInfo.get(account.owner.toString()) : null}
                             showCopyButton={true}
+                            short={true}
                         />
                     </div>
                     {account.subaccount && account.subaccount.length > 0 && (

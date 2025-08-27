@@ -15,6 +15,7 @@ import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/Pr
 import { Principal } from '@dfinity/principal';
 import { calculateVotingPower, formatVotingPower } from './utils/VotingPowerUtils';
 import NeuronInput from './components/NeuronInput';
+import NeuronDisplay from './components/NeuronDisplay';
 
 // Add keyframes for spin animation after imports
 const spinKeyframes = `
@@ -708,6 +709,7 @@ function Neuron() {
                                                 principal={Principal.fromText(getOwnerPrincipals(neuronData)[0])}
                                                 displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuronData)[0])}
                                                 showCopyButton={true}
+                                                short={true}
                                             />
                                         </div>
                                     )}
@@ -728,6 +730,7 @@ function Neuron() {
                                                     principal={p.principal}
                                                     displayInfo={principalDisplayInfo.get(p.principal?.toString())}
                                                     showCopyButton={true}
+                                                    short={true}
                                                 />
                                             </div>
                                         ))
@@ -791,7 +794,13 @@ function Neuron() {
                                                                                 gap: '8px',
                                                                                 padding: '4px 0'
                                                                             }}>
-                                                                                {formatNeuronIdLink(followeeIdHex, selectedSnsRoot, getDisplayName)}
+                                                                                <NeuronDisplay
+                                                                                    neuronId={followeeIdHex}
+                                                                                    snsRoot={selectedSnsRoot}
+                                                                                    displayInfo={getDisplayName(followeeIdHex)}
+                                                                                    showCopyButton={true}
+                                                                                    enableContextMenu={true}
+                                                                                />
                                                                             </div>
                                                                         );
                                                                     })}
@@ -839,7 +848,13 @@ function Neuron() {
                                                                                 gap: '8px',
                                                                                 padding: '4px 0'
                                                                             }}>
-                                                                                {formatNeuronIdLink(followeeIdHex, selectedSnsRoot, getDisplayName)}
+                                                                                <NeuronDisplay
+                                                                                    neuronId={followeeIdHex}
+                                                                                    snsRoot={selectedSnsRoot}
+                                                                                    displayInfo={getDisplayName(followeeIdHex)}
+                                                                                    showCopyButton={true}
+                                                                                    enableContextMenu={true}
+                                                                                />
                                                                                 {followee.alias && followee.alias[0] && (
                                                                                     <span style={{ 
                                                                                         color: theme.colors.mutedText,
