@@ -233,8 +233,15 @@ const Tips = () => {
 
         return (
             <tr key={tip.id} className={`tip-row ${isNew ? 'tip-new' : ''}`}>
-                <td className="tip-amount" style={{ textAlign: 'left' }}>
-                    <div className="tip-amount-container" style={{ justifyContent: 'flex-start', alignItems: 'center', display: 'flex' }}>
+                <td className="tip-amount" style={{ textAlign: 'left !important', padding: '1rem' }}>
+                    <div className="tip-amount-container" style={{ 
+                        justifyContent: 'flex-start !important', 
+                        alignItems: 'center', 
+                        display: 'flex !important',
+                        width: '100%',
+                        margin: 0,
+                        padding: 0
+                    }}>
                         {isLoadingToken ? (
                             <span className="loading-indicator">⏳</span>
                         ) : logo ? (
@@ -250,8 +257,9 @@ const Tips = () => {
                 <td className="tip-principal">
                     <PrincipalDisplay 
                         principal={otherPrincipalStr}
+                        displayInfo={principalDisplayInfo.get(otherPrincipalStr)}
                         showCopyButton={true}
-                        showContextMenu={true}
+                        enableContextMenu={true}
                         maxLength={20}
                     />
                 </td>

@@ -188,3 +188,6 @@
   - **Vote Score Contrast**: Made up/down vote scores dark text for better readability
   - **Reply Context**: Made "in reply to" text dark and integrated PrincipalDisplay for "Reply from"
   - **Text Wrapping**: Prevented breaking between "Post"/"Thread" and their IDs using white-space: nowrap
+  - **PrincipalDisplay Fix**: Fixed component to properly display names by passing displayInfo prop
+  - **Context Menu Fix**: Fixed click-through issue by adding proper event propagation handling
+  - **Alignment Override**: Added stronger CSS overrides with !important for logo/amount alignment

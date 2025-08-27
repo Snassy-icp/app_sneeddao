@@ -335,12 +335,15 @@ const Posts = () => {
                         {isReply && (
                             <span className="reply-indicator" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 Reply from 
-                                <PrincipalDisplay 
-                                    principal={post.created_by.toString()}
-                                    showCopyButton={true}
-                                    showContextMenu={true}
-                                    maxLength={20}
-                                />
+                                <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                                    <PrincipalDisplay 
+                                        principal={post.created_by.toString()}
+                                        displayInfo={principalDisplayInfo.get(post.created_by.toString())}
+                                        showCopyButton={true}
+                                        enableContextMenu={true}
+                                        maxLength={20}
+                                    />
+                                </div>
                             </span>
                         )}
                         {!isReply && post.title && post.title.length > 0 && (
