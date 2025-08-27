@@ -93,13 +93,13 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                             </a>
 
                             {!isLockedPosition(positionDetails) && (
-                                <button
-                                    onClick={() =>
-                                        openSendLiquidityPositionModal({
-                                            swapCanisterId: position.swapCanisterId,
-                                            id: positionDetails.positionId,
-                                            frontendOwnership: positionDetails.frontendOwnership,
-                                            symbols: position.token0Symbol + '/' + position.token1Symbol})}
+                                    <button
+                                        onClick={() =>
+                                            openSendLiquidityPositionModal({
+                                                swapCanisterId: position.swapCanisterId,
+                                                id: positionDetails.positionId,
+                                                frontendOwnership: positionDetails.frontendOwnership,
+                                                symbols: position.token0Symbol + '/' + position.token1Symbol})}
                                     style={{
                                         background: theme.colors.accent,
                                         color: theme.colors.primaryBg,
@@ -127,7 +127,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                         style={{ width: '14px', height: '14px' }}
                                     />
                                     Send
-                                </button>
+                                    </button>
                             )}
 
                         </div>
@@ -305,97 +305,99 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 </a>
                             </div>
                         )}
-                        <div className="lock-item">
+                <div className="lock-item">
                             <div className="lock-details">
                                 <span className="lock-label">Lock Expires:</span>
                                 <span className="lock-value">
-                                    {isLockedPosition(positionDetails)
-                                        ? bigDateToReadable(positionDetails.lockInfo.expiry)
-                                        : 'No lock'}
+                    {isLockedPosition(positionDetails)
+                        ? bigDateToReadable(positionDetails.lockInfo.expiry)
+                        : 'No lock'}
                                 </span>
                             </div>
-                        </div>
-                        {positionDetails.owner && (
+                </div>
+                {positionDetails.owner && (
                             <div className="lock-item" style={{ marginTop: '10px' }}>
                                 <div className="lock-details">
                                     <span className="lock-label">SneedLock Owner:</span>
                                     <span className="lock-value">
-                                        <PrincipalDisplay 
-                                            principal={positionDetails.owner}
-                                            showCopyButton={true}
-                                            displayInfo={getPrincipalDisplayInfo(positionDetails.owner)}
-                                        />
+                            <PrincipalDisplay 
+                                principal={positionDetails.owner}
+                                showCopyButton={true}
+                                            short={true}
+                                            enableContextMenu={true}
+                                displayInfo={getPrincipalDisplayInfo(positionDetails.owner)}
+                            />
                                     </span>
                                 </div>
-                            </div>
-                        )}
-                        {positionDetails.icpSwapOwner && (
+                        </div>
+                )}
+                {positionDetails.icpSwapOwner && (
                             <div className="lock-item" style={{ marginTop: '10px' }}>
                                 <div className="lock-details">
                                     <span className="lock-label" style={{ 
                                         color: theme.colors.mutedText,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px'
-                                    }}>
-                                        <span>ICPSwap Owner</span>
-                                        {positionDetails.owner && (
-                                            <span style={{
-                                                padding: '2px 8px',
-                                                borderRadius: '4px',
-                                                fontSize: '12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                        }}>
+                            <span>ICPSwap Owner</span>
+                            {positionDetails.owner && (
+                                <span style={{
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '12px',
                                                 background: 
                                                     positionDetails.ownershipStatus === 'match' ? `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}10)` :
                                                     positionDetails.ownershipStatus === 'locked' ? `linear-gradient(135deg, ${theme.colors.success}20, ${theme.colors.success}10)` :
                                                     `linear-gradient(135deg, ${theme.colors.error}20, ${theme.colors.error}10)`,
-                                                color: 
+                                    color: 
                                                     positionDetails.ownershipStatus === 'match' ? theme.colors.success :
                                                     positionDetails.ownershipStatus === 'locked' ? theme.colors.success :
                                                     theme.colors.error,
-                                                display: 'flex',
-                                                alignItems: 'center',
+                                    display: 'flex',
+                                    alignItems: 'center',
                                                 gap: '4px',
                                                 border: `1px solid ${
                                                     positionDetails.ownershipStatus === 'match' ? theme.colors.success :
                                                     positionDetails.ownershipStatus === 'locked' ? theme.colors.success :
                                                     theme.colors.error
                                                 }30`
-                                            }}>
-                                                {positionDetails.ownershipStatus === 'match' ? '✓ Match!' :
-                                                 positionDetails.ownershipStatus === 'locked' ? '✓ Match!' :
-                                                 '✗ Mismatch!'}
-                                            </span>
-                                        )}
+                                }}>
+                                    {positionDetails.ownershipStatus === 'match' ? '✓ Match!' :
+                                     positionDetails.ownershipStatus === 'locked' ? '✓ Match!' :
+                                     '✗ Mismatch!'}
+                                </span>
+                            )}
                                     </span>
                                     <span className="lock-value" style={{ 
-                                        display: 'flex', 
-                                        alignItems: 'center', 
-                                        gap: '8px',
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '8px',
                                         color: theme.colors.primaryText,
-                                        fontSize: '14px'
-                                    }}>
-                                        <div title={positionDetails.icpSwapOwner} style={{ cursor: 'help' }}>
-                                            {truncateText(positionDetails.icpSwapOwner)}
-                                        </div>
-                                        <button 
-                                            onClick={() => copyToClipboard(positionDetails.icpSwapOwner)}
-                                            style={{
-                                                background: 'none',
-                                                border: 'none',
+                            fontSize: '14px'
+                        }}>
+                            <div title={positionDetails.icpSwapOwner} style={{ cursor: 'help' }}>
+                                {truncateText(positionDetails.icpSwapOwner)}
+                            </div>
+                            <button 
+                                onClick={() => copyToClipboard(positionDetails.icpSwapOwner)}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
                                                 color: theme.colors.mutedText,
-                                                cursor: 'pointer',
-                                                padding: '4px',
-                                                fontSize: '12px'
-                                            }}
-                                            title="Copy to clipboard"
-                                        >
-                                            📋
-                                        </button>
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    fontSize: '12px'
+                                }}
+                                title="Copy to clipboard"
+                            >
+                                📋
+                            </button>
                                     </span>
                                 </div>
                             </div>
                         )}
-                    </div>
+                        </div>
                 )}
             </div>
                 </>
