@@ -235,13 +235,16 @@ const Tips = () => {
             <tr key={tip.id} className={`tip-row ${isNew ? 'tip-new' : ''}`}>
                 <td className="tip-amount" style={{ textAlign: 'left !important', padding: '1rem' }}>
                     <div className="tip-amount-container" style={{ 
-                        justifyContent: 'flex-start !important', 
-                        alignItems: 'center', 
-                        display: 'flex !important',
-                        width: '100%',
-                        margin: 0,
-                        padding: 0
-                    }}>
+                         justifyContent: 'flex-start !important', 
+                         alignItems: 'center !important', 
+                         display: 'flex !important',
+                         flexDirection: 'row !important',
+                         width: '100%',
+                         margin: 0,
+                         padding: 0,
+                         gap: '0.5rem',
+                         whiteSpace: 'nowrap'
+                     }}>
                         {isLoadingToken ? (
                             <span className="loading-indicator">⏳</span>
                         ) : logo ? (
@@ -249,9 +252,9 @@ const Tips = () => {
                         ) : (
                             <span className="token-fallback">💎</span>
                         )}
-                        <span className="amount-text">
-                            {isLoadingToken ? 'Loading...' : formatTokenAmount(tip.amount, tokenId)}
-                        </span>
+                                                 <span className="amount-text" style={{ color: '#ffd700' }}>
+                             {isLoadingToken ? 'Loading...' : formatTokenAmount(tip.amount, tokenId)}
+                         </span>
                     </div>
                 </td>
                 <td className="tip-principal">
@@ -260,6 +263,7 @@ const Tips = () => {
                         displayInfo={principalDisplayInfo.get(otherPrincipalStr)}
                         showCopyButton={true}
                         enableContextMenu={true}
+                        short={true}
                         maxLength={20}
                     />
                 </td>
@@ -337,9 +341,9 @@ const Tips = () => {
                         ) : (
                             <span style={{ fontSize: '20px' }}>💎</span>
                         )}
-                        <span style={{ color: theme.colors.primaryText }}>
-                            {isLoadingToken ? 'Loading...' : formatTokenAmount(tip.amount, tokenId)}
-                        </span>
+                                                 <span style={{ color: '#ffd700' }}>
+                             {isLoadingToken ? 'Loading...' : formatTokenAmount(tip.amount, tokenId)}
+                         </span>
                     </div>
                 </div>
 

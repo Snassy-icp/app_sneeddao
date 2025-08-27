@@ -349,7 +349,7 @@ const Posts = () => {
                         {!isReply && post.title && post.title.length > 0 && (
                             <span className="post-title" style={{ color: theme.colors.primaryText }}>{post.title[0]}</span>
                         )}
-                        <span className="post-date">{formatDate(post.created_at)}</span>
+                        <span className="post-date" style={{ color: theme.colors.secondaryText }}>{formatDate(post.created_at)}</span>
                     </div>
                     <div className="post-scores">
                         <span className={`score ${isNegative ? 'negative' : 'positive'}`}>
@@ -430,7 +430,7 @@ const Posts = () => {
                         {thread.title && (
                             <span className="post-title" style={{ color: theme.colors.primaryText }}>{thread.title}</span>
                         )}
-                        <span className="post-date">{formatDate(thread.created_at)}</span>
+                        <span className="post-date" style={{ color: theme.colors.secondaryText }}>{formatDate(thread.created_at)}</span>
                     </div>
                     <div className="post-scores">
                         {postCount !== undefined ? (

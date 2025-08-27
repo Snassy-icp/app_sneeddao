@@ -191,3 +191,12 @@
   - **PrincipalDisplay Fix**: Fixed component to properly display names by passing displayInfo prop
   - **Context Menu Fix**: Fixed click-through issue by adding proper event propagation handling
   - **Alignment Override**: Added stronger CSS overrides with !important for logo/amount alignment
+  - **Card View PrincipalDisplay**: Integrated PrincipalDisplay component in Tips card view for consistency
+  - **Nuclear Alignment Fix**: Replaced flexbox with CSS Grid for guaranteed left alignment of logo/amount
+  - **No Line Breaking**: Added whiteSpace: nowrap to prevent logo/amount/symbol from breaking across lines
+  - **Logo Padding Fix**: Removed CSS class dependencies and set explicit margin/padding to 0 for logos
+  - **Text Color Fix**: Made amount and symbol text dark using theme.colors.primaryText
+  - **Tight Grid Layout**: Reduced gap to 4px and used width: fit-content for compact display
+  - **Posts Date Color**: Made post card dates dark text using theme.colors.secondaryText
+  - **Table-Card Consistency**: Replaced complex grid system with exact same flexbox layout as card view
+  - **Nuclear Left Alignment**: Used absolute positioning to force left alignment, bypassing all CSS inheritance
