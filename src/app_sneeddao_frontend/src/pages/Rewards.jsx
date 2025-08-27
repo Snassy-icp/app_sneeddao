@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import Header from '../components/Header';
@@ -9,17 +10,17 @@ import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 import Notification from '../Notification';
 import HotkeyNeurons from '../components/HotkeyNeurons';
 
-// Styles
-const styles = {
+// Theme-aware styles function
+const getStyles = (theme) => ({
     section: {
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         borderRadius: '8px',
         padding: '20px',
         marginTop: '20px',
-        color: '#ffffff'
+        color: theme.colors.primaryText
     },
     heading: {
-        color: '#ffffff',
+        color: theme.colors.primaryText,
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
@@ -32,16 +33,16 @@ const styles = {
         width: '20px',
         height: '20px',
         borderRadius: '50%',
-        backgroundColor: '#3a3a3a',
-        color: '#888',
+        backgroundColor: theme.colors.tertiaryBg,
+        color: theme.colors.mutedText,
         fontSize: '14px',
         cursor: 'help'
     },
     spinner: {
         width: '20px',
         height: '20px',
-        border: '2px solid #f3f3f3',
-        borderTop: '2px solid #3498db',
+        border: `2px solid ${theme.colors.border}`,
+        borderTop: `2px solid ${theme.colors.accent}`,
         borderRadius: '50%',
         animation: 'spin 1s linear infinite'
     },
@@ -53,7 +54,7 @@ const styles = {
     expandButton: {
         background: 'none',
         border: 'none',
-        color: '#3498db',
+        color: theme.colors.accent,
         cursor: 'pointer',
         fontSize: '20px',
         padding: '0 10px'
@@ -67,16 +68,16 @@ const styles = {
     statusItem: {
         display: 'flex',
         justifyContent: 'space-between',
-        backgroundColor: '#3a3a3a',
+        backgroundColor: theme.colors.tertiaryBg,
         padding: '10px 15px',
         borderRadius: '4px',
-        color: '#ffffff'
+        color: theme.colors.primaryText
     },
     noNeuronsMessage: {
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         padding: '20px',
         borderRadius: '8px',
-        color: '#ffffff'
+        color: theme.colors.primaryText
     },
     instructionsList: {
         marginTop: '15px',
@@ -84,13 +85,13 @@ const styles = {
         lineHeight: '1.6'
     },
     principalCode: {
-        backgroundColor: '#3a3a3a',
+        backgroundColor: theme.colors.tertiaryBg,
         padding: '4px 8px',
         borderRadius: '4px',
         fontFamily: 'monospace',
         wordBreak: 'break-all'
     }
-};
+});
 
 // Add keyframes for spin animation
 const spinKeyframes = `
@@ -130,6 +131,7 @@ const formatE8s = (e8s) => {
 
 function Rewards() {
     const { identity, isAuthenticated, login } = useAuth();
+    const { theme } = useTheme();
     const [userBalances, setUserBalances] = useState([]);
     const [loadingUserBalances, setLoadingUserBalances] = useState(true);
     const [isClaimHistoryExpanded, setIsClaimHistoryExpanded] = useState(false);
@@ -357,10 +359,11 @@ function Rewards() {
         return new Date(Number(timestamp) / 1_000_000).toLocaleString();
     };
 
-    // Add styles for event items
+    // Theme-aware event styles
+    const styles = getStyles(theme);
     const eventStyles = {
         eventItem: {
-            backgroundColor: '#3a3a3a',
+            backgroundColor: theme.colors.tertiaryBg,
             padding: '15px',
             borderRadius: '6px'
         },
@@ -374,15 +377,15 @@ function Rewards() {
             display: 'flex',
             flexDirection: 'column',
             gap: '5px',
-            color: '#888'
+            color: theme.colors.mutedText
         }
     };
 
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main className="rll-container">
-                <h1 style={{ color: '#ffffff', marginBottom: '20px' }}>Sneed Rewards</h1>
+                <h1 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>Sneed Rewards</h1>
                 
                 {!isAuthenticated ? (
                     <section style={styles.section}>
@@ -398,12 +401,12 @@ function Rewards() {
                         <div style={{
                             textAlign: 'center',
                             padding: '20px',
-                            backgroundColor: '#2a2a2a',
+                            backgroundColor: theme.colors.secondaryBg,
                             borderRadius: '8px',
                             marginTop: '20px'
                         }}>
                             <p style={{ 
-                                color: '#ffffff', 
+                                color: theme.colors.primaryText, 
                                 marginBottom: '20px',
                                 fontSize: '1.1em'
                             }}>
@@ -412,8 +415,8 @@ function Rewards() {
                             <button 
                                 onClick={login}
                                 style={{
-                                    backgroundColor: '#3498db',
-                                    color: 'white',
+                                    backgroundColor: theme.colors.accent,
+                                    color: theme.colors.primaryText,
                                     border: 'none',
                                     padding: '10px 20px',
                                     borderRadius: '4px',
@@ -439,14 +442,14 @@ function Rewards() {
                                 </span>
                             </h2>
                             <p style={{ 
-                                color: '#ffffff', 
+                                color: theme.colors.primaryText, 
                                 marginBottom: '20px',
                                 fontSize: '1.1em'
                             }}>
                                 Claimed rewards are available in your SneedLock wallet <Link 
                                     to="/wallet"
                                     style={{ 
-                                        color: '#3498db',
+                                        color: theme.colors.accent,
                                         textDecoration: 'none',
                                         fontWeight: 'bold'
                                     }}
@@ -462,7 +465,7 @@ function Rewards() {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                                     {userBalances.map(([tokenId, balance]) => (
                                         <div key={tokenId.toString()} style={{
-                                            backgroundColor: '#3a3a3a',
+                                            backgroundColor: theme.colors.tertiaryBg,
                                             padding: '15px',
                                             borderRadius: '6px',
                                             display: 'flex',
@@ -470,10 +473,10 @@ function Rewards() {
                                             alignItems: 'center'
                                         }}>
                                             <div>
-                                                <div style={{ fontSize: '18px', marginBottom: '5px' }}>
+                                                <div style={{ fontSize: '18px', marginBottom: '5px', color: theme.colors.primaryText }}>
                                                     {tokenSymbols[tokenId.toString()] || tokenId.toString()}
                                                 </div>
-                                                <div style={{ color: '#888' }}>
+                                                <div style={{ color: theme.colors.mutedText }}>
                                                     Balance: {formatBalance(balance, 8)}
                                                 </div>
                                             </div>
@@ -481,8 +484,8 @@ function Rewards() {
                                                 onClick={() => handleClaimRewards(tokenId, balance)}
                                                 disabled={!balance || Number(balance) === 0 || claimingTokens[tokenId.toString()]}
                                                 style={{
-                                                    backgroundColor: '#3498db',
-                                                    color: '#ffffff',
+                                                    backgroundColor: theme.colors.accent,
+                                                    color: theme.colors.primaryText,
                                                     border: 'none',
                                                     borderRadius: '4px',
                                                     padding: '8px 16px',
@@ -506,7 +509,7 @@ function Rewards() {
                                     ))}
                                 </div>
                             ) : (
-                                <p>No rewards available to claim</p>
+                                <p style={{ color: theme.colors.mutedText }}>No rewards available to claim</p>
                             )}
                         </section>
 
@@ -547,13 +550,13 @@ function Rewards() {
                                                     <div key={seqNum} style={eventStyles.eventItem}>
                                                         <div style={eventStyles.eventHeader}>
                                                             <span style={{
-                                                                color: status === 'Success' ? '#2ecc71' : 
-                                                                       status === 'Pending' ? '#f1c40f' : 
-                                                                       status === 'Failed' ? '#e74c3c' : '#ffffff'
+                                                                color: status === 'Success' ? theme.colors.success : 
+                                                                       status === 'Pending' ? theme.colors.warning : 
+                                                                       status === 'Failed' ? theme.colors.error : theme.colors.primaryText
                                                             }}>
                                                                 {status}
                                                             </span>
-                                                            <span>{formatNanoTimestamp(latestEvent.timestamp)}</span>
+                                                            <span style={{ color: theme.colors.primaryText }}>{formatNanoTimestamp(latestEvent.timestamp)}</span>
                                                         </div>
                                                         <div style={eventStyles.eventDetails}>
                                                             <span>Sequence: {seqNum}</span>
@@ -564,7 +567,7 @@ function Rewards() {
                                                             )}
                                                             {events.map((event, idx) => (
                                                                 event.error_message && event.error_message.length > 0 && (
-                                                                    <span key={idx} style={{ color: '#e74c3c' }}>
+                                                                    <span key={idx} style={{ color: theme.colors.error }}>
                                                                         Message: {event.error_message[0]}
                                                                     </span>
                                                                 )
@@ -575,7 +578,7 @@ function Rewards() {
                                             })}
                                     </div>
                                 ) : (
-                                    <p>No claim history available</p>
+                                    <p style={{ color: theme.colors.mutedText }}>No claim history available</p>
                                 )
                             )}
                         </section>
