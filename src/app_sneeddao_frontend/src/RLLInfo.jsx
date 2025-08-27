@@ -573,10 +573,12 @@ const TokenAnimationManager = ({ edges, nodes }) => {
     );
 };
 
-// Update the TooltipOverlay to accept tooltip as a prop
-const TooltipOverlay = ({ tooltip }) => {
+// Update the TooltipOverlay to accept tooltip and theme as props
+const TooltipOverlay = ({ tooltip, theme }) => {
     // Only render if tooltip exists and has content
-    return (tooltip && tooltip.content) ? (
+    if (!tooltip || !tooltip.content || !theme) return null;
+    
+    return (
         <div
             style={{
                 position: 'fixed',
@@ -584,13 +586,13 @@ const TooltipOverlay = ({ tooltip }) => {
                 top: `${tooltip.y + 10}px`,
                 zIndex: 1000,
                 maxWidth: '300px',
-                background: theme.colors.modalBg,
+                background: theme.colors?.modalBg || 'rgba(0, 0, 0, 0.9)',
                 color: 'white',
                 padding: '12px 16px',
                 borderRadius: '6px',
                 fontSize: '13px',
                 lineHeight: '1.4',
-                boxShadow: theme.colors.cardShadow,
+                boxShadow: theme.colors?.cardShadow || '0 4px 6px rgba(0, 0, 0, 0.1)',
                 pointerEvents: 'none',
                 border: '1px solid rgba(255, 255, 255, 0.1)',
                 wordWrap: 'break-word',
@@ -600,7 +602,7 @@ const TooltipOverlay = ({ tooltip }) => {
         >
             {tooltip.content}
         </div>
-    ) : null;
+    );
 };
 
 // Node definitions with their metadata
@@ -2323,7 +2325,7 @@ function RLLInfo() {
                         background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                         borderRadius: '6px'
                     }}>
-                        <h4 style={{ margin: '0 0 15px 0', color: '#9b59b6' }}>Token Balances and Reconciliation</h4>
+                        <h4 style={{ margin: '0 0 15px 0', color: theme.colors.accent }}>Token Balances and Reconciliation</h4>
                         {isLoadingRllData ? (
                             <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
                                 <div style={styles.spinner} />
@@ -2379,7 +2381,7 @@ function RLLInfo() {
                 <div style={{ marginBottom: '8px' }}>{node.data.description}</div>
                 {node.data.inputs && (
                     <div>
-                        <div style={{ color: '#2ecc71', marginBottom: '4px' }}>Inputs:</div>
+                        <div style={{ color: theme.colors.success, marginBottom: '4px' }}>Inputs:</div>
                         <ul style={{ margin: '0 0 8px 16px', padding: 0 }}>
                             {node.data.inputs.map((input, i) => (
                                 <li key={i}>{input}</li>
@@ -2499,7 +2501,7 @@ function RLLInfo() {
                                 <div style={{ color: theme.colors.accent }}>Total Current Position:</div>
                                 <div>• {(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} SNEED</div>
                                 <div>• {(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} ICP</div>
-                                <div style={{ color: '#2ecc71', marginTop: '8px' }}>Total Unclaimed Rewards:</div>
+                                <div style={{ color: theme.colors.success, marginTop: '8px' }}>Total Unclaimed Rewards:</div>
                                 <div>• {(Number(lpPositions.totals.tokensOwed0) / 1e8).toFixed(4)} SNEED</div>
                                 <div>• {(Number(lpPositions.totals.tokensOwed1) / 1e8).toFixed(4)} ICP</div>
                             </>
@@ -2575,7 +2577,7 @@ function RLLInfo() {
             <div>
                 <div style={{ marginBottom: '8px' }}>{edge.data?.description}</div>
                 {edge.data?.token && (
-                    <div style={{ color: '#f1c40f' }}>Token: {edge.data.token}</div>
+                    <div style={{ color: theme.colors.warning }}>Token: {edge.data.token}</div>
                 )}
                 {edge.data?.percentage && (
                     <div style={{ color: theme.colors.accent }}>Percentage: {edge.data.percentage}</div>
@@ -2945,13 +2947,13 @@ function RLLInfo() {
                         }}>
                             {/* Grand Total in USD */}
                             <div style={{
-                                backgroundColor: '#1a1a1a',
+                                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                 padding: '20px',
                                 borderRadius: '6px',
                                 border: `1px solid ${theme.colors.warning}`,
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <h3 style={{ color: theme.colors.warning, marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                     <span>Total Value</span>
                                     <span 
                                         style={styles.infoIcon} 
@@ -3039,13 +3041,13 @@ function RLLInfo() {
 
                             {/* Market Cap Card */}
                             <div style={{
-                                backgroundColor: '#1a1a1a',
+                                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                 padding: '20px',
                                 borderRadius: '6px',
                                 border: `1px solid ${theme.colors.success}`,
                                 marginBottom: '20px'
                             }}>
-                                <h3 style={{ color: '#2ecc71', marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <h3 style={{ color: theme.colors.success, marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                     <span>Market Cap & Supply</span>
                                     <span 
                                         style={styles.infoIcon} 
@@ -3070,14 +3072,14 @@ function RLLInfo() {
 
                                         {/* Fully Diluted Valuation */}
                                         <div style={{
-                                            backgroundColor: '#1a1a1a',
+                                            background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                             padding: '15px',
                                             borderRadius: '6px',
                                             border: `1px solid ${theme.colors.success}`,
                                             marginBottom: '20px'
                                         }}>
-                                            <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Fully Diluted Valuation (FDV):</div>
-                                            <div style={{ fontSize: '1.2em', color: '#2ecc71' }}>
+                                            <div style={{ color: theme.colors.success, marginBottom: '5px' }}>Fully Diluted Valuation (FDV):</div>
+                                            <div style={{ fontSize: '1.2em', color: theme.colors.success }}>
                                                 ${formatUSD(getUSDValue(getTotalSupply(), 8, 'SNEED'))}
                                             </div>
                                         </div>
@@ -3108,10 +3110,10 @@ function RLLInfo() {
                                         <div style={{ 
                                             marginBottom: '20px',
                                             padding: '10px',
-                                            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                                            background: `linear-gradient(135deg, ${theme.colors.success}15, ${theme.colors.success}05)`, border: `1px solid ${theme.colors.success}30`,
                                             borderRadius: '4px'
                                         }}>
-                                            <div style={{ color: '#2ecc71', marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <div style={{ color: theme.colors.success, marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                 <span>Total Value Locked (TVL):</span>
                                                 <span 
                                                     style={styles.infoIcon} 
@@ -3121,7 +3123,7 @@ function RLLInfo() {
                                                 </span>
                                             </div>
 
-                                            <div style={{ fontSize: '1.2em', color: '#2ecc71' }}>
+                                            <div style={{ fontSize: '1.2em', color: theme.colors.success }}>
                                                 ${formatUSD(getTVL())}
                                                 <div style={{ fontSize: '0.9em', color: theme.colors.mutedText, marginTop: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                     <span>TVL/MCap: {(getTVL() / (getUSDValue(getCirculatingSupply(), 8, 'SNEED') || 1)).toFixed(2)}x</span>
@@ -3146,10 +3148,10 @@ function RLLInfo() {
                                         {/* Circulating Market Cap */}
                                         <div style={{ 
                                             padding: '10px',
-                                            backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                                            background: `linear-gradient(135deg, ${theme.colors.success}15, ${theme.colors.success}05)`, border: `1px solid ${theme.colors.success}30`,
                                             borderRadius: '4px'
                                         }}>
-                                            <div style={{ color: '#2ecc71', marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <div style={{ color: theme.colors.success, marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                 <span>Circulating Market Cap:</span>
                                                 <span 
                                                     style={styles.infoIcon} 
@@ -3158,7 +3160,7 @@ function RLLInfo() {
                                                     i
                                                 </span>
                                             </div>
-                                            <div style={{ fontSize: '1.2em', color: '#2ecc71' }}>
+                                            <div style={{ fontSize: '1.2em', color: theme.colors.success }}>
                                                 ${formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED'))}
                                             </div>
                                         </div>
@@ -3168,7 +3170,7 @@ function RLLInfo() {
 
                             {/* ICP Assets */}
                             <div style={{
-                                backgroundColor: '#1a1a1a',
+                                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                 padding: '20px',
                                 borderRadius: '6px',
                                 border: `1px solid ${theme.colors.accent}`,
@@ -3417,7 +3419,7 @@ function RLLInfo() {
 
                             {/* SNEED Assets */}
                             <div style={{
-                                backgroundColor: '#1a1a1a',
+                                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                 padding: '20px',
                                 borderRadius: '6px',
                                 border: `1px solid ${theme.colors.success}`,
@@ -3426,7 +3428,7 @@ function RLLInfo() {
                                 <h3 
                                     onClick={() => toggleSection('sneedAssets')}
                                     style={{ 
-                                        color: '#2ecc71', 
+                                        color: theme.colors.success, 
                                         marginTop: 0,
                                         marginBottom: '15px',
                                         display: 'flex', 
@@ -3555,7 +3557,7 @@ function RLLInfo() {
                                     paddingTop: '15px',
                                     borderTop: '1px solid #2ecc71'
                                 }}>
-                                    <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Total SNEED:</div>
+                                    <div style={{ color: theme.colors.success, marginBottom: '5px' }}>Total SNEED:</div>
                                     <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
                                         {((Number(treasuryBalances.sneed) + 
                                            Number(lpPositions.totals.token0Amount) +
@@ -3577,7 +3579,7 @@ function RLLInfo() {
 
                             {/* Other Tokens */}
                             <div style={{
-                                backgroundColor: '#1a1a1a',
+                                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                 padding: '20px',
                                 borderRadius: '6px',
                                 border: '1px solid #9b59b6',
@@ -3586,7 +3588,7 @@ function RLLInfo() {
                                 <h3 
                                     onClick={() => toggleSection('otherTokens')}
                                     style={{ 
-                                        color: '#9b59b6', 
+                                        color: theme.colors.accent, 
                                         marginTop: 0,
                                         marginBottom: '15px',
                                         display: 'flex', 
@@ -3665,7 +3667,7 @@ function RLLInfo() {
                                                 {/* RLL Distribution Balances */}
                                                 <div>
                                                     <div style={{ 
-                                                        color: '#9b59b6', 
+                                                        color: theme.colors.accent, 
                                                         fontSize: '1.1em', 
                                                         fontWeight: 'bold',
                                                         marginBottom: '15px',
@@ -3710,9 +3712,9 @@ function RLLInfo() {
                                 <div style={{
                                     marginTop: '15px',
                                     paddingTop: '15px',
-                                    borderTop: '1px solid #9b59b6'
+                                    borderTop: `1px solid ${theme.colors.accent}`
                                 }}>
-                                    <div style={{ color: '#9b59b6', marginBottom: '5px' }}>Total Value:</div>
+                                    <div style={{ color: theme.colors.accent, marginBottom: '5px' }}>Total Value:</div>
                                     <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
                                         ${formatUSD(getOtherTokensUSDTotal())}
                                     </div>
@@ -3721,7 +3723,7 @@ function RLLInfo() {
 
                             {/* Other Positions */}
                             <div style={{
-                                backgroundColor: '#1a1a1a',
+                                background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                 padding: '20px',
                                 borderRadius: '6px',
                                 border: '1px solid #9b59b6',
@@ -3730,7 +3732,7 @@ function RLLInfo() {
                                 <h3 
                                     onClick={() => toggleSection('otherPositions')}
                                     style={{ 
-                                        color: '#9b59b6', 
+                                        color: theme.colors.accent, 
                                         marginTop: 0,
                                         marginBottom: '15px',
                                         display: 'flex', 
@@ -3809,9 +3811,9 @@ function RLLInfo() {
                                 <div style={{
                                     marginTop: '15px',
                                     paddingTop: '15px',
-                                    borderTop: '1px solid #9b59b6'
+                                    borderTop: `1px solid ${theme.colors.accent}`
                                 }}>
-                                    <div style={{ color: '#9b59b6', marginBottom: '5px' }}>Total Value:</div>
+                                    <div style={{ color: theme.colors.accent, marginBottom: '5px' }}>Total Value:</div>
                                     <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
                                         ${formatUSD(getOtherPositionsUSDTotal())}
                                     </div>
@@ -3844,7 +3846,7 @@ function RLLInfo() {
                             position: 'relative',
                             width: '100%',
                             height: 'calc(100% - 40px)',
-                            backgroundColor: '#1a1a1a',
+                            background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                             borderRadius: '8px',
                             overflow: 'hidden'
                         }}>
@@ -3861,10 +3863,10 @@ function RLLInfo() {
                                 onNodeClick={handleNodeClick}
                                 style={{ width: '100%', height: '100%' }}
                             >
-                                <Background color="#444" gap={16} />
+                                <Background color={theme.colors.border} gap={16} />
                                 <Controls />
                                 <TokenAnimationManager edges={initialEdges} nodes={initialNodes} />
-                                <TooltipOverlay tooltip={tooltip} />
+                                <TooltipOverlay tooltip={tooltip} theme={theme} />
                             </ReactFlow>
                         </div>
                     </section>
