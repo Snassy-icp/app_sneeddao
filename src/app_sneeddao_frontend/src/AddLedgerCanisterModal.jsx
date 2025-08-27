@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import './AddLedgerCanisterModal.css';
 import { Principal } from "@dfinity/principal";
+import { useTheme } from './contexts/ThemeContext';
 
 function AddLedgerCanisterModal({ show, onClose, onSubmit }) {
+  const { theme } = useTheme();
   const [ledgerCanisterId, setLedgerCanisterId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
@@ -53,31 +55,151 @@ function AddLedgerCanisterModal({ show, onClose, onSubmit }) {
   }
 
   return (
-    <div className="modal-backdrop">
-      <div className="modal-content">
-        <h2>Add Token Ledger Canister</h2>
-        <label>
-          ICRC1 Token Ledger Canister Id:
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      background: theme.colors.modalBg,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        background: theme.colors.cardGradient,
+        border: `1px solid ${theme.colors.border}`,
+        boxShadow: theme.colors.cardShadow,
+        borderRadius: '16px',
+        padding: '32px',
+        width: '450px',
+        maxWidth: '90vw',
+        maxHeight: '90vh',
+        overflow: 'auto'
+      }}>
+        <h2 style={{
+          color: theme.colors.primaryText,
+          marginTop: '0',
+          marginBottom: '24px',
+          fontSize: '1.5rem',
+          fontWeight: '600'
+        }}>
+          Add Token Ledger Canister
+        </h2>
+        
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{
+            display: 'block',
+            color: theme.colors.primaryText,
+            marginBottom: '8px',
+            fontWeight: '500'
+          }}>
+            ICRC1 Token Ledger Canister Id:
+          </label>
           <input 
             type="text" 
             value={ledgerCanisterId}
-            onChange={
-              (e) => {
-                setLedgerCanisterId(e.target.value);
-              }
-            }
+            onChange={(e) => {
+              setLedgerCanisterId(e.target.value);
+            }}
+            placeholder="Enter canister ID (e.g., rdmx6-jaaaa-aaaah-qcaiq-cai)"
+            style={{
+              width: '100%',
+              padding: '12px',
+              background: theme.colors.secondaryBg,
+              border: `1px solid ${theme.colors.border}`,
+              borderRadius: '8px',
+              color: theme.colors.primaryText,
+              fontSize: '0.9rem',
+              boxSizing: 'border-box'
+            }}
           />
-        </label>
-        {errorText && <p className="error-text">{errorText}</p>}
+        </div>
+
+        {errorText && (
+          <p style={{
+            color: theme.colors.error,
+            marginBottom: '20px',
+            padding: '12px',
+            background: `${theme.colors.error}15`,
+            border: `1px solid ${theme.colors.error}30`,
+            borderRadius: '8px',
+            fontSize: '0.9rem'
+          }}>
+            {errorText}
+          </p>
+        )}
+
         {isLoading ? (
-            <div>
-                <br />
-                <div className="spinner"></div>
-            </div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '20px'
+          }}>
+            <div className="spinner" style={{
+              width: '24px',
+              height: '24px',
+              border: `3px solid ${theme.colors.border}`,
+              borderTop: `3px solid ${theme.colors.accent}`,
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }}></div>
+          </div>
         ) : (
-          <div className="button-group">
-            <button onClick={handleSubmit}>Submit</button>
-            <button onClick={onClose}>Cancel</button>
+          <div style={{
+            display: 'flex',
+            gap: '12px',
+            marginTop: '24px'
+          }}>
+            <button 
+              onClick={handleSubmit}
+              style={{
+                flex: '1',
+                background: theme.colors.accent,
+                color: theme.colors.primaryBg,
+                border: 'none',
+                borderRadius: '8px',
+                padding: '12px 24px',
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                fontWeight: '600',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = theme.colors.accentHover;
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = theme.colors.accent;
+              }}
+            >
+              Add Token
+            </button>
+            <button 
+              onClick={onClose}
+              style={{
+                flex: '1',
+                background: theme.colors.secondaryBg,
+                color: theme.colors.mutedText,
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: '8px',
+                padding: '12px 24px',
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                fontWeight: '500',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = theme.colors.tertiaryBg;
+                e.target.style.color = theme.colors.primaryText;
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = theme.colors.secondaryBg;
+                e.target.style.color = theme.colors.mutedText;
+              }}
+            >
+              Cancel
+            </button>
           </div>
         )}
       </div>

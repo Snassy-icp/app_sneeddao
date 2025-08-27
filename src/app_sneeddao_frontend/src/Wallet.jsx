@@ -113,7 +113,23 @@ const SectionHeader = ({ title, isExpanded, onToggle, onAdd, addButtonText, them
                         e.stopPropagation();
                         onAdd();
                     }}
-                    className="btn-primary btn-sm"
+                    style={{
+                        background: theme.colors.accent,
+                        color: theme.colors.primaryBg,
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '8px 16px',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: '600',
+                        transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                        e.target.style.background = theme.colors.accentHover;
+                    }}
+                    onMouseLeave={(e) => {
+                        e.target.style.background = theme.colors.accent;
+                    }}
                 >
                     {addButtonText}
                 </button>
