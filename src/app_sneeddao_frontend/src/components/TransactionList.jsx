@@ -943,6 +943,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 principal={fromPrincipal}
                                 displayInfo={principalDisplayInfo.get(fromPrincipal?.toString?.() || '')}
                                 showCopyButton={false}
+                                short={true}
                             />
                         </div>
                     </div>
@@ -956,6 +957,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 principal={toPrincipal}
                                 displayInfo={principalDisplayInfo.get(toPrincipal?.toString?.() || '')}
                                 showCopyButton={false}
+                                short={true}
                             />
                         </div>
                     </div>
@@ -1196,6 +1198,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                         principal={fromPrincipal}
                                                         displayInfo={principalDisplayInfo.get(fromPrincipal?.toString?.() || '')}
                                                         showCopyButton={false}
+                                                        short={true}
                                                     />
                                                     {txType === 'transfer' && transaction.transfer?.[0]?.from?.subaccount?.length > 0 && (
                                                         <div style={styles.subaccount}>
@@ -1211,6 +1214,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                         principal={toPrincipal}
                                                         displayInfo={principalDisplayInfo.get(toPrincipal?.toString?.() || '')}
                                                         showCopyButton={false}
+                                                        short={true}
                                                     />
                                                     {txType === 'transfer' && transaction.transfer?.[0]?.to?.subaccount?.length > 0 && (
                                                         <div style={styles.subaccount}>

@@ -12,6 +12,7 @@ import { Actor, HttpAgent } from '@dfinity/agent';
 import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import NeuronInput from '../components/NeuronInput';
+import NeuronDisplay from '../components/NeuronDisplay';
 
 function Neurons() {
     const { theme } = useTheme();
@@ -33,6 +34,23 @@ function Neurons() {
     
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames } = useNaming();
+    
+    // Helper function to get display name (similar to Neuron.jsx)
+    const getDisplayName = (neuronId) => {
+        const mapKey = `${selectedSnsRoot}:${neuronId}`;
+        
+        // Convert arrays to Maps for easier lookup
+        const namesMap = new Map(Array.from(neuronNames.entries()));
+        const nicknamesMap = new Map(Array.from(neuronNicknames.entries()));
+        const verifiedMap = new Map(Array.from(verifiedNames.entries()));
+
+        // Get values from maps
+        const name = namesMap.get(mapKey);
+        const nickname = nicknamesMap.get(mapKey);
+        const isVerified = verifiedMap.get(mapKey);
+
+        return { name, nickname, isVerified };
+    };
     
     // Pagination state
     const [itemsPerPage, setItemsPerPage] = useState(20);
@@ -1064,7 +1082,15 @@ function Neurons() {
                                 }}>
                                     <div>
                                         <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Neuron ID</div>
-                                        <div>{formatNeuronIdLink(neuron.id[0].id, selectedSnsRoot)}</div>
+                                        <div>
+                                            <NeuronDisplay
+                                                neuronId={uint8ArrayToHex(neuron.id[0].id)}
+                                                snsRoot={selectedSnsRoot}
+                                                displayInfo={getDisplayName(uint8ArrayToHex(neuron.id[0].id))}
+                                                showCopyButton={true}
+                                                enableContextMenu={true}
+                                            />
+                                        </div>
                                     </div>
                                     <div>
                                         <div style={{ color: theme.colors.mutedText, marginBottom: '4px' }}>Stake</div>
