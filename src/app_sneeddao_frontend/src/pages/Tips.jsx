@@ -13,7 +13,7 @@ import {
     getLastSeenTipTimestamp,
     markTipsSeenUpTo
 } from '../utils/BackendUtils';
-import { formatPrincipal, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import Header from '../components/Header';
 import './Tips.css';
@@ -233,8 +233,8 @@ const Tips = () => {
 
         return (
             <tr key={tip.id} className={`tip-row ${isNew ? 'tip-new' : ''}`}>
-                <td className="tip-amount">
-                    <div className="tip-amount-container" style={{ justifyContent: 'flex-start', alignItems: 'center' }}>
+                <td className="tip-amount" style={{ textAlign: 'left' }}>
+                    <div className="tip-amount-container" style={{ justifyContent: 'flex-start', alignItems: 'center', display: 'flex' }}>
                         {isLoadingToken ? (
                             <span className="loading-indicator">⏳</span>
                         ) : logo ? (
@@ -248,23 +248,12 @@ const Tips = () => {
                     </div>
                 </td>
                 <td className="tip-principal">
-                    {typeof formattedPrincipal === 'string' ? (
-                        formattedPrincipal
-                    ) : formattedPrincipal?.name || formattedPrincipal?.nickname ? (
-                        <div className="principal-with-name">
-                            <div className="principal-name">
-                                {formattedPrincipal.name && (
-                                    <span className="name">{formattedPrincipal.name}</span>
-                                )}
-                                {formattedPrincipal.nickname && (
-                                    <span className="nickname">"{formattedPrincipal.nickname}"</span>
-                                )}
-                            </div>
-                            <div className="principal-id">{formattedPrincipal.truncatedId}</div>
-                        </div>
-                    ) : (
-                        otherPrincipalStr.slice(0, 12) + '...'
-                    )}
+                    <PrincipalDisplay 
+                        principal={otherPrincipalStr}
+                        showCopyButton={true}
+                        showContextMenu={true}
+                        maxLength={20}
+                    />
                 </td>
                 <td className="tip-post">
                     <div className="post-links">
@@ -272,6 +261,7 @@ const Tips = () => {
                             className="post-link"
                             onClick={() => navigate(`/post?postid=${tip.post_id}`)}
                             title="View this post"
+                            style={{ whiteSpace: 'nowrap' }}
                         >
                             📄 Post #{tip.post_id?.toString() || 'N/A'}
                         </button>
@@ -280,6 +270,7 @@ const Tips = () => {
                                 className="thread-link"
                                 onClick={() => navigate(`/thread?threadid=${tip.thread_id}`)}
                                 title="View full thread"
+                                style={{ whiteSpace: 'nowrap' }}
                             >
                                 🧵 Thread #{tip.thread_id?.toString() || 'N/A'}
                             </button>
@@ -390,7 +381,8 @@ const Tips = () => {
                                 padding: '4px 8px',
                                 borderRadius: '4px',
                                 fontSize: '12px',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap'
                             }}
                             title="View this post"
                         >
@@ -406,7 +398,8 @@ const Tips = () => {
                                     padding: '4px 8px',
                                     borderRadius: '4px',
                                     fontSize: '12px',
-                                    cursor: 'pointer'
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap'
                                 }}
                                 title="View thread"
                             >

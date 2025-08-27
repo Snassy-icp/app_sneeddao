@@ -184,3 +184,7 @@
   - **Card Visibility**: Enhanced card borders and backgrounds for better distinction from page background
   - **Tips Layout**: Fixed logo and amount left-alignment in Tips page table columns
   - **Date Text**: Made date text darker using theme.colors.secondaryText for better readability
+  - **Enhanced Principal Display**: Replaced custom principal rendering with shared PrincipalDisplay component
+  - **Vote Score Contrast**: Made up/down vote scores dark text for better readability
+  - **Reply Context**: Made "in reply to" text dark and integrated PrincipalDisplay for "Reply from"
+  - **Text Wrapping**: Prevented breaking between "Post"/"Thread" and their IDs using white-space: nowrap

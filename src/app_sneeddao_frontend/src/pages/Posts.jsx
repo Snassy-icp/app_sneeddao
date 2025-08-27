@@ -13,7 +13,7 @@ import {
     markRepliesSeenUpTo,
     getLastSeenRepliesTimestamp
 } from '../utils/BackendUtils';
-import { formatPrincipal, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { formatPrincipal, getPrincipalDisplayInfoFromContext, PrincipalDisplay } from '../utils/PrincipalUtils';
 import Header from '../components/Header';
 import './Posts.css';
 
@@ -333,7 +333,15 @@ const Posts = () => {
                             #{Number(post.id)}
                         </a>
                         {isReply && (
-                            <span className="reply-indicator">Reply from {getPrincipalDisplay(post.created_by)}</span>
+                            <span className="reply-indicator" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                Reply from 
+                                <PrincipalDisplay 
+                                    principal={post.created_by.toString()}
+                                    showCopyButton={true}
+                                    showContextMenu={true}
+                                    maxLength={20}
+                                />
+                            </span>
                         )}
                         {!isReply && post.title && post.title.length > 0 && (
                             <span className="post-title" style={{ color: theme.colors.primaryText }}>{post.title[0]}</span>
@@ -344,7 +352,7 @@ const Posts = () => {
                         <span className={`score ${isNegative ? 'negative' : 'positive'}`}>
                             {netScore >= 0 ? '+' : ''}{formatScore(netScore)}
                         </span>
-                        <span className="vote-breakdown">
+                        <span className="vote-breakdown" style={{ color: theme.colors.secondaryText }}>
                             ↑{formatScore(post.upvote_score)} ↓{formatScore(post.downvote_score)}
                         </span>
                     </div>
@@ -353,7 +361,7 @@ const Posts = () => {
                     <p style={{ color: theme.colors.secondaryText }}>{post.body}</p>
                 </div>
                 {post.reply_to_post_id && post.reply_to_post_id.length > 0 && (
-                    <div className="reply-context">
+                    <div className="reply-context" style={{ color: theme.colors.secondaryText }}>
                         <span>In reply to <a 
                             href={`/post?postid=${post.reply_to_post_id[0]}`}
                             style={{
