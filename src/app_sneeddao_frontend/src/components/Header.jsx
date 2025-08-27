@@ -150,8 +150,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/hub',
             subMenu: [
                 { name: 'Hub', path: '/hub' },
-                { name: 'Forum', path: '/forum' },
                 { name: 'Feed', path: '/feed' },
+                { name: 'Forum', path: '/forum' },
                 { name: 'Proposals', path: '/proposals' },
                 { name: 'Neurons', path: '/neurons' },
                 { name: 'Transactions', path: '/transactions' },
