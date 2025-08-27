@@ -91,38 +91,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 />
                                 ICPSwap
                             </a>
-                            <a 
-                                href={getPositionLockUrl(position.swapCanisterId, positionDetails.positionId)} 
-                                target="_blank"
-                                style={{
-                                    background: theme.colors.accent,
-                                    color: theme.colors.primaryBg,
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '6px 12px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.85rem',
-                                    fontWeight: '500',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    transition: 'all 0.2s ease',
-                                    textDecoration: 'none'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.target.style.background = theme.colors.accentHover;
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.background = theme.colors.accent;
-                                }}
-                            >
-                                <img 
-                                    src="link-chain.png" 
-                                    alt="View" 
-                                    style={{ width: '14px', height: '14px' }}
-                                />
-                                View
-                            </a>
+
                             {!isLockedPosition(positionDetails) && (
                                 <button
                                     onClick={() =>
@@ -233,50 +202,6 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {/* Lock Button */}
-                        {!hideButtons && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    openLockPositionModal({
-                                        isLocked: isLockedPosition(positionDetails),
-                                        token0: position.token0,
-                                        token1: position.token1,
-                                        swapCanisterId: position.swapCanisterId,
-                                        id: positionDetails.positionId,
-                                        frontendOwnership: positionDetails.frontendOwnership,
-                                        symbols: position.token0Symbol + '/' + position.token1Symbol
-                                    });
-                                }}
-                                style={{
-                                    background: theme.colors.accent,
-                                    color: theme.colors.primaryBg,
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '6px 12px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.85rem',
-                                    fontWeight: '500',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    transition: 'all 0.2s ease'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.target.style.background = theme.colors.accentHover;
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.background = theme.colors.accent;
-                                }}
-                            >
-                                <img 
-                                    src="sneedlock-logo-cropped.png" 
-                                    alt="Lock" 
-                                    style={{ width: '14px', height: '14px' }}
-                                />
-                                Lock
-                            </button>
-                        )}
                         {/* Expand/Collapse Indicator */}
                         <span 
                             style={{ 
@@ -294,6 +219,92 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                 {/* Collapsible Locks Content */}
                 {locksExpanded && (
                     <div>
+                        {/* Lock Actions Row */}
+                        {!hideButtons && (
+                            <div style={{ 
+                                display: 'flex', 
+                                gap: '12px', 
+                                marginBottom: '15px',
+                                paddingBottom: '12px',
+                                borderBottom: `1px solid ${theme.colors.border}`
+                            }}>
+                                {/* Lock Button */}
+                                <button
+                                    onClick={() => {
+                                        openLockPositionModal({
+                                            isLocked: isLockedPosition(positionDetails),
+                                            token0: position.token0,
+                                            token1: position.token1,
+                                            swapCanisterId: position.swapCanisterId,
+                                            id: positionDetails.positionId,
+                                            frontendOwnership: positionDetails.frontendOwnership,
+                                            symbols: position.token0Symbol + '/' + position.token1Symbol
+                                        });
+                                    }}
+                                    style={{
+                                        background: theme.colors.accent,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.background = theme.colors.accentHover;
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.background = theme.colors.accent;
+                                    }}
+                                >
+                                    <img 
+                                        src="sneedlock-logo-cropped.png" 
+                                        alt="Lock" 
+                                        style={{ width: '14px', height: '14px' }}
+                                    />
+                                    Lock
+                                </button>
+                                
+                                {/* Link Button */}
+                                <a 
+                                    href={getPositionLockUrl(position.swapCanisterId, positionDetails.positionId)} 
+                                    target="_blank"
+                                    style={{
+                                        background: theme.colors.accent,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'all 0.2s ease',
+                                        textDecoration: 'none'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.background = theme.colors.accentHover;
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.background = theme.colors.accent;
+                                    }}
+                                >
+                                    <img 
+                                        src="link-chain.png" 
+                                        alt="Link" 
+                                        style={{ width: '14px', height: '14px' }}
+                                    />
+                                    Link
+                                </a>
+                            </div>
+                        )}
                         <div className="lock-item">
                             <div className="lock-details">
                                 <span className="lock-label">Lock Expires:</span>

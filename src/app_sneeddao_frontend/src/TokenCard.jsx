@@ -75,38 +75,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     {!hideButtons && (
                 <div className="action-buttons">
 
-                    <a 
-                        href={getTokenLockUrl(token.ledger_canister_id, locks[token.ledger_canister_id])} 
-                        target="_blank"
-                        style={{
-                            background: theme.colors.accent,
-                            color: theme.colors.primaryBg,
-                            border: 'none',
-                            borderRadius: '6px',
-                            padding: '6px 12px',
-                            cursor: 'pointer',
-                            fontSize: '0.85rem',
-                            fontWeight: '500',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            transition: 'all 0.2s ease',
-                            textDecoration: 'none'
-                        }}
-                        onMouseEnter={(e) => {
-                            e.target.style.background = theme.colors.accentHover;
-                        }}
-                        onMouseLeave={(e) => {
-                            e.target.style.background = theme.colors.accent;
-                        }}
-                    >
-                        <img 
-                            src="link-chain.png" 
-                            alt="View" 
-                            style={{ width: '14px', height: '14px' }}
-                        />
-                        View
-                    </a>
+
                     {token.available > 0n && (
                         <button 
                             onClick={() => openSendModal(token)}
@@ -351,42 +320,6 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {/* Lock Button */}
-                        {token.available > 0n && !hideButtons && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    openLockModal(token);
-                                }}
-                                style={{
-                                    background: theme.colors.accent,
-                                    color: theme.colors.primaryBg,
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '6px 12px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.85rem',
-                                    fontWeight: '500',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    transition: 'all 0.2s ease'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.target.style.background = theme.colors.accentHover;
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.background = theme.colors.accent;
-                                }}
-                            >
-                                <img 
-                                    src="sneedlock-logo-cropped.png" 
-                                    alt="Lock" 
-                                    style={{ width: '14px', height: '14px' }}
-                                />
-                                Lock
-                            </button>
-                        )}
                         {/* Expand/Collapse Indicator */}
                         <span 
                             style={{ 
@@ -404,6 +337,84 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 {/* Collapsible Locks Content */}
                 {locksExpanded && (
                     <div>
+                        {/* Lock Actions Row */}
+                        {!hideButtons && (
+                            <div style={{ 
+                                display: 'flex', 
+                                gap: '12px', 
+                                marginBottom: '15px',
+                                paddingBottom: '12px',
+                                borderBottom: `1px solid ${theme.colors.border}`
+                            }}>
+                                {/* Lock Button */}
+                                {token.available > 0n && (
+                                    <button
+                                        onClick={() => openLockModal(token)}
+                                        style={{
+                                            background: theme.colors.accent,
+                                            color: theme.colors.primaryBg,
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '6px 12px',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '500',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.target.style.background = theme.colors.accentHover;
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.target.style.background = theme.colors.accent;
+                                        }}
+                                    >
+                                        <img 
+                                            src="sneedlock-logo-cropped.png" 
+                                            alt="Lock" 
+                                            style={{ width: '14px', height: '14px' }}
+                                        />
+                                        Lock
+                                    </button>
+                                )}
+                                
+                                {/* Link Button */}
+                                <a 
+                                    href={getTokenLockUrl(token.ledger_canister_id, locks[token.ledger_canister_id])} 
+                                    target="_blank"
+                                    style={{
+                                        background: theme.colors.accent,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'all 0.2s ease',
+                                        textDecoration: 'none'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.background = theme.colors.accentHover;
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.background = theme.colors.accent;
+                                    }}
+                                >
+                                    <img 
+                                        src="link-chain.png" 
+                                        alt="Link" 
+                                        style={{ width: '14px', height: '14px' }}
+                                    />
+                                    Link
+                                </a>
+                            </div>
+                        )}
                         {lockDetailsLoading[token.ledger_canister_id] ? (
                             <div className="spinner-container">
                                 <div className="spinner"></div>
