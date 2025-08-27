@@ -145,7 +145,7 @@ const getStyles = (theme) => ({
         width: '20px',
         height: '20px',
         borderRadius: '50%',
-        border: '1px solid #3498db',
+        border: `1px solid ${theme.colors.accent}`,
         marginLeft: '4px'
     },
     heading: {
@@ -164,7 +164,7 @@ const getStyles = (theme) => ({
         gap: '8px'
     },
     globeIcon: {
-        color: '#3498db',
+        color: theme.colors.accent,
         cursor: 'pointer',
         fontSize: '16px',
         display: 'inline-flex',
@@ -231,9 +231,9 @@ const edgeStyles = {
 };
 
 const nodeStyles = {
-    infrastructure: { background: '#2d3436', color: '#fff', border: '1px solid #0984e3', borderRadius: '8px', padding: '10px', width: 180 },
-    tokenManagement: { background: '#2d3436', color: '#fff', border: '1px solid #00b894', borderRadius: '8px', padding: '10px', width: 180 },
-    revenue: { background: '#2d3436', color: '#fff', border: '1px solid #fdcb6e', borderRadius: '8px', padding: '10px', width: 180 }
+    infrastructure: { background: 'rgba(45, 52, 54, 0.8)', color: '#fff', border: '1px solid #0984e3', borderRadius: '8px', padding: '10px', width: 180 },
+    tokenManagement: { background: 'rgba(45, 52, 54, 0.8)', color: '#fff', border: '1px solid #00b894', borderRadius: '8px', padding: '10px', width: 180 },
+    revenue: { background: 'rgba(45, 52, 54, 0.8)', color: '#fff', border: '1px solid #fdcb6e', borderRadius: '8px', padding: '10px', width: 180 }
 };
 
 // Custom animated token component
@@ -584,13 +584,13 @@ const TooltipOverlay = ({ tooltip }) => {
                 top: `${tooltip.y + 10}px`,
                 zIndex: 1000,
                 maxWidth: '300px',
-                backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                background: theme.colors.modalBg,
                 color: 'white',
                 padding: '12px 16px',
                 borderRadius: '6px',
                 fontSize: '13px',
                 lineHeight: '1.4',
-                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                boxShadow: theme.colors.cardShadow,
                 pointerEvents: 'none',
                 border: '1px solid rgba(255, 255, 255, 0.1)',
                 wordWrap: 'break-word',
@@ -2066,7 +2066,7 @@ function RLLInfo() {
                             return (
                                 <div key={idx} style={{ marginLeft: '8px', marginBottom: '8px' }}>
                                     • {source.name || 'Default'}: {(Number(source.balance) / 1e8).toFixed(8)} {getTokenSymbolFromLedger(source.endpoint.ic.ledger)}
-                                    <div style={{ fontSize: '0.9em', color: '#888' }}>
+                                    <div style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
                                         Account: 
                                         <div style={{
                                             display: 'inline-block',
@@ -2074,14 +2074,14 @@ function RLLInfo() {
                                             wordBreak: 'break-all',
                                             fontFamily: 'monospace',
                                             fontSize: '0.9em',
-                                            backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                                            background: theme.colors.tertiaryBg,
                                             padding: '2px 4px',
                                             borderRadius: '3px',
                                             margin: '2px 0'
                                         }}>
                                             {formatIcrc1Account(source.endpoint)}
                                         </div>
-                                        {nodeName && <span style={{ color: '#3498db' }}> ({nodeName})</span>}
+                                        {nodeName && <span style={{ color: theme.colors.accent }}> ({nodeName})</span>}
                                     </div>
                                 </div>
                             );
@@ -2097,7 +2097,7 @@ function RLLInfo() {
                             return (
                                 <div key={idx} style={{ marginLeft: '8px', marginBottom: '8px' }}>
                                     • {dest.name}% {getTokenSymbolFromLedger(dest.endpoint.ic.ledger)}
-                                    <div style={{ fontSize: '0.9em', color: '#888' }}>
+                                    <div style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
                                         Account: 
                                         <div style={{
                                             display: 'inline-block',
@@ -2105,14 +2105,14 @@ function RLLInfo() {
                                             wordBreak: 'break-all',
                                             fontFamily: 'monospace',
                                             fontSize: '0.9em',
-                                            backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                                            background: theme.colors.tertiaryBg,
                                             padding: '2px 4px',
                                             borderRadius: '3px',
                                             margin: '2px 0'
                                         }}>
                                             {formatIcrc1Account(dest.endpoint)}
                                         </div>
-                                        {nodeName && <span style={{ color: '#3498db' }}> ({nodeName})</span>}
+                                        {nodeName && <span style={{ color: theme.colors.accent }}> ({nodeName})</span>}
                                     </div>
                                 </div>
                             );
@@ -2170,7 +2170,7 @@ function RLLInfo() {
                     <div style={{
                         marginTop: '15px',
                         padding: '15px',
-                        backgroundColor: '#2a2a2a',
+                        background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                         borderRadius: '6px'
                     }}>
                         <h4 style={{ margin: '0 0 15px 0' }}>Current Balances</h4>
@@ -2184,7 +2184,7 @@ function RLLInfo() {
                                     <span>ICP:</span>
                                     <span>
                                         {(Number(treasuryBalances.icp) / 1e8).toFixed(4)} ICP
-                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                             (${formatUSD(getUSDValue(treasuryBalances.icp, 8, 'ICP'))})
                                         </span>
                                     </span>
@@ -2193,7 +2193,7 @@ function RLLInfo() {
                                     <span>SNEED:</span>
                                     <span>
                                         {(Number(treasuryBalances.sneed) / 1e8).toFixed(4)} SNEED
-                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                             (${formatUSD(getUSDValue(treasuryBalances.sneed, 8, 'SNEED'))})
                                         </span>
                                     </span>
@@ -2208,7 +2208,7 @@ function RLLInfo() {
                     <div style={{
                         marginTop: '15px',
                         padding: '15px',
-                        backgroundColor: '#2a2a2a',
+                        background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                         borderRadius: '6px'
                     }}>
                         <h4 style={{ margin: '0 0 15px 0' }}>Current Status</h4>
@@ -2248,7 +2248,7 @@ function RLLInfo() {
                     <div style={{
                         marginTop: '10px',
                         padding: '10px',
-                        backgroundColor: '#3a3a3a',
+                        background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                         borderRadius: '4px'
                     }}>
                         <h4 style={{ margin: '0 0 10px 0' }}>LP Positions:</h4>
@@ -2264,7 +2264,7 @@ function RLLInfo() {
                                     backgroundColor: 'rgba(255, 255, 255, 0.05)',
                                     borderRadius: '4px'
                                 }}>
-                                    <div style={{ color: '#3498db', marginBottom: '5px' }}>Position #{Number(position.id)}:</div>
+                                    <div style={{ color: theme.colors.accent, marginBottom: '5px' }}>Position #{Number(position.id)}:</div>
                                     <div style={{ marginLeft: '10px' }}>
                                         <div>Current Position:</div>
                                         <div>• {(Number(position.token0Amount) / 1e8).toFixed(4)} SNEED</div>
@@ -2284,7 +2284,7 @@ function RLLInfo() {
                     <div style={{
                         marginTop: '10px',
                         padding: '10px',
-                        backgroundColor: '#3a3a3a',
+                        background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                         borderRadius: '4px'
                     }}>
                         <h4 style={{ margin: '0 0 10px 0' }}>Current Balances:</h4>
@@ -2304,7 +2304,7 @@ function RLLInfo() {
                     <div style={{
                         marginTop: '10px',
                         padding: '10px',
-                        backgroundColor: '#3a3a3a',
+                        background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                         borderRadius: '4px'
                     }}>
                         <h4 style={{ margin: '0 0 10px 0' }}>Vector Status:</h4>
@@ -2320,7 +2320,7 @@ function RLLInfo() {
                     <div style={{
                         marginTop: '15px',
                         padding: '15px',
-                        backgroundColor: '#2a2a2a',
+                        background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                         borderRadius: '6px'
                     }}>
                         <h4 style={{ margin: '0 0 15px 0', color: '#9b59b6' }}>Token Balances and Reconciliation</h4>
@@ -2339,10 +2339,10 @@ function RLLInfo() {
                                     <div key={tokenId.toString()} style={{
                                         marginBottom: '15px',
                                         padding: '10px',
-                                        backgroundColor: '#3a3a3a',
+                                        background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                         borderRadius: '4px'
                                     }}>
-                                        <div style={{ color: '#3498db', marginBottom: '8px', fontWeight: 'bold' }}>
+                                        <div style={{ color: theme.colors.accent, marginBottom: '8px', fontWeight: 'bold' }}>
                                             Token: {tokenInfo.symbol}
                                         </div>
                                         <div style={{ marginLeft: '10px' }}>
@@ -2375,7 +2375,7 @@ function RLLInfo() {
     const handleNodeMouseEnter = useCallback((event, node) => {
         const content = (
             <div>
-                <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#3498db' }}>{node.data.label}</div>
+                <div style={{ fontWeight: 'bold', marginBottom: '8px', color: theme.colors.accent }}>{node.data.label}</div>
                 <div style={{ marginBottom: '8px' }}>{node.data.description}</div>
                 {node.data.inputs && (
                     <div>
@@ -2496,7 +2496,7 @@ function RLLInfo() {
                             </div>
                         ) : lpPositions.totals ? (
                             <>
-                                <div style={{ color: '#3498db' }}>Total Current Position:</div>
+                                <div style={{ color: theme.colors.accent }}>Total Current Position:</div>
                                 <div>• {(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} SNEED</div>
                                 <div>• {(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} ICP</div>
                                 <div style={{ color: '#2ecc71', marginTop: '8px' }}>Total Unclaimed Rewards:</div>
@@ -2512,7 +2512,7 @@ function RLLInfo() {
                     <div style={{
                         marginTop: '10px',
                         padding: '10px',
-                        backgroundColor: '#3a3a3a',
+                        background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                         borderRadius: '4px'
                     }}>
                         <h4 style={{ margin: '0 0 10px 0' }}>Current Balances:</h4>
@@ -2578,7 +2578,7 @@ function RLLInfo() {
                     <div style={{ color: '#f1c40f' }}>Token: {edge.data.token}</div>
                 )}
                 {edge.data?.percentage && (
-                    <div style={{ color: '#3498db' }}>Percentage: {edge.data.percentage}</div>
+                    <div style={{ color: theme.colors.accent }}>Percentage: {edge.data.percentage}</div>
                 )}
             </div>
         );
@@ -2939,7 +2939,7 @@ function RLLInfo() {
                         </h2>
                         {/* Remove the nested grid, just stack items vertically */}
                         <div style={{
-                            backgroundColor: '#2a2a2a',
+                            background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                             borderRadius: '8px',
                             padding: '20px'
                         }}>
@@ -2948,7 +2948,7 @@ function RLLInfo() {
                                 backgroundColor: '#1a1a1a',
                                 padding: '20px',
                                 borderRadius: '6px',
-                                border: '1px solid #f1c40f',
+                                border: `1px solid ${theme.colors.warning}`,
                                 marginBottom: '20px'
                             }}>
                                 <h3 style={{ color: '#f1c40f', marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -2962,7 +2962,7 @@ function RLLInfo() {
                                 </h3>
                                 {/* GAV Section */}
                                 <div style={{ marginBottom: '15px' }}>
-                                    <div style={{ color: '#888', marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                         <span>Gross Asset Value (GAV):</span>
                                         <span 
                                             style={styles.infoIcon} 
@@ -2973,10 +2973,10 @@ function RLLInfo() {
                                     </div>
                                     <div style={{ fontSize: '1.2em' }}>
                                         ${formatUSD(getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal())}
-                                        <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
+                                        <div style={{ fontSize: '0.9em', color: theme.colors.mutedText, marginTop: '5px' }}>
                                             {((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
-                                        <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
+                                        <div style={{ fontSize: '0.9em', color: theme.colors.mutedText, marginTop: '5px' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                 <span>FDV/GAV: {(getUSDValue(getTotalSupply(), 8, 'SNEED') / ((getTotalIcpUSDValue() + getTotalSneedUSDValue() + getOtherPositionsUSDTotal()) || 1)).toFixed(2)}x</span>
                                                 <span 
@@ -2991,7 +2991,7 @@ function RLLInfo() {
                                 </div>
                                 {/* NAV Section */}
                                 <div>
-                                    <div style={{ color: '#888', marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                         <span>Net Asset Value (NAV):</span>
                                         <span 
                                             style={styles.infoIcon} 
@@ -3002,10 +3002,10 @@ function RLLInfo() {
                                     </div>
                                     <div style={{ fontSize: '1.2em' }}>
                                         ${formatUSD(getNAVUSDValue())}
-                                        <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
+                                        <div style={{ fontSize: '0.9em', color: theme.colors.mutedText, marginTop: '5px' }}>
                                             {(getNAVUSDValue() / (conversionRates['ICP'] || 1)).toFixed(4)} ICP
                                         </div>
-                                        <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px' }}>
+                                        <div style={{ fontSize: '0.9em', color: theme.colors.mutedText, marginTop: '5px' }}>
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                 <span>P/NAV: {(getUSDValue(getCirculatingSupply(), 8, 'SNEED') / (getNAVUSDValue() || 1)).toFixed(2)}x</span>
                                                 <span 
@@ -3021,7 +3021,7 @@ function RLLInfo() {
 
                                 {/* NGAR Section */}
                                 <div style={{ marginTop: '15px' }}>
-                                    <div style={{ color: '#888', marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                         <span>Net-to-Gross Alignment Ratio (NGAR):</span>
                                         <span 
                                             style={styles.infoIcon} 
@@ -3042,7 +3042,7 @@ function RLLInfo() {
                                 backgroundColor: '#1a1a1a',
                                 padding: '20px',
                                 borderRadius: '6px',
-                                border: '1px solid #2ecc71',
+                                border: `1px solid ${theme.colors.success}`,
                                 marginBottom: '20px'
                             }}>
                                 <h3 style={{ color: '#2ecc71', marginTop: 0, marginBottom: '15px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -3062,7 +3062,7 @@ function RLLInfo() {
                                     <>
                                         {/* Total Supply & FDV */}
                                         <div style={{ marginBottom: '20px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>Total Supply:</div>
+                                            <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>Total Supply:</div>
                                             <div style={{ fontSize: '1.1em' }}>
                                                 {(Number(getTotalSupply()) / 1e8).toLocaleString()} SNEED
                                             </div>
@@ -3073,7 +3073,7 @@ function RLLInfo() {
                                             backgroundColor: '#1a1a1a',
                                             padding: '15px',
                                             borderRadius: '6px',
-                                            border: '1px solid #2ecc71',
+                                            border: `1px solid ${theme.colors.success}`,
                                             marginBottom: '20px'
                                         }}>
                                             <div style={{ color: '#2ecc71', marginBottom: '5px' }}>Fully Diluted Valuation (FDV):</div>
@@ -3084,10 +3084,10 @@ function RLLInfo() {
 
                                         {/* Total Staked */}
                                         <div style={{ marginBottom: '20px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>Total Staked:</div>
+                                            <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>Total Staked:</div>
                                             <div style={{ fontSize: '1.1em' }}>
                                                 {(Number(getTotalStakedSneed()) / 1e8).toLocaleString()} SNEED
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                     (${formatUSD(getUSDValue(getTotalStakedSneed(), 8, 'SNEED'))})
                                                 </span>
                                             </div>
@@ -3095,10 +3095,10 @@ function RLLInfo() {
 
                                         {/* Total in LPs */}
                                         <div style={{ marginBottom: '20px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>Total in LPs:</div>
+                                            <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>Total in LPs:</div>
                                             <div style={{ fontSize: '1.1em' }}>
                                                 {(Number(getTotalSneedInLPs()) / 1e8).toLocaleString()} SNEED
-                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                     (${formatUSD(getUSDValue(getTotalSneedInLPs(), 8, 'SNEED'))})
                                                 </span>
                                             </div>
@@ -3123,7 +3123,7 @@ function RLLInfo() {
 
                                             <div style={{ fontSize: '1.2em', color: '#2ecc71' }}>
                                                 ${formatUSD(getTVL())}
-                                                <div style={{ fontSize: '0.9em', color: '#888', marginTop: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <div style={{ fontSize: '0.9em', color: theme.colors.mutedText, marginTop: '5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                     <span>TVL/MCap: {(getTVL() / (getUSDValue(getCirculatingSupply(), 8, 'SNEED') || 1)).toFixed(2)}x</span>
                                                     <span 
                                                         style={styles.infoIcon} 
@@ -3137,7 +3137,7 @@ function RLLInfo() {
 
                                         {/* Circulating Supply */}
                                         <div style={{ marginBottom: '20px' }}>
-                                            <div style={{ color: '#888', marginBottom: '5px' }}>Circulating Supply:</div>
+                                            <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>Circulating Supply:</div>
                                             <div style={{ fontSize: '1.1em' }}>
                                                 {(Number(getCirculatingSupply()) / 1e8).toLocaleString()} SNEED
                                             </div>
@@ -3171,13 +3171,13 @@ function RLLInfo() {
                                 backgroundColor: '#1a1a1a',
                                 padding: '20px',
                                 borderRadius: '6px',
-                                border: '1px solid #3498db',
+                                border: `1px solid ${theme.colors.accent}`,
                                 marginBottom: '20px'
                             }}>
                                 <h3 
                                     onClick={() => toggleSection('icpAssets')}
                                     style={{ 
-                                        color: '#3498db', 
+                                        color: theme.colors.accent, 
                                         marginTop: 0,
                                         marginBottom: '15px',
                                         display: 'flex', 
@@ -3215,126 +3215,126 @@ function RLLInfo() {
                                         ) : (
                                             <>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>
                                                         <a 
                                                             href="https://dashboard.internetcomputer.org/account/580deb37eb3583e5854516481bd52c2618ca73ef6ee1c2df2b556bf85c0ce5a9"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             Treasury:
                                                         </a>
                                                     </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(treasuryBalances.icp) / 1e8).toFixed(4)} ICP
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(treasuryBalances.icp, 8, 'ICP'))})
                                                         </span>
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>
                                                         <a 
                                                             href="https://dashboard.internetcomputer.org/neuron/4000934039483276792"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             8 Year Neuron:
                                                         </a>
                                                     </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(neuronBalance?.stake_e8s || 0) / 1e8).toFixed(4)} ICP
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP'))})
                                                         </span>
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>
                                                         <a 
                                                             href="https://info.icpswap.com/swap-scan/positions?pair=osyzs-xiaaa-aaaag-qc76q-cai"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             ICP/SNEED LP:
                                                         </a>
                                                     </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(lpPositions.totals.token1Amount) / 1e8).toFixed(4)} ICP
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(lpPositions.totals.token1Amount, 8, 'ICP'))})
                                                         </span>
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(lpPositions.totals.tokensOwed1) / 1e8).toFixed(4)} ICP
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(lpPositions.totals.tokensOwed1, 8, 'ICP'))})
                                                         </span>
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>
                                                         <a 
                                                             href="https://dashboard.internetcomputer.org/canister/ok64y-uiaaa-aaaag-qdcbq-cai"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             DeFi Canister:
                                                         </a>
                                                     </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(defiBalances.icp) / 1e8).toFixed(4)} ICP
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(defiBalances.icp, 8, 'ICP'))})
                                                         </span>
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>
                                                         <a 
                                                             href="https://app.sneeddao.com/rll"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             RLL Distribution:
                                                         </a>
                                                     </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(rllBalances.icp) / 1e8).toFixed(4)} ICP
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(rllBalances.icp, 8, 'ICP'))})
                                                         </span>
                                                     </div>
                                                 </div>
                                                 {vectorInfo['SNEED Buyback Vector']?.[0]?.[0]?.sources?.[0]?.balance && (
                                                     <div style={{ marginBottom: '15px' }}>
-                                                        <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                        <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>
                                                             <a 
                                                                 href="https://beta.icpcoins.com/#/vector/modify/togwv-zqaaa-aaaal-qr7aa-cai/exchange/18"
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                                style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                             >
                                                                 Buyback Vector:
                                                             </a>
                                                         </div>
                                                         <div style={{ fontSize: '1.1em' }}>
                                                             {(Number(vectorInfo['SNEED Buyback Vector'][0][0].sources[0].balance) / 1e8).toFixed(4)} ICP
-                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                            <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                                 (${formatUSD(getUSDValue(vectorInfo['SNEED Buyback Vector'][0][0].sources[0].balance, 8, 'ICP'))})
                                                             </span>
                                                         </div>
                                                     </div>
                                                 )}
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>Other Pools:</div>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>Other Pools:</div>
                                                     {otherLpPositions['ICP/CLOWN'].loading ? (
                                                         <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
                                                             <div style={styles.spinner} />
@@ -3348,32 +3348,32 @@ function RLLInfo() {
                                                                     href="https://info.icpswap.com/swap-scan/positions?pair=bdki3-ciaaa-aaaag-qj67a-cai"
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                                    style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                                 >
                                                                     ICP/CLOWN LP:
                                                                 </a>
                                                             </div>
                                                             <div style={{ fontSize: '1em', marginLeft: '10px' }}>
                                                                 • Position: {(Number(otherLpPositions['ICP/CLOWN'].position.token1Amount) / 1e8).toFixed(4)} ICP
-                                                                <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                                     (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.token1Amount, 8, 'ICP'))})
                                                                 </span>
                                                             </div>
                                                             {Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed1) > 0 && (
                                                                 <div style={{ fontSize: '1em', marginLeft: '10px' }}>
                                                                     • Unclaimed: {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed1) / 1e8).toFixed(4)} ICP
-                                                                    <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                    <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                                         (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.tokensOwed1, 8, 'ICP'))})
                                                                     </span>
                                                                 </div>
                                                             )}
                                                         </div>
                                                     ) : (
-                                                        <div style={{ color: '#888', marginLeft: '15px' }}>No positions found</div>
+                                                        <div style={{ color: theme.colors.mutedText, marginLeft: '15px' }}>No positions found</div>
                                                     )}
-                                                    <div style={{ fontSize: '1.1em', marginTop: '10px', borderTop: '1px solid #333', paddingTop: '10px' }}>
+                                                    <div style={{ fontSize: '1.1em', marginTop: '10px', borderTop: `1px solid ${theme.colors.border}`, paddingTop: '10px' }}>
                                                         Total: {(Number(getOtherPoolsIcpTotal()) / 1e8).toFixed(4)} ICP
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(getOtherPoolsIcpTotal(), 8, 'ICP'))})
                                                         </span>
                                                     </div>
@@ -3389,7 +3389,7 @@ function RLLInfo() {
                                     paddingTop: '15px',
                                     borderTop: '1px solid #3498db'
                                 }}>
-                                    <div style={{ color: '#3498db', marginBottom: '5px' }}>Total ICP:</div>
+                                    <div style={{ color: theme.colors.accent, marginBottom: '5px' }}>Total ICP:</div>
                                     <div style={{ fontSize: '1.4em', fontWeight: 'bold' }}>
                                         {((Number(treasuryBalances.icp) + 
                                            Number(neuronBalance?.stake_e8s || 0) + 
@@ -3399,7 +3399,7 @@ function RLLInfo() {
                                            Number(rllBalances.icp) +
                                            Number(vectorInfo['SNEED Buyback Vector']?.[0]?.[0]?.sources?.[0]?.balance || 0) +
                                            Number(getOtherPoolsIcpTotal())) / 1e8).toFixed(4)} ICP
-                                        <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
+                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.8em' }}>
                                             (${formatUSD(
                                                 getUSDValue(treasuryBalances.icp, 8, 'ICP') +
                                                 getUSDValue(neuronBalance?.stake_e8s || 0, 8, 'ICP') +
@@ -3420,7 +3420,7 @@ function RLLInfo() {
                                 backgroundColor: '#1a1a1a',
                                 padding: '20px',
                                 borderRadius: '6px',
-                                border: '1px solid #2ecc71',
+                                border: `1px solid ${theme.colors.success}`,
                                 marginBottom: '20px'
                             }}>
                                 <h3 
@@ -3464,82 +3464,82 @@ function RLLInfo() {
                                         ) : (
                                             <>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>
                                                         <a 
                                                             href="https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai/account/fi3zi-fyaaa-aaaaq-aachq-cai-laerbmy.8b0805942c48b3420d6edffecbb685e8c39ef574612a5d8a911fb068bf6648de"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             Treasury:
                                                         </a>
                                                     </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(treasuryBalances.sneed) / 1e8).toFixed(4)} SNEED
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(treasuryBalances.sneed, 8, 'SNEED'))})
                                                         </span>
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>
                                                         <a 
                                                             href="https://info.icpswap.com/swap-scan/positions?pair=osyzs-xiaaa-aaaag-qc76q-cai"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             ICP/SNEED LP:
                                                         </a>
                                                     </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(lpPositions.totals.token0Amount) / 1e8).toFixed(4)} SNEED
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED'))})
                                                         </span>
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>Unclaimed LP Rewards:</div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(lpPositions.totals.tokensOwed0) / 1e8).toFixed(4)} SNEED
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(lpPositions.totals.tokensOwed0, 8, 'SNEED'))})
                                                         </span>
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>
                                                         <a 
                                                             href="https://dashboard.internetcomputer.org/canister/ok64y-uiaaa-aaaag-qdcbq-cai"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             DeFi Canister:
                                                         </a>
                                                     </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(defiBalances.sneed) / 1e8).toFixed(4)} SNEED
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(defiBalances.sneed, 8, 'SNEED'))})
                                                         </span>
                                                     </div>
                                                 </div>
                                                 <div style={{ marginBottom: '15px' }}>
-                                                    <div style={{ color: '#888', marginBottom: '5px' }}>
+                                                    <div style={{ color: theme.colors.mutedText, marginBottom: '5px' }}>
                                                         <a 
                                                             href="https://app.sneeddao.com/rll"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            style={{ color: '#3498db', textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
+                                                            style={{ color: theme.colors.accent, textDecoration: 'none', ':hover': { textDecoration: 'underline' } }}
                                                         >
                                                             RLL Distribution:
                                                         </a>
                                                     </div>
                                                     <div style={{ fontSize: '1.1em' }}>
                                                         {(Number(rllBalances.sneed) / 1e8).toFixed(4)} SNEED
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(rllBalances.sneed, 8, 'SNEED'))})
                                                         </span>
                                                     </div>
@@ -3562,7 +3562,7 @@ function RLLInfo() {
                                            Number(lpPositions.totals.tokensOwed0) +
                                            Number(defiBalances.sneed) +
                                            Number(rllBalances.sneed)) / 1e8).toFixed(4)} SNEED
-                                        <span style={{ color: '#888', marginLeft: '8px', fontSize: '0.8em' }}>
+                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px', fontSize: '0.8em' }}>
                                             (${formatUSD(
                                                 getUSDValue(treasuryBalances.sneed, 8, 'SNEED') +
                                                 getUSDValue(lpPositions.totals.token0Amount, 8, 'SNEED') +
@@ -3624,7 +3624,7 @@ function RLLInfo() {
                                                 {/* DeFi Canister Balances */}
                                                 <div style={{ marginBottom: '25px' }}>
                                                     <div style={{ 
-                                                        color: '#3498db', 
+                                                        color: theme.colors.accent, 
                                                         fontSize: '1.1em', 
                                                         fontWeight: 'bold',
                                                         marginBottom: '15px',
@@ -3650,7 +3650,7 @@ function RLLInfo() {
                                                                     <div key={tokenId.toString()} style={{ marginBottom: '10px', marginLeft: '10px' }}>
                                                                         {(Number(balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
                                                                         {!isNaN(usdValue) && usdValue > 0 && (
-                                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                            <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                                                 (${formatUSD(usdValue)})
                                                                             </span>
                                                                         )}
@@ -3690,7 +3690,7 @@ function RLLInfo() {
                                                                     <div key={tokenId.toString()} style={{ marginBottom: '10px' }}>
                                                                         <div style={{ marginLeft: '10px' }}>
                                                                             {(Number(rllBalance.server_balance) / Math.pow(10, tokenInfo.decimals)).toFixed(4)} {tokenInfo.symbol}
-                                                                            <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                                            <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                                                 (${formatUSD(getUSDValue(rllBalance.server_balance, tokenInfo.decimals, tokenInfo.symbol))})
                                                                             </span>
                                                                         </div>
@@ -3770,32 +3770,32 @@ function RLLInfo() {
                                             <div style={{
                                                 marginBottom: '15px',
                                                 padding: '10px',
-                                                backgroundColor: '#2a2a2a',
+                                                background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                                 borderRadius: '4px'
                                             }}>
-                                                <div style={{ color: '#3498db', marginBottom: '8px', fontWeight: 'bold' }}>
+                                                <div style={{ color: theme.colors.accent, marginBottom: '8px', fontWeight: 'bold' }}>
                                                     ICP/CLOWN Position #168
                                                 </div>
                                                 <div style={{ marginLeft: '10px' }}>
                                                     <div>Current Position:</div>
                                                     <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token1Amount) / 1e8).toFixed(4)} ICP
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.token1Amount, 8, 'ICP'))})
                                                         </span>
                                                     </div>
                                                     <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.token0Amount) / 1e8).toFixed(4)} CLOWN
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.token0Amount, 8, 'CLOWN'))})
                                                         </span>
                                                     </div>
                                                     <div style={{ marginTop: '5px' }}>Unclaimed Rewards:</div>
                                                     <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed1) / 1e8).toFixed(4)} ICP
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.tokensOwed1, 8, 'ICP'))})
                                                         </span>
                                                     </div>
                                                     <div>• {(Number(otherLpPositions['ICP/CLOWN'].position.tokensOwed0) / 1e8).toFixed(4)} CLOWN
-                                                        <span style={{ color: '#888', marginLeft: '8px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                             (${formatUSD(getUSDValue(otherLpPositions['ICP/CLOWN'].position.tokensOwed0, 8, 'CLOWN'))})
                                                         </span>
                                                     </div>
