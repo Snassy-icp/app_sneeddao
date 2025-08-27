@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
 import { Principal } from '@dfinity/principal';
 import PrincipalInput from './PrincipalInput';
@@ -15,6 +16,7 @@ const MessageDialog = ({
     onSuccess = null 
 }) => {
     const { identity } = useAuth();
+    const { theme } = useTheme();
     const [config, setConfig] = useState(null);
     const [composeForm, setComposeForm] = useState({
         recipients: [initialRecipient],
@@ -184,14 +186,16 @@ const MessageDialog = ({
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            background: theme.colors.modalBg,
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
             zIndex: 10001
         }}>
             <div style={{
-                backgroundColor: '#2a2a2a',
+                background: theme.colors.cardGradient,
+                border: `1px solid ${theme.colors.border}`,
+                boxShadow: theme.colors.cardShadow,
                 borderRadius: '8px',
                 padding: '20px',
                 width: '90%',
@@ -205,7 +209,7 @@ const MessageDialog = ({
                     alignItems: 'center',
                     marginBottom: '20px'
                 }}>
-                    <h3 style={{ color: '#ffffff', margin: 0 }}>
+                    <h3 style={{ color: theme.colors.primaryText, margin: 0 }}>
                         {replyToId ? 'Reply to Message' : 'Send Message'}
                     </h3>
                     <button
@@ -213,7 +217,7 @@ const MessageDialog = ({
                         style={{
                             background: 'none',
                             border: 'none',
-                            color: '#888',
+                            color: theme.colors.mutedText,
                             fontSize: '24px',
                             cursor: 'pointer',
                             padding: '0',
@@ -230,9 +234,9 @@ const MessageDialog = ({
 
                 {error && (
                     <div style={{
-                        backgroundColor: 'rgba(231, 76, 60, 0.2)',
-                        border: '1px solid #e74c3c',
-                        color: '#e74c3c',
+                        background: `linear-gradient(135deg, ${theme.colors.error}20, ${theme.colors.error}10)`,
+                        border: `1px solid ${theme.colors.error}`,
+                        color: theme.colors.error,
                         padding: '10px',
                         borderRadius: '4px',
                         marginBottom: '15px'
@@ -242,7 +246,7 @@ const MessageDialog = ({
                 )}
 
                 <div style={{ marginBottom: '15px' }}>
-                    <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px' }}>
+                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '8px' }}>
                         Recipients *
                     </label>
                     {composeForm.recipients.map((recipient, index) => (
@@ -257,8 +261,8 @@ const MessageDialog = ({
                                 <button
                                     onClick={() => removeRecipient(index)}
                                     style={{
-                                        backgroundColor: '#e74c3c',
-                                        color: '#ffffff',
+                                        background: theme.colors.error,
+                                        color: theme.colors.primaryBg,
                                         border: 'none',
                                         borderRadius: '4px',
                                         padding: '8px 12px',
@@ -275,8 +279,8 @@ const MessageDialog = ({
                         <button
                             onClick={addRecipient}
                             style={{
-                                backgroundColor: '#27ae60',
-                                color: '#ffffff',
+                                background: theme.colors.success,
+                                color: theme.colors.primaryBg,
                                 border: 'none',
                                 borderRadius: '4px',
                                 padding: '8px 12px',
@@ -290,7 +294,7 @@ const MessageDialog = ({
                 </div>
 
                 <div style={{ marginBottom: '15px' }}>
-                    <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px' }}>
+                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '8px' }}>
                         Subject *
                     </label>
                     <input
@@ -302,17 +306,17 @@ const MessageDialog = ({
                         style={{
                             width: '100%',
                             padding: '10px',
-                            backgroundColor: '#3a3a3a',
-                            border: '1px solid #4a4a4a',
+                            background: theme.colors.tertiaryBg,
+                            border: `1px solid ${theme.colors.border}`,
                             borderRadius: '4px',
-                            color: '#ffffff',
+                            color: theme.colors.primaryText,
                             fontSize: '14px'
                         }}
                     />
                 </div>
 
                 <div style={{ marginBottom: '20px' }}>
-                    <label style={{ color: '#ffffff', display: 'block', marginBottom: '8px' }}>
+                    <label style={{ color: theme.colors.primaryText, display: 'block', marginBottom: '8px' }}>
                         Message *
                     </label>
                     <textarea
@@ -324,10 +328,10 @@ const MessageDialog = ({
                         style={{
                             width: '100%',
                             padding: '10px',
-                            backgroundColor: '#3a3a3a',
-                            border: '1px solid #4a4a4a',
+                            background: theme.colors.tertiaryBg,
+                            border: `1px solid ${theme.colors.border}`,
                             borderRadius: '4px',
-                            color: '#ffffff',
+                            color: theme.colors.primaryText,
                             fontSize: '14px',
                             resize: 'vertical'
                         }}
@@ -342,8 +346,8 @@ const MessageDialog = ({
                     <button
                         onClick={onClose}
                         style={{
-                            backgroundColor: '#6c757d',
-                            color: '#ffffff',
+                            background: theme.colors.mutedText,
+                            color: theme.colors.primaryBg,
                             border: 'none',
                             borderRadius: '6px',
                             padding: '10px 20px',
@@ -356,8 +360,8 @@ const MessageDialog = ({
                         onClick={sendMessage}
                         disabled={!isFormValid() || submitting}
                         style={{
-                            backgroundColor: isFormValid() && !submitting ? '#3498db' : '#6c757d',
-                            color: '#ffffff',
+                            background: isFormValid() && !submitting ? theme.colors.accent : theme.colors.mutedText,
+                            color: theme.colors.primaryBg,
                             border: 'none',
                             borderRadius: '6px',
                             padding: '10px 20px',

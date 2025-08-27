@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { setPrincipalNickname, getPrincipalNickname } from '../utils/BackendUtils';
 
 const NicknameDialog = ({ 
@@ -11,6 +12,7 @@ const NicknameDialog = ({
     onSuccess = null 
 }) => {
     const { identity } = useAuth();
+    const { theme } = useTheme();
     const [nicknameInput, setNicknameInput] = useState('');
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -92,14 +94,16 @@ const NicknameDialog = ({
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            background: theme.colors.modalBg,
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
             zIndex: 10001
         }}>
             <div style={{
-                backgroundColor: '#2a2a2a',
+                background: theme.colors.cardGradient,
+                border: `1px solid ${theme.colors.border}`,
+                boxShadow: theme.colors.cardShadow,
                 borderRadius: '8px',
                 padding: '20px',
                 width: '90%',
@@ -111,7 +115,7 @@ const NicknameDialog = ({
                     alignItems: 'center',
                     marginBottom: '20px'
                 }}>
-                    <h3 style={{ color: '#ffffff', margin: 0 }}>
+                    <h3 style={{ color: theme.colors.primaryText, margin: 0 }}>
                         {currentNickname ? 'Edit Nickname' : 'Set Nickname'}
                     </h3>
                     <button
@@ -119,7 +123,7 @@ const NicknameDialog = ({
                         style={{
                             background: 'none',
                             border: 'none',
-                            color: '#888',
+                            color: theme.colors.mutedText,
                             fontSize: '24px',
                             cursor: 'pointer',
                             padding: '0',
@@ -136,9 +140,9 @@ const NicknameDialog = ({
 
                 {error && (
                     <div style={{
-                        backgroundColor: 'rgba(231, 76, 60, 0.2)',
-                        border: '1px solid #e74c3c',
-                        color: '#e74c3c',
+                        background: `linear-gradient(135deg, ${theme.colors.error}20, ${theme.colors.error}10)`,
+                        border: `1px solid ${theme.colors.error}`,
+                        color: theme.colors.error,
                         padding: '10px',
                         borderRadius: '4px',
                         marginBottom: '15px',
@@ -150,7 +154,7 @@ const NicknameDialog = ({
 
                 <div style={{ marginBottom: '15px' }}>
                     <label style={{ 
-                        color: '#ffffff', 
+                        color: theme.colors.primaryText, 
                         display: 'block', 
                         marginBottom: '8px',
                         fontSize: '14px'
@@ -172,16 +176,16 @@ const NicknameDialog = ({
                         style={{
                             width: '100%',
                             padding: '10px',
-                            backgroundColor: '#3a3a3a',
-                            border: `1px solid ${error ? '#e74c3c' : '#4a4a4a'}`,
+                            background: theme.colors.tertiaryBg,
+                            border: `1px solid ${error ? theme.colors.error : theme.colors.border}`,
                             borderRadius: '4px',
-                            color: '#ffffff',
+                            color: theme.colors.primaryText,
                             fontSize: '14px'
                         }}
                         autoFocus
                     />
                     <div style={{
-                        color: '#888',
+                        color: theme.colors.mutedText,
                         fontSize: '12px',
                         marginTop: '4px'
                     }}>
@@ -198,8 +202,8 @@ const NicknameDialog = ({
                         onClick={onClose}
                         disabled={isSubmitting}
                         style={{
-                            backgroundColor: '#6c757d',
-                            color: '#ffffff',
+                            background: theme.colors.mutedText,
+                            color: theme.colors.primaryBg,
                             border: 'none',
                             borderRadius: '6px',
                             padding: '10px 20px',
@@ -213,8 +217,8 @@ const NicknameDialog = ({
                         onClick={handleSubmit}
                         disabled={isSubmitting || !!error}
                         style={{
-                            backgroundColor: (!isSubmitting && !error) ? '#3498db' : '#6c757d',
-                            color: '#ffffff',
+                            background: (!isSubmitting && !error) ? theme.colors.accent : theme.colors.mutedText,
+                            color: theme.colors.primaryBg,
                             border: 'none',
                             borderRadius: '6px',
                             padding: '10px 20px',
