@@ -85,14 +85,8 @@ body {
 }
 
 .card:hover {
-    background: linear-gradient(
-        135deg,
-        rgba(180, 180, 180, 0.664) 0%,
-        rgba(194, 194, 194, 0.15) 100%
-    );
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+    border-color: var(--color-borderHover);
+    box-shadow: var(--color-accentShadow);
     transform: translateY(-5px);
     transition: all 0.3s ease;
 }
@@ -157,35 +151,35 @@ body {
 .token-name {
     font-size: 1.1rem;
     font-weight: 500;
-    color: #bdc3c7;
+    color: var(--color-secondaryText);
 }
 
 .token-symbol {
     font-size: 1.2rem;
-    color: #ffffff;
+    color: var(--color-primaryText);
 }
 
 .token-amount {
     font-size: 1.0rem;
     font-weight: 500;
-    color: #ffffff;
+    color: var(--color-primaryText);
 }
 
 .token-usd-value {
     font-size: 0.9rem;
     font-weight: 400;
-    color: #bdc3c7;
+    color: var(--color-secondaryText);
     text-align: right;
 }
 
 .expand-indicator {
     font-size: 0.9rem;
-    color: #bdc3c7;
+    color: var(--color-secondaryText);
     transition: transform 0.2s ease;
 }
 
 .card-header:hover .expand-indicator {
-    color: #ffffff;
+    color: var(--color-primaryText);
 }
 
 .token-logo {
@@ -231,7 +225,7 @@ body {
 
 .balance-label {
     font-size: 0.8rem;
-    color: #ddd;
+    color: var(--color-secondaryText);
     margin-bottom: 5px;
 
     display: flex;
@@ -239,7 +233,7 @@ body {
 }
 
 .usd-text {
-    color: #cfcfcf;
+    color: var(--color-secondaryText);
 }
 
 .token-amounts {
@@ -255,7 +249,7 @@ body {
 
 .token-symbol {
     font-size: 0.9rem;
-    color: #ddd;
+    color: var(--color-secondaryText);
     min-width: 40px;
     margin-right: 5px;
     align-self: center;
@@ -358,8 +352,8 @@ body {
 }
 
 .spinner {
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #3498db;
+    border: 4px solid var(--color-border);
+    border-top: 4px solid var(--color-accent);
     border-radius: 50%;
     width: 30px;
     height: 30px;
@@ -393,7 +387,7 @@ body {
 
 .locks-header {
     font-size: 0.9rem;
-    color: #ddd;
+    color: var(--color-secondaryText);
     margin-bottom: 10px;
 }
 
@@ -416,7 +410,7 @@ body {
 }
 
 .lock-label {
-    color: #ddd;
+    color: var(--color-secondaryText);
 }
 
 .lock-value {
@@ -578,7 +572,7 @@ body {
 .tvl-token-name {
     font-size: 1.8em;
     font-weight: bold;
-    color: #fff;
+    color: var(--color-primaryText);
     margin-bottom: 4px;
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
@@ -620,7 +614,7 @@ body {
 .tvl-metric-value {
     font-size: 1.6em;
     font-weight: bold;
-    color: #fff;
+    color: var(--color-primaryText);
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
