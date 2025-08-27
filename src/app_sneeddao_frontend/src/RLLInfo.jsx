@@ -587,7 +587,7 @@ const TooltipOverlay = ({ tooltip, theme }) => {
                 zIndex: 1000,
                 maxWidth: '300px',
                 background: theme.colors?.modalBg || 'rgba(0, 0, 0, 0.9)',
-                color: 'white',
+                color: theme.colors?.primaryText || 'white',
                 padding: '12px 16px',
                 borderRadius: '6px',
                 fontSize: '13px',
