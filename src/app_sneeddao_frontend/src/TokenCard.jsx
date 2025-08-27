@@ -446,6 +446,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                             principal={Principal.fromText(lock.owner)}
                                                             displayInfo={principalDisplayInfo?.get(lock.owner)}
                                                             showCopyButton={true}
+                                                            short={true}
+                                                            enableContextMenu={true}
                                                             style={{ display: 'inline-flex' }}
                                                         />
                                                     </span>
