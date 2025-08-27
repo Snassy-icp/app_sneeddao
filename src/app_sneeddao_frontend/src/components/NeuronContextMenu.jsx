@@ -9,7 +9,8 @@ const NeuronContextMenu = ({
     neuronId,
     snsRoot,
     currentNickname,
-    onSetNickname
+    onSetNickname,
+    isAuthenticated = false
 }) => {
     const navigate = useNavigate();
     const menuRef = useRef(null);
@@ -112,24 +113,26 @@ const NeuronContextMenu = ({
                 minWidth: '200px'
             }}
         >
-            <div
-                onClick={handleSetNickname}
-                style={{
-                    padding: '12px 16px',
-                    color: '#ffffff',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '14px',
-                    transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-            >
-                <span>🏷️</span>
-                <span>{currentNickname ? 'Edit Nickname' : 'Set Nickname'}</span>
-            </div>
+            {isAuthenticated && (
+                <div
+                    onClick={handleSetNickname}
+                    style={{
+                        padding: '12px 16px',
+                        color: '#ffffff',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                >
+                    <span>🏷️</span>
+                    <span>{currentNickname ? 'Edit Nickname' : 'Set Nickname'}</span>
+                </div>
+            )}
 
             <div
                 onClick={handleViewNeuron}
@@ -150,11 +153,13 @@ const NeuronContextMenu = ({
                 <span>View Neuron</span>
             </div>
 
-            <hr style={{
-                margin: '8px 0',
-                border: 'none',
-                borderTop: '1px solid #3a3a3a'
-            }} />
+            {isAuthenticated && (
+                <hr style={{
+                    margin: '8px 0',
+                    border: 'none',
+                    borderTop: '1px solid #3a3a3a'
+                }} />
+            )}
 
             <div
                 onClick={handleCopyId}

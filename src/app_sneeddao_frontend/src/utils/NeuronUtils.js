@@ -242,6 +242,7 @@ export const formatNeuronDisplayWithContext = (neuronId, snsRoot, displayInfo = 
     const {
         showCopyButton = true,
         enableContextMenu = true,
+        isAuthenticated = false,
         onNicknameUpdate = null,
         style = {},
         noLink = false
@@ -253,6 +254,7 @@ export const formatNeuronDisplayWithContext = (neuronId, snsRoot, displayInfo = 
         displayInfo,
         showCopyButton,
         enableContextMenu,
+        isAuthenticated,
         onNicknameUpdate,
         style,
         noLink

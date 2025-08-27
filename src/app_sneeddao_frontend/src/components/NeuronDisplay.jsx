@@ -12,6 +12,7 @@ export const NeuronDisplay = React.memo(({
     displayInfo = null,
     showCopyButton = true,
     enableContextMenu = true,
+    isAuthenticated = false,
     onNicknameUpdate = null,
     style = {},
     noLink = false
@@ -216,7 +217,8 @@ export const NeuronDisplay = React.memo(({
             neuronId: displayId,
             snsRoot: snsRoot,
             currentNickname: nickname || '',
-            onSetNickname: handleSetNickname
+            onSetNickname: handleSetNickname,
+            isAuthenticated: isAuthenticated
         }),
 
         // Nickname dialog

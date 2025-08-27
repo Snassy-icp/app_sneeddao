@@ -264,11 +264,9 @@ export const getPrincipalNickname = async (identity, principal) => {
 
 // Get all principal names
 export const getAllPrincipalNames = async (identity) => {
-    if (!identity) return null;
-    
     try {
-        const actor = createBackendActor(identity);
-        console.log('Getting all principal names');
+        const actor = createBackendActor(identity); // identity can be null for anonymous calls
+        console.log('Getting all principal names with identity:', identity ? 'authenticated' : 'anonymous');
         const response = await actor.get_all_principal_names();
         return response;
     } catch (error) {
