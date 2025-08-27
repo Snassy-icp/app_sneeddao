@@ -1,15 +1,17 @@
 import React from 'react';
 import Header from '../components/Header';
+import { useTheme } from '../contexts/ThemeContext';
 
-const styles = {
+// Theme-aware styles function
+const getStyles = (theme) => ({
     container: {
         maxWidth: '1200px',
         margin: '0 auto',
         padding: '2rem',
-        color: '#fff',
+        color: theme.colors.primaryText,
     },
     section: {
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         borderRadius: '8px',
         padding: '2rem',
         marginBottom: '2rem',
@@ -17,17 +19,17 @@ const styles = {
     heading: {
         fontSize: '2.5rem',
         marginBottom: '1.5rem',
-        color: '#fff',
+        color: theme.colors.primaryText,
     },
     subheading: {
         fontSize: '1.8rem',
         marginBottom: '1rem',
-        color: '#fff',
+        color: theme.colors.primaryText,
     },
     paragraph: {
         marginBottom: '1rem',
         lineHeight: '1.6',
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '1.1rem',
     },
     list: {
@@ -36,11 +38,11 @@ const styles = {
     },
     listItem: {
         marginBottom: '1rem',
-        color: '#ccc',
+        color: theme.colors.secondaryText,
         fontSize: '1.1rem',
     },
     highlight: {
-        backgroundColor: '#3a3a3a',
+        backgroundColor: theme.colors.tertiaryBg,
         padding: '2rem',
         borderRadius: '8px',
         marginBottom: '2rem',
@@ -52,22 +54,22 @@ const styles = {
         marginTop: '1rem',
     },
     comparisonBox: {
-        backgroundColor: '#3a3a3a',
+        backgroundColor: theme.colors.tertiaryBg,
         padding: '1.5rem',
         borderRadius: '8px',
     },
     featureBox: {
-        backgroundColor: '#3a3a3a',
+        backgroundColor: theme.colors.tertiaryBg,
         padding: '1.5rem',
         borderRadius: '8px',
         marginBottom: '1rem',
     },
     strong: {
-        color: '#3498db',
+        color: theme.colors.accent,
         fontWeight: 'bold',
     },
     linkSection: {
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         borderRadius: '8px',
         padding: '2rem',
         marginBottom: '2rem',
@@ -79,7 +81,7 @@ const styles = {
         marginTop: '1rem',
     },
     linkBox: {
-        backgroundColor: '#3a3a3a',
+        backgroundColor: theme.colors.tertiaryBg,
         padding: '1.5rem',
         borderRadius: '8px',
     },
@@ -92,18 +94,18 @@ const styles = {
         marginBottom: '0.8rem',
     },
     link: {
-        color: '#3498db',
+        color: theme.colors.accent,
         textDecoration: 'none',
         fontSize: '1.1rem',
-        '&:hover': {
-            textDecoration: 'underline',
-        },
     },
-};
+});
 
 function Dao() {
+    const { theme } = useTheme();
+    const styles = getStyles(theme);
+
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main style={styles.container}>
                 <div style={styles.section}>
@@ -142,7 +144,7 @@ function Dao() {
                     <h2 style={styles.subheading}>Web3 vs Traditional DAOs</h2>
                     <div style={styles.comparisonGrid}>
                         <div style={styles.comparisonBox}>
-                            <h3 style={{...styles.subheading, fontSize: '1.4rem', color: '#e74c3c'}}>Conventional Web2 DAOs</h3>
+                            <h3 style={{...styles.subheading, fontSize: '1.4rem', color: theme.colors.error}}>Conventional Web2 DAOs</h3>
                             <ul style={styles.list}>
                                 <li style={styles.listItem}>Hosted on centralized Web2 servers</li>
                                 <li style={styles.listItem}>Limited transparency in operations</li>
@@ -151,7 +153,7 @@ function Dao() {
                             </ul>
                         </div>
                         <div style={styles.comparisonBox}>
-                            <h3 style={{...styles.subheading, fontSize: '1.4rem', color: '#2ecc71'}}>Sneed DAO</h3>
+                            <h3 style={{...styles.subheading, fontSize: '1.4rem', color: theme.colors.success}}>Sneed DAO</h3>
                             <ul style={styles.list}>
                                 <li style={styles.listItem}>100% Web3 operation on ICP</li>
                                 <li style={styles.listItem}>Full transparency on-chain</li>
@@ -199,27 +201,62 @@ function Dao() {
                             <h3 style={{...styles.subheading, fontSize: '1.4rem'}}>Web3</h3>
                             <ul style={styles.linkList}>
                                 <li style={styles.linkItem}>
-                                    <a href="https://icpswap.com" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                    <a 
+                                        href="https://icpswap.com" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        style={styles.link}
+                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                    >
                                         ICPSwap
                                     </a>
                                 </li>
                                 <li style={styles.linkItem}>
-                                    <a href="https://sonic.ooo" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                    <a 
+                                        href="https://sonic.ooo" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        style={styles.link}
+                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                    >
                                         Sonic
                                     </a>
                                 </li>
                                 <li style={styles.linkItem}>
-                                    <a href="https://iclight.io" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                    <a 
+                                        href="https://iclight.io" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        style={styles.link}
+                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                    >
                                         ICLight
                                     </a>
                                 </li>
                                 <li style={styles.linkItem}>
-                                    <a href="https://icpcoins.com" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                    <a 
+                                        href="https://icpcoins.com" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        style={styles.link}
+                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                    >
                                         ICPCoins
                                     </a>
                                 </li>
                                 <li style={styles.linkItem}>
-                                    <a href="https://sneedscan.com" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                    <a 
+                                        href="https://sneedscan.com" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        style={styles.link}
+                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                    >
                                         SneedScan
                                     </a>
                                 </li>
@@ -229,12 +266,26 @@ function Dao() {
                             <h3 style={{...styles.subheading, fontSize: '1.4rem'}}>Web2</h3>
                             <ul style={styles.linkList}>
                                 <li style={styles.linkItem}>
-                                    <a href="https://coinmarketcap.com/currencies/sneed" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                    <a 
+                                        href="https://coinmarketcap.com/currencies/sneed" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        style={styles.link}
+                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                    >
                                         CoinMarketCap
                                     </a>
                                 </li>
                                 <li style={styles.linkItem}>
-                                    <a href="https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai" target="_blank" rel="noopener noreferrer" style={styles.link}>
+                                    <a 
+                                        href="https://dashboard.internetcomputer.org/sns/fp274-iaaaa-aaaaq-aacha-cai" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        style={styles.link}
+                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                    >
                                         Sneed DAO SNS Proposal
                                     </a>
                                 </li>
@@ -243,7 +294,7 @@ function Dao() {
                     </div>
                 </div>
 
-                <div style={{...styles.section, textAlign: 'center', color: '#888', fontSize: '0.9rem'}}>
+                <div style={{...styles.section, textAlign: 'center', color: theme.colors.mutedText, fontSize: '0.9rem'}}>
                     © 2024 Built with ❤️ by Sneed DAO
                 </div>
             </main>
