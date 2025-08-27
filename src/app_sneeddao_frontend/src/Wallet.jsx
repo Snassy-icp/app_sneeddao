@@ -1373,13 +1373,43 @@ function Wallet() {
                 minHeight: '100vh'
             }}
         >
-            <Header showTotalValue={totalDollarValue} />
+            <Header />
             <div 
                 className="wallet-container"
                 style={{
                     backgroundColor: 'transparent'
                 }}
             >
+                {/* Total Value Display */}
+                {totalDollarValue && (
+                    <div style={{
+                        background: theme.colors.cardGradient,
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: '12px',
+                        padding: '20px',
+                        marginBottom: '20px',
+                        textAlign: 'center',
+                        boxShadow: theme.colors.cardShadow
+                    }}>
+                        <div style={{
+                            color: theme.colors.mutedText,
+                            fontSize: '14px',
+                            letterSpacing: '1px',
+                            textTransform: 'uppercase',
+                            marginBottom: '8px'
+                        }}>
+                            Total Portfolio Value
+                        </div>
+                        <div style={{
+                            color: theme.colors.primaryText,
+                            fontSize: '36px',
+                            fontWeight: '600',
+                            letterSpacing: '0.5px'
+                        }}>
+                            ${totalDollarValue}
+                        </div>
+                    </div>
+                )}
                 {!isAuthenticated ? (
                     <div style={{
                         display: 'flex',

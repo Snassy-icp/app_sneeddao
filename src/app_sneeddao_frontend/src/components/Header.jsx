@@ -36,8 +36,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) return 'Me';
         if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
-        if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path)) return 'Me';
-        if (['/wallet'].includes(path)) return 'Wallet';
+        if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet'].includes(path)) return 'Me';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path)) return 'Locks';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
@@ -53,10 +52,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Me');
         } else if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
             setActiveSection('Hub');
-        } else if (['/me', '/rewards', '/tips', '/posts', '/sms'].includes(path)) {
+        } else if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet'].includes(path)) {
             setActiveSection('Me');
-        } else if (['/wallet'].includes(path)) {
-            setActiveSection('Wallet');
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
         } else if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path)) {
@@ -172,17 +169,11 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Messages', path: '/sms' },
                 { name: 'Posts', path: '/posts' },
                 { name: 'Tips', path: '/tips' },
-                { name: 'Rewards', path: '/rewards' }
-            ]
-        },
-        'Wallet': {
-            icon: <FaWallet size={18} />,
-            displayName: 'Sneed Wallet',
-            defaultPath: '/wallet',
-            subMenu: [
+                { name: 'Rewards', path: '/rewards' },
                 { name: 'Wallet', path: '/wallet' }
             ]
         },
+
         'DAO': {
             icon: <FaBuilding size={18} />,
             displayName: 'Sneed DAO',
