@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
+import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { HttpAgent } from '@dfinity/agent';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
@@ -15,17 +16,18 @@ import {
 } from '../utils/TokenUtils';
 import { Link } from 'react-router-dom';
 
-const styles = {
+// Theme-aware styles function
+const getStyles = (theme) => ({
     container: {
         maxWidth: '1800px',
         margin: '0 auto',
         padding: '2rem',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
     },
     heading: {
         fontSize: '2rem',
         marginBottom: '2rem',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
     },
     sectionsGrid: {
         display: 'grid',
@@ -36,7 +38,7 @@ const styles = {
         },
     },
     section: {
-        backgroundColor: '#2a2a2a',
+        backgroundColor: theme.colors.secondaryBg,
         borderRadius: '8px',
         padding: '1.5rem',
         minWidth: '300px',
@@ -44,7 +46,7 @@ const styles = {
     subheading: {
         fontSize: '1.5rem',
         marginBottom: '1.5rem',
-        color: '#ffffff',
+        color: theme.colors.primaryText,
     },
     grid: {
         display: 'grid',
@@ -55,7 +57,7 @@ const styles = {
         },
     },
     card: {
-        backgroundColor: '#3a3a3a',
+        backgroundColor: theme.colors.tertiaryBg,
         borderRadius: '8px',
         padding: '1.5rem',
         display: 'flex',
@@ -68,25 +70,25 @@ const styles = {
         fontSize: '1.8rem',
         fontWeight: 'bold',
         marginBottom: '0.5rem',
-        color: '#3498db',
+        color: theme.colors.accent,
     },
     label: {
-        color: '#888',
+        color: theme.colors.mutedText,
         fontSize: '1rem',
     },
     spinner: {
         width: '20px',
         height: '20px',
-        border: '2px solid #f3f3f3',
-        borderTop: '2px solid #3498db',
+        border: `2px solid ${theme.colors.border}`,
+        borderTop: `2px solid ${theme.colors.accent}`,
         borderRadius: '50%',
         animation: 'spin 1s linear infinite',
     },
     emptySection: {
         textAlign: 'center',
         padding: '2rem',
-        color: '#888',
-        backgroundColor: '#3a3a3a',
+        color: theme.colors.mutedText,
+        backgroundColor: theme.colors.tertiaryBg,
         borderRadius: '8px',
     },
     sectionHeader: {
@@ -96,15 +98,12 @@ const styles = {
         marginBottom: '1.5rem',
     },
     drillDownLink: {
-        color: '#3498db',
+        color: theme.colors.accent,
         textDecoration: 'none',
         fontSize: '0.9rem',
         marginTop: '1rem',
         display: 'inline-block',
         marginLeft: 'auto',
-        '&:hover': {
-            textDecoration: 'underline',
-        },
     },
     cardHeader: {
         display: 'flex',
@@ -114,10 +113,10 @@ const styles = {
     },
     dissolveStateValue: {
         fontSize: '0.6em',
-        color: '#888',
+        color: theme.colors.mutedText,
     },
     doubleWidthCard: {
-        backgroundColor: '#3a3a3a',
+        backgroundColor: theme.colors.tertiaryBg,
         borderRadius: '8px',
         padding: '1.5rem',
         display: 'flex',
@@ -136,7 +135,7 @@ const styles = {
         gap: '1rem',
     },
     productCard: {
-        backgroundColor: '#3a3a3a',
+        backgroundColor: theme.colors.tertiaryBg,
         borderRadius: '8px',
         padding: '1.5rem',
         display: 'flex',
@@ -145,16 +144,16 @@ const styles = {
     },
     productTitle: {
         fontSize: '1.4rem',
-        color: '#3498db',
+        color: theme.colors.accent,
         fontWeight: 'bold',
     },
     productDescription: {
-        color: '#888',
+        color: theme.colors.mutedText,
         fontSize: '0.9rem',
         lineHeight: '1.4',
         flex: 1,
     },
-};
+});
 
 // Add media query styles
 const mediaStyles = `
@@ -174,6 +173,8 @@ const spinKeyframes = `
 
 function DaoInfo() {
     const { identity } = useAuth();
+    const { theme } = useTheme();
+    const styles = getStyles(theme);
     const [loading, setLoading] = useState({
         metrics: true,
         tokenomics: true,
@@ -616,7 +617,7 @@ function DaoInfo() {
     };
 
     return (
-        <div className='page-container'>
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main style={styles.container}>
                 <h1 style={styles.heading}>DAO Dashboard</h1>
@@ -626,14 +627,21 @@ function DaoInfo() {
                     <section style={styles.section}>
                         <div style={styles.sectionHeader}>
                             <h2 style={styles.subheading}>DAO Metrics</h2>
-                            <Link to="/neurons" style={styles.drillDownLink}>Drill down →</Link>
+                            <Link 
+                                to="/neurons" 
+                                style={styles.drillDownLink}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                Drill down →
+                            </Link>
                         </div>
                         {loading.metrics ? (
                             <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
                                 <div style={styles.spinner} />
                             </div>
                         ) : error.metrics ? (
-                            <div style={{ color: '#e74c3c', padding: '20px', textAlign: 'center' }}>
+                            <div style={{ color: theme.colors.error, padding: '20px', textAlign: 'center' }}>
                                 {error.metrics}
                             </div>
                         ) : (
@@ -685,7 +693,7 @@ function DaoInfo() {
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
                                         {formatNumber(Number(daoMetrics.neuronStats.votingPower.total))}
-                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                        <div style={{ fontSize: '0.7em', color: theme.colors.mutedText }}>
                                             Min: {formatNumber(Number(daoMetrics.neuronStats.votingPower.min))}
                                             {' | '}
                                             Max: {formatNumber(Number(daoMetrics.neuronStats.votingPower.max))}
@@ -696,7 +704,7 @@ function DaoInfo() {
                                 <div style={styles.card}>
                                     <div style={styles.metric}>
                                         {formatNumber(Number(daoMetrics.neuronStats.permissions.total_hotkeys))}
-                                        <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                        <div style={{ fontSize: '0.7em', color: theme.colors.mutedText }}>
                                             Multi-hotkey: {formatNumber(Number(daoMetrics.neuronStats.permissions.multi_hotkey_neurons))}
                                         </div>
                                     </div>
@@ -707,7 +715,14 @@ function DaoInfo() {
                                         <div style={styles.metric}>{formatNumber(daoMetrics.proposalCount)}</div>
                                         <div style={styles.label}>Total Proposals</div>
                                     </div>
-                                    <Link to="/proposals" style={styles.drillDownLink}>Drill down →</Link>
+                                    <Link 
+                                        to="/proposals" 
+                                        style={styles.drillDownLink}
+                                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                    >
+                                        Drill down →
+                                    </Link>
                                 </div>
                             </div>
                         )}
@@ -717,21 +732,28 @@ function DaoInfo() {
                     <section style={styles.section}>
                         <div style={styles.sectionHeader}>
                             <h2 style={styles.subheading}>Tokenomics</h2>
-                            <Link to="/rll_info" style={styles.drillDownLink}>Drill down →</Link>
+                            <Link 
+                                to="/rll_info" 
+                                style={styles.drillDownLink}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                Drill down →
+                            </Link>
                         </div>
                         {loading.tokenomics ? (
                             <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
                                 <div style={styles.spinner} />
                             </div>
                         ) : error.tokenomics ? (
-                            <div style={{ color: '#e74c3c', padding: '20px', textAlign: 'center' }}>
+                            <div style={{ color: theme.colors.error, padding: '20px', textAlign: 'center' }}>
                                 {error.tokenomics}
                             </div>
                         ) : (
                             <>
                                 {/* Token Metadata Card */}
                                 <div style={{
-                                    backgroundColor: '#3a3a3a',
+                                    backgroundColor: theme.colors.tertiaryBg,
                                     borderRadius: '8px',
                                     padding: '20px',
                                     marginBottom: '20px',
@@ -751,7 +773,7 @@ function DaoInfo() {
                                     <div>
                                         <h3 style={{ 
                                             margin: '0 0 10px 0',
-                                            color: '#ffffff',
+                                            color: theme.colors.primaryText,
                                             fontSize: '1.5em'
                                         }}>
                                             {tokenomics.metadata.name}
@@ -760,7 +782,7 @@ function DaoInfo() {
                                             display: 'flex',
                                             flexDirection: 'column',
                                             gap: '10px',
-                                            color: '#888'
+                                            color: theme.colors.mutedText
                                         }}>
                                             <div>
                                                 <strong>Symbol:</strong> {tokenomics.metadata.symbol}
@@ -780,16 +802,16 @@ function DaoInfo() {
                                     <div style={styles.card}>
                                         <div style={styles.metric}>
                                             {formatUSD(tokenomics.price)}
-                                            <div style={{ fontSize: '0.7em', color: '#888' }}>
-                                                {formatNumber(tokenomics.priceIcp)} ICP
-                                            </div>
+                                                                                    <div style={{ fontSize: '0.7em', color: theme.colors.mutedText }}>
+                                            {formatNumber(tokenomics.priceIcp)} ICP
+                                        </div>
                                         </div>
                                         <div style={styles.label}>SNEED Price</div>
                                     </div>
                                     <div style={styles.card}>
                                         <div style={styles.metric}>
                                             {formatUSD(tokenomics.marketCap)}
-                                            <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                            <div style={{ fontSize: '0.7em', color: theme.colors.mutedText }}>
                                                 {formatNumber(tokenomics.marketCapIcp)} ICP
                                             </div>
                                         </div>
@@ -802,7 +824,7 @@ function DaoInfo() {
                                     <div style={styles.card}>
                                         <div style={styles.metric}>
                                             {formatNumber(Number(daoMetrics.neuronStats.totalStaked) / 1e8)} SNEED
-                                            <div style={{ fontSize: '0.7em', color: '#888' }}>
+                                            <div style={{ fontSize: '0.7em', color: theme.colors.mutedText }}>
                                                 {((Number(daoMetrics.neuronStats.totalStaked) / (Number(tokenomics.totalSupply) * 1e8)) * 100).toFixed(2)}% of supply
                                             </div>
                                         </div>
@@ -822,20 +844,20 @@ function DaoInfo() {
                                                         return (
                                                             <div key={tokenId} style={styles.tokenRow}>
                                                                 <div>{tokenAmount} {symbol}</div>
-                                                                <div style={{ color: '#888' }}>
+                                                                <div style={{ color: theme.colors.mutedText }}>
                                                                     {formatUSD(usdValue)}
                                                                 </div>
                                                             </div>
                                                         );
                                                     })}
                                                     <div style={{ 
-                                                        borderTop: '1px solid #4a4a4a',
+                                                        borderTop: `1px solid ${theme.colors.border}`,
                                                         paddingTop: '10px',
                                                         marginTop: '5px',
                                                         display: 'flex',
                                                         justifyContent: 'space-between',
                                                         alignItems: 'center',
-                                                        color: '#3498db'
+                                                        color: theme.colors.accent
                                                     }}>
                                                         <div>Total</div>
                                                         <div>{formatUSD(tokenomics.totalDistributionsUsd)}</div>
@@ -844,7 +866,14 @@ function DaoInfo() {
                                             </div>
                                             <div style={styles.label}>Total Rewards Distributed</div>
                                         </div>
-                                        <Link to="/rll" style={styles.drillDownLink}>Drill down →</Link>
+                                        <Link 
+                                            to="/rll" 
+                                            style={styles.drillDownLink}
+                                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                        >
+                                            Drill down →
+                                        </Link>
                                     </div>
                                 </div>
                             </>
@@ -855,7 +884,14 @@ function DaoInfo() {
                     <section style={styles.section}>
                         <div style={styles.sectionHeader}>
                             <h2 style={styles.subheading}>Partners</h2>
-                            <Link to="/partners" style={styles.drillDownLink}>Drill down →</Link>
+                            <Link 
+                                to="/partners" 
+                                style={styles.drillDownLink}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                Drill down →
+                            </Link>
                         </div>
                         {partners.length === 0 ? (
                             <div style={styles.emptySection}>
@@ -889,19 +925,15 @@ function DaoInfo() {
                                                 alignItems: 'center',
                                                 padding: '10px',
                                                 borderRadius: '8px',
-                                                backgroundColor: '#3a3a3a',
-                                                transition: 'all 0.2s ease',
-                                                ':hover': {
-                                                    backgroundColor: '#4a4a4a',
-                                                    transform: 'translateY(-2px)'
-                                                }
+                                                backgroundColor: theme.colors.tertiaryBg,
+                                                transition: 'all 0.2s ease'
                                             }}
                                             onMouseEnter={(e) => {
-                                                e.target.style.backgroundColor = '#4a4a4a';
+                                                e.target.style.backgroundColor = theme.colors.border;
                                                 e.target.style.transform = 'translateY(-2px)';
                                             }}
                                             onMouseLeave={(e) => {
-                                                e.target.style.backgroundColor = '#3a3a3a';
+                                                e.target.style.backgroundColor = theme.colors.tertiaryBg;
                                                 e.target.style.transform = 'translateY(0px)';
                                             }}
                                         >
@@ -925,13 +957,13 @@ function DaoInfo() {
                                                     width: '60px',
                                                     height: '60px',
                                                     borderRadius: '50%',
-                                                    backgroundColor: '#2a2a2a',
+                                                    backgroundColor: theme.colors.secondaryBg,
                                                     display: 'none',
                                                     alignItems: 'center',
                                                     justifyContent: 'center',
                                                     marginBottom: '8px',
                                                     fontSize: '24px',
-                                                    color: '#888'
+                                                    color: theme.colors.mutedText
                                                 }}
                                             >
                                                 {partner.name.charAt(0).toUpperCase()}
@@ -947,7 +979,14 @@ function DaoInfo() {
                     <section style={styles.section}>
                         <div style={styles.sectionHeader}>
                             <h2 style={styles.subheading}>Products</h2>
-                            <Link to="/products" style={styles.drillDownLink}>Drill down →</Link>
+                            <Link 
+                                to="/products" 
+                                style={styles.drillDownLink}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                Drill down →
+                            </Link>
                         </div>
                         <div style={styles.productsGrid}>
                             <div style={styles.productCard}>
@@ -956,7 +995,14 @@ function DaoInfo() {
                                     A secure and flexible token locking solution built on the Internet Computer.
                                     Create customizable token locks with various vesting schedules and conditions.
                                 </div>
-                                <Link to="/sneedlock" style={styles.drillDownLink}>Drill down →</Link>
+                                <Link 
+                                    to="/sneedlock" 
+                                    style={styles.drillDownLink}
+                                    onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                    onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                >
+                                    Drill down →
+                                </Link>
                             </div>
                             <div style={styles.productCard}>
                                 <div style={styles.productTitle}>SwapRunner</div>
