@@ -839,7 +839,7 @@ function SneedlockInfo() {
                                         >
                                             <td style={{ 
                                                 padding: '10px 20px', 
-                                                color: '#fff',
+                                                color: theme.colors.primaryText,
                                                 width: '200px',
                                                 position: 'relative'  // Add positioning context
                                             }}>
@@ -882,13 +882,13 @@ function SneedlockInfo() {
                                                     </span>
                                                 </div>
                                             </td>
-                                            <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
+                                            <td style={{ padding: '10px', textAlign: 'right', color: theme.colors.primaryText }}>
                                                 {data.positionsLoading ? (
                                                     <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
                                                 ) : (
                                                     <>
                                                         {formatAmount(data.tokenLockAmount, token?.decimals || 8)}{' '}
-                                                        <span style={{ fontSize: '0.9em', color: '#666' }}>
+                                                        <span style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
                                                             {formatUSD(getUSDValue(data.tokenLockAmount, token?.decimals || 8, token?.symbol))}
                                                         </span>
                                                         <div style={{ fontSize: '0.8em', color: theme.colors.mutedText, marginTop: '2px' }}>
@@ -897,13 +897,13 @@ function SneedlockInfo() {
                                                     </>
                                                 )}
                                             </td>
-                                            <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
+                                            <td style={{ padding: '10px', textAlign: 'right', color: theme.colors.primaryText }}>
                                                 {data.positionsLoading ? (
                                                     <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
                                                 ) : (
                                                     <>
                                                         {formatAmount(data.positionLockAmount, token?.decimals || 8)}{' '}
-                                                        <span style={{ fontSize: '0.9em', color: '#666' }}>
+                                                        <span style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
                                                             {formatUSD(getUSDValue(data.positionLockAmount, token?.decimals || 8, token?.symbol))}
                                                         </span>
                                                         <div style={{ fontSize: '0.8em', color: theme.colors.mutedText, marginTop: '2px' }}>
@@ -912,13 +912,13 @@ function SneedlockInfo() {
                                                     </>
                                                 )}
                                             </td>
-                                            <td style={{ padding: '10px', textAlign: 'right', color: '#fff' }}>
+                                            <td style={{ padding: '10px', textAlign: 'right', color: theme.colors.primaryText }}>
                                                 {data.positionsLoading ? (
                                                     <div className="spinner" style={{ width: '16px', height: '16px', margin: '0 0 0 auto' }} />
                                                 ) : (
                                                     <>
                                                         {formatAmount(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8)}{' '}
-                                                        <span style={{ fontSize: '0.9em', color: '#666' }}>
+                                                        <span style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
                                                             {formatUSD(getUSDValue(data.tokenLockAmount + data.positionLockAmount, token?.decimals || 8, token?.symbol))}
                                                         </span>
                                                         <div style={{ fontSize: '0.8em', color: theme.colors.mutedText, marginTop: '2px' }}>
@@ -932,7 +932,7 @@ function SneedlockInfo() {
                                             <>
                                                 {/* Token Locks */}
                                                 {data.tokenLocks.map(lock => (
-                                                    <tr key={`token-${lock.id}`} style={{ backgroundColor: '#222' }}>
+                                                    <tr key={`token-${lock.id}`} style={{ background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}` }}>
                                                         <td colSpan="4" style={{ padding: '8px 40px' }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: theme.colors.mutedText, fontSize: '0.9em', alignItems: 'center' }}>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -951,14 +951,14 @@ function SneedlockInfo() {
                                                                     >
                                                                         <img src="sneedlock-logo1.png" alt="SneedLock" style={{ width: '24px', height: '24px' }} />
                                                                         <div>
-                                                                            <span style={{ color: '#666' }}>Token Lock</span>{' '}
+                                                                            <span style={{ color: theme.colors.mutedText }}>Token Lock</span>{' '}
                                                                             <span>#{lock.lockId?.toString() || 'Unknown'}</span>
                                                                         </div>
                                                                     </a>
                                                                 </div>
                                                                 <div>
                                                                     Amount: {formatAmount(lock.amount, token?.decimals || 8)}{' '}
-                                                                    <span style={{ fontSize: '0.9em', color: '#666' }}>
+                                                                    <span style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
                                                                         {formatUSD(getUSDValue(lock.amount, token?.decimals || 8, token?.symbol))}
                                                                     </span>
                                                                 </div>
@@ -980,7 +980,7 @@ function SneedlockInfo() {
                                                 ))}
                                                 {/* Position Locks */}
                                                 {data.positionLocks.map(lock => (
-                                                    <tr key={`position-${lock.id}`} style={{ backgroundColor: '#222' }}>
+                                                    <tr key={`position-${lock.id}`} style={{ background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}` }}>
                                                         <td colSpan="4" style={{ padding: '8px 40px' }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: theme.colors.mutedText, fontSize: '0.9em', alignItems: 'center' }}>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -999,7 +999,7 @@ function SneedlockInfo() {
                                                                     >
                                                                         <img src="sneedlock-logo1.png" alt="SneedLock" style={{ width: '24px', height: '24px' }} />
                                                                         <div>
-                                                                            <span style={{ color: '#666' }}>Position Lock</span>{' '}
+                                                                            <span style={{ color: theme.colors.mutedText }}>Position Lock</span>{' '}
                                                                             <span>#{lock.positionId?.toString() || 'Unknown'}</span>
                                                                         </div>
                                                                     </a>
@@ -1007,13 +1007,13 @@ function SneedlockInfo() {
                                                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
                                                                     <div>
                                                                         {formatAmount(lock.amount || 0n, token?.decimals || 8)} {token?.symbol || tokenKey}{' '}
-                                                                        <span style={{ fontSize: '0.9em', color: '#666' }}>
+                                                                        <span style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
                                                                             {formatUSD(getUSDValue(lock.amount, token?.decimals || 8, token?.symbol))}
                                                                         </span>
                                                                     </div>
                                                                     <div>
                                                                         {formatAmount(lock.otherAmount || 0n, tokenMetadata[lock.otherToken?.toText() || '']?.decimals || 8)} {tokenMetadata[lock.otherToken?.toText() || '']?.symbol || (lock.otherToken?.toText() || 'Unknown')}{' '}
-                                                                        <span style={{ fontSize: '0.9em', color: '#666' }}>
+                                                                        <span style={{ fontSize: '0.9em', color: theme.colors.mutedText }}>
                                                                             {formatUSD(getUSDValue(
                                                                                 lock.otherAmount,
                                                                                 tokenMetadata[lock.otherToken?.toText() || '']?.decimals || 8,
@@ -1064,24 +1064,24 @@ function SneedlockInfo() {
                         )}
                         <tfoot>
                             <tr style={{ 
-                                borderTop: '2px solid #2ecc71',
-                                backgroundColor: '#1a1a1a',
+                                borderTop: `2px solid ${theme.colors.success}`,
+                                background: theme.colors.cardGradient,
                                 fontWeight: 'bold'
                             }}>
                                 <td style={{ padding: '15px' }}>Total Value</td>
-                                <td style={{ padding: '15px', textAlign: 'right', color: '#fff' }}>
+                                <td style={{ padding: '15px', textAlign: 'right', color: theme.colors.primaryText }}>
                                     {formatUSD(calculateTotals().tokenLockTotal)}
                                     <div style={{ fontSize: '0.8em', color: theme.colors.mutedText, marginTop: '2px' }}>
                                         Total Token Locks
                                     </div>
                                 </td>
-                                <td style={{ padding: '15px', textAlign: 'right', color: '#fff' }}>
+                                <td style={{ padding: '15px', textAlign: 'right', color: theme.colors.primaryText }}>
                                     {formatUSD(calculateTotals().positionLockTotal)}
                                     <div style={{ fontSize: '0.8em', color: theme.colors.mutedText, marginTop: '2px' }}>
                                         Total Position Locks
                                     </div>
                                 </td>
-                                <td style={{ padding: '15px', textAlign: 'right', color: '#fff' }}>
+                                <td style={{ padding: '15px', textAlign: 'right', color: theme.colors.primaryText }}>
                                     {formatUSD(calculateTotals().combinedTotal)}
                                     <div style={{ fontSize: '0.8em', color: theme.colors.mutedText, marginTop: '2px' }}>
                                         Grand Total
