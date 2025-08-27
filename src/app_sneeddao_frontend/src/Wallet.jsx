@@ -166,12 +166,7 @@ function Wallet() {
  
     useEffect(() => {
         if (!isAuthenticated) {
-            // Preserve URL parameters and add 'from' parameter when redirecting unauthenticated users
-            const currentSearch = location.search;
-            const urlParams = new URLSearchParams(currentSearch);
-            urlParams.set('from', location.pathname);
-            const searchWithFrom = urlParams.toString();
-            navigate(`/?${searchWithFrom}`);
+            // Don't redirect - stay on wallet page and show login message
             return;
         }
 
@@ -182,7 +177,7 @@ function Wallet() {
         
         fetchBalancesAndLocks();
         fetchLiquidityPositions();
-    }, [isAuthenticated, navigate, location.search, refreshTrigger]);
+    }, [isAuthenticated, location.search, refreshTrigger]);
 
     async function fetchTokenDetails(icrc1_ledger, summed_locks) {
         try {
@@ -1345,6 +1340,51 @@ function Wallet() {
                     backgroundColor: 'transparent'
                 }}
             >
+                {!isAuthenticated ? (
+                    <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minHeight: '400px',
+                        textAlign: 'center',
+                        padding: '40px 20px'
+                    }}>
+                        <div style={{
+                            background: theme.colors.cardGradient,
+                            border: `1px solid ${theme.colors.border}`,
+                            boxShadow: theme.colors.cardShadow,
+                            borderRadius: '16px',
+                            padding: '40px',
+                            maxWidth: '500px',
+                            width: '100%'
+                        }}>
+                            <h2 style={{ 
+                                color: theme.colors.primaryText, 
+                                marginBottom: '20px',
+                                fontSize: '1.5rem'
+                            }}>
+                                🔐 Login Required
+                            </h2>
+                            <p style={{ 
+                                color: theme.colors.secondaryText, 
+                                marginBottom: '30px',
+                                lineHeight: '1.6',
+                                fontSize: '1.1rem'
+                            }}>
+                                Please log in to view and manage your wallet. Your tokens, locks, and liquidity positions will be displayed here.
+                            </p>
+                            <p style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '0.9rem',
+                                marginBottom: '0'
+                            }}>
+                                Click the "Connect Wallet" button in the header to get started.
+                            </p>
+                        </div>
+                    </div>
+                ) : (
+                    <>
                 <SectionHeader 
                     title="Tokens"
                     isExpanded={tokensExpanded}
@@ -1512,6 +1552,8 @@ function Wallet() {
                     message={confirmMessage}
                     doAwait={true}
                 />
+                    </>
+                )}
             </div>
         </div>
     );
