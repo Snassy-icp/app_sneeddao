@@ -233,18 +233,8 @@ const Tips = () => {
 
         return (
             <tr key={tip.id} className={`tip-row ${isNew ? 'tip-new' : ''}`}>
-                <td className="tip-amount" style={{ textAlign: 'left !important', padding: '1rem' }}>
-                    <div className="tip-amount-container" style={{ 
-                         justifyContent: 'flex-start !important', 
-                         alignItems: 'center !important', 
-                         display: 'flex !important',
-                         flexDirection: 'row !important',
-                         width: '100%',
-                         margin: 0,
-                         padding: 0,
-                         gap: '0.5rem',
-                         whiteSpace: 'nowrap'
-                     }}>
+                <td className="tip-amount">
+                    <div className="tip-amount-container">
                         {isLoadingToken ? (
                             <span className="loading-indicator">⏳</span>
                         ) : logo ? (
@@ -252,9 +242,9 @@ const Tips = () => {
                         ) : (
                             <span className="token-fallback">💎</span>
                         )}
-                                                 <span className="amount-text" style={{ color: '#ffd700' }}>
-                             {isLoadingToken ? 'Loading...' : formatTokenAmount(tip.amount, tokenId)}
-                         </span>
+                        <span className="amount-text">
+                            {isLoadingToken ? 'Loading...' : formatTokenAmount(tip.amount, tokenId)}
+                        </span>
                     </div>
                 </td>
                 <td className="tip-principal">
