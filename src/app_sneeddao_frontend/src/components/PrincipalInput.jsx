@@ -247,6 +247,7 @@ const PrincipalInput = ({
                                     showCopyButton={false}
                                     style={{ fontSize: '12px' }}
                                     noLink={true}
+                                    short={true}
                                 />
                             );
                         } catch (e) {
@@ -295,6 +296,7 @@ const PrincipalInput = ({
                                 showCopyButton={false}
                                 style={{ fontSize: '14px' }}
                                 noLink={true}
+                                short={true}
                             />
                         </div>
                     ))}
