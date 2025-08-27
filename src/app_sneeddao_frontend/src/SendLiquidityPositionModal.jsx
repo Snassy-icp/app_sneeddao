@@ -4,6 +4,7 @@ import './SendLiquidityPositionModal.css'; // Create this CSS file for styling
 import { Principal } from "@dfinity/principal";
 import ConfirmationModal from './ConfirmationModal';
 import { useTheme } from './contexts/ThemeContext';
+import PrincipalInput from './components/PrincipalInput';
 
 function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }) {
   const { theme } = useTheme();
@@ -99,10 +100,9 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
           }}>
             Recipient Address:
           </label>
-          <input 
-            type="text" 
+          <PrincipalInput
             value={recipient}
-            onChange={(e) => setRecipient(e.target.value)}
+            onChange={setRecipient}
             placeholder="Enter recipient principal"
             style={{
               width: '100%',
