@@ -100,6 +100,33 @@ function Proposals() {
         return Object.keys(proposal.proposal[0].action[0])[0] || 'Unknown';
     };
 
+    // Helper function to extract raw payload
+    const extractRawPayload = (proposal) => {
+        try {
+            // Get the action payload
+            const action = proposal.proposal?.[0]?.action?.[0];
+            if (!action) return '';
+            
+            // Convert the action object to a formatted JSON string
+            const payload = JSON.stringify(action, (key, value) => {
+                // Handle BigInt values
+                if (typeof value === 'bigint') {
+                    return value.toString();
+                }
+                // Handle Uint8Array values (convert to hex or array representation)
+                if (value instanceof Uint8Array) {
+                    return Array.from(value);
+                }
+                return value;
+            }, 2);
+            
+            return payload;
+        } catch (error) {
+            console.error('Error extracting raw payload:', error);
+            return '';
+        }
+    };
+
     // Helper function to parse treasury transfer details
     const parseTreasuryTransferDetails = (proposal) => {
         const actionType = getProposalActionType(proposal);
@@ -132,22 +159,30 @@ function Proposals() {
             let amountE8s = '';
             let tokenType = '';
 
-            if (transferAction.from_treasury === 'Icp') {
+            // Determine token type - simplified to just "SNS" or "ICP"
+            const fromTreasury = transferAction.from_treasury;
+            if (fromTreasury === 'Icp' || (typeof fromTreasury === 'object' && 'Icp' in fromTreasury)) {
                 tokenType = 'ICP';
-                amountE8s = transferAction.amount_e8s?.toString() || '';
-                if (amountE8s) {
-                    amount = (Number(amountE8s) / 100000000).toFixed(8);
-                }
-            } else if (transferAction.from_treasury === 'SnsToken') {
-                tokenType = 'SNS Token';
-                amountE8s = transferAction.amount_e8s?.toString() || '';
-                if (amountE8s) {
-                    amount = (Number(amountE8s) / 100000000).toFixed(8);
-                }
+            } else if (fromTreasury === 'SnsToken' || (typeof fromTreasury === 'object' && 'SnsToken' in fromTreasury)) {
+                tokenType = 'SNS';
+            }
+
+            // Extract amount - try different ways to access the amount
+            amountE8s = transferAction.amount_e8s?.toString() || 
+                       transferAction.amount?.toString() || 
+                       transferAction.amount_e8s || 
+                       '';
+            
+            if (amountE8s) {
+                const numAmount = typeof amountE8s === 'bigint' ? Number(amountE8s) : Number(amountE8s);
+                amount = (numAmount / 100000000).toFixed(8);
             }
 
             // Extract target principal
-            const targetPrincipal = transferAction.to_principal?.toString() || '';
+            const targetPrincipal = transferAction.to_principal?.toString() || 
+                                   transferAction.to?.toString() || 
+                                   transferAction.target?.toString() || 
+                                   '';
 
             // Extract memo
             const memo = transferAction.memo?.toString() || '0';
@@ -532,6 +567,7 @@ function Proposals() {
             'Treasury Transfer Target',
             'Treasury Transfer Memo',
             'Summary',
+            'Raw Payload',
             'NNS URL',
             'Dashboard URL'
         ];
@@ -574,6 +610,9 @@ function Proposals() {
             const summary = proposal.proposal?.[0]?.summary || '';
             const cleanSummary = convertHtmlToMarkdown(summary).replace(/\n+/g, ' ').trim();
 
+            // Extract raw payload
+            const rawPayload = extractRawPayload(proposal);
+
             // Generate URLs
             const nnsUrl = `https://nns.ic0.app/proposal/?u=${selectedSnsRoot}&proposal=${proposalId}`;
             const dashboardUrl = `https://dashboard.internetcomputer.org/sns/${selectedSnsRoot}/proposal/${proposalId}`;
@@ -598,6 +637,7 @@ function Proposals() {
                 treasuryDetails.targetPrincipal,
                 treasuryDetails.memo,
                 cleanSummary,
+                rawPayload,
                 nnsUrl,
                 dashboardUrl
             ];
