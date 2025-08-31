@@ -41,6 +41,8 @@ function Proposals() {
     const [currentPage, setCurrentPage] = useState(1);
     const [hasMoreProposals, setHasMoreProposals] = useState(true);
     const [lastProposalId, setLastProposalId] = useState(null);
+    const [loadingAll, setLoadingAll] = useState(false);
+    const [allProposalsLoaded, setAllProposalsLoaded] = useState(false);
 
     // Add state to track expanded summaries
     const [expandedSummaries, setExpandedSummaries] = useState(new Set());
@@ -117,6 +119,8 @@ function Proposals() {
         setHasMoreProposals(true);
         setProposals([]);
         setFilteredProposals([]);
+        setAllProposalsLoaded(false);
+        setLoadingAll(false);
     }, [selectedSnsRoot]);
 
     // Filter proposals based on proposer and topic filters
@@ -234,6 +238,8 @@ function Proposals() {
         setFilteredProposals([]);
         setProposerFilter('');
         setTopicFilter('');
+        setAllProposalsLoaded(false);
+        setLoadingAll(false);
     };
 
     const handleItemsPerPageChange = (e) => {
@@ -248,6 +254,89 @@ function Proposals() {
 
     const loadMore = () => {
         setCurrentPage(prev => prev + 1);
+    };
+
+    // Load all proposals function
+    const loadAllProposals = async () => {
+        if (loadingAll || allProposalsLoaded) return proposals; // Return current proposals if already loaded
+        
+        setLoadingAll(true);
+        try {
+            const selectedSns = getSnsById(selectedSnsRoot);
+            if (!selectedSns) {
+                setError('Selected SNS not found');
+                return proposals;
+            }
+
+            const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                agentOptions: {
+                    identity,
+                },
+            });
+
+            let allProposals = [...proposals]; // Start with existing proposals
+            let hasMore = hasMoreProposals;
+            let currentLastProposalId = lastProposalId;
+            let pageCount = 0;
+
+            while (hasMore && pageCount < 100) { // Safety limit of 100 pages
+                pageCount++;
+                
+                const listProposalsArg = {
+                    limit: 100, // Use larger batch size for efficiency
+                    before_proposal: currentLastProposalId ? [{ id: BigInt(currentLastProposalId) }] : [],
+                    include_reward_status: [],
+                    exclude_type: [],
+                    include_status: [],
+                    include_topics: []
+                };
+
+                const response = await snsGovActor.list_proposals(listProposalsArg);
+                
+                if (response.proposals.length === 0) {
+                    hasMore = false;
+                } else {
+                    // Add new proposals, avoiding duplicates
+                    const newProposals = response.proposals.filter(newProp => 
+                        !allProposals.some(existingProp => 
+                            existingProp.id[0]?.id?.toString() === newProp.id[0]?.id?.toString()
+                        )
+                    );
+                    
+                    allProposals = [...allProposals, ...newProposals];
+                    
+                    // Update last proposal ID for next iteration
+                    if (response.proposals.length > 0) {
+                        const lastProposal = response.proposals[response.proposals.length - 1];
+                        currentLastProposalId = lastProposal.id[0].id.toString();
+                    }
+                    
+                    // If we got less than requested, we've reached the end
+                    if (response.proposals.length < 100) {
+                        hasMore = false;
+                    }
+                }
+            }
+
+            // Update state with all loaded proposals
+            setProposals(allProposals);
+            setHasMoreProposals(false);
+            setAllProposalsLoaded(true);
+            setLastProposalId(currentLastProposalId);
+            
+            // Wait a moment for React state updates to complete
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
+            // Return the loaded proposals array directly
+            return allProposals;
+            
+        } catch (err) {
+            console.error('Error loading all proposals:', err);
+            setError('Failed to load all proposals: ' + err.message);
+            return proposals; // Return current proposals on error
+        } finally {
+            setLoadingAll(false);
+        }
     };
 
     const getProposalStatus = (data) => {
@@ -292,9 +381,61 @@ function Proposals() {
     };
 
     // CSV export function for proposals
-    const exportProposalsToCSV = () => {
-        if (filteredProposals.length === 0) {
-            alert('No proposals to export');
+    const exportProposalsToCSV = async () => {
+        let proposalsToExport;
+        
+        try {
+            // Auto-load all proposals before export if not already loaded
+            let allProposals = proposals;
+            if (!allProposalsLoaded && hasMoreProposals) {
+                console.log('Auto-loading all proposals before CSV export...');
+                allProposals = await loadAllProposals();
+                console.log(`All proposals loaded (${allProposals.length}), proceeding with export...`);
+            }
+            
+            // Apply filtering logic directly to get current proposals for export
+            proposalsToExport = allProposals;
+
+            // Apply proposer filter
+            if (proposerFilter.trim()) {
+                const filterLower = proposerFilter.toLowerCase();
+                proposalsToExport = proposalsToExport.filter(proposal => {
+                    const neuronIdHex = uint8ArrayToHex(proposal.proposer?.[0]?.id);
+                    if (!neuronIdHex) return false;
+
+                    // Check if neuron ID contains the filter
+                    if (neuronIdHex.toLowerCase().includes(filterLower)) {
+                        return true;
+                    }
+
+                    // Check names and nicknames
+                    const mapKey = `${selectedSnsRoot}:${neuronIdHex}`;
+                    const name = neuronNames.get(mapKey)?.toLowerCase();
+                    const nickname = neuronNicknames.get(mapKey)?.toLowerCase();
+
+                    return (name && name.includes(filterLower)) || 
+                           (nickname && nickname.includes(filterLower));
+                });
+            }
+
+            // Apply topic filter
+            if (topicFilter.trim()) {
+                proposalsToExport = proposalsToExport.filter(proposal => {
+                    const actionType = getProposalActionType(proposal);
+                    return actionType === topicFilter;
+                });
+            }
+            
+            if (proposalsToExport.length === 0) {
+                alert('No proposals to export');
+                return;
+            }
+            
+            console.log(`Exporting ${proposalsToExport.length} proposals out of ${allProposals.length} total loaded`);
+            
+        } catch (error) {
+            console.error('Error during CSV export preparation:', error);
+            alert('Failed to prepare proposals for export: ' + error.message);
             return;
         }
 
@@ -319,7 +460,7 @@ function Proposals() {
         ];
 
         // Convert proposals to CSV rows
-        const csvRows = filteredProposals.map(proposal => {
+        const csvRows = proposalsToExport.map(proposal => {
             const proposalId = proposal.id[0]?.id?.toString() || '';
             const title = proposal.proposal?.[0]?.title || '';
             const topic = getProposalTopic(proposal);
@@ -548,6 +689,33 @@ function Proposals() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                             <button
+                                onClick={loadAllProposals}
+                                style={{
+                                    backgroundColor: allProposalsLoaded ? theme.colors.success : theme.colors.tertiaryBg,
+                                    color: theme.colors.primaryText,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '4px',
+                                    padding: '8px 12px',
+                                    cursor: (loadingAll || allProposalsLoaded) ? 'not-allowed' : 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    opacity: (loadingAll || allProposalsLoaded) ? 0.7 : 1
+                                }}
+                                disabled={loadingAll || allProposalsLoaded}
+                                title={allProposalsLoaded ? 'All proposals loaded' : 'Load all proposals at once'}
+                            >
+                                <span style={{ 
+                                    fontSize: '14px',
+                                    display: 'inline-block',
+                                    transform: loadingAll ? 'rotate(360deg)' : 'none',
+                                    transition: 'transform 1s linear'
+                                }}>
+                                    {allProposalsLoaded ? '✓' : loadingAll ? '⟳' : '⬇'}
+                                </span>
+                                {loadingAll ? 'Loading All...' : allProposalsLoaded ? 'All Loaded' : 'Load All'}
+                            </button>
+                            <button
                                 onClick={exportProposalsToCSV}
                                 style={{
                                     backgroundColor: theme.colors.accent,
@@ -560,8 +728,8 @@ function Proposals() {
                                     alignItems: 'center',
                                     gap: '6px'
                                 }}
-                                disabled={loading || filteredProposals.length === 0}
-                                title={`Export ${filteredProposals.length} proposals to CSV`}
+                                disabled={loading || loadingAll || proposals.length === 0}
+                                title={`Export proposals to CSV${!allProposalsLoaded && hasMoreProposals ? ' (will auto-load all first)' : ''}`}
                             >
                                 <span style={{ fontSize: '14px' }}>📄</span>
                                 Export CSV
@@ -772,23 +940,29 @@ function Proposals() {
                             </div>
                         ))}
 
-                        {hasMoreProposals && (
+                        {hasMoreProposals && !allProposalsLoaded && (
                             <div style={{ textAlign: 'center', marginTop: '20px' }}>
                                 <button
                                     onClick={loadMore}
-                                    disabled={loading}
+                                    disabled={loading || loadingAll}
                                     style={{
                                         backgroundColor: '#3498db',
                                         color: '#ffffff',
                                         border: 'none',
                                         borderRadius: '4px',
                                         padding: '10px 20px',
-                                        cursor: loading ? 'not-allowed' : 'pointer',
-                                        opacity: loading ? 0.7 : 1
+                                        cursor: (loading || loadingAll) ? 'not-allowed' : 'pointer',
+                                        opacity: (loading || loadingAll) ? 0.7 : 1
                                     }}
                                 >
-                                    {loading ? 'Loading...' : 'Load More'}
+                                    {(loading || loadingAll) ? 'Loading...' : 'Load More'}
                                 </button>
+                            </div>
+                        )}
+                        
+                        {allProposalsLoaded && (
+                            <div style={{ textAlign: 'center', marginTop: '20px', color: theme.colors.success }}>
+                                ✓ All proposals loaded ({proposals.length} total)
                             </div>
                         )}
                     </div>
