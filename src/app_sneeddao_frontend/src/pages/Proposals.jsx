@@ -565,6 +565,8 @@ function Proposals() {
             'Treasury Transfer Amount (E8s)',
             'Treasury Transfer Token Type',
             'Treasury Transfer Target',
+            'Treasury Transfer Target Name',
+            'Treasury Transfer Target Nickname',
             'Treasury Transfer Memo',
             'Summary',
             'Raw Payload',
@@ -606,6 +608,17 @@ function Proposals() {
             // Parse treasury transfer details
             const treasuryDetails = parseTreasuryTransferDetails(proposal);
 
+            // Get treasury target principal display info
+            let treasuryTargetName = '';
+            let treasuryTargetNickname = '';
+            if (treasuryDetails.targetPrincipal) {
+                // Look up principal name and nickname (not neuron-specific, just principal)
+                const principalName = principalNames.get(treasuryDetails.targetPrincipal);
+                const principalNickname = principalNicknames.get(treasuryDetails.targetPrincipal);
+                treasuryTargetName = principalName || '';
+                treasuryTargetNickname = principalNickname || '';
+            }
+
             // Get summary (clean up HTML/Markdown)
             const summary = proposal.proposal?.[0]?.summary || '';
             const cleanSummary = convertHtmlToMarkdown(summary).replace(/\n+/g, ' ').trim();
@@ -635,6 +648,8 @@ function Proposals() {
                 treasuryDetails.amountE8s,
                 treasuryDetails.tokenType,
                 treasuryDetails.targetPrincipal,
+                treasuryTargetName,
+                treasuryTargetNickname,
                 treasuryDetails.memo,
                 cleanSummary,
                 rawPayload,
