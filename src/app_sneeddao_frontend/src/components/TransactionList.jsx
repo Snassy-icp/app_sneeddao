@@ -824,6 +824,129 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
         }));
     };
 
+    // CSV export function for transactions
+    const exportTransactionsToCSV = () => {
+        if (displayedTransactions.length === 0) {
+            alert('No transactions to export');
+            return;
+        }
+
+        // Define CSV headers
+        const headers = [
+            'Transaction Index',
+            'Type',
+            'From Principal',
+            'From Name',
+            'From Nickname',
+            'From Subaccount',
+            'To Principal', 
+            'To Name',
+            'To Nickname',
+            'To Subaccount',
+            'Amount (E8s)',
+            'Amount (Tokens)',
+            'Fee (E8s)',
+            'Fee (Tokens)',
+            'Timestamp',
+            'Memo',
+            'Created At Timestamp'
+        ];
+
+        // Convert transactions to CSV rows
+        const csvRows = displayedTransactions.map(tx => {
+            const transaction = tx.transaction || tx;
+            const txType = transaction.kind || 'unknown';
+            const fromPrincipal = getFromPrincipal(tx);
+            const toPrincipal = getToPrincipal(tx);
+            const amount = getTransactionAmount(tx);
+            
+            // Get display info for principals
+            const fromDisplayInfo = fromPrincipal ? principalDisplayInfo.get(fromPrincipal.toString()) : null;
+            const toDisplayInfo = toPrincipal ? principalDisplayInfo.get(toPrincipal.toString()) : null;
+            
+            // Get subaccounts
+            const fromSubaccount = transaction.transfer?.[0]?.from?.subaccount?.[0] || 
+                                 transaction.burn?.[0]?.from?.subaccount?.[0] || 
+                                 transaction.approve?.[0]?.from?.subaccount?.[0] || '';
+            const toSubaccount = transaction.transfer?.[0]?.to?.subaccount?.[0] || 
+                               transaction.mint?.[0]?.to?.subaccount?.[0] || 
+                               transaction.approve?.[0]?.spender?.subaccount?.[0] || '';
+            
+            // Get fee
+            const fee = transaction.transfer?.[0]?.fee?.[0] || 
+                       transaction.approve?.[0]?.fee?.[0] || 0n;
+            
+            // Get memo
+            const memo = transaction.transfer?.[0]?.memo?.[0] || 
+                        transaction.mint?.[0]?.memo?.[0] || 
+                        transaction.burn?.[0]?.memo?.[0] || 
+                        transaction.approve?.[0]?.memo?.[0] || '';
+            
+            // Get timestamp
+            const timestamp = tx.timestamp || transaction.timestamp || '';
+            const createdAtTime = transaction.created_at_time?.[0] || '';
+            
+            // Format timestamps
+            const formattedTimestamp = timestamp ? formatTimestamp(timestamp) : '';
+            const formattedCreatedAt = createdAtTime ? formatTimestamp(createdAtTime) : '';
+            
+            return [
+                tx.id || '',
+                txType,
+                fromPrincipal ? fromPrincipal.toString() : '',
+                fromDisplayInfo?.name || '',
+                fromDisplayInfo?.nickname || '',
+                Array.isArray(fromSubaccount) ? fromSubaccount.join('') : fromSubaccount,
+                toPrincipal ? toPrincipal.toString() : '',
+                toDisplayInfo?.name || '',
+                toDisplayInfo?.nickname || '',
+                Array.isArray(toSubaccount) ? toSubaccount.join('') : toSubaccount,
+                amount.toString(),
+                formatAmount(amount),
+                fee.toString(),
+                formatAmount(fee),
+                formattedTimestamp,
+                Array.isArray(memo) ? memo.join('') : memo,
+                formattedCreatedAt
+            ];
+        });
+
+        // Create CSV content
+        const csvContent = [
+            headers.join(','),
+            ...csvRows.map(row => 
+                row.map(cell => {
+                    // Escape cells that contain commas, quotes, or newlines
+                    const cellStr = String(cell);
+                    if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                        return `"${cellStr.replace(/"/g, '""')}"`;
+                    }
+                    return cellStr;
+                }).join(',')
+            )
+        ].join('\n');
+
+        // Create and download file
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        
+        // Create filename with timestamp and filter info
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
+        const typeFilter = selectedType !== TransactionType.ALL ? `_${selectedType}` : '';
+        const principalFilter = (fromFilter || toFilter) ? '_filtered' : '';
+        const principalSuffix = principalId ? `_${principalId.slice(0, 8)}` : '';
+        const filename = `transactions_${snsRootCanisterId}_${timestamp}${typeFilter}${principalFilter}${principalSuffix}.csv`;
+        
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
     // Add debug logging to the filter function
     const matchesPrincipalFilter = (principal, filter, displayInfo) => {
         if (!filter) return true;
@@ -1100,6 +1223,29 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                     </option>
                                 ))}
                             </select>
+                        </div>
+                        
+                        <div style={styles.compactFilterGroup} className="transaction-compact-filter-group">
+                            <button
+                                onClick={exportTransactionsToCSV}
+                                style={{
+                                    backgroundColor: theme.colors.accent,
+                                    color: theme.colors.primaryText,
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    fontSize: '14px'
+                                }}
+                                disabled={loading || displayedTransactions.length === 0}
+                                title={`Export ${displayedTransactions.length} transactions to CSV`}
+                            >
+                                <span style={{ fontSize: '14px' }}>📄</span>
+                                Export CSV
+                            </button>
                         </div>
                     </div>
                 </div>

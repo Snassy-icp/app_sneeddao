@@ -291,6 +291,127 @@ function Proposals() {
         });
     };
 
+    // CSV export function for proposals
+    const exportProposalsToCSV = () => {
+        if (filteredProposals.length === 0) {
+            alert('No proposals to export');
+            return;
+        }
+
+        // Define CSV headers
+        const headers = [
+            'Proposal ID',
+            'Title',
+            'Topic',
+            'Action Type',
+            'Status',
+            'Proposer Neuron ID',
+            'Proposer Name',
+            'Proposer Nickname',
+            'Created At',
+            'Decided At',
+            'Executed At',
+            'Failed At',
+            'Initial Voting Period (hours)',
+            'Summary',
+            'NNS URL',
+            'Dashboard URL'
+        ];
+
+        // Convert proposals to CSV rows
+        const csvRows = filteredProposals.map(proposal => {
+            const proposalId = proposal.id[0]?.id?.toString() || '';
+            const title = proposal.proposal?.[0]?.title || '';
+            const topic = getProposalTopic(proposal);
+            const actionType = getProposalActionType(proposal);
+            const status = getProposalStatus(proposal);
+            
+            // Get proposer info
+            const proposerNeuronId = proposal.proposer?.[0]?.id ? uint8ArrayToHex(proposal.proposer[0].id) : '';
+            const proposerDisplayInfo = proposerNeuronId ? getNeuronDisplayInfo(proposal.proposer[0].id) : { name: '', nickname: '', isVerified: false };
+            
+            // Get timestamps
+            const createdAt = proposal.proposal_creation_timestamp_seconds 
+                ? new Date(Number(proposal.proposal_creation_timestamp_seconds) * 1000).toISOString()
+                : '';
+            const decidedAt = proposal.decided_timestamp_seconds 
+                ? new Date(Number(proposal.decided_timestamp_seconds) * 1000).toISOString()
+                : '';
+            const executedAt = proposal.executed_timestamp_seconds 
+                ? new Date(Number(proposal.executed_timestamp_seconds) * 1000).toISOString()
+                : '';
+            const failedAt = proposal.failed_timestamp_seconds 
+                ? new Date(Number(proposal.failed_timestamp_seconds) * 1000).toISOString()
+                : '';
+
+            // Convert voting period from seconds to hours
+            const votingPeriodHours = proposal.initial_voting_period_seconds 
+                ? (Number(proposal.initial_voting_period_seconds) / 3600).toFixed(2)
+                : '';
+
+            // Get summary (clean up HTML/Markdown)
+            const summary = proposal.proposal?.[0]?.summary || '';
+            const cleanSummary = convertHtmlToMarkdown(summary).replace(/\n+/g, ' ').trim();
+
+            // Generate URLs
+            const nnsUrl = `https://nns.ic0.app/proposal/?u=${selectedSnsRoot}&proposal=${proposalId}`;
+            const dashboardUrl = `https://dashboard.internetcomputer.org/sns/${selectedSnsRoot}/proposal/${proposalId}`;
+
+            return [
+                proposalId,
+                title,
+                topic,
+                actionType,
+                status,
+                proposerNeuronId,
+                proposerDisplayInfo.name || '',
+                proposerDisplayInfo.nickname || '',
+                createdAt,
+                decidedAt,
+                executedAt,
+                failedAt,
+                votingPeriodHours,
+                cleanSummary,
+                nnsUrl,
+                dashboardUrl
+            ];
+        });
+
+        // Create CSV content
+        const csvContent = [
+            headers.join(','),
+            ...csvRows.map(row => 
+                row.map(cell => {
+                    // Escape cells that contain commas, quotes, or newlines
+                    const cellStr = String(cell);
+                    if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                        return `"${cellStr.replace(/"/g, '""')}"`;
+                    }
+                    return cellStr;
+                }).join(',')
+            )
+        ].join('\n');
+
+        // Create and download file
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        
+        // Create filename with timestamp and filter info
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
+        const proposerSuffix = proposerFilter ? '_proposer-filtered' : '';
+        const topicSuffix = topicFilter ? `_${topicFilter}` : '';
+        const filename = `proposals_${selectedSnsRoot}_${timestamp}${proposerSuffix}${topicSuffix}.csv`;
+        
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
     // Theme-aware styles
     const getStyles = (theme) => ({
         pageContainer: {
@@ -425,7 +546,26 @@ function Proposals() {
                                 </a>
                             </p>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <button
+                                onClick={exportProposalsToCSV}
+                                style={{
+                                    backgroundColor: theme.colors.accent,
+                                    color: theme.colors.primaryText,
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}
+                                disabled={loading || filteredProposals.length === 0}
+                                title={`Export ${filteredProposals.length} proposals to CSV`}
+                            >
+                                <span style={{ fontSize: '14px' }}>📄</span>
+                                Export CSV
+                            </button>
                             <label style={getStyles(theme).label}>Items per page:</label>
                             <select
                                 value={itemsPerPage}
