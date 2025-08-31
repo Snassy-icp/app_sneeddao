@@ -268,7 +268,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
     };
 
 
-    const { identity } = useAuth();
+    const { identity, isAuthenticated } = useAuth();
     const { principalNames, principalNicknames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
     const [rawTransactions, setRawTransactions] = useState([]); // Raw transactions from server (ledger mode)
@@ -1067,6 +1067,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 displayInfo={principalDisplayInfo.get(fromPrincipal?.toString?.() || '')}
                                 showCopyButton={false}
                                 short={true}
+                                isAuthenticated={isAuthenticated}
                             />
                         </div>
                     </div>
@@ -1081,6 +1082,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                 displayInfo={principalDisplayInfo.get(toPrincipal?.toString?.() || '')}
                                 showCopyButton={false}
                                 short={true}
+                                isAuthenticated={isAuthenticated}
                             />
                         </div>
                     </div>
@@ -1345,6 +1347,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                         displayInfo={principalDisplayInfo.get(fromPrincipal?.toString?.() || '')}
                                                         showCopyButton={false}
                                                         short={true}
+                                                        isAuthenticated={isAuthenticated}
                                                     />
                                                     {txType === 'transfer' && transaction.transfer?.[0]?.from?.subaccount?.length > 0 && (
                                                         <div style={styles.subaccount}>
@@ -1361,6 +1364,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                                                         displayInfo={principalDisplayInfo.get(toPrincipal?.toString?.() || '')}
                                                         showCopyButton={false}
                                                         short={true}
+                                                        isAuthenticated={isAuthenticated}
                                                     />
                                                     {txType === 'transfer' && transaction.transfer?.[0]?.to?.subaccount?.length > 0 && (
                                                         <div style={styles.subaccount}>

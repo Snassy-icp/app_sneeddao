@@ -38,7 +38,7 @@ const spinKeyframes = `
 
 export default function PrincipalPage() {
     const { theme } = useTheme();
-    const { identity } = useAuth();
+    const { identity, isAuthenticated } = useAuth();
     const { selectedSnsRoot, SNEED_SNS_ROOT } = useSns();
     const { principalNames, principalNicknames } = useNaming();
     const { createForumActor } = useForum();
@@ -777,6 +777,7 @@ export default function PrincipalPage() {
                                                 style={{
                                                     fontSize: '16px'
                                                 }}
+                                                isAuthenticated={isAuthenticated}
                                             />
                                         </div>
                                         <div style={{ 
@@ -1502,6 +1503,7 @@ export default function PrincipalPage() {
                                                                             principal={Principal.fromText(getOwnerPrincipals(neuron)[0])}
                                                                             displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuron)[0])}
                                                                             showCopyButton={false}
+                                                                            isAuthenticated={isAuthenticated}
                                                                         />
                                                                     </div>
                                                                 )}
@@ -1522,6 +1524,7 @@ export default function PrincipalPage() {
                                                                                 principal={p.principal}
                                                                                 displayInfo={principalDisplayInfo.get(p.principal?.toString())}
                                                                                 showCopyButton={false}
+                                                                                isAuthenticated={isAuthenticated}
                                                                             />
                                                                         </div>
                                                                     ))

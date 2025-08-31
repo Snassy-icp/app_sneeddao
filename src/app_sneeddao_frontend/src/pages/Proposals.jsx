@@ -1040,18 +1040,20 @@ function Proposals() {
                                                     {treasuryDetails.targetPrincipal && (
                                                         <div style={{ ...getStyles(theme).metaText, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                                             <span>To:</span>
-                                                            <PrincipalDisplay
-                                                                principalId={treasuryDetails.targetPrincipal}
-                                                                displayInfo={getPrincipalDisplayInfoFromContext(
-                                                                    treasuryDetails.targetPrincipal,
-                                                                    principalNames,
-                                                                    principalNicknames,
-                                                                    verifiedNames
-                                                                )}
-                                                                showCopyButton={true}
-                                                                enableContextMenu={true}
-                                                                isAuthenticated={isAuthenticated}
-                                                            />
+                                                            <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                                                                <PrincipalDisplay
+                                                                    principal={treasuryDetails.targetPrincipal}
+                                                                    displayInfo={getPrincipalDisplayInfoFromContext(
+                                                                        treasuryDetails.targetPrincipal,
+                                                                        principalNames,
+                                                                        principalNicknames
+                                                                    )}
+                                                                    showCopyButton={true}
+                                                                    short={false}
+                                                                    enableContextMenu={true}
+                                                                    isAuthenticated={isAuthenticated}
+                                                                />
+                                                            </div>
                                                         </div>
                                                     )}
                                                     {treasuryDetails.memo && treasuryDetails.memo !== '0' && (
