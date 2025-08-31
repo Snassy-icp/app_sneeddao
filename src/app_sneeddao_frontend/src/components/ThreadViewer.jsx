@@ -31,6 +31,7 @@ import './ThreadViewer.css';
 
 // Separate EditForm component to prevent PostComponent re-renders
 const EditForm = ({ initialTitle, initialBody, onSubmit, onCancel, submittingEdit, textLimits }) => {
+    const { theme } = useTheme();
     const [title, setTitle] = useState(initialTitle || '');
     const [body, setBody] = useState(initialBody || '');
     
