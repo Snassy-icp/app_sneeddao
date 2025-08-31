@@ -100,6 +100,78 @@ function Proposals() {
         return Object.keys(proposal.proposal[0].action[0])[0] || 'Unknown';
     };
 
+    // Helper function to parse treasury transfer details
+    const parseTreasuryTransferDetails = (proposal) => {
+        const actionType = getProposalActionType(proposal);
+        if (actionType !== 'TransferSnsTreasuryFunds') {
+            return {
+                amount: '',
+                amountE8s: '',
+                tokenType: '',
+                targetPrincipal: '',
+                memo: ''
+            };
+        }
+
+        try {
+            const action = proposal.proposal?.[0]?.action?.[0];
+            const transferAction = action?.TransferSnsTreasuryFunds;
+            
+            if (!transferAction) {
+                return {
+                    amount: '',
+                    amountE8s: '',
+                    tokenType: '',
+                    targetPrincipal: '',
+                    memo: ''
+                };
+            }
+
+            // Extract amount and determine token type
+            let amount = '';
+            let amountE8s = '';
+            let tokenType = '';
+
+            if (transferAction.from_treasury === 'Icp') {
+                tokenType = 'ICP';
+                amountE8s = transferAction.amount_e8s?.toString() || '';
+                if (amountE8s) {
+                    amount = (Number(amountE8s) / 100000000).toFixed(8);
+                }
+            } else if (transferAction.from_treasury === 'SnsToken') {
+                tokenType = 'SNS Token';
+                amountE8s = transferAction.amount_e8s?.toString() || '';
+                if (amountE8s) {
+                    amount = (Number(amountE8s) / 100000000).toFixed(8);
+                }
+            }
+
+            // Extract target principal
+            const targetPrincipal = transferAction.to_principal?.toString() || '';
+
+            // Extract memo
+            const memo = transferAction.memo?.toString() || '0';
+
+            return {
+                amount,
+                amountE8s,
+                tokenType,
+                targetPrincipal,
+                memo
+            };
+
+        } catch (error) {
+            console.error('Error parsing treasury transfer details:', error);
+            return {
+                amount: '',
+                amountE8s: '',
+                tokenType: '',
+                targetPrincipal: '',
+                memo: ''
+            };
+        }
+    };
+
     // Listen for URL parameter changes and sync with global state
     useEffect(() => {
         const snsParam = searchParams.get('sns');
@@ -454,6 +526,11 @@ function Proposals() {
             'Executed At',
             'Failed At',
             'Initial Voting Period (hours)',
+            'Treasury Transfer Amount',
+            'Treasury Transfer Amount (E8s)',
+            'Treasury Transfer Token Type',
+            'Treasury Transfer Target',
+            'Treasury Transfer Memo',
             'Summary',
             'NNS URL',
             'Dashboard URL'
@@ -490,6 +567,9 @@ function Proposals() {
                 ? (Number(proposal.initial_voting_period_seconds) / 3600).toFixed(2)
                 : '';
 
+            // Parse treasury transfer details
+            const treasuryDetails = parseTreasuryTransferDetails(proposal);
+
             // Get summary (clean up HTML/Markdown)
             const summary = proposal.proposal?.[0]?.summary || '';
             const cleanSummary = convertHtmlToMarkdown(summary).replace(/\n+/g, ' ').trim();
@@ -512,6 +592,11 @@ function Proposals() {
                 executedAt,
                 failedAt,
                 votingPeriodHours,
+                treasuryDetails.amount,
+                treasuryDetails.amountE8s,
+                treasuryDetails.tokenType,
+                treasuryDetails.targetPrincipal,
+                treasuryDetails.memo,
                 cleanSummary,
                 nnsUrl,
                 dashboardUrl
