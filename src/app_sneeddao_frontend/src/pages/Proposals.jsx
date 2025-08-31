@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import { getSnsById } from '../utils/SnsUtils';
 import { useOptimizedSnsLoading } from '../hooks/useOptimizedSnsLoading';
 import { formatProposalIdLink, formatNeuronDisplayWithContext, uint8ArrayToHex } from '../utils/NeuronUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -34,7 +35,7 @@ function Proposals() {
     } = useOptimizedSnsLoading();
     
     // Get naming context
-    const { neuronNames, neuronNicknames, verifiedNames } = useNaming();
+    const { neuronNames, neuronNicknames, verifiedNames, principalNames, principalNicknames } = useNaming();
     
     // Pagination state
     const [itemsPerPage, setItemsPerPage] = useState(20);
@@ -1008,6 +1009,61 @@ function Proposals() {
                                             }
                                         </div>
                                     </div>
+                                    
+                                    {/* Treasury Transfer Details - Only for treasury proposals */}
+                                    {getProposalActionType(proposal) === 'TransferSnsTreasuryFunds' && (() => {
+                                        const treasuryDetails = parseTreasuryTransferDetails(proposal);
+                                        if (treasuryDetails.amount || treasuryDetails.targetPrincipal) {
+                                            return (
+                                                <div style={{ 
+                                                    marginBottom: '10px', 
+                                                    padding: '10px', 
+                                                    backgroundColor: theme.colors.tertiaryBg, 
+                                                    borderRadius: '6px',
+                                                    border: `1px solid ${theme.colors.border}`
+                                                }}>
+                                                    <div style={{ ...getStyles(theme).metaText, marginBottom: '6px', fontWeight: 'bold' }}>
+                                                        💰 Treasury Transfer Details:
+                                                    </div>
+                                                    {treasuryDetails.amount && (
+                                                        <div style={{ ...getStyles(theme).metaText, marginBottom: '4px' }}>
+                                                            <span style={{ color: theme.colors.accent, fontWeight: 'bold' }}>
+                                                                {treasuryDetails.amount} {treasuryDetails.tokenType}
+                                                            </span>
+                                                            {treasuryDetails.amountE8s && (
+                                                                <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
+                                                                    ({treasuryDetails.amountE8s} e8s)
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {treasuryDetails.targetPrincipal && (
+                                                        <div style={{ ...getStyles(theme).metaText, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                            <span>To:</span>
+                                                            <PrincipalDisplay
+                                                                principalId={treasuryDetails.targetPrincipal}
+                                                                displayInfo={getPrincipalDisplayInfoFromContext(
+                                                                    treasuryDetails.targetPrincipal,
+                                                                    principalNames,
+                                                                    principalNicknames,
+                                                                    verifiedNames
+                                                                )}
+                                                                showCopyButton={true}
+                                                                enableContextMenu={true}
+                                                                isAuthenticated={isAuthenticated}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    {treasuryDetails.memo && treasuryDetails.memo !== '0' && (
+                                                        <div style={{ ...getStyles(theme).metaText, marginTop: '4px' }}>
+                                                            Memo: <span style={{ color: theme.colors.mutedText }}>{treasuryDetails.memo}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
                                     
                                     {/* External Links - Responsive Row */}
                                     <div style={{ 
