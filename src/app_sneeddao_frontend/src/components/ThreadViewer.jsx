@@ -2039,6 +2039,7 @@ function ThreadViewer({
                             showCopyButton={false}
                             short={true}
                             style={{ color: theme.colors.accent, fontWeight: '500' }}
+                            isAuthenticated={isAuthenticated}
                         />
                         {threadDetails.created_at && (
                             <span style={{ marginLeft: '12px', color: theme.colors.mutedText }}>
@@ -2673,6 +2674,7 @@ function ThreadViewer({
                             displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
                             showCopyButton={false}
                             short={true}
+                            isAuthenticated={isAuthenticated}
                         /></span>
                         <span style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                             {isNarrowScreen 

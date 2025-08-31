@@ -343,6 +343,7 @@ const Posts = () => {
                                         short={true}
                                         enableContextMenu={true}
                                         maxLength={20}
+                                        isAuthenticated={isAuthenticated}
                                     />
                                 </div>
                             </span>

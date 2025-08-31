@@ -433,7 +433,7 @@ const getStyles = (theme) => ({
 });
 
 function Feed() {
-    const { identity } = useAuth();
+    const { identity, isAuthenticated } = useAuth();
     const { theme } = useTheme();
     const { selectedSnsRoot } = useSns();
     const { getPrincipalDisplayName } = useNaming();
@@ -1513,6 +1513,7 @@ function Feed() {
                                     displayInfo={creatorDisplayInfo}
                                     short={true}
                                     style={{ fontSize: '0.9rem' }}
+                                    isAuthenticated={isAuthenticated}
                                 />
                             )}
                         </div>

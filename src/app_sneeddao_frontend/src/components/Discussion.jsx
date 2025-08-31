@@ -925,7 +925,8 @@ function Discussion({
                                 <span>By: <PrincipalDisplay 
                                     principal={post.created_by} 
                                     displayInfo={principalDisplayInfo.get(post.created_by?.toString())}
-                                    showCopyButton={false} 
+                                    showCopyButton={false}
+                                    isAuthenticated={isAuthenticated}
                                 /></span>
                                 <span>•</span>
                                 <span>{new Date(Number(post.created_at) / 1000000).toLocaleString()}</span>

@@ -9,7 +9,8 @@ const PrincipalInput = ({
     onChange, 
     placeholder = 'Enter principal ID or search by name', 
     style = {},
-    disabled = false 
+    disabled = false,
+    isAuthenticated = false
 }) => {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -248,6 +249,7 @@ const PrincipalInput = ({
                                     style={{ fontSize: '12px' }}
                                     noLink={true}
                                     short={true}
+                                    isAuthenticated={isAuthenticated}
                                 />
                             );
                         } catch (e) {
@@ -297,6 +299,7 @@ const PrincipalInput = ({
                                 style={{ fontSize: '14px' }}
                                 noLink={true}
                                 short={true}
+                                isAuthenticated={isAuthenticated}
                             />
                         </div>
                     ))}

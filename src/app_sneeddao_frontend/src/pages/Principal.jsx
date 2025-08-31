@@ -628,6 +628,7 @@ export default function PrincipalPage() {
                                     }
                                 }}
                                 placeholder="Enter principal ID or search by name"
+                                isAuthenticated={isAuthenticated}
                             />
                         </div>
 
@@ -714,6 +715,7 @@ export default function PrincipalPage() {
                                 }
                             }}
                             placeholder="Enter principal ID or search by name"
+                            isAuthenticated={isAuthenticated}
                         />
                     </div>
 

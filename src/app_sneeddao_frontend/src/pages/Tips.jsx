@@ -255,6 +255,7 @@ const Tips = () => {
                         enableContextMenu={true}
                         short={true}
                         maxLength={20}
+                        isAuthenticated={isAuthenticated}
                     />
                 </td>
                 <td className="tip-post">
