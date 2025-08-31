@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import { useAuth } from '../AuthContext';
 import { useSns } from '../contexts/SnsContext';
 import Header from '../components/Header';
@@ -44,6 +45,7 @@ function Proposals() {
     const [lastProposalId, setLastProposalId] = useState(null);
     const [loadingAll, setLoadingAll] = useState(false);
     const [allProposalsLoaded, setAllProposalsLoaded] = useState(false);
+    const [tokenSymbol, setTokenSymbol] = useState('SNS');
 
     // Add state to track expanded summaries
     const [expandedSummaries, setExpandedSummaries] = useState(new Set());
@@ -131,6 +133,7 @@ function Proposals() {
     // Helper function to parse treasury transfer details
     const parseTreasuryTransferDetails = (proposal) => {
         const actionType = getProposalActionType(proposal);
+        
         if (actionType !== 'TransferSnsTreasuryFunds') {
             return {
                 amount: '',
@@ -160,12 +163,16 @@ function Proposals() {
             let amountE8s = '';
             let tokenType = '';
 
-            // Determine token type - simplified to just "SNS" or "ICP"
+            // Determine token type using enum values: 1 = ICP, 2 = SNS token
             const fromTreasury = transferAction.from_treasury;
-            if (fromTreasury === 'Icp' || (typeof fromTreasury === 'object' && 'Icp' in fromTreasury)) {
+            if (fromTreasury === 1) {
                 tokenType = 'ICP';
-            } else if (fromTreasury === 'SnsToken' || (typeof fromTreasury === 'object' && 'SnsToken' in fromTreasury)) {
-                tokenType = 'SNS';
+            } else if (fromTreasury === 2) {
+                tokenType = tokenSymbol; // Use actual SNS token symbol
+            } else if (fromTreasury === 0) {
+                tokenType = 'ICP'; // Fallback for 0 = ICP
+            } else {
+                tokenType = tokenSymbol; // Default to SNS token for unknown values
             }
 
             // Extract amount - try different ways to access the amount
@@ -179,11 +186,11 @@ function Proposals() {
                 amount = (numAmount / 100000000).toFixed(8);
             }
 
-            // Extract target principal
-            const targetPrincipal = transferAction.to_principal?.toString() || 
-                                   transferAction.to?.toString() || 
-                                   transferAction.target?.toString() || 
-                                   '';
+            // Extract target principal - it's an array with Principal object
+            let targetPrincipal = '';
+            if (transferAction.to_principal && Array.isArray(transferAction.to_principal) && transferAction.to_principal.length > 0) {
+                targetPrincipal = transferAction.to_principal[0].toString();
+            }
 
             // Extract memo
             const memo = transferAction.memo?.toString() || '0';
@@ -229,6 +236,7 @@ function Proposals() {
         setFilteredProposals([]);
         setAllProposalsLoaded(false);
         setLoadingAll(false);
+        setTokenSymbol('SNS'); // Reset to default until new symbol is fetched
     }, [selectedSnsRoot]);
 
     // Filter proposals based on proposer and topic filters
@@ -280,10 +288,34 @@ function Proposals() {
         }
     }, [snsError]);
 
-    // Fetch proposals when SNS changes or pagination changes
+    // Fetch token symbol when SNS changes
+    const fetchTokenSymbol = async () => {
+        try {
+            const selectedSns = getSnsById(selectedSnsRoot);
+            if (!selectedSns) return;
+
+            const icrc1Actor = createIcrc1Actor(selectedSns.canisters.ledger, {
+                agentOptions: { identity }
+            });
+            
+            const metadata = await icrc1Actor.icrc1_metadata();
+            const symbolEntry = metadata.find(entry => entry[0] === 'icrc1:symbol');
+            let symbol = 'SNS';
+            if (symbolEntry && symbolEntry[1]) {
+                symbol = symbolEntry[1].Text;
+            }
+            setTokenSymbol(symbol);
+        } catch (err) {
+            console.error('Error fetching token symbol:', err);
+            setTokenSymbol('SNS'); // Fallback
+        }
+    };
+
+    // Fetch proposals and token symbol when SNS changes or pagination changes
     useEffect(() => {
         if (selectedSnsRoot) {
             fetchProposals();
+            fetchTokenSymbol();
         }
     }, [selectedSnsRoot, itemsPerPage, currentPage]);
 
@@ -348,6 +380,7 @@ function Proposals() {
         setTopicFilter('');
         setAllProposalsLoaded(false);
         setLoadingAll(false);
+        setTokenSymbol('SNS'); // Reset to default until new symbol is fetched
     };
 
     const handleItemsPerPageChange = (e) => {
@@ -1028,8 +1061,13 @@ function Proposals() {
                                                     {treasuryDetails.amount && (
                                                         <div style={{ ...getStyles(theme).metaText, marginBottom: '4px' }}>
                                                             <span style={{ color: theme.colors.accent, fontWeight: 'bold' }}>
-                                                                {treasuryDetails.amount} {treasuryDetails.tokenType}
+                                                                {treasuryDetails.amount}
                                                             </span>
+                                                            {treasuryDetails.tokenType && (
+                                                                <span style={{ color: theme.colors.accent, fontWeight: 'bold', marginLeft: '4px' }}>
+                                                                    {treasuryDetails.tokenType}
+                                                                </span>
+                                                            )}
                                                             {treasuryDetails.amountE8s && (
                                                                 <span style={{ color: theme.colors.mutedText, marginLeft: '8px' }}>
                                                                     ({treasuryDetails.amountE8s} e8s)
