@@ -700,6 +700,108 @@ function Neurons() {
         fetchNeurons();
     };
 
+    // CSV export function
+    const exportToCSV = () => {
+        if (filteredNeurons.length === 0) {
+            alert('No neurons to export');
+            return;
+        }
+
+        // Define CSV headers
+        const headers = [
+            'Neuron ID',
+            'Name',
+            'Nickname',
+            'Is Verified',
+            'Stake (E8s)',
+            'Stake (Tokens)',
+            'Dissolve State',
+            'Voting Power Multiplier',
+            'Owner Principals',
+            'Created At',
+            'Age (Days)',
+            'Followees Count'
+        ];
+
+        // Convert neurons to CSV rows
+        const csvRows = filteredNeurons.map(neuron => {
+            const neuronId = uint8ArrayToHex(neuron.id[0]?.id) || '';
+            const displayInfo = getDisplayName(neuronId);
+            const stakeE8s = neuron.cached_neuron_stake_e8s || 0n;
+            const stakeTokens = formatE8s(stakeE8s);
+            const dissolveState = getDissolveState(neuron);
+            const votingPowerMultiplier = (Number(neuron.voting_power_percentage_multiplier) / 100).toFixed(2);
+            
+            // Get owner principals
+            const ownerPrincipals = neuron.permissions
+                ?.filter(p => p.principal && p.permission_type?.length > 0)
+                ?.map(p => p.principal.toString())
+                ?.join('; ') || '';
+
+            // Get creation timestamp
+            const createdAt = neuron.created_timestamp_seconds 
+                ? new Date(Number(neuron.created_timestamp_seconds) * 1000).toISOString()
+                : '';
+
+            // Calculate age in days
+            const ageDays = neuron.created_timestamp_seconds 
+                ? Math.floor((Date.now() / 1000 - Number(neuron.created_timestamp_seconds)) / (24 * 60 * 60))
+                : '';
+
+            // Count followees
+            const followeesCount = Object.keys(neuron.followees || {}).length;
+
+            return [
+                neuronId,
+                displayInfo.name || '',
+                displayInfo.nickname || '',
+                displayInfo.isVerified ? 'Yes' : 'No',
+                stakeE8s.toString(),
+                stakeTokens,
+                dissolveState,
+                votingPowerMultiplier + 'x',
+                ownerPrincipals,
+                createdAt,
+                ageDays,
+                followeesCount
+            ];
+        });
+
+        // Create CSV content
+        const csvContent = [
+            headers.join(','),
+            ...csvRows.map(row => 
+                row.map(cell => {
+                    // Escape cells that contain commas, quotes, or newlines
+                    const cellStr = String(cell);
+                    if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                        return `"${cellStr.replace(/"/g, '""')}"`;
+                    }
+                    return cellStr;
+                }).join(',')
+            )
+        ].join('\n');
+
+        // Create and download file
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        
+        // Create filename with timestamp and filter info
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
+        const filterSuffix = dissolveFilter !== 'all' ? `_${dissolveFilter}` : '';
+        const searchSuffix = searchTerm ? `_search` : '';
+        const filename = `neurons_${selectedSnsRoot}_${timestamp}${filterSuffix}${searchSuffix}.csv`;
+        
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header showSnsDropdown={true} onSnsChange={handleSnsChange} />
@@ -821,6 +923,25 @@ function Neurons() {
                                     fontSize: '14px'
                                 }}>⟳</span>
                                 Refresh
+                            </button>
+                            <button
+                                onClick={exportToCSV}
+                                style={{
+                                    backgroundColor: theme.colors.accent,
+                                    color: theme.colors.primaryText,
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}
+                                disabled={loading || filteredNeurons.length === 0}
+                                title={`Export ${filteredNeurons.length} neurons to CSV`}
+                            >
+                                <span style={{ fontSize: '14px' }}>📄</span>
+                                Export CSV
                             </button>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <label style={{ color: theme.colors.primaryText, fontSize: '14px' }}>Items per page:</label>
