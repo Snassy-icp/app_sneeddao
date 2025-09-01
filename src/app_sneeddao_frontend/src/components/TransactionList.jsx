@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Principal } from '@dfinity/principal';
 import { createActor as createSnsRootActor } from 'external/sns_root';
 import { createActor as createSnsArchiveActor } from 'external/sns_archive';
@@ -637,7 +637,15 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
             const sortedTxs = sortTransactions(filteredTxs);
             setDisplayedTransactions(sortedTxs);
         }
-    }, [rawTransactions, allTransactions, principalId, page, selectedType, pageSize, sortConfig, fromFilter, toFilter, filterOperator, principalDisplayInfo]);
+    }, [rawTransactions, allTransactions, principalId, page, selectedType, pageSize, sortConfig, fromFilter, toFilter, filterOperator]);
+
+    // Separate effect to re-sort when principal display info changes (only for principal-based sorting)
+    useEffect(() => {
+        if (displayedTransactions.length > 0 && (sortConfig.key === 'fromAddress' || sortConfig.key === 'toAddress')) {
+            const sortedTxs = sortTransactions(displayedTransactions);
+            setDisplayedTransactions(sortedTxs);
+        }
+    }, [principalDisplayInfo, sortConfig.key, sortConfig.direction]);
 
     // Add effect to fetch principal display info
     useEffect(() => {
@@ -730,7 +738,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
     };
 
     // Add sorting function
-    const sortTransactions = (transactions) => {
+    const sortTransactions = useCallback((transactions) => {
         if (!sortConfig.key) return transactions;
 
         console.log('Sorting transactions with config:', sortConfig);
@@ -788,7 +796,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
                 return 0;
             }
         });
-    };
+    }, [sortConfig, principalDisplayInfo]);
 
     // Update helper functions to handle both formats
     const getFromPrincipal = (tx) => {

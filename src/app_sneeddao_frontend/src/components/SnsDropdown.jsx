@@ -17,6 +17,47 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
     const dropdownRef = useRef(null);
     const [snsLogos, setSnsLogos] = useState(new Map());
     const [loadingLogos, setLoadingLogos] = useState(new Set());
+    const [dropdownPosition, setDropdownPosition] = useState('right');
+
+    // Function to calculate optimal dropdown position
+    const calculateDropdownPosition = () => {
+        if (!dropdownRef.current) return;
+        
+        const rect = dropdownRef.current.getBoundingClientRect();
+        const dropdownWidth = 250; // minWidth from the dropdown styles
+        const viewportWidth = window.innerWidth;
+        const spaceOnRight = viewportWidth - rect.right;
+        const spaceOnLeft = rect.left;
+        
+        console.log('Dropdown positioning debug:', {
+            viewportWidth,
+            rectLeft: rect.left,
+            rectRight: rect.right,
+            spaceOnLeft,
+            spaceOnRight,
+            dropdownWidth,
+            currentPosition: dropdownPosition
+        });
+        
+        // More aggressive positioning for narrow screens
+        if (viewportWidth <= 500) {
+            // On very narrow screens, always align left if there's more space there
+            if (spaceOnLeft > spaceOnRight) {
+                console.log('Setting position to left (narrow screen)');
+                setDropdownPosition('left');
+            } else {
+                console.log('Setting position to right (narrow screen)');
+                setDropdownPosition('right');
+            }
+        } else if (spaceOnRight < dropdownWidth && spaceOnLeft >= dropdownWidth) {
+            // Standard logic: if not enough space on right and enough on left, align left
+            console.log('Setting position to left (standard)');
+            setDropdownPosition('left');
+        } else {
+            console.log('Setting position to right (standard)');
+            setDropdownPosition('right');
+        }
+    };
 
     useEffect(() => {
         // Close dropdown when clicking outside
@@ -26,9 +67,28 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
             }
         };
 
+        // Handle window resize to recalculate dropdown position
+        const handleResize = () => {
+            if (isOpen) {
+                calculateDropdownPosition();
+            }
+        };
+
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+        window.addEventListener('resize', handleResize);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            window.removeEventListener('resize', handleResize);
+        };
+    }, [isOpen]);
+
+    // Recalculate position when dropdown opens
+    useEffect(() => {
+        if (isOpen) {
+            // Small delay to ensure DOM is updated
+            setTimeout(() => calculateDropdownPosition(), 0);
+        }
+    }, [isOpen]);
 
     // Sync URL parameters with global state
     useEffect(() => {
@@ -179,7 +239,17 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                 }}
             >
                 <div
-                    onClick={() => !loadingSnses && setIsOpen(!isOpen)}
+                    onClick={() => {
+                        if (!loadingSnses) {
+                            if (!isOpen) {
+                                // Calculate position before opening
+                                calculateDropdownPosition();
+                                // Also recalculate after DOM updates
+                                setTimeout(() => calculateDropdownPosition(), 10);
+                            }
+                            setIsOpen(!isOpen);
+                        }
+                    }}
                     style={{
                         backgroundColor: 'transparent',
                         border: 'none',
@@ -253,7 +323,7 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                     <div style={{
                         position: 'absolute',
                         top: '100%',
-                        right: '0',
+                        ...(dropdownPosition === 'right' ? { right: '0' } : { left: '0' }),
                         backgroundColor: theme.colors.secondaryBg,
                         border: `1px solid ${theme.colors.border}`,
                         borderRadius: '4px',
@@ -263,7 +333,9 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                         overflowX: 'hidden',
                         zIndex: 1000,
                         boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-                        minWidth: '250px'
+                        minWidth: '250px',
+                        maxWidth: '90vw', // Ensure it doesn't exceed viewport width
+                        width: 'max-content'
                     }}>
                         {snsList.map(sns => {
                             const logo = snsLogos.get(sns.canisters.governance);
