@@ -17,46 +17,42 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
     const dropdownRef = useRef(null);
     const [snsLogos, setSnsLogos] = useState(new Map());
     const [loadingLogos, setLoadingLogos] = useState(new Set());
-    const [dropdownPosition, setDropdownPosition] = useState('right');
+    const [dropdownOffset, setDropdownOffset] = useState(0);
 
-    // Function to calculate optimal dropdown position
-    const calculateDropdownPosition = () => {
+    // Function to calculate dropdown offset to keep it within bounds
+    const calculateDropdownOffset = () => {
         if (!dropdownRef.current) return;
         
-        const rect = dropdownRef.current.getBoundingClientRect();
-        const dropdownWidth = 250; // minWidth from the dropdown styles
-        const viewportWidth = window.innerWidth;
-        const spaceOnRight = viewportWidth - rect.right;
-        const spaceOnLeft = rect.left;
-        
-        console.log('Dropdown positioning debug:', {
-            viewportWidth,
-            rectLeft: rect.left,
-            rectRight: rect.right,
-            spaceOnLeft,
-            spaceOnRight,
-            dropdownWidth,
-            currentPosition: dropdownPosition
-        });
-        
-        // More aggressive positioning for narrow screens
-        if (viewportWidth <= 500) {
-            // On very narrow screens, always align left if there's more space there
-            if (spaceOnLeft > spaceOnRight) {
-                console.log('Setting position to left (narrow screen)');
-                setDropdownPosition('left');
+        // Wait a tick for the dropdown to render
+        setTimeout(() => {
+            const dropdown = dropdownRef.current?.querySelector('div[style*="position: absolute"]');
+            if (!dropdown) return;
+            
+            const rect = dropdown.getBoundingClientRect();
+            const viewportWidth = window.innerWidth;
+            
+            console.log('Dropdown bounds check:', {
+                left: rect.left,
+                right: rect.right,
+                viewportWidth,
+                isOffLeft: rect.left < 0,
+                isOffRight: rect.right > viewportWidth
+            });
+            
+            // If dropdown goes off the left edge, calculate offset to bring it back
+            if (rect.left < 0) {
+                const offset = Math.abs(rect.left) + 10; // Add 10px padding
+                console.log('Applying left offset:', offset);
+                setDropdownOffset(offset);
+            } else if (rect.right > viewportWidth) {
+                // If it goes off the right, push it left
+                const offset = -(rect.right - viewportWidth + 10); // Add 10px padding
+                console.log('Applying right offset:', offset);
+                setDropdownOffset(offset);
             } else {
-                console.log('Setting position to right (narrow screen)');
-                setDropdownPosition('right');
+                setDropdownOffset(0);
             }
-        } else if (spaceOnRight < dropdownWidth && spaceOnLeft >= dropdownWidth) {
-            // Standard logic: if not enough space on right and enough on left, align left
-            console.log('Setting position to left (standard)');
-            setDropdownPosition('left');
-        } else {
-            console.log('Setting position to right (standard)');
-            setDropdownPosition('right');
-        }
+        }, 0);
     };
 
     useEffect(() => {
@@ -70,7 +66,7 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
         // Handle window resize to recalculate dropdown position
         const handleResize = () => {
             if (isOpen) {
-                calculateDropdownPosition();
+                calculateDropdownOffset();
             }
         };
 
@@ -85,8 +81,9 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
     // Recalculate position when dropdown opens
     useEffect(() => {
         if (isOpen) {
-            // Small delay to ensure DOM is updated
-            setTimeout(() => calculateDropdownPosition(), 0);
+            calculateDropdownOffset();
+        } else {
+            setDropdownOffset(0); // Reset offset when closed
         }
     }, [isOpen]);
 
@@ -241,12 +238,6 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                 <div
                     onClick={() => {
                         if (!loadingSnses) {
-                            if (!isOpen) {
-                                // Calculate position before opening
-                                calculateDropdownPosition();
-                                // Also recalculate after DOM updates
-                                setTimeout(() => calculateDropdownPosition(), 10);
-                            }
                             setIsOpen(!isOpen);
                         }
                     }}
@@ -323,7 +314,8 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                     <div style={{
                         position: 'absolute',
                         top: '100%',
-                        ...(dropdownPosition === 'right' ? { right: '0' } : { left: '0' }),
+                        right: '0',
+                        transform: `translateX(${dropdownOffset}px)`,
                         backgroundColor: theme.colors.secondaryBg,
                         border: `1px solid ${theme.colors.border}`,
                         borderRadius: '4px',
@@ -334,7 +326,7 @@ function SnsDropdown({ onSnsChange, showSnsDropdown = true }) {
                         zIndex: 1000,
                         boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
                         minWidth: '250px',
-                        maxWidth: '90vw', // Ensure it doesn't exceed viewport width
+                        maxWidth: '90vw',
                         width: 'max-content'
                     }}>
                         {snsList.map(sns => {
