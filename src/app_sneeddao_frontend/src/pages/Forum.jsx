@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Principal } from '@dfinity/principal';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -277,6 +277,7 @@ function Forum() {
     const { identity } = useAuth();
     const { theme } = useTheme();
     const { selectedSnsRoot } = useSns();
+    const navigate = useNavigate();
     const [forum, setForum] = useState(null);
     const [topics, setTopics] = useState([]);
     const [topicHierarchy, setTopicHierarchy] = useState([]);
@@ -396,8 +397,8 @@ function Forum() {
             if ('ok' in result) {
                 console.log('General topic created successfully, topic ID:', result.ok);
                 setShowGeneralPrompt(false);
-                // Refresh the forum data to show the new topic
-                await fetchForumData();
+                // Navigate to the new topic page
+                navigate(`/topic/${result.ok}${selectedSnsRoot ? `?sns=${selectedSnsRoot}` : ''}`);
             } else {
                 console.error('Error creating General topic:', result.err);
                 setError('Failed to create General topic: ' + formatError(result.err));
@@ -431,8 +432,8 @@ function Forum() {
             if ('ok' in result) {
                 console.log('Governance topic created successfully, topic ID:', result.ok);
                 setShowGovernancePrompt(false);
-                // Refresh the forum data to show the new topic
-                await fetchForumData();
+                // Navigate to the new topic page
+                navigate(`/topic/${result.ok}${selectedSnsRoot ? `?sns=${selectedSnsRoot}` : ''}`);
             } else {
                 console.error('Error creating Governance topic:', result.err);
                 setError('Failed to create Governance topic: ' + formatError(result.err));

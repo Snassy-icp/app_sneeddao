@@ -823,8 +823,8 @@ function Topic() {
             if ('ok' in result) {
                 console.log('Preproposals topic created successfully, topic ID:', result.ok);
                 setShowPreproposalsPrompt(false);
-                // Refresh the topic data to show the new subtopic
-                await fetchTopicData();
+                // Navigate to the new topic page
+                navigate(`/topic/${result.ok}${currentSnsRoot ? `?sns=${currentSnsRoot}` : ''}`);
             } else {
                 console.error('Error creating Preproposals topic:', result.err);
                 setError('Failed to create Preproposals topic: ' + result.err);
