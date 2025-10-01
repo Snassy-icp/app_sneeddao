@@ -35,7 +35,7 @@ import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from './utils/BackendUtils';
 
 // Component for empty position cards (when no positions exist for a swap pair)
-const EmptyPositionCard = ({ position, onRemove }) => {
+const EmptyPositionCard = ({ position, onRemove, theme }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     const handleHeaderClick = () => {
@@ -1516,6 +1516,7 @@ function Wallet() {
                             key={index} 
                             position={position} 
                             onRemove={() => handleUnregisterSwapCanister(position.swapCanisterId)}
+                            theme={theme}
                           />
 
                         : position.positions.map((positionDetails, positionIndex) => (
