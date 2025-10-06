@@ -60,8 +60,9 @@ function Neuron() {
     const [actionMsg, setActionMsg] = useState('');
     const [managePrincipalInput, setManagePrincipalInput] = useState('');
     const [managePermissionsInput, setManagePermissionsInput] = useState('1,2,4');
-    const [functionIdInput, setFunctionIdInput] = useState('');
+    const [topicInput, setTopicInput] = useState('Governance');
     const [followeeInput, setFolloweeInput] = useState('');
+    const [followeeAliasInput, setFolloweeAliasInput] = useState('');
     
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames, fetchAllNames, principalNames, principalNicknames } = useNaming();
@@ -457,27 +458,51 @@ function Neuron() {
         }
     };
 
-    // Followees editor helpers
+    // Followees editor helpers - topic-based (modern)
     const hexToBytes = (hex) => new Uint8Array(hex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-    const getCurrentFolloweesForFunction = (functionId) => {
-        if (!neuronData?.followees) return [];
-        const entry = neuronData.followees.find(([fid, _]) => String(fid) === String(functionId));
-        if (!entry) return [];
-        const followees = entry[1]?.followees || [];
-        return followees.map(n => uint8ArrayToHex(n.id));
+    
+    const getCurrentFolloweesForTopic = (topicName) => {
+        // Check topic_followees (modern format)
+        if (neuronData?.topic_followees?.[0]?.topic_id_to_followees) {
+            const entries = neuronData.topic_followees[0].topic_id_to_followees;
+            for (const [_topicId, topicFollowees] of entries) {
+                if (topicFollowees.topic?.[0]) {
+                    const currentTopic = Object.keys(topicFollowees.topic[0])[0];
+                    if (currentTopic === topicName) {
+                        return topicFollowees.followees.map(f => ({
+                            neuronId: f.neuron_id?.[0] ? uint8ArrayToHex(f.neuron_id[0].id) : '',
+                            alias: f.alias?.[0] || ''
+                        }));
+                    }
+                }
+            }
+        }
+        return [];
     };
 
     const addFollowee = async () => {
         try {
             setActionBusy(true); setActionMsg('Updating followees...'); setError('');
-            const fid = BigInt(functionIdInput);
-            const existing = new Set(getCurrentFolloweesForFunction(fid));
-            existing.add(followeeInput.trim());
-            const followeesArr = Array.from(existing).filter(Boolean).map(h => ({ id: Array.from(hexToBytes(h)) }));
+            const existing = getCurrentFolloweesForTopic(topicInput);
+            // Add new followee
+            const newFollowee = {
+                neuron_id: [{ id: Array.from(hexToBytes(followeeInput.trim())) }],
+                alias: followeeAliasInput.trim() ? [followeeAliasInput.trim()] : []
+            };
+            const allFollowees = [...existing.map(f => ({
+                neuron_id: [{ id: Array.from(hexToBytes(f.neuronId)) }],
+                alias: f.alias ? [f.alias] : []
+            })), newFollowee];
+            
             const result = await manageNeuron({
-                Follow: { function_id: fid, followees: followeesArr }
+                SetFollowing: {
+                    topic_following: [{
+                        topic: [{ [topicInput]: null }],
+                        followees: allFollowees
+                    }]
+                }
             });
-            if (!result.ok) setError(result.err); else await fetchNeuronData();
+            if (!result.ok) setError(result.err); else { await fetchNeuronData(); setFolloweeInput(''); setFolloweeAliasInput(''); }
         } catch (e) {
             setError(e.message || String(e));
         } finally {
@@ -488,14 +513,22 @@ function Neuron() {
     const removeFollowee = async () => {
         try {
             setActionBusy(true); setActionMsg('Updating followees...'); setError('');
-            const fid = BigInt(functionIdInput);
-            const existing = new Set(getCurrentFolloweesForFunction(fid));
-            existing.delete(followeeInput.trim());
-            const followeesArr = Array.from(existing).filter(Boolean).map(h => ({ id: Array.from(hexToBytes(h)) }));
+            const existing = getCurrentFolloweesForTopic(topicInput);
+            const filtered = existing.filter(f => f.neuronId !== followeeInput.trim());
+            const allFollowees = filtered.map(f => ({
+                neuron_id: [{ id: Array.from(hexToBytes(f.neuronId)) }],
+                alias: f.alias ? [f.alias] : []
+            }));
+            
             const result = await manageNeuron({
-                Follow: { function_id: fid, followees: followeesArr }
+                SetFollowing: {
+                    topic_following: [{
+                        topic: [{ [topicInput]: null }],
+                        followees: allFollowees
+                    }]
+                }
             });
-            if (!result.ok) setError(result.err); else await fetchNeuronData();
+            if (!result.ok) setError(result.err); else { await fetchNeuronData(); setFolloweeInput(''); setFolloweeAliasInput(''); }
         } catch (e) {
             setError(e.message || String(e));
         } finally {
@@ -1097,14 +1130,20 @@ function Neuron() {
                                     })()}
                                     {currentUserHasPermission(PERM.CONFIGURE) && (
                                         <div style={{ marginTop: '12px', padding: '12px', backgroundColor: theme.colors.secondaryBg, borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <div style={{ color: theme.colors.mutedText, fontWeight: 'bold' }}>Edit followees (by function id)</div>
-                                            <input
-                                                type="text"
-                                                placeholder="Function ID (nat64)"
-                                                value={functionIdInput}
-                                                onChange={(e) => setFunctionIdInput(e.target.value)}
+                                            <div style={{ color: theme.colors.mutedText, fontWeight: 'bold' }}>Edit followees (by topic)</div>
+                                            <select
+                                                value={topicInput}
+                                                onChange={(e) => setTopicInput(e.target.value)}
                                                 style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
-                                            />
+                                            >
+                                                <option value="Governance">Governance</option>
+                                                <option value="DaoCommunitySettings">DaoCommunitySettings</option>
+                                                <option value="SnsFrameworkManagement">SnsFrameworkManagement</option>
+                                                <option value="DappCanisterManagement">DappCanisterManagement</option>
+                                                <option value="ApplicationBusinessLogic">ApplicationBusinessLogic</option>
+                                                <option value="TreasuryAssetManagement">TreasuryAssetManagement</option>
+                                                <option value="CriticalDappOperations">CriticalDappOperations</option>
+                                            </select>
                                             <input
                                                 type="text"
                                                 placeholder="Followee Neuron ID (hex)"
@@ -1112,9 +1151,19 @@ function Neuron() {
                                                 onChange={(e) => setFolloweeInput(e.target.value)}
                                                 style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
                                             />
+                                            <input
+                                                type="text"
+                                                placeholder="Alias (optional)"
+                                                value={followeeAliasInput}
+                                                onChange={(e) => setFolloweeAliasInput(e.target.value)}
+                                                style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
+                                            />
                                             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                                 <button disabled={actionBusy} onClick={addFollowee} style={{ backgroundColor: theme.colors.accent, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Add followee</button>
                                                 <button disabled={actionBusy} onClick={removeFollowee} style={{ backgroundColor: theme.colors.error, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Remove followee</button>
+                                            </div>
+                                            <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                Current followees for {topicInput}: {getCurrentFolloweesForTopic(topicInput).map(f => f.alias || f.neuronId.substring(0, 8) + '...').join(', ') || 'None'}
                                             </div>
                                             {actionMsg && <div style={{ color: theme.colors.mutedText }}>{actionMsg}</div>}
                                         </div>
