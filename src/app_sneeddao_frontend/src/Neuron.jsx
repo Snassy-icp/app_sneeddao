@@ -56,6 +56,12 @@ function Neuron() {
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     // Add nervous system parameters state
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
+    const [actionBusy, setActionBusy] = useState(false);
+    const [actionMsg, setActionMsg] = useState('');
+    const [managePrincipalInput, setManagePrincipalInput] = useState('');
+    const [managePermissionsInput, setManagePermissionsInput] = useState('1,2,4');
+    const [functionIdInput, setFunctionIdInput] = useState('');
+    const [followeeInput, setFolloweeInput] = useState('');
     
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames, fetchAllNames, principalNames, principalNicknames } = useNaming();
@@ -343,6 +349,159 @@ function Neuron() {
     };
 
     const selectedSns = getSnsById(selectedSnsRoot);
+
+    const currentUserHasPermission = (permInt) => {
+        if (!neuronData || !identity) return false;
+        const me = identity.getPrincipal()?.toString();
+        return neuronData.permissions?.some(p => p.principal?.toString() === me && p.permission_type?.includes(permInt));
+    };
+
+    // SNS permission ints: commonly used
+    // 1 = ConfigureDissolveState, 2 = ManagePrincipals, 4 = RegisterVote (hotkey), 8 = Disburse
+    const PERM = {
+        CONFIGURE: 1,
+        MANAGE_PRINCIPALS: 2,
+        VOTE: 4,
+        DISBURSE: 8
+    };
+
+    const manageNeuron = async (command) => {
+        if (!selectedSnsRoot || !identity || !currentNeuronId) return { ok: false, err: 'Missing context' };
+        try {
+            const selectedSns = getSnsById(selectedSnsRoot);
+            if (!selectedSns) return { ok: false, err: 'SNS not found' };
+            const snsGovActor = createSnsGovernanceActor(selectedSns.canisters.governance, {
+                agentOptions: { identity }
+            });
+            const neuronIdBytes = new Uint8Array(currentNeuronId.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            const req = { subaccount: Array.from(neuronIdBytes), command: [command] };
+            const resp = await snsGovActor.manage_neuron(req);
+            if (resp?.command?.[0]?.Error) return { ok: false, err: resp.command[0].Error.error_message };
+            return { ok: true };
+        } catch (e) {
+            return { ok: false, err: e.message || String(e) };
+        }
+    };
+
+    // Dissolve controls
+    const increaseDissolveDelay = async (secondsToAdd) => {
+        setActionBusy(true); setActionMsg('Increasing dissolve delay...');
+        const result = await manageNeuron({ Configure: { operation: [{ IncreaseDissolveDelay: { additional_dissolve_delay_seconds: Number(secondsToAdd) } }] } });
+        if (!result.ok) setError(result.err); else await fetchNeuronData();
+        setActionBusy(false); setActionMsg('');
+    };
+    const startDissolving = async () => {
+        setActionBusy(true); setActionMsg('Starting dissolving...');
+        const result = await manageNeuron({ Configure: { operation: [{ StartDissolving: {} }] } });
+        if (!result.ok) setError(result.err); else await fetchNeuronData();
+        setActionBusy(false); setActionMsg('');
+    };
+    const stopDissolving = async () => {
+        setActionBusy(true); setActionMsg('Stopping dissolving...');
+        const result = await manageNeuron({ Configure: { operation: [{ StopDissolving: {} }] } });
+        if (!result.ok) setError(result.err); else await fetchNeuronData();
+        setActionBusy(false); setActionMsg('');
+    };
+    const setDissolveTimestamp = async (timestampSec) => {
+        setActionBusy(true); setActionMsg('Setting dissolve timestamp...');
+        const result = await manageNeuron({ Configure: { operation: [{ SetDissolveTimestamp: { dissolve_timestamp_seconds: BigInt(timestampSec) } }] } });
+        if (!result.ok) setError(result.err); else await fetchNeuronData();
+        setActionBusy(false); setActionMsg('');
+    };
+
+    // Principal/permission management
+    const parsePermissions = (text) => {
+        return text
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
+            .map(n => Number(n))
+            .filter(n => Number.isInteger(n));
+    };
+
+    const addPrincipalPermissions = async () => {
+        try {
+            setActionBusy(true); setActionMsg('Adding permissions...'); setError('');
+            const principal = Principal.fromText(managePrincipalInput);
+            const perms = parsePermissions(managePermissionsInput);
+            const result = await manageNeuron({
+                AddNeuronPermissions: {
+                    principal_id: [principal],
+                    permissions_to_add: [{ permissions: perms }]
+                }
+            });
+            if (!result.ok) setError(result.err); else await fetchNeuronData();
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setActionBusy(false); setActionMsg('');
+        }
+    };
+
+    const removePrincipalPermissions = async () => {
+        try {
+            setActionBusy(true); setActionMsg('Removing permissions...'); setError('');
+            const principal = Principal.fromText(managePrincipalInput);
+            const perms = parsePermissions(managePermissionsInput);
+            const result = await manageNeuron({
+                RemoveNeuronPermissions: {
+                    principal_id: [principal],
+                    permissions_to_remove: [{ permissions: perms }]
+                }
+            });
+            if (!result.ok) setError(result.err); else await fetchNeuronData();
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setActionBusy(false); setActionMsg('');
+        }
+    };
+
+    // Followees editor helpers
+    const hexToBytes = (hex) => new Uint8Array(hex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+    const getCurrentFolloweesForFunction = (functionId) => {
+        if (!neuronData?.followees) return [];
+        const entry = neuronData.followees.find(([fid, _]) => String(fid) === String(functionId));
+        if (!entry) return [];
+        const followees = entry[1]?.followees || [];
+        return followees.map(n => uint8ArrayToHex(n.id));
+    };
+
+    const addFollowee = async () => {
+        try {
+            setActionBusy(true); setActionMsg('Updating followees...'); setError('');
+            const fid = BigInt(functionIdInput);
+            const existing = new Set(getCurrentFolloweesForFunction(fid));
+            existing.add(followeeInput.trim());
+            const followeesArr = Array.from(existing).filter(Boolean).map(h => ({ id: Array.from(hexToBytes(h)) }));
+            const result = await manageNeuron({
+                Follow: { function_id: fid, followees: followeesArr }
+            });
+            if (!result.ok) setError(result.err); else await fetchNeuronData();
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setActionBusy(false); setActionMsg('');
+        }
+    };
+
+    const removeFollowee = async () => {
+        try {
+            setActionBusy(true); setActionMsg('Updating followees...'); setError('');
+            const fid = BigInt(functionIdInput);
+            const existing = new Set(getCurrentFolloweesForFunction(fid));
+            existing.delete(followeeInput.trim());
+            const followeesArr = Array.from(existing).filter(Boolean).map(h => ({ id: Array.from(hexToBytes(h)) }));
+            const result = await manageNeuron({
+                Follow: { function_id: fid, followees: followeesArr }
+            });
+            if (!result.ok) setError(result.err); else await fetchNeuronData();
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setActionBusy(false); setActionMsg('');
+        }
+    };
 
     // Helper function to format vote
     const formatVote = (voteNumber) => {
@@ -712,6 +871,21 @@ function Neuron() {
                                     }
                                 </div>
 
+                                {/* Dissolve controls (permission-gated) */}
+                                {currentUserHasPermission(PERM.CONFIGURE) && (
+                                    <div style={{ marginTop: '16px', padding: '12px', backgroundColor: theme.colors.secondaryBg, borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <div style={{ color: theme.colors.mutedText, fontWeight: 'bold' }}>Manage Dissolve</div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                            <button disabled={actionBusy} onClick={() => increaseDissolveDelay(24*60*60)} style={{ backgroundColor: theme.colors.accent, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>+1 day</button>
+                                            <button disabled={actionBusy} onClick={() => increaseDissolveDelay(7*24*60*60)} style={{ backgroundColor: theme.colors.accent, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>+1 week</button>
+                                            <button disabled={actionBusy} onClick={() => increaseDissolveDelay(30*24*60*60)} style={{ backgroundColor: theme.colors.accent, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>+1 month</button>
+                                            <button disabled={actionBusy} onClick={startDissolving} style={{ backgroundColor: theme.colors.error, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Start dissolving</button>
+                                            <button disabled={actionBusy} onClick={stopDissolving} style={{ backgroundColor: theme.colors.mutedText, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Stop dissolving</button>
+                                        </div>
+                                        {actionMsg && <div style={{ color: theme.colors.mutedText }}>{actionMsg}</div>}
+                                    </div>
+                                )}
+
                                 {/* Add permissions section */}
                                 <div style={{ marginTop: '20px' }}>
                                     <h3 style={{ color: '#888', marginBottom: '12px' }}>Permissions</h3>
@@ -754,6 +928,33 @@ function Neuron() {
                                             </div>
                                         ))
                                     }
+                                    {currentUserHasPermission(PERM.MANAGE_PRINCIPALS) && (
+                                        <div style={{ marginTop: '12px', padding: '12px', backgroundColor: theme.colors.secondaryBg, borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div style={{ color: theme.colors.mutedText, fontWeight: 'bold' }}>Manage principals and permissions</div>
+                                            <input
+                                                type="text"
+                                                placeholder="Principal (PID)"
+                                                value={managePrincipalInput}
+                                                onChange={(e) => setManagePrincipalInput(e.target.value)}
+                                                style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
+                                            />
+                                            <input
+                                                type="text"
+                                                placeholder="Permissions (comma-separated ints, e.g. 1,2,4)"
+                                                value={managePermissionsInput}
+                                                onChange={(e) => setManagePermissionsInput(e.target.value)}
+                                                style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
+                                            />
+                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                <button disabled={actionBusy} onClick={addPrincipalPermissions} style={{ backgroundColor: theme.colors.accent, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Add permissions</button>
+                                                <button disabled={actionBusy} onClick={removePrincipalPermissions} style={{ backgroundColor: theme.colors.error, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Remove permissions</button>
+                                            </div>
+                                            <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                Common permissions: 1 Configure, 2 Manage Principals, 4 Vote, 8 Disburse
+                                            </div>
+                                            {actionMsg && <div style={{ color: theme.colors.mutedText }}>{actionMsg}</div>}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Add followees section */}
@@ -894,6 +1095,30 @@ function Neuron() {
                                             </div>
                                         );
                                     })()}
+                                    {currentUserHasPermission(PERM.CONFIGURE) && (
+                                        <div style={{ marginTop: '12px', padding: '12px', backgroundColor: theme.colors.secondaryBg, borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div style={{ color: theme.colors.mutedText, fontWeight: 'bold' }}>Edit followees (by function id)</div>
+                                            <input
+                                                type="text"
+                                                placeholder="Function ID (nat64)"
+                                                value={functionIdInput}
+                                                onChange={(e) => setFunctionIdInput(e.target.value)}
+                                                style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
+                                            />
+                                            <input
+                                                type="text"
+                                                placeholder="Followee Neuron ID (hex)"
+                                                value={followeeInput}
+                                                onChange={(e) => setFolloweeInput(e.target.value)}
+                                                style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
+                                            />
+                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                <button disabled={actionBusy} onClick={addFollowee} style={{ backgroundColor: theme.colors.accent, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Add followee</button>
+                                                <button disabled={actionBusy} onClick={removeFollowee} style={{ backgroundColor: theme.colors.error, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Remove followee</button>
+                                            </div>
+                                            {actionMsg && <div style={{ color: theme.colors.mutedText }}>{actionMsg}</div>}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
