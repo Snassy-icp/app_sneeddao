@@ -510,11 +510,33 @@ function Neuron() {
         }
     };
 
-    const removeFollowee = async () => {
+    const removeFollowee = async (neuronIdHex = null, specificTopic = null) => {
         try {
             setActionBusy(true); setActionMsg('Updating followees...'); setError('');
-            const existing = getCurrentFolloweesForTopic(topicInput);
-            const filtered = existing.filter(f => f.neuronId !== followeeInput.trim());
+            const targetNeuronId = neuronIdHex || followeeInput.trim();
+            const targetTopic = specificTopic || topicInput;
+            
+            // Helper to get followees for a specific topic
+            const getFolloweesForTopic = (topicName) => {
+                if (neuronData?.topic_followees?.[0]?.topic_id_to_followees) {
+                    const entries = neuronData.topic_followees[0].topic_id_to_followees;
+                    for (const [_topicId, topicFollowees] of entries) {
+                        if (topicFollowees.topic?.[0]) {
+                            const currentTopic = Object.keys(topicFollowees.topic[0])[0];
+                            if (currentTopic === topicName) {
+                                return topicFollowees.followees.map(f => ({
+                                    neuronId: f.neuron_id?.[0] ? uint8ArrayToHex(f.neuron_id[0].id) : '',
+                                    alias: f.alias?.[0] || ''
+                                }));
+                            }
+                        }
+                    }
+                }
+                return [];
+            };
+            
+            const existing = getFolloweesForTopic(targetTopic);
+            const filtered = existing.filter(f => f.neuronId !== targetNeuronId);
             const allFollowees = filtered.map(f => ({
                 neuron_id: [{ id: Array.from(hexToBytes(f.neuronId)) }],
                 alias: f.alias ? [f.alias] : []
@@ -523,7 +545,7 @@ function Neuron() {
             const result = await manageNeuron({
                 SetFollowing: {
                     topic_following: [{
-                        topic: [{ [topicInput]: null }],
+                        topic: [{ [targetTopic]: null }],
                         followees: allFollowees
                     }]
                 }
@@ -1069,7 +1091,9 @@ function Neuron() {
                                                         <h4 style={{ color: '#aaa', fontSize: '14px', marginBottom: '8px' }}>
                                                             Topic-Specific Following
                                                         </h4>
-                                                        {neuronData.topic_followees[0].topic_id_to_followees.map(([topicId, topicFollowees], index) => (
+                                                        {neuronData.topic_followees[0].topic_id_to_followees.map(([topicId, topicFollowees], index) => {
+                                                            const topicName = topicFollowees.topic?.[0] ? Object.keys(topicFollowees.topic[0])[0] : null;
+                                                            return (
                                                             <div key={index} style={{
                                                                 backgroundColor: theme.colors.tertiaryBg,
                                                                 padding: '10px',
@@ -1082,9 +1106,9 @@ function Neuron() {
                                                                     marginBottom: '6px'
                                                                 }}>
                                                                     Topic ID: {topicId.toString()}
-                                                                    {topicFollowees.topic && topicFollowees.topic[0] && (
+                                                                    {topicName && (
                                                                         <span style={{ marginLeft: '8px', color: '#aaa' }}>
-                                                                            ({Object.keys(topicFollowees.topic[0])[0]})
+                                                                            ({topicName})
                                                                         </span>
                                                                     )}
                                                                 </div>
@@ -1097,7 +1121,7 @@ function Neuron() {
                                                                         return (
                                                                             <div key={followeeIndex} style={{
                                                                                 display: 'flex',
-                                                                                alignItems: 'flex-start',
+                                                                                alignItems: 'center',
                                                                                 gap: '8px',
                                                                                 padding: '4px 0'
                                                                             }}>
@@ -1117,12 +1141,32 @@ function Neuron() {
                                                                                         alias: {followee.alias[0]}
                                                                                     </span>
                                                                                 )}
+                                                                                {currentUserHasPermission(PERM.CONFIGURE) && topicName && (
+                                                                                    <button
+                                                                                        disabled={actionBusy}
+                                                                                        onClick={() => removeFollowee(followeeIdHex, topicName)}
+                                                                                        style={{
+                                                                                            backgroundColor: theme.colors.error,
+                                                                                            color: theme.colors.primaryText,
+                                                                                            border: 'none',
+                                                                                            borderRadius: '4px',
+                                                                                            padding: '2px 6px',
+                                                                                            cursor: actionBusy ? 'not-allowed' : 'pointer',
+                                                                                            fontSize: '12px',
+                                                                                            marginLeft: 'auto'
+                                                                                        }}
+                                                                                        title="Remove this followee"
+                                                                                    >
+                                                                                        ✕
+                                                                                    </button>
+                                                                                )}
                                                                             </div>
                                                                         );
                                                                     })}
                                                                 </div>
                                                             </div>
-                                                        ))}
+                                                        );
+                                                        })}
                                                     </div>
                                                 )}
                                             </div>
