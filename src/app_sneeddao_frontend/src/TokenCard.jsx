@@ -58,7 +58,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     <div className="header-row-1">
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span className="token-name">{token.name || token.symbol}</span>
-                            {isSnsToken ? (
+                            {isSnsToken && (
                                 <span style={{
                                     background: theme.colors.accent,
                                     color: theme.colors.primaryBg,
@@ -70,19 +70,6 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     letterSpacing: '0.5px'
                                 }}>
                                     SNS
-                                </span>
-                            ) : (
-                                <span style={{
-                                    background: theme.colors.secondaryText,
-                                    color: theme.colors.primaryBg,
-                                    padding: '2px 8px',
-                                    borderRadius: '12px',
-                                    fontSize: '0.7rem',
-                                    fontWeight: '600',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.5px'
-                                }}>
-                                    ICRC1
                                 </span>
                             )}
                         </div>
