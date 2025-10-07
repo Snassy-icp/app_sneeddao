@@ -1154,111 +1154,154 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             )}
 
             {/* Dissolve Delay Dialog */}
-            {showDissolveDelayDialog && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: 'rgba(0, 0, 0, 0.7)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 1000
-                }}
-                onClick={() => {
-                    if (!neuronActionBusy) {
-                        setShowDissolveDelayDialog(false);
-                        setDissolveDelayInput('');
-                        setManagingNeuronId(null);
-                    }
-                }}
-                >
+            {showDissolveDelayDialog && (() => {
+                const currentNeuron = neurons.find(n => getNeuronIdHex(n) === managingNeuronId);
+                const currentDelaySeconds = currentNeuron ? getDissolveDelaySeconds(currentNeuron) : 0;
+                const isIncreasing = currentDelaySeconds > 0;
+                
+                // Get min and max from nervous system parameters
+                const minDelaySeconds = nervousSystemParameters?.neuron_minimum_dissolve_delay_to_vote_seconds?.[0] 
+                    ? Number(nervousSystemParameters.neuron_minimum_dissolve_delay_to_vote_seconds[0]) 
+                    : 0;
+                const maxDelaySeconds = nervousSystemParameters?.max_dissolve_delay_seconds?.[0]
+                    ? Number(nervousSystemParameters.max_dissolve_delay_seconds[0])
+                    : 0;
+                
+                const minDelayDays = Math.ceil(minDelaySeconds / (24 * 60 * 60));
+                const maxDelayDays = Math.floor(maxDelaySeconds / (24 * 60 * 60));
+                const currentDelayDays = Math.floor(currentDelaySeconds / (24 * 60 * 60));
+                const maxAdditionalDays = isIncreasing ? maxDelayDays - currentDelayDays : maxDelayDays;
+                
+                return (
                     <div style={{
-                        background: theme.colors.primaryBg,
-                        borderRadius: '12px',
-                        padding: '24px',
-                        maxWidth: '500px',
-                        width: '90%',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0, 0, 0, 0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000
                     }}
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={() => {
+                        if (!neuronActionBusy) {
+                            setShowDissolveDelayDialog(false);
+                            setDissolveDelayInput('');
+                            setManagingNeuronId(null);
+                        }
+                    }}
                     >
-                        <h3 style={{ color: theme.colors.primaryText, marginTop: 0 }}>
-                            ⏱️ {getDissolveDelaySeconds(neurons.find(n => getNeuronIdHex(n) === managingNeuronId)) > 0 ? 'Increase' : 'Set'} Dissolve Delay
-                        </h3>
-                        <p style={{ color: theme.colors.secondaryText, marginBottom: '20px' }}>
-                            Enter the number of days to {getDissolveDelaySeconds(neurons.find(n => getNeuronIdHex(n) === managingNeuronId)) > 0 ? 'increase' : 'set'} the dissolve delay:
-                        </p>
-                        <input
-                            type="number"
-                            value={dissolveDelayInput}
-                            onChange={(e) => setDissolveDelayInput(e.target.value)}
-                            placeholder="Days (e.g., 180)"
-                            min="0"
-                            disabled={neuronActionBusy}
-                            style={{
-                                width: '100%',
-                                padding: '12px',
-                                borderRadius: '6px',
-                                border: `1px solid ${theme.colors.border}`,
-                                background: theme.colors.secondaryBg,
-                                color: theme.colors.primaryText,
-                                fontSize: '1rem',
-                                marginBottom: '20px'
-                            }}
-                        />
-                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                            <button
-                                onClick={() => {
-                                    setShowDissolveDelayDialog(false);
-                                    setDissolveDelayInput('');
-                                    setManagingNeuronId(null);
-                                }}
+                        <div style={{
+                            background: theme.colors.primaryBg,
+                            borderRadius: '12px',
+                            padding: '24px',
+                            maxWidth: '500px',
+                            width: '90%',
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        >
+                            <h3 style={{ color: theme.colors.primaryText, marginTop: 0 }}>
+                                ⏱️ {isIncreasing ? 'Increase' : 'Set'} Dissolve Delay
+                            </h3>
+                            
+                            {isIncreasing && (
+                                <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '8px' }}>
+                                    Current delay: <strong>{currentDelayDays} days</strong>
+                                </p>
+                            )}
+                            
+                            <p style={{ color: theme.colors.secondaryText, marginBottom: '8px' }}>
+                                Enter the number of days to {isIncreasing ? 'increase' : 'set'} the dissolve delay:
+                            </p>
+                            
+                            {maxDelayDays > 0 && (
+                                <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '16px' }}>
+                                    {isIncreasing ? (
+                                        <>Min: <strong>0 days</strong> • Max additional: <strong>{maxAdditionalDays} days</strong></>
+                                    ) : (
+                                        <>Min for voting power: <strong>{minDelayDays} days</strong> • Max: <strong>{maxDelayDays} days</strong></>
+                                    )}
+                                </p>
+                            )}
+                            
+                            <input
+                                type="number"
+                                value={dissolveDelayInput}
+                                onChange={(e) => setDissolveDelayInput(e.target.value)}
+                                placeholder={`Days (e.g., ${isIncreasing ? Math.min(180, maxAdditionalDays) : Math.min(180, maxDelayDays)})`}
+                                min="0"
+                                max={maxAdditionalDays > 0 ? maxAdditionalDays : undefined}
                                 disabled={neuronActionBusy}
                                 style={{
+                                    width: '100%',
+                                    padding: '12px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${theme.colors.border}`,
                                     background: theme.colors.secondaryBg,
                                     color: theme.colors.primaryText,
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '10px 20px',
-                                    cursor: neuronActionBusy ? 'wait' : 'pointer',
-                                    fontSize: '0.9rem',
-                                    fontWeight: '500'
+                                    fontSize: '1rem',
+                                    marginBottom: '20px'
                                 }}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={() => {
-                                    const days = parseInt(dissolveDelayInput);
-                                    if (isNaN(days) || days < 0) {
-                                        alert('Please enter a valid number of days');
-                                        return;
-                                    }
-                                    const seconds = days * 24 * 60 * 60;
-                                    increaseDissolveDelay(managingNeuronId, seconds);
-                                }}
-                                disabled={neuronActionBusy || !dissolveDelayInput}
-                                style={{
-                                    background: theme.colors.accent,
-                                    color: theme.colors.primaryBg,
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '10px 20px',
-                                    cursor: (neuronActionBusy || !dissolveDelayInput) ? 'not-allowed' : 'pointer',
-                                    fontSize: '0.9rem',
-                                    fontWeight: '500',
-                                    opacity: (neuronActionBusy || !dissolveDelayInput) ? 0.6 : 1
-                                }}
-                            >
-                                {neuronActionBusy ? 'Processing...' : 'Confirm'}
-                            </button>
+                            />
+                            
+                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                                <button
+                                    onClick={() => {
+                                        setShowDissolveDelayDialog(false);
+                                        setDissolveDelayInput('');
+                                        setManagingNeuronId(null);
+                                    }}
+                                    disabled={neuronActionBusy}
+                                    style={{
+                                        background: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '10px 20px',
+                                        cursor: neuronActionBusy ? 'wait' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500'
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const days = parseInt(dissolveDelayInput);
+                                        if (isNaN(days) || days < 0) {
+                                            alert('Please enter a valid number of days');
+                                            return;
+                                        }
+                                        if (maxAdditionalDays > 0 && days > maxAdditionalDays) {
+                                            alert(`Maximum ${isIncreasing ? 'additional' : ''} dissolve delay is ${maxAdditionalDays} days`);
+                                            return;
+                                        }
+                                        const seconds = days * 24 * 60 * 60;
+                                        increaseDissolveDelay(managingNeuronId, seconds);
+                                    }}
+                                    disabled={neuronActionBusy || !dissolveDelayInput}
+                                    style={{
+                                        background: theme.colors.accent,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '10px 20px',
+                                        cursor: (neuronActionBusy || !dissolveDelayInput) ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500',
+                                        opacity: (neuronActionBusy || !dissolveDelayInput) ? 0.6 : 1
+                                    }}
+                                >
+                                    {neuronActionBusy ? 'Processing...' : 'Confirm'}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
         </div>
     );
 };
