@@ -59,7 +59,14 @@ function Neuron() {
     const [actionBusy, setActionBusy] = useState(false);
     const [actionMsg, setActionMsg] = useState('');
     const [managePrincipalInput, setManagePrincipalInput] = useState('');
-    const [managePermissionsInput, setManagePermissionsInput] = useState('1,2,4');
+    const [selectedPermissions, setSelectedPermissions] = useState({
+        configure: true,
+        managePrincipals: true,
+        submitProposal: true,
+        vote: true,
+        disburse: false
+    });
+    const [editingPrincipal, setEditingPrincipal] = useState(null);
     const [topicInput, setTopicInput] = useState('Governance');
     const [followeeInput, setFolloweeInput] = useState('');
     const [followeeAliasInput, setFolloweeAliasInput] = useState('');
@@ -357,13 +364,47 @@ function Neuron() {
         return neuronData.permissions?.some(p => p.principal?.toString() === me && p.permission_type?.includes(permInt));
     };
 
-    // SNS permission ints: commonly used
-    // 1 = ConfigureDissolveState, 2 = ManagePrincipals, 4 = RegisterVote (hotkey), 8 = Disburse
+    // SNS permission ints and metadata
+    // Based on SNS governance neuron permission types
     const PERM = {
-        CONFIGURE: 1,
-        MANAGE_PRINCIPALS: 2,
-        VOTE: 4,
-        DISBURSE: 8
+        CONFIGURE: 1,           // Configure dissolve state, followees, etc.
+        MANAGE_PRINCIPALS: 2,   // Add/remove principals and their permissions
+        SUBMIT_PROPOSAL: 3,     // Submit proposals
+        VOTE: 4,                // Vote on proposals
+        DISBURSE: 8             // Disburse neuron
+    };
+
+    const PERMISSION_INFO = {
+        configure: {
+            value: PERM.CONFIGURE,
+            label: 'Configure',
+            icon: '⚙️',
+            description: 'Configure dissolve state, followees, and neuron settings'
+        },
+        managePrincipals: {
+            value: PERM.MANAGE_PRINCIPALS,
+            label: 'Manage Principals',
+            icon: '👥',
+            description: 'Add or remove principals and manage their permissions'
+        },
+        submitProposal: {
+            value: PERM.SUBMIT_PROPOSAL,
+            label: 'Submit Proposals',
+            icon: '📝',
+            description: 'Create and submit new proposals'
+        },
+        vote: {
+            value: PERM.VOTE,
+            label: 'Vote',
+            icon: '🗳️',
+            description: 'Vote on proposals (hotkey access)'
+        },
+        disburse: {
+            value: PERM.DISBURSE,
+            label: 'Disburse',
+            icon: '💰',
+            description: 'Disburse neuron stake and maturity'
+        }
     };
 
     const manageNeuron = async (command) => {
@@ -411,39 +452,102 @@ function Neuron() {
     };
 
     // Principal/permission management
-    const parsePermissions = (text) => {
-        return text
-            .split(',')
-            .map(s => s.trim())
-            .filter(Boolean)
-            .map(n => Number(n))
-            .filter(n => Number.isInteger(n));
+    const getPermissionsArray = (permObj) => {
+        const perms = [];
+        if (permObj.configure) perms.push(PERM.CONFIGURE);
+        if (permObj.managePrincipals) perms.push(PERM.MANAGE_PRINCIPALS);
+        if (permObj.submitProposal) perms.push(PERM.SUBMIT_PROPOSAL);
+        if (permObj.vote) perms.push(PERM.VOTE);
+        if (permObj.disburse) perms.push(PERM.DISBURSE);
+        return perms;
     };
 
-    const addPrincipalPermissions = async () => {
+    const getPermissionsFromArray = (permsArray) => {
+        return {
+            configure: permsArray.includes(PERM.CONFIGURE),
+            managePrincipals: permsArray.includes(PERM.MANAGE_PRINCIPALS),
+            submitProposal: permsArray.includes(PERM.SUBMIT_PROPOSAL),
+            vote: permsArray.includes(PERM.VOTE),
+            disburse: permsArray.includes(PERM.DISBURSE)
+        };
+    };
+
+    const savePrincipalPermissions = async () => {
         try {
-            setActionBusy(true); setActionMsg('Adding permissions...'); setError('');
+            setActionBusy(true); setActionMsg('Updating permissions...'); setError('');
             const principal = Principal.fromText(managePrincipalInput);
-            const perms = parsePermissions(managePermissionsInput);
-            const result = await manageNeuron({
-                AddNeuronPermissions: {
-                    principal_id: [principal],
-                    permissions_to_add: [{ permissions: perms }]
+            const newPerms = getPermissionsArray(selectedPermissions);
+            
+            // If editing existing principal, first remove all their permissions, then add new ones
+            if (editingPrincipal) {
+                const existingPerms = editingPrincipal.permission_type || [];
+                if (existingPerms.length > 0) {
+                    const removeResult = await manageNeuron({
+                        RemoveNeuronPermissions: {
+                            principal_id: [principal],
+                            permissions_to_remove: [{ permissions: existingPerms }]
+                        }
+                    });
+                    if (!removeResult.ok) {
+                        setError(removeResult.err);
+                        setActionBusy(false);
+                        setActionMsg('');
+                        return;
+                    }
                 }
-            });
-            if (!result.ok) setError(result.err); else await fetchNeuronData();
+            }
+            
+            // Add new permissions
+            if (newPerms.length > 0) {
+                const result = await manageNeuron({
+                    AddNeuronPermissions: {
+                        principal_id: [principal],
+                        permissions_to_add: [{ permissions: newPerms }]
+                    }
+                });
+                if (!result.ok) {
+                    setError(result.err);
+                } else {
+                    await fetchNeuronData();
+                    setManagePrincipalInput('');
+                    setEditingPrincipal(null);
+                    setSelectedPermissions({
+                        configure: true,
+                        managePrincipals: true,
+                        submitProposal: true,
+                        vote: true,
+                        disburse: false
+                    });
+                }
+            } else {
+                // If no permissions selected and we were editing, just remove (already done above)
+                if (editingPrincipal) {
+                    await fetchNeuronData();
+                    setManagePrincipalInput('');
+                    setEditingPrincipal(null);
+                    setSelectedPermissions({
+                        configure: true,
+                        managePrincipals: true,
+                        submitProposal: true,
+                        vote: true,
+                        disburse: false
+                    });
+                } else {
+                    setError('Please select at least one permission');
+                }
+            }
         } catch (e) {
             setError(e.message || String(e));
         } finally {
-            setActionBusy(false); setActionMsg('');
+            setActionBusy(false);
+            setActionMsg('');
         }
     };
 
-    const removePrincipalPermissions = async () => {
+    const removePrincipal = async (principalStr, perms) => {
         try {
-            setActionBusy(true); setActionMsg('Removing permissions...'); setError('');
-            const principal = Principal.fromText(managePrincipalInput);
-            const perms = parsePermissions(managePermissionsInput);
+            setActionBusy(true); setActionMsg('Removing principal...'); setError('');
+            const principal = Principal.fromText(principalStr);
             const result = await manageNeuron({
                 RemoveNeuronPermissions: {
                     principal_id: [principal],
@@ -454,8 +558,28 @@ function Neuron() {
         } catch (e) {
             setError(e.message || String(e));
         } finally {
-            setActionBusy(false); setActionMsg('');
+            setActionBusy(false);
+            setActionMsg('');
         }
+    };
+
+    const startEditingPrincipal = (permission) => {
+        if (!permission.principal) return;
+        setEditingPrincipal(permission);
+        setManagePrincipalInput(permission.principal.toString());
+        setSelectedPermissions(getPermissionsFromArray(permission.permission_type || []));
+    };
+
+    const cancelEditing = () => {
+        setEditingPrincipal(null);
+        setManagePrincipalInput('');
+        setSelectedPermissions({
+            configure: true,
+            managePrincipals: true,
+            submitProposal: true,
+            vote: true,
+            disburse: false
+        });
     };
 
     // Followees editor helpers - topic-based (modern)
@@ -943,71 +1067,195 @@ function Neuron() {
 
                                 {/* Add permissions section */}
                                 <div style={{ marginTop: '20px' }}>
-                                    <h3 style={{ color: '#888', marginBottom: '12px' }}>Permissions</h3>
-                                    {/* Owner */}
-                                    {getOwnerPrincipals(neuronData).length > 0 && (
-                                        <div style={{ 
-                                            marginBottom: '12px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px'
-                                        }}>
-                                            <span style={{ color: '#888' }}>Owner:</span>
-                                            <PrincipalDisplay 
-                                                principal={Principal.fromText(getOwnerPrincipals(neuronData)[0])}
-                                                displayInfo={principalDisplayInfo.get(getOwnerPrincipals(neuronData)[0])}
-                                                showCopyButton={true}
-                                                short={true}
-                                            />
-                                        </div>
-                                    )}
-                                    {/* Hotkeys */}
-                                    {neuronData.permissions
-                                        .filter(p => !getOwnerPrincipals(neuronData).includes(p.principal?.toString()))
-                                        .map((p, index) => (
-                                            <div key={index} style={{ 
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                marginBottom: index < neuronData.permissions.length - 1 ? '12px' : 0
-                                            }}>
-                                                <span style={{ color: '#888', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                    🔑 Hotkey:
-                                                </span>
-                                                <PrincipalDisplay 
-                                                    principal={p.principal}
-                                                    displayInfo={principalDisplayInfo.get(p.principal?.toString())}
-                                                    showCopyButton={true}
-                                                    short={true}
-                                                />
-                                            </div>
-                                        ))
-                                    }
+                                    <h3 style={{ color: '#888', marginBottom: '12px' }}>Principals & Permissions</h3>
+                                    {/* List all principals with their permissions */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {neuronData.permissions.map((p, index) => {
+                                            if (!p.principal) return null;
+                                            const principalStr = p.principal.toString();
+                                            const perms = getPermissionsFromArray(p.permission_type || []);
+                                            const permCount = p.permission_type?.length || 0;
+                                            const isOwner = getOwnerPrincipals(neuronData).includes(principalStr);
+                                            
+                                            return (
+                                                <div key={index} style={{
+                                                    backgroundColor: theme.colors.tertiaryBg,
+                                                    borderRadius: '6px',
+                                                    padding: '12px',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    gap: '8px'
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                        {isOwner && <span style={{ fontSize: '16px' }} title="Full permissions">👑</span>}
+                                                        <PrincipalDisplay 
+                                                            principal={p.principal}
+                                                            displayInfo={principalDisplayInfo.get(principalStr)}
+                                                            showCopyButton={true}
+                                                            short={true}
+                                                        />
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px', marginLeft: 'auto' }}>
+                                                            {permCount} permission{permCount !== 1 ? 's' : ''}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', fontSize: '12px' }}>
+                                                        {Object.entries(PERMISSION_INFO).map(([key, info]) => {
+                                                            const hasPermission = perms[key];
+                                                            return (
+                                                                <span
+                                                                    key={key}
+                                                                    title={info.description}
+                                                                    style={{
+                                                                        backgroundColor: hasPermission ? theme.colors.accent : theme.colors.secondaryBg,
+                                                                        color: theme.colors.primaryText,
+                                                                        padding: '3px 8px',
+                                                                        borderRadius: '12px',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        opacity: hasPermission ? 1 : 0.4
+                                                                    }}
+                                                                >
+                                                                    <span>{info.icon}</span>
+                                                                    <span>{info.label}</span>
+                                                                </span>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                    {currentUserHasPermission(PERM.MANAGE_PRINCIPALS) && (
+                                                        <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                                            <button
+                                                                disabled={actionBusy}
+                                                                onClick={() => startEditingPrincipal(p)}
+                                                                style={{
+                                                                    backgroundColor: theme.colors.mutedText,
+                                                                    color: theme.colors.primaryText,
+                                                                    border: 'none',
+                                                                    borderRadius: '4px',
+                                                                    padding: '4px 10px',
+                                                                    cursor: actionBusy ? 'not-allowed' : 'pointer',
+                                                                    fontSize: '12px'
+                                                                }}
+                                                            >
+                                                                ✏️ Edit
+                                                            </button>
+                                                            <button
+                                                                disabled={actionBusy}
+                                                                onClick={() => removePrincipal(principalStr, p.permission_type || [])}
+                                                                style={{
+                                                                    backgroundColor: theme.colors.error,
+                                                                    color: theme.colors.primaryText,
+                                                                    border: 'none',
+                                                                    borderRadius: '4px',
+                                                                    padding: '4px 10px',
+                                                                    cursor: actionBusy ? 'not-allowed' : 'pointer',
+                                                                    fontSize: '12px'
+                                                                }}
+                                                            >
+                                                                ✕ Remove
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Add/Edit principal form */}
                                     {currentUserHasPermission(PERM.MANAGE_PRINCIPALS) && (
-                                        <div style={{ marginTop: '12px', padding: '12px', backgroundColor: theme.colors.secondaryBg, borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <div style={{ color: theme.colors.mutedText, fontWeight: 'bold' }}>Manage principals and permissions</div>
+                                        <div style={{ marginTop: '12px', padding: '16px', backgroundColor: theme.colors.secondaryBg, borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                            <div style={{ color: theme.colors.primaryText, fontWeight: 'bold', fontSize: '14px' }}>
+                                                {editingPrincipal ? '✏️ Edit Principal Permissions' : '➕ Add New Principal'}
+                                            </div>
                                             <input
                                                 type="text"
-                                                placeholder="Principal (PID)"
+                                                placeholder="Principal ID"
                                                 value={managePrincipalInput}
                                                 onChange={(e) => setManagePrincipalInput(e.target.value)}
-                                                style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
+                                                disabled={!!editingPrincipal}
+                                                style={{
+                                                    backgroundColor: theme.colors.tertiaryBg,
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    color: theme.colors.primaryText,
+                                                    borderRadius: '4px',
+                                                    padding: '8px',
+                                                    opacity: editingPrincipal ? 0.6 : 1
+                                                }}
                                             />
-                                            <input
-                                                type="text"
-                                                placeholder="Permissions (comma-separated ints, e.g. 1,2,4)"
-                                                value={managePermissionsInput}
-                                                onChange={(e) => setManagePermissionsInput(e.target.value)}
-                                                style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
-                                            />
-                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                                <button disabled={actionBusy} onClick={addPrincipalPermissions} style={{ backgroundColor: theme.colors.accent, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Add permissions</button>
-                                                <button disabled={actionBusy} onClick={removePrincipalPermissions} style={{ backgroundColor: theme.colors.error, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Remove permissions</button>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '13px', fontWeight: 'bold' }}>
+                                                    Select Permissions:
+                                                </div>
+                                                {Object.entries(PERMISSION_INFO).map(([key, info]) => (
+                                                    <label
+                                                        key={key}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '10px',
+                                                            padding: '8px',
+                                                            backgroundColor: theme.colors.tertiaryBg,
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            border: `2px solid ${selectedPermissions[key] ? theme.colors.accent : 'transparent'}`
+                                                        }}
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedPermissions[key]}
+                                                            onChange={(e) => setSelectedPermissions({
+                                                                ...selectedPermissions,
+                                                                [key]: e.target.checked
+                                                            })}
+                                                            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                                        />
+                                                        <span style={{ fontSize: '18px' }}>{info.icon}</span>
+                                                        <div style={{ flex: 1 }}>
+                                                            <div style={{ color: theme.colors.primaryText, fontWeight: 'bold', fontSize: '13px' }}>
+                                                                {info.label}
+                                                            </div>
+                                                            <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>
+                                                                {info.description}
+                                                            </div>
+                                                        </div>
+                                                    </label>
+                                                ))}
                                             </div>
-                                            <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                Common permissions: 1 Configure, 2 Manage Principals, 4 Vote, 8 Disburse
+                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
+                                                <button
+                                                    disabled={actionBusy || !managePrincipalInput.trim()}
+                                                    onClick={savePrincipalPermissions}
+                                                    style={{
+                                                        backgroundColor: theme.colors.accent,
+                                                        color: theme.colors.primaryText,
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '8px 16px',
+                                                        cursor: (actionBusy || !managePrincipalInput.trim()) ? 'not-allowed' : 'pointer',
+                                                        fontWeight: 'bold',
+                                                        opacity: (actionBusy || !managePrincipalInput.trim()) ? 0.5 : 1
+                                                    }}
+                                                >
+                                                    {editingPrincipal ? '💾 Save Changes' : '➕ Add Principal'}
+                                                </button>
+                                                {editingPrincipal && (
+                                                    <button
+                                                        disabled={actionBusy}
+                                                        onClick={cancelEditing}
+                                                        style={{
+                                                            backgroundColor: theme.colors.mutedText,
+                                                            color: theme.colors.primaryText,
+                                                            border: 'none',
+                                                            borderRadius: '4px',
+                                                            padding: '8px 16px',
+                                                            cursor: actionBusy ? 'not-allowed' : 'pointer'
+                                                        }}
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                )}
                                             </div>
-                                            {actionMsg && <div style={{ color: theme.colors.mutedText }}>{actionMsg}</div>}
+                                            {actionMsg && <div style={{ color: theme.colors.accent, fontSize: '12px' }}>{actionMsg}</div>}
                                         </div>
                                     )}
                                 </div>
