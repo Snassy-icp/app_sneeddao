@@ -2086,18 +2086,53 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             alert('Invalid input values');
                                         }
                                     }}
-                                    disabled={neuronActionBusy || !createNeuronAmount || !createNeuronDissolveDelay}
-                                    style={{
-                                        background: theme.colors.success,
-                                        color: theme.colors.primaryBg,
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '10px 20px',
-                                        cursor: (neuronActionBusy || !createNeuronAmount || !createNeuronDissolveDelay) ? 'not-allowed' : 'pointer',
-                                        fontSize: '0.9rem',
-                                        fontWeight: '500',
-                                        opacity: (neuronActionBusy || !createNeuronAmount || !createNeuronDissolveDelay) ? 0.6 : 1
-                                    }}
+                                    disabled={(() => {
+                                        if (neuronActionBusy || !createNeuronAmount || !createNeuronDissolveDelay) return true;
+                                        
+                                        // Check if dissolve delay is within valid range
+                                        try {
+                                            const delayDays = parseFloat(createNeuronDissolveDelay);
+                                            if (isNaN(delayDays) || delayDays < 0) return true;
+                                            const delaySeconds = Math.floor(delayDays * 24 * 60 * 60);
+                                            if (delaySeconds < minDissolveDelaySeconds || delaySeconds > maxDissolveDelaySeconds) return true;
+                                        } catch {
+                                            return true;
+                                        }
+                                        
+                                        return false;
+                                    })()}
+                                    style={(() => {
+                                        let isDisabled = neuronActionBusy || !createNeuronAmount || !createNeuronDissolveDelay;
+                                        
+                                        // Check if dissolve delay is within valid range
+                                        if (createNeuronDissolveDelay) {
+                                            try {
+                                                const delayDays = parseFloat(createNeuronDissolveDelay);
+                                                if (isNaN(delayDays) || delayDays < 0) {
+                                                    isDisabled = true;
+                                                } else {
+                                                    const delaySeconds = Math.floor(delayDays * 24 * 60 * 60);
+                                                    if (delaySeconds < minDissolveDelaySeconds || delaySeconds > maxDissolveDelaySeconds) {
+                                                        isDisabled = true;
+                                                    }
+                                                }
+                                            } catch {
+                                                isDisabled = true;
+                                            }
+                                        }
+                                        
+                                        return {
+                                            background: theme.colors.success,
+                                            color: theme.colors.primaryBg,
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '10px 20px',
+                                            cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                            fontSize: '0.9rem',
+                                            fontWeight: '500',
+                                            opacity: isDisabled ? 0.6 : 1
+                                        };
+                                    })()}
                                 >
                                     {neuronActionBusy ? 'Creating...' : 'Create Neuron'}
                                 </button>
