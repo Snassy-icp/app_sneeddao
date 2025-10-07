@@ -46,6 +46,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [dissolveDelayInput, setDissolveDelayInput] = useState('');
     const [showIncreaseStakeDialog, setShowIncreaseStakeDialog] = useState(false);
     const [increaseStakeAmount, setIncreaseStakeAmount] = useState('');
+    const [showCreateNeuronDialog, setShowCreateNeuronDialog] = useState(false);
+    const [createNeuronAmount, setCreateNeuronAmount] = useState('');
+    const [createNeuronDissolveDelay, setCreateNeuronDissolveDelay] = useState('');
+    const [createNeuronProgress, setCreateNeuronProgress] = useState('');
 
     // Debug logging for wrap/unwrap buttons
     console.log('TokenCard Debug:', {
@@ -260,6 +264,172 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         } catch (error) {
             console.error('[TokenCard] Error refetching neurons:', error);
         }
+    };
+
+    // Find an unused neuron nonce by checking get_neuron
+    const findUnusedNonce = async () => {
+        if (!governanceCanisterId || !identity) return null;
+        
+        try {
+            const governanceActor = createSnsGovernanceActor(governanceCanisterId, {
+                agentOptions: { identity }
+            });
+            const principal = identity.getPrincipal();
+            
+            // Try nonces starting from 0
+            for (let nonce = 0; nonce < 100; nonce++) {
+                // Compute subaccount from principal and nonce
+                const subaccount = computeNeuronSubaccount(principal, nonce);
+                const neuronId = { id: Array.from(subaccount) };
+                
+                try {
+                    const result = await governanceActor.get_neuron(neuronId);
+                    // If get_neuron returns null/empty, this nonce is unused
+                    if (!result || (result.result && result.result.length === 0)) {
+                        console.log(`[TokenCard] Found unused nonce: ${nonce}`);
+                        return { nonce, subaccount };
+                    }
+                } catch (error) {
+                    // Error likely means neuron doesn't exist, so this nonce is free
+                    console.log(`[TokenCard] Found unused nonce (via error): ${nonce}`);
+                    return { nonce, subaccount };
+                }
+            }
+            
+            throw new Error('Could not find unused nonce (tried 0-99)');
+        } catch (error) {
+            console.error('[TokenCard] Error finding unused nonce:', error);
+            return null;
+        }
+    };
+
+    // Compute neuron subaccount from principal and nonce
+    // This follows the SNS neuron subaccount derivation
+    const computeNeuronSubaccount = (principal, nonce) => {
+        const principalBytes = principal.toUint8Array();
+        const nonceBytes = new Uint8Array(8);
+        // Write nonce as big-endian u64
+        new DataView(nonceBytes.buffer).setBigUint64(0, BigInt(nonce), false);
+        
+        // Subaccount = hash(0x0c + "neuron-stake" + principal + nonce)
+        // For simplicity, we'll use a direct derivation
+        // The actual SNS uses a specific hash, but for finding the subaccount we can use:
+        // subaccount bytes = first 32 bytes of SHA256(principal_bytes || nonce_bytes)
+        const combined = new Uint8Array(principalBytes.length + nonceBytes.length);
+        combined.set(principalBytes);
+        combined.set(nonceBytes, principalBytes.length);
+        
+        // Use crypto.subtle.digest to hash
+        return crypto.subtle.digest('SHA-256', combined).then(hash => {
+            return new Uint8Array(hash);
+        });
+    };
+
+    const createNeuron = async (amountE8s, dissolveDelaySeconds) => {
+        setNeuronActionBusy(true);
+        
+        try {
+            // Step 1: Find unused nonce
+            setCreateNeuronProgress('Finding unused neuron ID...');
+            const nonceData = await findUnusedNonce();
+            if (!nonceData) {
+                alert('Failed to find unused nonce for new neuron');
+                setNeuronActionBusy(false);
+                setCreateNeuronProgress('');
+                return;
+            }
+            
+            const { nonce, subaccount } = nonceData;
+            console.log(`[TokenCard] Creating neuron with nonce ${nonce}`);
+            
+            // Step 2: Transfer tokens to the neuron's subaccount
+            setCreateNeuronProgress('Transferring tokens to neuron subaccount...');
+            const ledgerIdString = typeof token.ledger_canister_id === 'string' 
+                ? token.ledger_canister_id 
+                : token.ledger_canister_id?.toString();
+            
+            const ledgerActor = createLedgerActor(ledgerIdString);
+            
+            const transferArgs = {
+                to: {
+                    owner: Principal.fromText(governanceCanisterId),
+                    subaccount: [Array.from(subaccount)]
+                },
+                amount: BigInt(amountE8s),
+                fee: [],
+                memo: [BigInt(nonce)], // Use nonce as memo
+                from_subaccount: [],
+                created_at_time: []
+            };
+            
+            const transferResult = await ledgerActor.icrc1_transfer(transferArgs);
+            
+            if ('Err' in transferResult) {
+                const error = transferResult.Err;
+                let errorMsg = 'Transfer failed';
+                if (error.InsufficientFunds) {
+                    errorMsg = `Insufficient funds. Available: ${formatAmount(error.InsufficientFunds.balance, token.decimals)} ${token.symbol}`;
+                } else if (error.BadFee) {
+                    errorMsg = `Bad fee. Expected: ${formatAmount(error.BadFee.expected_fee, token.decimals)} ${token.symbol}`;
+                } else if (error.GenericError) {
+                    errorMsg = error.GenericError.message;
+                }
+                alert(`Error transferring tokens: ${errorMsg}`);
+                setNeuronActionBusy(false);
+                setCreateNeuronProgress('');
+                return;
+            }
+            
+            // Step 3: Call ClaimOrRefresh with the specific subaccount to create the neuron
+            setCreateNeuronProgress('Claiming neuron stake...');
+            const governanceActor = createSnsGovernanceActor(governanceCanisterId, {
+                agentOptions: { identity }
+            });
+            
+            const claimResult = await governanceActor.manage_neuron({
+                subaccount: Array.from(subaccount),
+                command: [{
+                    ClaimOrRefresh: {
+                        by: [{ MemoAndController: { 
+                            memo: BigInt(nonce),
+                            controller: []
+                        }}]
+                    }
+                }]
+            });
+            
+            if (claimResult?.command?.[0]?.Error) {
+                alert(`Tokens transferred but failed to create neuron: ${claimResult.command[0].Error.error_message}`);
+                setNeuronActionBusy(false);
+                setCreateNeuronProgress('');
+                return;
+            }
+            
+            // Step 4: Set dissolve delay
+            setCreateNeuronProgress('Setting dissolve delay...');
+            const neuronIdHex = Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join('');
+            await manageNeuron(neuronIdHex, {
+                Configure: { operation: [{ 
+                    IncreaseDissolveDelay: { 
+                        additional_dissolve_delay_seconds: Number(dissolveDelaySeconds) 
+                    } 
+                }] }
+            });
+            
+            setCreateNeuronProgress('Refreshing neuron list...');
+            await refetchNeurons();
+            
+            alert(`Successfully created neuron with ${formatAmount(amountE8s, token.decimals)} ${token.symbol}!`);
+        } catch (error) {
+            console.error('[TokenCard] Error creating neuron:', error);
+            alert(`Error: ${error.message || String(error)}`);
+        }
+        
+        setNeuronActionBusy(false);
+        setCreateNeuronProgress('');
+        setShowCreateNeuronDialog(false);
+        setCreateNeuronAmount('');
+        setCreateNeuronDissolveDelay('');
     };
 
     const increaseNeuronStake = async (neuronIdHex, amountE8s) => {
@@ -873,6 +1043,31 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            {/* Create Neuron Button */}
+                            {!neuronsLoading && token.available > 0n && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowCreateNeuronDialog(true);
+                                    }}
+                                    style={{
+                                        background: theme.colors.accent,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '600',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }}
+                                >
+                                    ➕ Create Neuron
+                                </button>
+                            )}
+                            
                             {/* Expand/Collapse Indicator */}
                             <span 
                                 style={{ 
@@ -1589,6 +1784,308 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     }}
                                 >
                                     {neuronActionBusy ? 'Processing...' : 'Confirm'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* Create Neuron Dialog */}
+            {showCreateNeuronDialog && (() => {
+                const tokenFee = token.fee || 0n;
+                const maxAvailable = token.available || 0n;
+                const maxStakeAmount = maxAvailable > tokenFee ? maxAvailable - tokenFee : 0n;
+                
+                // Get min and max stake from SNS parameters
+                const minStakeE8s = nervousSystemParameters?.neuron_minimum_stake_e8s?.[0] || 0n;
+                const minDissolveDelaySeconds = nervousSystemParameters?.neuron_minimum_dissolve_delay_to_vote_seconds?.[0] || 0n;
+                const maxDissolveDelaySeconds = nervousSystemParameters?.max_dissolve_delay_seconds?.[0] || 0n;
+                
+                return (
+                    <div
+                        style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            background: 'rgba(0, 0, 0, 0.5)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: 1000,
+                            padding: '20px'
+                        }}
+                        onClick={() => {
+                            if (!neuronActionBusy && !createNeuronProgress) {
+                                setShowCreateNeuronDialog(false);
+                                setCreateNeuronAmount('');
+                                setCreateNeuronDissolveDelay('');
+                            }
+                        }}
+                    >
+                        <div style={{
+                            background: theme.colors.primaryBg,
+                            borderRadius: '12px',
+                            padding: '24px',
+                            maxWidth: '500px',
+                            width: '100%',
+                            maxHeight: '90vh',
+                            overflow: 'auto',
+                            border: `1px solid ${theme.colors.border}`
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        >
+                            <h3 style={{ color: theme.colors.primaryText, marginTop: 0 }}>
+                                ➕ Create New Neuron
+                            </h3>
+                            
+                            {/* Progress Indicator */}
+                            {createNeuronProgress && (
+                                <div style={{
+                                    background: theme.colors.accent + '20',
+                                    border: `2px solid ${theme.colors.accent}`,
+                                    borderRadius: '8px',
+                                    padding: '16px',
+                                    marginBottom: '20px'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                                        <div className="spinner" style={{ width: '20px', height: '20px' }}></div>
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                            {createNeuronProgress}
+                                        </span>
+                                    </div>
+                                    <p style={{ 
+                                        color: theme.colors.warning || '#f59e0b', 
+                                        fontSize: '0.85rem', 
+                                        margin: 0,
+                                        fontWeight: '500'
+                                    }}>
+                                        ⚠️ Do not close this window until the process completes!
+                                    </p>
+                                </div>
+                            )}
+                            
+                            {/* Stake Amount Section */}
+                            <div style={{ marginBottom: '24px' }}>
+                                <h4 style={{ color: theme.colors.primaryText, marginTop: 0, marginBottom: '8px' }}>
+                                    Stake Amount
+                                </h4>
+                                
+                                <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '8px' }}>
+                                    Available in wallet: <strong>{formatAmount(maxAvailable, token.decimals)} {token.symbol}</strong>
+                                </p>
+                                
+                                <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '12px' }}>
+                                    Minimum stake: <strong>{formatAmount(minStakeE8s, token.decimals)} {token.symbol}</strong>
+                                </p>
+                                
+                                <div style={{ position: 'relative', marginBottom: '8px', display: 'flex', alignItems: 'center' }}>
+                                    <input
+                                        type="text"
+                                        value={createNeuronAmount}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                                                setCreateNeuronAmount(value);
+                                            }
+                                        }}
+                                        placeholder={`Amount (e.g., ${formatAmount(minStakeE8s, token.decimals)})`}
+                                        disabled={neuronActionBusy}
+                                        style={{
+                                            flex: 1,
+                                            minWidth: 0,
+                                            padding: '12px',
+                                            borderRadius: '6px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            background: theme.colors.secondaryBg,
+                                            color: theme.colors.primaryText,
+                                            fontSize: '1rem',
+                                            boxSizing: 'border-box'
+                                        }}
+                                    />
+                                    <button
+                                        onClick={() => {
+                                            setCreateNeuronAmount(formatAmount(maxStakeAmount, token.decimals));
+                                        }}
+                                        disabled={neuronActionBusy}
+                                        style={{
+                                            marginLeft: '8px',
+                                            background: theme.colors.accent,
+                                            color: theme.colors.primaryBg,
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '8px 16px',
+                                            cursor: neuronActionBusy ? 'wait' : 'pointer',
+                                            fontSize: '0.8rem',
+                                            fontWeight: '600',
+                                            flexShrink: 0,
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                    >
+                                        MAX
+                                    </button>
+                                </div>
+                                
+                                <div style={{ 
+                                    background: theme.colors.secondaryBg,
+                                    borderRadius: '6px',
+                                    padding: '12px',
+                                    marginTop: '12px',
+                                    fontSize: '0.9rem'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <span style={{ color: theme.colors.mutedText }}>Transaction Fee:</span>
+                                        <span style={{ color: theme.colors.primaryText }}>{formatAmount(tokenFee, token.decimals)} {token.symbol}</span>
+                                    </div>
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        paddingTop: '8px',
+                                        borderTop: `1px solid ${theme.colors.border}`
+                                    }}>
+                                        <span style={{ color: theme.colors.primaryText, fontSize: '1rem', fontWeight: '600' }}>Total:</span>
+                                        <span style={{ color: theme.colors.accent, fontSize: '1rem', fontWeight: '600' }}>
+                                            {createNeuronAmount ? 
+                                                (() => {
+                                                    try {
+                                                        const stakeFloat = parseFloat(createNeuronAmount);
+                                                        const stakeE8s = BigInt(Math.floor(stakeFloat * Math.pow(10, token.decimals)));
+                                                        const total = stakeE8s + tokenFee;
+                                                        return `${formatAmount(total, token.decimals)} ${token.symbol}`;
+                                                    } catch {
+                                                        return '—';
+                                                    }
+                                                })()
+                                                : '—'
+                                            }
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Dissolve Delay Section */}
+                            <div style={{ marginBottom: '24px' }}>
+                                <h4 style={{ color: theme.colors.primaryText, marginTop: 0, marginBottom: '8px' }}>
+                                    Dissolve Delay
+                                </h4>
+                                
+                                <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '8px' }}>
+                                    Minimum: <strong>{format_duration(Number(minDissolveDelaySeconds))}</strong>
+                                </p>
+                                
+                                <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '12px' }}>
+                                    Maximum: <strong>{format_duration(Number(maxDissolveDelaySeconds))}</strong>
+                                </p>
+                                
+                                <input
+                                    type="text"
+                                    value={createNeuronDissolveDelay}
+                                    onChange={(e) => {
+                                        const value = e.target.value;
+                                        if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                                            setCreateNeuronDissolveDelay(value);
+                                        }
+                                    }}
+                                    placeholder="Days (e.g., 180)"
+                                    disabled={neuronActionBusy}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '6px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        fontSize: '1rem',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
+                            
+                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                                <button
+                                    onClick={() => {
+                                        setShowCreateNeuronDialog(false);
+                                        setCreateNeuronAmount('');
+                                        setCreateNeuronDissolveDelay('');
+                                    }}
+                                    disabled={neuronActionBusy || createNeuronProgress}
+                                    style={{
+                                        background: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '10px 20px',
+                                        cursor: (neuronActionBusy || createNeuronProgress) ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500',
+                                        opacity: (neuronActionBusy || createNeuronProgress) ? 0.5 : 1
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        try {
+                                            // Validate stake amount
+                                            const stakeFloat = parseFloat(createNeuronAmount);
+                                            if (isNaN(stakeFloat) || stakeFloat <= 0) {
+                                                alert('Please enter a valid stake amount');
+                                                return;
+                                            }
+                                            const stakeE8s = BigInt(Math.floor(stakeFloat * Math.pow(10, token.decimals)));
+                                            
+                                            // Check minimum stake
+                                            if (stakeE8s < minStakeE8s) {
+                                                alert(`Stake amount must be at least ${formatAmount(minStakeE8s, token.decimals)} ${token.symbol}`);
+                                                return;
+                                            }
+                                            
+                                            // Check available balance
+                                            const total = stakeE8s + tokenFee;
+                                            if (total > maxAvailable) {
+                                                alert(`Insufficient balance. You need ${formatAmount(total, token.decimals)} ${token.symbol} (including fee) but only have ${formatAmount(maxAvailable, token.decimals)} ${token.symbol}`);
+                                                return;
+                                            }
+                                            
+                                            // Validate dissolve delay
+                                            const delayDays = parseFloat(createNeuronDissolveDelay);
+                                            if (isNaN(delayDays) || delayDays < 0) {
+                                                alert('Please enter a valid dissolve delay in days');
+                                                return;
+                                            }
+                                            const delaySeconds = Math.floor(delayDays * 24 * 60 * 60);
+                                            
+                                            // Check min/max dissolve delay
+                                            if (delaySeconds < Number(minDissolveDelaySeconds)) {
+                                                alert(`Dissolve delay must be at least ${format_duration(Number(minDissolveDelaySeconds))}`);
+                                                return;
+                                            }
+                                            if (delaySeconds > Number(maxDissolveDelaySeconds)) {
+                                                alert(`Dissolve delay cannot exceed ${format_duration(Number(maxDissolveDelaySeconds))}`);
+                                                return;
+                                            }
+                                            
+                                            createNeuron(stakeE8s, delaySeconds);
+                                        } catch (error) {
+                                            alert('Invalid input values');
+                                        }
+                                    }}
+                                    disabled={neuronActionBusy || !createNeuronAmount || !createNeuronDissolveDelay}
+                                    style={{
+                                        background: theme.colors.success,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '10px 20px',
+                                        cursor: (neuronActionBusy || !createNeuronAmount || !createNeuronDissolveDelay) ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500',
+                                        opacity: (neuronActionBusy || !createNeuronAmount || !createNeuronDissolveDelay) ? 0.6 : 1
+                                    }}
+                                >
+                                    {neuronActionBusy ? 'Creating...' : 'Create Neuron'}
                                 </button>
                             </div>
                         </div>
