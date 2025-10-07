@@ -60,6 +60,7 @@ function Neuron() {
     const [actionMsg, setActionMsg] = useState('');
     const [managePrincipalInput, setManagePrincipalInput] = useState('');
     const [selectedPermissions, setSelectedPermissions] = useState({
+        unspecified: false,
         configureDissolveState: true,
         managePrincipals: true,
         submitProposal: true,
@@ -391,6 +392,12 @@ function Neuron() {
     };
 
     const PERMISSION_INFO = {
+        unspecified: {
+            value: PERM.UNSPECIFIED,
+            label: 'Unspecified',
+            icon: '❓',
+            description: 'Legacy/unspecified permission (typically only on neuron creator)'
+        },
         configureDissolveState: {
             value: PERM.CONFIGURE_DISSOLVE_STATE,
             label: 'Configure Dissolve State',
@@ -500,6 +507,7 @@ function Neuron() {
     // Principal/permission management
     const getPermissionsArray = (permObj) => {
         const perms = [];
+        if (permObj.unspecified) perms.push(PERM.UNSPECIFIED);
         if (permObj.configureDissolveState) perms.push(PERM.CONFIGURE_DISSOLVE_STATE);
         if (permObj.managePrincipals) perms.push(PERM.MANAGE_PRINCIPALS);
         if (permObj.submitProposal) perms.push(PERM.SUBMIT_PROPOSAL);
@@ -515,6 +523,7 @@ function Neuron() {
 
     const getPermissionsFromArray = (permsArray) => {
         return {
+            unspecified: permsArray.includes(PERM.UNSPECIFIED),
             configureDissolveState: permsArray.includes(PERM.CONFIGURE_DISSOLVE_STATE),
             managePrincipals: permsArray.includes(PERM.MANAGE_PRINCIPALS),
             submitProposal: permsArray.includes(PERM.SUBMIT_PROPOSAL),
@@ -568,6 +577,7 @@ function Neuron() {
                     setManagePrincipalInput('');
                     setEditingPrincipal(null);
                     setSelectedPermissions({
+                        unspecified: false,
                         configureDissolveState: true,
                         managePrincipals: true,
                         submitProposal: true,
@@ -587,6 +597,7 @@ function Neuron() {
                     setManagePrincipalInput('');
                     setEditingPrincipal(null);
                     setSelectedPermissions({
+                        unspecified: false,
                         configureDissolveState: true,
                         managePrincipals: true,
                         submitProposal: true,
@@ -655,6 +666,7 @@ function Neuron() {
 
     const makeFullOwner = () => {
         setSelectedPermissions({
+            unspecified: true,
             configureDissolveState: true,
             managePrincipals: true,
             submitProposal: true,
@@ -670,6 +682,7 @@ function Neuron() {
 
     const makeHotkey = () => {
         setSelectedPermissions({
+            unspecified: false,
             configureDissolveState: false,
             managePrincipals: false,
             submitProposal: true,
@@ -687,9 +700,9 @@ function Neuron() {
         const permArray = perms.permission_type || [];
         const permCount = permArray.length;
         
-        // Full owner (all 10 permissions)
-        if (permCount === 10) {
-            return { icon: '👑', title: 'Full Owner - All permissions' };
+        // Full owner (all 10 or 11 permissions - 11 includes UNSPECIFIED from neuron creation)
+        if (permCount === 10 || permCount === 11) {
+            return { icon: '👑', title: permCount === 11 ? 'Full Owner - All permissions (including creator permission)' : 'Full Owner - All permissions' };
         }
         
         // Hotkey (exactly permissions 3 and 4: submit proposal and vote)
