@@ -11,6 +11,7 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { NeuronDisplay } from './components/NeuronDisplay';
 import { useNaming } from './NamingContext';
 import { VotingPowerCalculator } from './utils/VotingPowerUtils';
+import { getUserPermissionIcons, getStateIcon } from './utils/NeuronPermissionUtils';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -730,19 +731,30 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                 {formatAmount(stake, token.decimals)} {token.symbol}
                                                             </div>
                                                         </div>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                            <span style={{
-                                                                padding: '4px 8px',
-                                                                borderRadius: '4px',
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: '600',
-                                                                background: state === 'Dissolved' ? theme.colors.error : 
-                                                                           state === 'Dissolving' ? theme.colors.warning : 
-                                                                           theme.colors.success,
-                                                                color: theme.colors.primaryBg
-                                                            }}>
-                                                                {state}
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            {/* Permission icons */}
+                                                            {identity && getUserPermissionIcons(neuron, identity.getPrincipal().toString()).map((permIcon, idx) => (
+                                                                <span 
+                                                                    key={idx}
+                                                                    style={{ fontSize: '1.2rem', cursor: 'help' }} 
+                                                                    title={permIcon.title}
+                                                                >
+                                                                    {permIcon.icon}
+                                                                </span>
+                                                            ))}
+                                                            
+                                                            {/* State icon */}
+                                                            <span 
+                                                                style={{
+                                                                    fontSize: '1.2rem',
+                                                                    cursor: 'help'
+                                                                }}
+                                                                title={state}
+                                                            >
+                                                                {getStateIcon(state).icon}
                                                             </span>
+                                                            
+                                                            {/* Expand/collapse indicator */}
                                                             <span 
                                                                 style={{ 
                                                                     color: theme.colors.mutedText, 
@@ -797,7 +809,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                                     <span style={{ color: theme.colors.secondaryText }}>Voting Power:</span>
                                                                     <span style={{ color: theme.colors.primaryText }}>
-                                                                        {votingPowerCalc ? formatAmount(votingPowerCalc.getVotingPower(neuron), 0) : 'Calculating...'}
+                                                                        {votingPowerCalc ? formatAmount(votingPowerCalc.getVotingPower(neuron), token.decimals) : 'Calculating...'}
                                                                     </span>
                                                                 </div>
                                                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
