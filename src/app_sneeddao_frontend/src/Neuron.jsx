@@ -60,11 +60,16 @@ function Neuron() {
     const [actionMsg, setActionMsg] = useState('');
     const [managePrincipalInput, setManagePrincipalInput] = useState('');
     const [selectedPermissions, setSelectedPermissions] = useState({
-        configure: true,
+        configureDissolveState: true,
         managePrincipals: true,
         submitProposal: true,
         vote: true,
-        disburse: false
+        disburse: false,
+        split: false,
+        mergeMaturity: false,
+        disburseMaturity: false,
+        stakeMaturity: false,
+        manageVotingPermission: true
     });
     const [editingPrincipal, setEditingPrincipal] = useState(null);
     const [topicInput, setTopicInput] = useState('Governance');
@@ -365,21 +370,28 @@ function Neuron() {
     };
 
     // SNS permission ints and metadata
-    // Based on SNS governance neuron permission types
+    // Based on official SNS governance neuron permission types (all 11 types)
+    // Reference: @dfinity/sns SnsNeuronPermissionType enum
     const PERM = {
-        CONFIGURE: 1,           // Configure dissolve state, followees, etc.
-        MANAGE_PRINCIPALS: 2,   // Add/remove principals and their permissions
-        SUBMIT_PROPOSAL: 3,     // Submit proposals
-        VOTE: 4,                // Vote on proposals
-        DISBURSE: 8             // Disburse neuron
+        UNSPECIFIED: 0,
+        CONFIGURE_DISSOLVE_STATE: 1,
+        MANAGE_PRINCIPALS: 2,
+        SUBMIT_PROPOSAL: 3,
+        VOTE: 4,
+        DISBURSE: 5,
+        SPLIT: 6,
+        MERGE_MATURITY: 7,
+        DISBURSE_MATURITY: 8,
+        STAKE_MATURITY: 9,
+        MANAGE_VOTING_PERMISSION: 10
     };
 
     const PERMISSION_INFO = {
-        configure: {
-            value: PERM.CONFIGURE,
-            label: 'Configure',
-            icon: '⚙️',
-            description: 'Configure dissolve state, followees, and neuron settings'
+        configureDissolveState: {
+            value: PERM.CONFIGURE_DISSOLVE_STATE,
+            label: 'Configure Dissolve State',
+            icon: '⏱️',
+            description: 'Start/stop dissolving, change dissolve delay'
         },
         managePrincipals: {
             value: PERM.MANAGE_PRINCIPALS,
@@ -403,7 +415,37 @@ function Neuron() {
             value: PERM.DISBURSE,
             label: 'Disburse',
             icon: '💰',
-            description: 'Disburse neuron stake and maturity'
+            description: 'Disburse neuron stake to account'
+        },
+        split: {
+            value: PERM.SPLIT,
+            label: 'Split Neuron',
+            icon: '✂️',
+            description: 'Split neuron into multiple neurons'
+        },
+        mergeMaturity: {
+            value: PERM.MERGE_MATURITY,
+            label: 'Merge Maturity',
+            icon: '🔗',
+            description: 'Merge maturity into stake'
+        },
+        disburseMaturity: {
+            value: PERM.DISBURSE_MATURITY,
+            label: 'Disburse Maturity',
+            icon: '💸',
+            description: 'Disburse maturity to account'
+        },
+        stakeMaturity: {
+            value: PERM.STAKE_MATURITY,
+            label: 'Stake Maturity',
+            icon: '🎯',
+            description: 'Stake maturity for increased voting power'
+        },
+        manageVotingPermission: {
+            value: PERM.MANAGE_VOTING_PERMISSION,
+            label: 'Manage Voting Permission',
+            icon: '🔐',
+            description: 'Manage followees and voting settings'
         }
     };
 
@@ -454,21 +496,31 @@ function Neuron() {
     // Principal/permission management
     const getPermissionsArray = (permObj) => {
         const perms = [];
-        if (permObj.configure) perms.push(PERM.CONFIGURE);
+        if (permObj.configureDissolveState) perms.push(PERM.CONFIGURE_DISSOLVE_STATE);
         if (permObj.managePrincipals) perms.push(PERM.MANAGE_PRINCIPALS);
         if (permObj.submitProposal) perms.push(PERM.SUBMIT_PROPOSAL);
         if (permObj.vote) perms.push(PERM.VOTE);
         if (permObj.disburse) perms.push(PERM.DISBURSE);
+        if (permObj.split) perms.push(PERM.SPLIT);
+        if (permObj.mergeMaturity) perms.push(PERM.MERGE_MATURITY);
+        if (permObj.disburseMaturity) perms.push(PERM.DISBURSE_MATURITY);
+        if (permObj.stakeMaturity) perms.push(PERM.STAKE_MATURITY);
+        if (permObj.manageVotingPermission) perms.push(PERM.MANAGE_VOTING_PERMISSION);
         return perms;
     };
 
     const getPermissionsFromArray = (permsArray) => {
         return {
-            configure: permsArray.includes(PERM.CONFIGURE),
+            configureDissolveState: permsArray.includes(PERM.CONFIGURE_DISSOLVE_STATE),
             managePrincipals: permsArray.includes(PERM.MANAGE_PRINCIPALS),
             submitProposal: permsArray.includes(PERM.SUBMIT_PROPOSAL),
             vote: permsArray.includes(PERM.VOTE),
-            disburse: permsArray.includes(PERM.DISBURSE)
+            disburse: permsArray.includes(PERM.DISBURSE),
+            split: permsArray.includes(PERM.SPLIT),
+            mergeMaturity: permsArray.includes(PERM.MERGE_MATURITY),
+            disburseMaturity: permsArray.includes(PERM.DISBURSE_MATURITY),
+            stakeMaturity: permsArray.includes(PERM.STAKE_MATURITY),
+            manageVotingPermission: permsArray.includes(PERM.MANAGE_VOTING_PERMISSION)
         };
     };
 
@@ -512,11 +564,16 @@ function Neuron() {
                     setManagePrincipalInput('');
                     setEditingPrincipal(null);
                     setSelectedPermissions({
-                        configure: true,
+                        configureDissolveState: true,
                         managePrincipals: true,
                         submitProposal: true,
                         vote: true,
-                        disburse: false
+                        disburse: false,
+                        split: false,
+                        mergeMaturity: false,
+                        disburseMaturity: false,
+                        stakeMaturity: false,
+                        manageVotingPermission: true
                     });
                 }
             } else {
@@ -526,11 +583,16 @@ function Neuron() {
                     setManagePrincipalInput('');
                     setEditingPrincipal(null);
                     setSelectedPermissions({
-                        configure: true,
+                        configureDissolveState: true,
                         managePrincipals: true,
                         submitProposal: true,
                         vote: true,
-                        disburse: false
+                        disburse: false,
+                        split: false,
+                        mergeMaturity: false,
+                        disburseMaturity: false,
+                        stakeMaturity: false,
+                        manageVotingPermission: true
                     });
                 } else {
                     setError('Please select at least one permission');
@@ -1051,7 +1113,7 @@ function Neuron() {
                                 </div>
 
                                 {/* Dissolve controls (permission-gated) */}
-                                {currentUserHasPermission(PERM.CONFIGURE) && (
+                                {currentUserHasPermission(PERM.CONFIGURE_DISSOLVE_STATE) && (
                                     <div style={{ marginTop: '16px', padding: '12px', backgroundColor: theme.colors.secondaryBg, borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         <div style={{ color: theme.colors.mutedText, fontWeight: 'bold' }}>Manage Dissolve</div>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -1389,7 +1451,7 @@ function Neuron() {
                                                                                         alias: {followee.alias[0]}
                                                                                     </span>
                                                                                 )}
-                                                                                {currentUserHasPermission(PERM.CONFIGURE) && topicName && (
+                                                                                {currentUserHasPermission(PERM.MANAGE_VOTING_PERMISSION) && topicName && (
                                                                                     <button
                                                                                         disabled={actionBusy}
                                                                                         onClick={() => removeFollowee(followeeIdHex, topicName)}
@@ -1420,7 +1482,7 @@ function Neuron() {
                                             </div>
                                         );
                                     })()}
-                                    {currentUserHasPermission(PERM.CONFIGURE) && (
+                                    {currentUserHasPermission(PERM.MANAGE_VOTING_PERMISSION) && (
                                         <div style={{ marginTop: '12px', padding: '12px', backgroundColor: theme.colors.secondaryBg, borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                             <div style={{ color: theme.colors.mutedText, fontWeight: 'bold' }}>Edit followees (by topic)</div>
                                             <select
