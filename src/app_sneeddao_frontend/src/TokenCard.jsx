@@ -11,7 +11,7 @@ import { createActor as createSnsGovernanceActor } from 'external/sns_governance
 import { NeuronDisplay } from './components/NeuronDisplay';
 import { useNaming } from './NamingContext';
 import { VotingPowerCalculator } from './utils/VotingPowerUtils';
-import { getUserPermissionIcons, getStateIcon } from './utils/NeuronPermissionUtils';
+import { getUserPermissionIcons, getStateIcon, PERM } from './utils/NeuronPermissionUtils';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -36,6 +36,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [snsRootCanisterId, setSnsRootCanisterId] = useState(null);
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const [votingPowerCalc, setVotingPowerCalc] = useState(null);
+    const [governanceCanisterId, setGovernanceCanisterId] = useState(null);
+    
+    // Neuron management state
+    const [managingNeuronId, setManagingNeuronId] = useState(null);
+    const [neuronActionBusy, setNeuronActionBusy] = useState(false);
+    const [showDissolveDelayDialog, setShowDissolveDelayDialog] = useState(false);
+    const [dissolveDelayInput, setDissolveDelayInput] = useState('');
 
     // Debug logging for wrap/unwrap buttons
     console.log('TokenCard Debug:', {
@@ -115,6 +122,131 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         return 'Unknown';
     };
 
+    // Check if user has a specific permission on a neuron
+    const userHasPermission = (neuron, permissionType) => {
+        if (!identity || !neuron.permissions) return false;
+        const userPrincipal = identity.getPrincipal().toString();
+        const userPerms = neuron.permissions.find(p => 
+            p.principal?.[0]?.toString() === userPrincipal
+        );
+        return userPerms?.permission_type?.includes(permissionType) || false;
+    };
+
+    // Neuron management functions
+    const manageNeuron = async (neuronIdHex, command) => {
+        if (!governanceCanisterId || !identity) {
+            return { ok: false, err: 'Missing governance context' };
+        }
+        
+        try {
+            const governanceActor = createSnsGovernanceActor(governanceCanisterId, {
+                agentOptions: { identity }
+            });
+            const neuronIdBytes = new Uint8Array(neuronIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            const req = { subaccount: Array.from(neuronIdBytes), command: [command] };
+            const resp = await governanceActor.manage_neuron(req);
+            if (resp?.command?.[0]?.Error) {
+                return { ok: false, err: resp.command[0].Error.error_message };
+            }
+            return { ok: true, response: resp };
+        } catch (e) {
+            return { ok: false, err: e.message || String(e) };
+        }
+    };
+
+    const startDissolving = async (neuronIdHex) => {
+        setNeuronActionBusy(true);
+        setManagingNeuronId(neuronIdHex);
+        const result = await manageNeuron(neuronIdHex, { 
+            Configure: { operation: [{ StartDissolving: {} }] } 
+        });
+        if (result.ok) {
+            // Refetch neurons to update UI
+            await refetchNeurons();
+        } else {
+            alert(`Error starting dissolve: ${result.err}`);
+        }
+        setNeuronActionBusy(false);
+        setManagingNeuronId(null);
+    };
+
+    const stopDissolving = async (neuronIdHex) => {
+        setNeuronActionBusy(true);
+        setManagingNeuronId(neuronIdHex);
+        const result = await manageNeuron(neuronIdHex, { 
+            Configure: { operation: [{ StopDissolving: {} }] } 
+        });
+        if (result.ok) {
+            await refetchNeurons();
+        } else {
+            alert(`Error stopping dissolve: ${result.err}`);
+        }
+        setNeuronActionBusy(false);
+        setManagingNeuronId(null);
+    };
+
+    const increaseDissolveDelay = async (neuronIdHex, secondsToAdd) => {
+        setNeuronActionBusy(true);
+        setManagingNeuronId(neuronIdHex);
+        const result = await manageNeuron(neuronIdHex, { 
+            Configure: { operation: [{ 
+                IncreaseDissolveDelay: { 
+                    additional_dissolve_delay_seconds: Number(secondsToAdd) 
+                } 
+            }] } 
+        });
+        if (result.ok) {
+            await refetchNeurons();
+        } else {
+            alert(`Error increasing dissolve delay: ${result.err}`);
+        }
+        setNeuronActionBusy(false);
+        setManagingNeuronId(null);
+        setShowDissolveDelayDialog(false);
+        setDissolveDelayInput('');
+    };
+
+    const disburseNeuron = async (neuronIdHex) => {
+        setNeuronActionBusy(true);
+        setManagingNeuronId(neuronIdHex);
+        
+        // Disburse to the user's default account (no to_account means default)
+        const result = await manageNeuron(neuronIdHex, { 
+            Disburse: { 
+                to_account: [], 
+                amount: [] 
+            } 
+        });
+        
+        if (result.ok) {
+            alert('Neuron disbursed successfully! The tokens will appear in your wallet shortly.');
+            await refetchNeurons();
+        } else {
+            alert(`Error disbursing neuron: ${result.err}`);
+        }
+        setNeuronActionBusy(false);
+        setManagingNeuronId(null);
+    };
+
+    const refetchNeurons = async () => {
+        if (!governanceCanisterId || !identity) return;
+        
+        try {
+            const governanceActor = createSnsGovernanceActor(governanceCanisterId, {
+                agentOptions: { identity }
+            });
+            const principal = identity.getPrincipal();
+            const response = await governanceActor.list_neurons({
+                of_principal: [principal],
+                limit: 100,
+                start_page_at: []
+            });
+            setNeurons(response.neurons || []);
+        } catch (error) {
+            console.error('[TokenCard] Error refetching neurons:', error);
+        }
+    };
+
     // Fetch neurons and parameters for SNS tokens
     useEffect(() => {
         if (!isSnsToken || !isAuthenticated || !identity || !token.ledger_canister_id) {
@@ -143,12 +275,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     return;
                 }
 
-                const governanceCanisterId = snsData.canisters.governance;
+                const govCanisterId = snsData.canisters.governance;
                 const rootId = snsData.rootCanisterId;
                 setSnsRootCanisterId(rootId);
-                console.log(`[TokenCard] Fetching neurons for ${token.symbol} from governance:`, governanceCanisterId);
+                setGovernanceCanisterId(govCanisterId);
+                console.log(`[TokenCard] Fetching neurons for ${token.symbol} from governance:`, govCanisterId);
 
-                const governanceActor = createSnsGovernanceActor(governanceCanisterId, { agentOptions: { identity } });
+                const governanceActor = createSnsGovernanceActor(govCanisterId, { agentOptions: { identity } });
                 
                 // Fetch both neurons and nervous system parameters
                 const principal = identity.getPrincipal();
@@ -822,11 +955,114 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                     <span style={{ color: theme.colors.secondaryText }}>Age:</span>
                                                                     <span style={{ color: theme.colors.primaryText }}>
                                                                         {format_duration(Date.now() - Number(neuron.aging_since_timestamp_seconds || 0n) * 1000)}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    )}
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            {/* Action Buttons */}
+                                                                            {identity && (
+                                                                                <div style={{ 
+                                                                                    marginTop: '16px', 
+                                                                                    paddingTop: '12px',
+                                                                                    borderTop: `1px solid ${theme.colors.border}`,
+                                                                                    display: 'flex',
+                                                                                    gap: '8px',
+                                                                                    flexWrap: 'wrap'
+                                                                                }}>
+                                                                                    {/* Dissolve state buttons */}
+                                                                                    {userHasPermission(neuron, PERM.CONFIGURE_DISSOLVE_STATE) && (
+                                                                                        <>
+                                                                                            {state === 'Locked' && (
+                                                                                                <button
+                                                                                                    onClick={() => startDissolving(neuronIdHex)}
+                                                                                                    disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                                                    style={{
+                                                                                                        background: theme.colors.warning,
+                                                                                                        color: theme.colors.primaryBg,
+                                                                                                        border: 'none',
+                                                                                                        borderRadius: '6px',
+                                                                                                        padding: '8px 12px',
+                                                                                                        cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                                                        fontSize: '0.85rem',
+                                                                                                        fontWeight: '500',
+                                                                                                        opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                                                    }}
+                                                                                                >
+                                                                                                    ⏳ Start Dissolving
+                                                                                                </button>
+                                                                                            )}
+                                                                                            {state === 'Dissolving' && (
+                                                                                                <button
+                                                                                                    onClick={() => stopDissolving(neuronIdHex)}
+                                                                                                    disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                                                    style={{
+                                                                                                        background: theme.colors.success,
+                                                                                                        color: theme.colors.primaryBg,
+                                                                                                        border: 'none',
+                                                                                                        borderRadius: '6px',
+                                                                                                        padding: '8px 12px',
+                                                                                                        cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                                                        fontSize: '0.85rem',
+                                                                                                        fontWeight: '500',
+                                                                                                        opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                                                    }}
+                                                                                                >
+                                                                                                    🔒 Stop Dissolving
+                                                                                                </button>
+                                                                                            )}
+                                                                                            {state !== 'Dissolved' && (
+                                                                                                <button
+                                                                                                    onClick={() => {
+                                                                                                        setManagingNeuronId(neuronIdHex);
+                                                                                                        setShowDissolveDelayDialog(true);
+                                                                                                    }}
+                                                                                                    disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                                                    style={{
+                                                                                                        background: theme.colors.accent,
+                                                                                                        color: theme.colors.primaryBg,
+                                                                                                        border: 'none',
+                                                                                                        borderRadius: '6px',
+                                                                                                        padding: '8px 12px',
+                                                                                                        cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                                                        fontSize: '0.85rem',
+                                                                                                        fontWeight: '500',
+                                                                                                        opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                                                    }}
+                                                                                                >
+                                                                                                    ⏱️ {dissolveDelay > 0 ? 'Increase' : 'Set'} Dissolve Delay
+                                                                                                </button>
+                                                                                            )}
+                                                                                        </>
+                                                                                    )}
+
+                                                                                    {/* Disburse button */}
+                                                                                    {state === 'Dissolved' && userHasPermission(neuron, PERM.DISBURSE) && (
+                                                                                        <button
+                                                                                            onClick={() => {
+                                                                                                if (window.confirm('Are you sure you want to disburse this neuron? The tokens will be transferred to your wallet.')) {
+                                                                                                    disburseNeuron(neuronIdHex);
+                                                                                                }
+                                                                                            }}
+                                                                                            disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                                            style={{
+                                                                                                background: theme.colors.error,
+                                                                                                color: theme.colors.primaryBg,
+                                                                                                border: 'none',
+                                                                                                borderRadius: '6px',
+                                                                                                padding: '8px 12px',
+                                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                                                fontSize: '0.85rem',
+                                                                                                fontWeight: '500',
+                                                                                                opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                                            }}
+                                                                                        >
+                                                                                            💰 Disburse to Wallet
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
                                                 </div>
                                             );
                                         })
@@ -903,6 +1139,113 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 return null;
             })()}
                 </>
+            )}
+
+            {/* Dissolve Delay Dialog */}
+            {showDissolveDelayDialog && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(0, 0, 0, 0.7)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000
+                }}
+                onClick={() => {
+                    if (!neuronActionBusy) {
+                        setShowDissolveDelayDialog(false);
+                        setDissolveDelayInput('');
+                        setManagingNeuronId(null);
+                    }
+                }}
+                >
+                    <div style={{
+                        background: theme.colors.primaryBg,
+                        borderRadius: '12px',
+                        padding: '24px',
+                        maxWidth: '500px',
+                        width: '90%',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 style={{ color: theme.colors.primaryText, marginTop: 0 }}>
+                            ⏱️ {getDissolveDelaySeconds(neurons.find(n => getNeuronIdHex(n) === managingNeuronId)) > 0 ? 'Increase' : 'Set'} Dissolve Delay
+                        </h3>
+                        <p style={{ color: theme.colors.secondaryText, marginBottom: '20px' }}>
+                            Enter the number of days to {getDissolveDelaySeconds(neurons.find(n => getNeuronIdHex(n) === managingNeuronId)) > 0 ? 'increase' : 'set'} the dissolve delay:
+                        </p>
+                        <input
+                            type="number"
+                            value={dissolveDelayInput}
+                            onChange={(e) => setDissolveDelayInput(e.target.value)}
+                            placeholder="Days (e.g., 180)"
+                            min="0"
+                            disabled={neuronActionBusy}
+                            style={{
+                                width: '100%',
+                                padding: '12px',
+                                borderRadius: '6px',
+                                border: `1px solid ${theme.colors.border}`,
+                                background: theme.colors.secondaryBg,
+                                color: theme.colors.primaryText,
+                                fontSize: '1rem',
+                                marginBottom: '20px'
+                            }}
+                        />
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={() => {
+                                    setShowDissolveDelayDialog(false);
+                                    setDissolveDelayInput('');
+                                    setManagingNeuronId(null);
+                                }}
+                                disabled={neuronActionBusy}
+                                style={{
+                                    background: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '10px 20px',
+                                    cursor: neuronActionBusy ? 'wait' : 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '500'
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const days = parseInt(dissolveDelayInput);
+                                    if (isNaN(days) || days < 0) {
+                                        alert('Please enter a valid number of days');
+                                        return;
+                                    }
+                                    const seconds = days * 24 * 60 * 60;
+                                    increaseDissolveDelay(managingNeuronId, seconds);
+                                }}
+                                disabled={neuronActionBusy || !dissolveDelayInput}
+                                style={{
+                                    background: theme.colors.accent,
+                                    color: theme.colors.primaryBg,
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '10px 20px',
+                                    cursor: (neuronActionBusy || !dissolveDelayInput) ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '500',
+                                    opacity: (neuronActionBusy || !dissolveDelayInput) ? 0.6 : 1
+                                }}
+                            >
+                                {neuronActionBusy ? 'Processing...' : 'Confirm'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
