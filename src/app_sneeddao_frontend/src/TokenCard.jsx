@@ -1450,7 +1450,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 Available in wallet: <strong>{formatAmount(maxAvailable, token.decimals)} {token.symbol}</strong>
                             </p>
                             
-                            <div style={{ position: 'relative', marginBottom: '8px' }}>
+                            <div style={{ position: 'relative', marginBottom: '8px', display: 'flex', alignItems: 'center' }}>
                                 <input
                                     type="text"
                                     value={increaseStakeAmount}
@@ -1464,14 +1464,15 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     placeholder={`Amount (e.g., ${formatAmount(maxStakeAmount / 2n, token.decimals)})`}
                                     disabled={neuronActionBusy}
                                     style={{
-                                        width: '100%',
+                                        flex: 1,
+                                        minWidth: 0,
                                         padding: '12px',
-                                        paddingRight: '80px',
                                         borderRadius: '6px',
                                         border: `1px solid ${theme.colors.border}`,
                                         background: theme.colors.secondaryBg,
                                         color: theme.colors.primaryText,
-                                        fontSize: '1rem'
+                                        fontSize: '1rem',
+                                        boxSizing: 'border-box'
                                     }}
                                 />
                                 <button
@@ -1480,18 +1481,17 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     }}
                                     disabled={neuronActionBusy}
                                     style={{
-                                        position: 'absolute',
-                                        right: '8px',
-                                        top: '50%',
-                                        transform: 'translateY(-50%)',
+                                        marginLeft: '8px',
                                         background: theme.colors.accent,
                                         color: theme.colors.primaryBg,
                                         border: 'none',
                                         borderRadius: '4px',
-                                        padding: '6px 12px',
+                                        padding: '8px 16px',
                                         cursor: neuronActionBusy ? 'wait' : 'pointer',
                                         fontSize: '0.8rem',
-                                        fontWeight: '600'
+                                        fontWeight: '600',
+                                        flexShrink: 0,
+                                        whiteSpace: 'nowrap'
                                     }}
                                 >
                                     MAX
