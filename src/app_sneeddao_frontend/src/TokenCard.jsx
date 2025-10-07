@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { formatAmount, getUSD, formatAmountWithConversion } from './utils/StringUtils';
 import { dateToReadable, format_duration } from './utils/DateUtils'
 import { rewardAmountOrZero, availableOrZero, get_available_backend } from './utils/TokenUtils';
@@ -6,6 +6,8 @@ import { PrincipalDisplay } from './utils/PrincipalUtils';
 import { Principal } from '@dfinity/principal';
 import { useTheme } from './contexts/ThemeContext';
 import { useAuth } from './AuthContext';
+import { getSnsById } from './utils/SnsUtils';
+import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -16,10 +18,16 @@ console.log('TokenCard constants:', { GLDT_CANISTER_ID, SGLDT_CANISTER_ID });
 const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, isSnsToken = false }) => {
 
     const { theme } = useTheme();
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, identity } = useAuth();
     const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(false);
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [locksExpanded, setLocksExpanded] = useState(defaultLocksExpanded);
+    
+    // Neuron state
+    const [neurons, setNeurons] = useState([]);
+    const [neuronsLoading, setNeuronsLoading] = useState(false);
+    const [neuronsExpanded, setNeuronsExpanded] = useState(false);
+    const [expandedNeurons, setExpandedNeurons] = useState(new Set());
 
     // Debug logging for wrap/unwrap buttons
     console.log('TokenCard Debug:', {
@@ -47,6 +55,109 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
     };
+
+    const toggleNeuronExpanded = (neuronIdHex) => {
+        setExpandedNeurons(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(neuronIdHex)) {
+                newSet.delete(neuronIdHex);
+            } else {
+                newSet.add(neuronIdHex);
+            }
+            return newSet;
+        });
+    };
+
+    // Helper functions for neurons
+    const getNeuronIdHex = (neuron) => {
+        if (!neuron.id || !neuron.id[0] || !neuron.id[0].id) return '';
+        const idBytes = neuron.id[0].id;
+        return Array.from(idBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    };
+
+    const getNeuronStake = (neuron) => {
+        return neuron.cached_neuron_stake_e8s || 0n;
+    };
+
+    const getTotalNeuronStake = () => {
+        return neurons.reduce((total, neuron) => {
+            return total + BigInt(getNeuronStake(neuron));
+        }, 0n);
+    };
+
+    const getDissolveDelaySeconds = (neuron) => {
+        return Number(neuron.dissolve_delay_seconds || 0n);
+    };
+
+    const getNeuronState = (neuron) => {
+        const dissolveState = neuron.dissolve_state?.[0];
+        if (!dissolveState) return 'Locked';
+        
+        if ('DissolveDelaySeconds' in dissolveState) {
+            return 'Locked';
+        } else if ('WhenDissolvedTimestampSeconds' in dissolveState) {
+            const dissolveTime = Number(dissolveState.WhenDissolvedTimestampSeconds);
+            const now = Date.now() / 1000;
+            if (dissolveTime <= now) {
+                return 'Dissolved';
+            } else {
+                return 'Dissolving';
+            }
+        }
+        return 'Unknown';
+    };
+
+    // Fetch neurons for SNS tokens
+    useEffect(() => {
+        if (!isSnsToken || !isAuthenticated || !identity || !token.ledger_canister_id) {
+            return;
+        }
+
+        async function fetchNeurons() {
+            try {
+                setNeuronsLoading(true);
+                
+                // Find the SNS by ledger canister ID
+                const ledgerIdString = typeof token.ledger_canister_id === 'string' 
+                    ? token.ledger_canister_id 
+                    : token.ledger_canister_id?.toString();
+                
+                // We need to find the SNS root from the ledger ID
+                // For now, we'll need to pass the governance canister ID
+                // Let's get it from the SNS data
+                const { getAllSnses } = await import('./utils/SnsUtils');
+                const allSnses = getAllSnses();
+                const snsData = allSnses.find(sns => sns.canisters?.ledger === ledgerIdString);
+                
+                if (!snsData || !snsData.canisters?.governance) {
+                    console.log(`[TokenCard] No SNS governance found for ${token.symbol}`);
+                    setNeuronsLoading(false);
+                    return;
+                }
+
+                const governanceCanisterId = snsData.canisters.governance;
+                console.log(`[TokenCard] Fetching neurons for ${token.symbol} from governance:`, governanceCanisterId);
+
+                const governanceActor = createSnsGovernanceActor(governanceCanisterId, { agentOptions: { identity } });
+                
+                const principal = identity.getPrincipal();
+                const response = await governanceActor.list_neurons({
+                    of_principal: [principal],
+                    limit: 100,
+                    start_page_at: []
+                });
+
+                console.log(`[TokenCard] Found ${response.neurons.length} neurons for ${token.symbol}`);
+                setNeurons(response.neurons || []);
+            } catch (error) {
+                console.error(`[TokenCard] Error fetching neurons for ${token.symbol}:`, error);
+            } finally {
+                setNeuronsLoading(false);
+            }
+        }
+
+        fetchNeurons();
+    }, [isSnsToken, isAuthenticated, identity, token.ledger_canister_id, token.symbol]);
 
     return (
         <div className="card">
@@ -484,6 +595,217 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     </div>
                 )}
             </div>
+
+            {/* Neurons Section - Only for SNS tokens */}
+            {isSnsToken && (
+                <div className="neurons-section">
+                    {/* Collapsible Neurons Header */}
+                    <div 
+                        className="neurons-header" 
+                        onClick={() => setNeuronsExpanded(!neuronsExpanded)}
+                        style={{
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '12px 0',
+                            borderBottom: `1px solid ${theme.colors.border}`,
+                            marginBottom: neuronsExpanded ? '15px' : '0'
+                        }}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                🧠 Neurons
+                            </span>
+                            {neuronsLoading ? (
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                    (Loading...)
+                                </span>
+                            ) : (
+                                <>
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                        ({neurons.length} {neurons.length === 1 ? 'neuron' : 'neurons'})
+                                    </span>
+                                    {neurons.length > 0 && (
+                                        <span style={{ color: theme.colors.accent, fontSize: '0.9rem', fontWeight: '600' }}>
+                                            {formatAmount(getTotalNeuronStake(), token.decimals)} {token.symbol}
+                                        </span>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            {/* Expand/Collapse Indicator */}
+                            <span 
+                                style={{ 
+                                    color: theme.colors.mutedText, 
+                                    fontSize: '1.2rem',
+                                    transform: neuronsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                    transition: 'transform 0.2s ease'
+                                }}
+                            >
+                                ▼
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Collapsible Neurons Content */}
+                    {neuronsExpanded && (
+                        <div>
+                            {neuronsLoading ? (
+                                <div className="spinner-container">
+                                    <div className="spinner"></div>
+                                </div>
+                            ) : (
+                                <>
+                                    {neurons.length > 0 ? (
+                                        neurons.map((neuron, neuronIndex) => {
+                                            const neuronIdHex = getNeuronIdHex(neuron);
+                                            const isExpanded = expandedNeurons.has(neuronIdHex);
+                                            const stake = getNeuronStake(neuron);
+                                            const dissolveDelay = getDissolveDelaySeconds(neuron);
+                                            const state = getNeuronState(neuron);
+                                            
+                                            return (
+                                                <div 
+                                                    key={neuronIdHex || neuronIndex}
+                                                    style={{
+                                                        marginBottom: '12px',
+                                                        border: `1px solid ${theme.colors.border}`,
+                                                        borderRadius: '8px',
+                                                        overflow: 'hidden'
+                                                    }}
+                                                >
+                                                    {/* Neuron Header */}
+                                                    <div
+                                                        onClick={() => toggleNeuronExpanded(neuronIdHex)}
+                                                        style={{
+                                                            cursor: 'pointer',
+                                                            padding: '10px 12px',
+                                                            background: theme.colors.cardBg,
+                                                            display: 'flex',
+                                                            justifyContent: 'space-between',
+                                                            alignItems: 'center',
+                                                            transition: 'background 0.2s ease'
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            e.currentTarget.style.background = theme.colors.hoverBg || theme.colors.secondaryBg;
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            e.currentTarget.style.background = theme.colors.cardBg;
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                                                            <div style={{ 
+                                                                color: theme.colors.primaryText, 
+                                                                fontWeight: '500',
+                                                                fontSize: '0.9rem'
+                                                            }}>
+                                                                Neuron #{neuronIdHex.slice(0, 8)}...
+                                                            </div>
+                                                            <div style={{ 
+                                                                color: theme.colors.accent, 
+                                                                fontWeight: '600',
+                                                                fontSize: '0.95rem'
+                                                            }}>
+                                                                {formatAmount(stake, token.decimals)} {token.symbol}
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                            <span style={{
+                                                                padding: '4px 8px',
+                                                                borderRadius: '4px',
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: '600',
+                                                                background: state === 'Dissolved' ? theme.colors.error : 
+                                                                           state === 'Dissolving' ? theme.colors.warning : 
+                                                                           theme.colors.success,
+                                                                color: theme.colors.primaryBg
+                                                            }}>
+                                                                {state}
+                                                            </span>
+                                                            <span 
+                                                                style={{ 
+                                                                    color: theme.colors.mutedText, 
+                                                                    fontSize: '1.2rem',
+                                                                    transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                                                    transition: 'transform 0.2s ease'
+                                                                }}
+                                                            >
+                                                                ▼
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Neuron Details */}
+                                                    {isExpanded && (
+                                                        <div style={{
+                                                            padding: '12px',
+                                                            background: theme.colors.primaryBg,
+                                                            borderTop: `1px solid ${theme.colors.border}`
+                                                        }}>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span style={{ color: theme.colors.secondaryText }}>Neuron ID:</span>
+                                                                    <span style={{ 
+                                                                        color: theme.colors.primaryText,
+                                                                        fontFamily: 'monospace',
+                                                                        fontSize: '0.85rem'
+                                                                    }}>
+                                                                        {neuronIdHex}
+                                                                    </span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span style={{ color: theme.colors.secondaryText }}>Stake:</span>
+                                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                                                        {formatAmount(stake, token.decimals)} {token.symbol}
+                                                                    </span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span style={{ color: theme.colors.secondaryText }}>Dissolve Delay:</span>
+                                                                    <span style={{ color: theme.colors.primaryText }}>
+                                                                        {format_duration(dissolveDelay * 1000)}
+                                                                    </span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span style={{ color: theme.colors.secondaryText }}>State:</span>
+                                                                    <span style={{ color: theme.colors.primaryText }}>{state}</span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span style={{ color: theme.colors.secondaryText }}>Voting Power:</span>
+                                                                    <span style={{ color: theme.colors.primaryText }}>
+                                                                        {formatAmount(neuron.voting_power || 0n, 0)}
+                                                                    </span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span style={{ color: theme.colors.secondaryText }}>Created:</span>
+                                                                    <span style={{ color: theme.colors.primaryText }}>
+                                                                        {dateToReadable(Number(neuron.created_timestamp_seconds || 0n) * 1000)}
+                                                                    </span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span style={{ color: theme.colors.secondaryText }}>Age:</span>
+                                                                    <span style={{ color: theme.colors.primaryText }}>
+                                                                        {format_duration(Date.now() - Number(neuron.aging_since_timestamp_seconds || 0n) * 1000)}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })
+                                    ) : (
+                                        <p style={{ color: theme.colors.mutedText, fontStyle: 'italic', margin: '10px 0' }}>
+                                            No neurons found
+                                        </p>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
             
             {/* Wrap/Unwrap buttons at bottom of card */}
             {(() => {
