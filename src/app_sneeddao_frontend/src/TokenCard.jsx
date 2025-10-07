@@ -8,6 +8,7 @@ import { useTheme } from './contexts/ThemeContext';
 import { useAuth } from './AuthContext';
 import { getSnsById } from './utils/SnsUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { NeuronDisplay } from './components/NeuronDisplay';
 import { useNaming } from './NamingContext';
 import { VotingPowerCalculator } from './utils/VotingPowerUtils';
@@ -43,6 +44,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [neuronActionBusy, setNeuronActionBusy] = useState(false);
     const [showDissolveDelayDialog, setShowDissolveDelayDialog] = useState(false);
     const [dissolveDelayInput, setDissolveDelayInput] = useState('');
+    const [showIncreaseStakeDialog, setShowIncreaseStakeDialog] = useState(false);
+    const [increaseStakeAmount, setIncreaseStakeAmount] = useState('');
 
     // Debug logging for wrap/unwrap buttons
     console.log('TokenCard Debug:', {
@@ -257,6 +260,76 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         } catch (error) {
             console.error('[TokenCard] Error refetching neurons:', error);
         }
+    };
+
+    const increaseNeuronStake = async (neuronIdHex, amountE8s) => {
+        setNeuronActionBusy(true);
+        setManagingNeuronId(neuronIdHex);
+        
+        try {
+            // Step 1: Transfer tokens to the neuron's subaccount
+            const ledgerIdString = typeof token.ledger_canister_id === 'string' 
+                ? token.ledger_canister_id 
+                : token.ledger_canister_id?.toString();
+            
+            const ledgerActor = createLedgerActor(ledgerIdString);
+            
+            // The neuron's subaccount is the neuron ID itself (as bytes)
+            const neuronIdBytes = new Uint8Array(neuronIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            
+            // Transfer to the governance canister with the neuron ID as subaccount
+            const transferArgs = {
+                to: {
+                    owner: Principal.fromText(governanceCanisterId),
+                    subaccount: [Array.from(neuronIdBytes)]
+                },
+                amount: BigInt(amountE8s),
+                fee: [],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: []
+            };
+            
+            const transferResult = await ledgerActor.icrc1_transfer(transferArgs);
+            
+            if ('Err' in transferResult) {
+                const error = transferResult.Err;
+                let errorMsg = 'Transfer failed';
+                if (error.InsufficientFunds) {
+                    errorMsg = `Insufficient funds. Available: ${formatAmount(error.InsufficientFunds.balance, token.decimals)} ${token.symbol}`;
+                } else if (error.BadFee) {
+                    errorMsg = `Bad fee. Expected: ${formatAmount(error.BadFee.expected_fee, token.decimals)} ${token.symbol}`;
+                } else if (error.GenericError) {
+                    errorMsg = error.GenericError.message;
+                }
+                alert(`Error transferring tokens: ${errorMsg}`);
+                setNeuronActionBusy(false);
+                setManagingNeuronId(null);
+                return;
+            }
+            
+            // Step 2: Call ClaimOrRefresh to update the neuron
+            const result = await manageNeuron(neuronIdHex, {
+                ClaimOrRefresh: {
+                    by: []
+                }
+            });
+            
+            if (result.ok) {
+                alert(`Successfully increased stake by ${formatAmount(amountE8s, token.decimals)} ${token.symbol}!`);
+                await refetchNeurons();
+            } else {
+                alert(`Tokens transferred but failed to refresh neuron: ${result.err}. The tokens are in the neuron but voting power may not be updated yet.`);
+            }
+        } catch (error) {
+            console.error('[TokenCard] Error increasing neuron stake:', error);
+            alert(`Error: ${error.message || String(error)}`);
+        }
+        
+        setNeuronActionBusy(false);
+        setManagingNeuronId(null);
+        setShowIncreaseStakeDialog(false);
+        setIncreaseStakeAmount('');
     };
 
     // Fetch neurons and parameters for SNS tokens
@@ -1071,6 +1144,30 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                                             💰 Disburse to Wallet
                                                                                         </button>
                                                                                     )}
+
+                                                                                    {/* Increase Stake button - available to everyone */}
+                                                                                    {token.available > 0n && (
+                                                                                        <button
+                                                                                            onClick={() => {
+                                                                                                setManagingNeuronId(neuronIdHex);
+                                                                                                setShowIncreaseStakeDialog(true);
+                                                                                            }}
+                                                                                            disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                                            style={{
+                                                                                                background: theme.colors.success,
+                                                                                                color: theme.colors.primaryBg,
+                                                                                                border: 'none',
+                                                                                                borderRadius: '6px',
+                                                                                                padding: '8px 12px',
+                                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                                                fontSize: '0.85rem',
+                                                                                                fontWeight: '500',
+                                                                                                opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                                            }}
+                                                                                        >
+                                                                                            ➕ Increase Stake
+                                                                                        </button>
+                                                                                    )}
                                                                                 </div>
                                                                             )}
                                                                         </div>
@@ -1293,6 +1390,202 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         fontSize: '0.9rem',
                                         fontWeight: '500',
                                         opacity: (neuronActionBusy || !dissolveDelayInput) ? 0.6 : 1
+                                    }}
+                                >
+                                    {neuronActionBusy ? 'Processing...' : 'Confirm'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* Increase Stake Dialog */}
+            {showIncreaseStakeDialog && (() => {
+                // Get frontend balance (not including backend tokens)
+                const maxAvailable = token.balance || 0n;
+                const tokenFee = token.fee || 10000n; // Default 0.0001 for 8 decimals
+                const maxStakeAmount = maxAvailable > tokenFee ? maxAvailable - tokenFee : 0n;
+                
+                return (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0, 0, 0, 0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000
+                    }}
+                    onClick={() => {
+                        if (!neuronActionBusy) {
+                            setShowIncreaseStakeDialog(false);
+                            setIncreaseStakeAmount('');
+                            setManagingNeuronId(null);
+                        }
+                    }}
+                    >
+                        <div style={{
+                            background: theme.colors.primaryBg,
+                            borderRadius: '12px',
+                            padding: '24px',
+                            maxWidth: '500px',
+                            width: '90%',
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        >
+                            <h3 style={{ color: theme.colors.primaryText, marginTop: 0 }}>
+                                ➕ Increase Neuron Stake
+                            </h3>
+                            
+                            <p style={{ color: theme.colors.secondaryText, marginBottom: '8px' }}>
+                                Enter the amount of {token.symbol} to add to this neuron:
+                            </p>
+                            
+                            <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '16px' }}>
+                                Available in wallet: <strong>{formatAmount(maxAvailable, token.decimals)} {token.symbol}</strong>
+                            </p>
+                            
+                            <div style={{ position: 'relative', marginBottom: '8px' }}>
+                                <input
+                                    type="text"
+                                    value={increaseStakeAmount}
+                                    onChange={(e) => {
+                                        const value = e.target.value;
+                                        // Allow numbers and one decimal point
+                                        if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                                            setIncreaseStakeAmount(value);
+                                        }
+                                    }}
+                                    placeholder={`Amount (e.g., ${formatAmount(maxStakeAmount / 2n, token.decimals)})`}
+                                    disabled={neuronActionBusy}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        paddingRight: '80px',
+                                        borderRadius: '6px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        fontSize: '1rem'
+                                    }}
+                                />
+                                <button
+                                    onClick={() => {
+                                        setIncreaseStakeAmount(formatAmount(maxStakeAmount, token.decimals));
+                                    }}
+                                    disabled={neuronActionBusy}
+                                    style={{
+                                        position: 'absolute',
+                                        right: '8px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        background: theme.colors.accent,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '6px 12px',
+                                        cursor: neuronActionBusy ? 'wait' : 'pointer',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '600'
+                                    }}
+                                >
+                                    MAX
+                                </button>
+                            </div>
+                            
+                            <div style={{ 
+                                background: theme.colors.secondaryBg,
+                                borderRadius: '6px',
+                                padding: '12px',
+                                marginBottom: '20px'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.9rem' }}>Transaction Fee:</span>
+                                    <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                        {formatAmount(tokenFee, token.decimals)} {token.symbol}
+                                    </span>
+                                </div>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    paddingTop: '8px',
+                                    borderTop: `1px solid ${theme.colors.border}`
+                                }}>
+                                    <span style={{ color: theme.colors.primaryText, fontSize: '1rem', fontWeight: '600' }}>Total:</span>
+                                    <span style={{ color: theme.colors.accent, fontSize: '1rem', fontWeight: '600' }}>
+                                        {increaseStakeAmount ? 
+                                            (() => {
+                                                try {
+                                                    const stakeFloat = parseFloat(increaseStakeAmount);
+                                                    const stakeE8s = BigInt(Math.floor(stakeFloat * Math.pow(10, token.decimals)));
+                                                    const total = stakeE8s + tokenFee;
+                                                    return `${formatAmount(total, token.decimals)} ${token.symbol}`;
+                                                } catch {
+                                                    return '—';
+                                                }
+                                            })()
+                                            : '—'
+                                        }
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                                <button
+                                    onClick={() => {
+                                        setShowIncreaseStakeDialog(false);
+                                        setIncreaseStakeAmount('');
+                                        setManagingNeuronId(null);
+                                    }}
+                                    disabled={neuronActionBusy}
+                                    style={{
+                                        background: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '10px 20px',
+                                        cursor: neuronActionBusy ? 'wait' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500'
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        try {
+                                            const stakeFloat = parseFloat(increaseStakeAmount);
+                                            if (isNaN(stakeFloat) || stakeFloat <= 0) {
+                                                alert('Please enter a valid amount');
+                                                return;
+                                            }
+                                            const stakeE8s = BigInt(Math.floor(stakeFloat * Math.pow(10, token.decimals)));
+                                            const total = stakeE8s + tokenFee;
+                                            if (total > maxAvailable) {
+                                                alert(`Insufficient balance. You need ${formatAmount(total, token.decimals)} ${token.symbol} (including fee) but only have ${formatAmount(maxAvailable, token.decimals)} ${token.symbol}`);
+                                                return;
+                                            }
+                                            increaseNeuronStake(managingNeuronId, stakeE8s);
+                                        } catch (error) {
+                                            alert('Invalid amount entered');
+                                        }
+                                    }}
+                                    disabled={neuronActionBusy || !increaseStakeAmount}
+                                    style={{
+                                        background: theme.colors.success,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '10px 20px',
+                                        cursor: (neuronActionBusy || !increaseStakeAmount) ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500',
+                                        opacity: (neuronActionBusy || !increaseStakeAmount) ? 0.6 : 1
                                     }}
                                 >
                                     {neuronActionBusy ? 'Processing...' : 'Confirm'}
