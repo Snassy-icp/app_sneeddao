@@ -372,6 +372,8 @@ function Neuron() {
     // SNS permission ints and metadata
     // Based on official SNS governance neuron permission types (all 11 types)
     // Reference: @dfinity/sns SnsNeuronPermissionType enum
+    // Official source: https://github.com/dfinity/ic/blob/master/rs/sns/governance/proto/ic_sns_governance.proto
+    // See NeuronPermissionType enum definition
     const PERM = {
         UNSPECIFIED: 0,
         CONFIGURE_DISSOLVE_STATE: 1,
