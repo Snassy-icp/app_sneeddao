@@ -101,7 +101,19 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     };
 
     const getDissolveDelaySeconds = (neuron) => {
-        return Number(neuron.dissolve_delay_seconds || 0n);
+        const dissolveState = neuron.dissolve_state?.[0];
+        if (!dissolveState) return 0;
+        
+        if ('DissolveDelaySeconds' in dissolveState) {
+            return Number(dissolveState.DissolveDelaySeconds);
+        } else if ('WhenDissolvedTimestampSeconds' in dissolveState) {
+            const dissolveTime = Number(dissolveState.WhenDissolvedTimestampSeconds);
+            const now = Date.now() / 1000;
+            if (dissolveTime > now) {
+                return dissolveTime - now;
+            }
+        }
+        return 0;
     };
 
     const getNeuronState = (neuron) => {
