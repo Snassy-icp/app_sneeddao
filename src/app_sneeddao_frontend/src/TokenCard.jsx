@@ -1043,31 +1043,6 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            {/* Create Neuron Button */}
-                            {!neuronsLoading && token.available > 0n && (
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setShowCreateNeuronDialog(true);
-                                    }}
-                                    style={{
-                                        background: theme.colors.accent,
-                                        color: theme.colors.primaryBg,
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '6px 12px',
-                                        cursor: 'pointer',
-                                        fontSize: '0.85rem',
-                                        fontWeight: '600',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                    }}
-                                >
-                                    ➕ Create Neuron
-                                </button>
-                            )}
-                            
                             {/* Expand/Collapse Indicator */}
                             <span 
                                 style={{ 
@@ -1091,6 +1066,34 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </div>
                             ) : (
                                 <>
+                                    {/* Create Neuron Button */}
+                                    {token.available > 0n && (
+                                        <button
+                                            onClick={() => setShowCreateNeuronDialog(true)}
+                                            style={{
+                                                background: theme.colors.accent,
+                                                color: theme.colors.primaryBg,
+                                                border: 'none',
+                                                borderRadius: '8px',
+                                                padding: '12px 16px',
+                                                cursor: 'pointer',
+                                                fontSize: '0.9rem',
+                                                fontWeight: '600',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '6px',
+                                                width: '100%',
+                                                marginBottom: '16px',
+                                                transition: 'opacity 0.2s ease'
+                                            }}
+                                            onMouseEnter={(e) => e.target.style.opacity = '0.9'}
+                                            onMouseLeave={(e) => e.target.style.opacity = '1'}
+                                        >
+                                            ➕ Create New Neuron
+                                        </button>
+                                    )}
+                                    
                                     {neurons.length > 0 ? (
                                         neurons.map((neuron, neuronIndex) => {
                                             const neuronIdHex = getNeuronIdHex(neuron);
