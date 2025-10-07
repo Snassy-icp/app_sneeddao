@@ -550,6 +550,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 ]);
 
                 console.log(`[TokenCard] Found ${neuronsResponse.neurons.length} neurons for ${token.symbol}`);
+                console.log(`[TokenCard] SNS Parameters for ${token.symbol}:`, paramsResponse);
+                console.log(`[TokenCard] Min dissolve delay raw:`, paramsResponse?.neuron_minimum_dissolve_delay_to_vote_seconds);
+                console.log(`[TokenCard] Max dissolve delay raw:`, paramsResponse?.max_dissolve_delay_seconds);
+                console.log(`[TokenCard] Min dissolve delay [0]:`, paramsResponse?.neuron_minimum_dissolve_delay_to_vote_seconds?.[0]);
+                console.log(`[TokenCard] Max dissolve delay [0]:`, paramsResponse?.max_dissolve_delay_seconds?.[0]);
+                console.log(`[TokenCard] Min as Number:`, paramsResponse?.neuron_minimum_dissolve_delay_to_vote_seconds?.[0] ? Number(paramsResponse.neuron_minimum_dissolve_delay_to_vote_seconds[0]) : 'N/A');
+                console.log(`[TokenCard] Max as Number:`, paramsResponse?.max_dissolve_delay_seconds?.[0] ? Number(paramsResponse.max_dissolve_delay_seconds[0]) : 'N/A');
                 setNeurons(neuronsResponse.neurons || []);
                 setNervousSystemParameters(paramsResponse);
                 
@@ -1802,9 +1809,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 
                 // Get min and max stake from SNS parameters
                 const minStakeE8s = nervousSystemParameters?.neuron_minimum_stake_e8s?.[0] || 0n;
-                const minDissolveDelaySeconds = nervousSystemParameters?.neuron_minimum_dissolve_delay_to_vote_seconds?.[0] || 0n;
-                const maxDissolveDelaySeconds = nervousSystemParameters?.max_dissolve_delay_seconds?.[0] || 0n;
-                
+                const minDissolveDelaySeconds = nervousSystemParameters?.neuron_minimum_dissolve_delay_to_vote_seconds?.[0] 
+                    ? Number(nervousSystemParameters.neuron_minimum_dissolve_delay_to_vote_seconds[0]) 
+                    : 0;
+                const maxDissolveDelaySeconds = nervousSystemParameters?.max_dissolve_delay_seconds?.[0]
+                    ? Number(nervousSystemParameters.max_dissolve_delay_seconds[0])
+                    : 0;
+                                
                 return (
                     <div
                         style={{
@@ -1975,11 +1986,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </h4>
                                 
                                 <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '8px' }}>
-                                    Minimum: <strong>{format_duration(Number(minDissolveDelaySeconds))}</strong>
+                                    Minimum: <strong>{format_duration(minDissolveDelaySeconds * 1000)}</strong>
                                 </p>
                                 
                                 <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '12px' }}>
-                                    Maximum: <strong>{format_duration(Number(maxDissolveDelaySeconds))}</strong>
+                                    Maximum: <strong>{format_duration(maxDissolveDelaySeconds * 1000)}</strong>
                                 </p>
                                 
                                 <input
@@ -2061,12 +2072,12 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             const delaySeconds = Math.floor(delayDays * 24 * 60 * 60);
                                             
                                             // Check min/max dissolve delay
-                                            if (delaySeconds < Number(minDissolveDelaySeconds)) {
-                                                alert(`Dissolve delay must be at least ${format_duration(Number(minDissolveDelaySeconds))}`);
+                                            if (delaySeconds < minDissolveDelaySeconds) {
+                                                alert(`Dissolve delay must be at least ${format_duration(minDissolveDelaySeconds * 1000)}`);
                                                 return;
                                             }
-                                            if (delaySeconds > Number(maxDissolveDelaySeconds)) {
-                                                alert(`Dissolve delay cannot exceed ${format_duration(Number(maxDissolveDelaySeconds))}`);
+                                            if (delaySeconds > maxDissolveDelaySeconds) {
+                                                alert(`Dissolve delay cannot exceed ${format_duration(maxDissolveDelaySeconds * 1000)}`);
                                                 return;
                                             }
                                             
