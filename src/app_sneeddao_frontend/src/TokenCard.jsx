@@ -13,7 +13,7 @@ const SGLDT_CANISTER_ID = 'i2s4q-syaaa-aaaan-qz4sq-cai';
 
 console.log('TokenCard constants:', { GLDT_CANISTER_ID, SGLDT_CANISTER_ID });
 
-const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend }) => {
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, isSnsToken = false }) => {
 
     const { theme } = useTheme();
     const { isAuthenticated } = useAuth();
@@ -56,7 +56,36 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 </div>
                 <div className="header-content-column">
                     <div className="header-row-1">
-                        <span className="token-name">{token.name || token.symbol}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span className="token-name">{token.name || token.symbol}</span>
+                            {isSnsToken ? (
+                                <span style={{
+                                    background: theme.colors.accent,
+                                    color: theme.colors.primaryBg,
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '0.7rem',
+                                    fontWeight: '600',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px'
+                                }}>
+                                    SNS
+                                </span>
+                            ) : (
+                                <span style={{
+                                    background: theme.colors.secondaryText,
+                                    color: theme.colors.primaryBg,
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '0.7rem',
+                                    fontWeight: '600',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px'
+                                }}>
+                                    ICRC1
+                                </span>
+                            )}
+                        </div>
                         <span className="token-usd-value">
                             {(token.available || 0n) > 0n && token.conversion_rate > 0 && 
                                 `$${formatAmountWithConversion(token.available || 0n, token.decimals, token.conversion_rate)}`

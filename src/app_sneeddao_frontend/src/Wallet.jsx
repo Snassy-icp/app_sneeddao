@@ -29,6 +29,7 @@ import { get_available, get_available_backend, getTokenLogo, get_token_conversio
 import { getPositionTVL } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
+import { fetchAndCacheSnsData, getAllSnses } from './utils/SnsUtils';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
 import Header from './components/Header';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
@@ -201,9 +202,56 @@ function Wallet() {
     const [confirmMessage, setConfirmMessage] = useState('');
     const [rewardDetailsLoading, setRewardDetailsLoading] = useState({});
     const [totalDollarValue, setTotalDollarValue] = useState(0.0);
+    const [snsTokens, setSnsTokens] = useState(new Set()); // Set of ledger canister IDs that are SNS tokens
 
     const dex_icpswap = 1;
  
+    // Load SNS data progressively (non-blocking)
+    useEffect(() => {
+        async function loadSnsData() {
+            try {
+                console.log('[Wallet] Loading SNS data...');
+                
+                // First try to get cached data immediately
+                const cached = getAllSnses();
+                console.log('[Wallet] Cached SNS data:', cached);
+                if (cached && cached.length > 0) {
+                    const snsLedgers = new Set(
+                        cached
+                            .map(sns => {
+                                console.log('[Wallet] SNS:', sns.name, 'Ledger:', sns.canisters?.ledger);
+                                return sns.canisters?.ledger;
+                            })
+                            .filter(Boolean)
+                    );
+                    console.log('[Wallet] SNS Ledger IDs from cache:', Array.from(snsLedgers));
+                    setSnsTokens(snsLedgers);
+                }
+                
+                // Then fetch fresh data in the background
+                const freshData = await fetchAndCacheSnsData(identity);
+                console.log('[Wallet] Fresh SNS data:', freshData);
+                if (freshData && freshData.length > 0) {
+                    const snsLedgers = new Set(
+                        freshData
+                            .map(sns => {
+                                console.log('[Wallet] Fresh SNS:', sns.name, 'Ledger:', sns.canisters?.ledger);
+                                return sns.canisters?.ledger;
+                            })
+                            .filter(Boolean)
+                    );
+                    console.log('[Wallet] SNS Ledger IDs from fresh data:', Array.from(snsLedgers));
+                    setSnsTokens(snsLedgers);
+                }
+            } catch (error) {
+                console.warn('Failed to load SNS data for wallet:', error);
+                // Non-critical, continue without SNS badges
+            }
+        }
+        
+        loadSnsData();
+    }, [identity]);
+
     useEffect(() => {
         if (!isAuthenticated) {
             // Don't redirect - stay on wallet page and show login message
@@ -1467,10 +1515,16 @@ function Wallet() {
                     <div className="card-grid">
                     {tokens.map((token, index) => {
                         // Debug logging for each token
-                        console.log(`Wallet passing functions to TokenCard for ${token.symbol}:`, {
-                            openWrapModal: typeof openWrapModal,
-                            openUnwrapModal: typeof openUnwrapModal,
-                            token_id: token.ledger_canister_id
+                        // Convert Principal to string for comparison
+                        const ledgerIdString = typeof token.ledger_canister_id === 'string' 
+                            ? token.ledger_canister_id 
+                            : token.ledger_canister_id?.toString();
+                        const isSns = snsTokens.has(ledgerIdString);
+                        console.log(`[Wallet] Token ${token.symbol}:`, {
+                            ledger_canister_id: token.ledger_canister_id,
+                            ledger_canister_id_string: ledgerIdString,
+                            isSnsToken: isSns,
+                            snsTokensSet: Array.from(snsTokens)
                         });
                         
                         return (
@@ -1482,12 +1536,13 @@ function Wallet() {
                                 showDebug={showDebug}
                                 openSendModal={openSendModal}
                                 openLockModal={openLockModal}
-                                                            openWrapModal={openWrapModal}
-                            openUnwrapModal={openUnwrapModal}
-                            handleUnregisterToken={handleUnregisterToken}
-                            rewardDetailsLoading={rewardDetailsLoading}
-                            handleClaimRewards={handleClaimRewards}
-                            handleWithdrawFromBackend={handleWithdrawFromBackend}
+                                openWrapModal={openWrapModal}
+                                openUnwrapModal={openUnwrapModal}
+                                handleUnregisterToken={handleUnregisterToken}
+                                rewardDetailsLoading={rewardDetailsLoading}
+                                handleClaimRewards={handleClaimRewards}
+                                handleWithdrawFromBackend={handleWithdrawFromBackend}
+                                isSnsToken={isSns}
                             />
                         );
                     })}
