@@ -640,12 +640,82 @@ function Neuron() {
         setEditingPrincipal(null);
         setManagePrincipalInput('');
         setSelectedPermissions({
-            configure: true,
+            configureDissolveState: true,
             managePrincipals: true,
             submitProposal: true,
             vote: true,
-            disburse: false
+            disburse: false,
+            split: false,
+            mergeMaturity: false,
+            disburseMaturity: false,
+            stakeMaturity: false,
+            manageVotingPermission: true
         });
+    };
+
+    const makeFullOwner = () => {
+        setSelectedPermissions({
+            configureDissolveState: true,
+            managePrincipals: true,
+            submitProposal: true,
+            vote: true,
+            disburse: true,
+            split: true,
+            mergeMaturity: true,
+            disburseMaturity: true,
+            stakeMaturity: true,
+            manageVotingPermission: true
+        });
+    };
+
+    const makeHotkey = () => {
+        setSelectedPermissions({
+            configureDissolveState: false,
+            managePrincipals: false,
+            submitProposal: true,
+            vote: true,
+            disburse: false,
+            split: false,
+            mergeMaturity: false,
+            disburseMaturity: false,
+            stakeMaturity: false,
+            manageVotingPermission: false
+        });
+    };
+
+    const getPrincipalSymbol = (perms) => {
+        const permArray = perms.permission_type || [];
+        const permCount = permArray.length;
+        
+        // Full owner (all 10 permissions)
+        if (permCount === 10) {
+            return { icon: '👑', title: 'Full Owner - All permissions' };
+        }
+        
+        // Hotkey (exactly permissions 3 and 4: submit proposal and vote)
+        const hasSubmit = permArray.includes(PERM.SUBMIT_PROPOSAL);
+        const hasVote = permArray.includes(PERM.VOTE);
+        if (permCount === 2 && hasSubmit && hasVote) {
+            return { icon: '🔑', title: 'Hotkey - Submit proposals and vote' };
+        }
+        
+        // Voting only (just vote permission)
+        if (permCount === 1 && hasVote) {
+            return { icon: '🗳️', title: 'Voter - Vote only' };
+        }
+        
+        // Management focused (has manage principals)
+        if (permArray.includes(PERM.MANAGE_PRINCIPALS)) {
+            return { icon: '⚡', title: 'Manager - Has management permissions' };
+        }
+        
+        // Financial focused (has disburse or disburse maturity)
+        if (permArray.includes(PERM.DISBURSE) || permArray.includes(PERM.DISBURSE_MATURITY)) {
+            return { icon: '💼', title: 'Financial - Has disbursement permissions' };
+        }
+        
+        // Custom/partial permissions
+        return { icon: '🔧', title: 'Custom permissions' };
     };
 
     // Followees editor helpers - topic-based (modern)
@@ -1178,7 +1248,7 @@ function Neuron() {
                                             const principalStr = p.principal.toString();
                                             const perms = getPermissionsFromArray(p.permission_type || []);
                                             const permCount = p.permission_type?.length || 0;
-                                            const isOwner = getOwnerPrincipals(neuronData).includes(principalStr);
+                                            const symbol = getPrincipalSymbol(p);
                                             
                                             return (
                                                 <div key={index} style={{
@@ -1190,7 +1260,7 @@ function Neuron() {
                                                     gap: '8px'
                                                 }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                                        {isOwner && <span style={{ fontSize: '16px' }} title="Full permissions">👑</span>}
+                                                        <span style={{ fontSize: '16px' }} title={symbol.title}>{symbol.icon}</span>
                                                         <PrincipalDisplay 
                                                             principal={p.principal}
                                                             displayInfo={principalDisplayInfo.get(principalStr)}
@@ -1286,8 +1356,44 @@ function Neuron() {
                                                 }}
                                             />
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '13px', fontWeight: 'bold' }}>
-                                                    Select Permissions:
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '13px', fontWeight: 'bold' }}>
+                                                        Select Permissions:
+                                                    </div>
+                                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={makeFullOwner}
+                                                            style={{
+                                                                backgroundColor: theme.colors.accent,
+                                                                color: theme.colors.primaryText,
+                                                                border: 'none',
+                                                                borderRadius: '4px',
+                                                                padding: '4px 8px',
+                                                                cursor: 'pointer',
+                                                                fontSize: '11px',
+                                                                fontWeight: 'bold'
+                                                            }}
+                                                        >
+                                                            👑 Make Full Owner
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={makeHotkey}
+                                                            style={{
+                                                                backgroundColor: theme.colors.mutedText,
+                                                                color: theme.colors.primaryText,
+                                                                border: 'none',
+                                                                borderRadius: '4px',
+                                                                padding: '4px 8px',
+                                                                cursor: 'pointer',
+                                                                fontSize: '11px',
+                                                                fontWeight: 'bold'
+                                                            }}
+                                                        >
+                                                            🔑 Make Hotkey
+                                                        </button>
+                                                    </div>
                                                 </div>
                                                 {Object.entries(PERMISSION_INFO).map(([key, info]) => (
                                                     <label
