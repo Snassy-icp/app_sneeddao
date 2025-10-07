@@ -8,6 +8,9 @@ import { useTheme } from './contexts/ThemeContext';
 import { useAuth } from './AuthContext';
 import { getSnsById } from './utils/SnsUtils';
 import { createActor as createSnsGovernanceActor } from 'external/sns_governance';
+import { NeuronDisplay } from './components/NeuronDisplay';
+import { useNaming } from './NamingContext';
+import { VotingPowerCalculator } from './utils/VotingPowerUtils';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -19,6 +22,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
+    const { getNeuronDisplayName } = useNaming();
     const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(false);
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [locksExpanded, setLocksExpanded] = useState(defaultLocksExpanded);
@@ -28,6 +32,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [neuronsLoading, setNeuronsLoading] = useState(false);
     const [neuronsExpanded, setNeuronsExpanded] = useState(false);
     const [expandedNeurons, setExpandedNeurons] = useState(new Set());
+    const [snsRootCanisterId, setSnsRootCanisterId] = useState(null);
+    const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
+    const [votingPowerCalc, setVotingPowerCalc] = useState(null);
 
     // Debug logging for wrap/unwrap buttons
     console.log('TokenCard Debug:', {
@@ -107,7 +114,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         return 'Unknown';
     };
 
-    // Fetch neurons for SNS tokens
+    // Fetch neurons and parameters for SNS tokens
     useEffect(() => {
         if (!isSnsToken || !isAuthenticated || !identity || !token.ledger_canister_id) {
             return;
@@ -136,19 +143,31 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 }
 
                 const governanceCanisterId = snsData.canisters.governance;
+                const rootId = snsData.rootCanisterId;
+                setSnsRootCanisterId(rootId);
                 console.log(`[TokenCard] Fetching neurons for ${token.symbol} from governance:`, governanceCanisterId);
 
                 const governanceActor = createSnsGovernanceActor(governanceCanisterId, { agentOptions: { identity } });
                 
+                // Fetch both neurons and nervous system parameters
                 const principal = identity.getPrincipal();
-                const response = await governanceActor.list_neurons({
-                    of_principal: [principal],
-                    limit: 100,
-                    start_page_at: []
-                });
+                const [neuronsResponse, paramsResponse] = await Promise.all([
+                    governanceActor.list_neurons({
+                        of_principal: [principal],
+                        limit: 100,
+                        start_page_at: []
+                    }),
+                    governanceActor.get_nervous_system_parameters(null)
+                ]);
 
-                console.log(`[TokenCard] Found ${response.neurons.length} neurons for ${token.symbol}`);
-                setNeurons(response.neurons || []);
+                console.log(`[TokenCard] Found ${neuronsResponse.neurons.length} neurons for ${token.symbol}`);
+                setNeurons(neuronsResponse.neurons || []);
+                setNervousSystemParameters(paramsResponse);
+                
+                // Initialize voting power calculator
+                const calc = new VotingPowerCalculator();
+                calc.setParams(paramsResponse);
+                setVotingPowerCalc(calc);
             } catch (error) {
                 console.error(`[TokenCard] Error fetching neurons for ${token.symbol}:`, error);
             } finally {
@@ -745,15 +764,19 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                             borderTop: `1px solid ${theme.colors.border}`
                                                         }}>
                                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                                     <span style={{ color: theme.colors.secondaryText }}>Neuron ID:</span>
-                                                                    <span style={{ 
-                                                                        color: theme.colors.primaryText,
-                                                                        fontFamily: 'monospace',
-                                                                        fontSize: '0.85rem'
-                                                                    }}>
-                                                                        {neuronIdHex}
-                                                                    </span>
+                                                                    {snsRootCanisterId && (
+                                                                        <NeuronDisplay
+                                                                            neuronId={neuronIdHex}
+                                                                            snsRoot={snsRootCanisterId}
+                                                                            displayInfo={getNeuronDisplayName(neuronIdHex, snsRootCanisterId)}
+                                                                            showCopyButton={true}
+                                                                            enableContextMenu={true}
+                                                                            isAuthenticated={isAuthenticated}
+                                                                            style={{ wordBreak: 'break-all' }}
+                                                                        />
+                                                                    )}
                                                                 </div>
                                                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                                     <span style={{ color: theme.colors.secondaryText }}>Stake:</span>
@@ -774,13 +797,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                                     <span style={{ color: theme.colors.secondaryText }}>Voting Power:</span>
                                                                     <span style={{ color: theme.colors.primaryText }}>
-                                                                        {formatAmount(neuron.voting_power || 0n, 0)}
+                                                                        {votingPowerCalc ? formatAmount(votingPowerCalc.getVotingPower(neuron), 0) : 'Calculating...'}
                                                                     </span>
                                                                 </div>
                                                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                                     <span style={{ color: theme.colors.secondaryText }}>Created:</span>
                                                                     <span style={{ color: theme.colors.primaryText }}>
-                                                                        {dateToReadable(Number(neuron.created_timestamp_seconds || 0n) * 1000)}
+                                                                        {dateToReadable(new Date(Number(neuron.created_timestamp_seconds || 0n) * 1000))}
                                                                     </span>
                                                                 </div>
                                                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
