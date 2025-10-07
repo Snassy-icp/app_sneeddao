@@ -75,6 +75,8 @@ function Neuron() {
     const [topicInput, setTopicInput] = useState('Governance');
     const [followeeInput, setFolloweeInput] = useState('');
     const [followeeAliasInput, setFolloweeAliasInput] = useState('');
+    const [isPermissionsExpanded, setIsPermissionsExpanded] = useState(false);
+    const [isFolloweesExpanded, setIsFolloweesExpanded] = useState(false);
     
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames, fetchAllNames, principalNames, principalNicknames } = useNaming();
@@ -829,6 +831,21 @@ function Neuron() {
         fetchPrincipalInfo();
     }, [neuronData, principalNames, principalNicknames]);
 
+    // Auto-expand followees section if there are any followees
+    useEffect(() => {
+        if (!neuronData) return;
+        
+        const hasFollowees = neuronData.followees && neuronData.followees.length > 0;
+        const hasTopicFollowees = neuronData.topic_followees && 
+            neuronData.topic_followees[0] && 
+            neuronData.topic_followees[0].topic_id_to_followees && 
+            neuronData.topic_followees[0].topic_id_to_followees.length > 0;
+        
+        if (hasFollowees || hasTopicFollowees) {
+            setIsFolloweesExpanded(true);
+        }
+    }, [neuronData]);
+
     // Fetch nervous system parameters for voting power calculation
     useEffect(() => {
         const fetchNervousSystemParameters = async () => {
@@ -1131,7 +1148,29 @@ function Neuron() {
 
                                 {/* Add permissions section */}
                                 <div style={{ marginTop: '20px' }}>
-                                    <h3 style={{ color: '#888', marginBottom: '12px' }}>Principals & Permissions</h3>
+                                    <div 
+                                        style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            gap: '8px', 
+                                            marginBottom: '12px',
+                                            cursor: 'pointer',
+                                            userSelect: 'none'
+                                        }}
+                                        onClick={() => setIsPermissionsExpanded(!isPermissionsExpanded)}
+                                    >
+                                        <span style={{ 
+                                            color: '#888',
+                                            fontSize: '16px',
+                                            transform: isPermissionsExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                            transition: 'transform 0.2s ease'
+                                        }}>
+                                            ▶
+                                        </span>
+                                        <h3 style={{ color: '#888', margin: 0 }}>Principals & Permissions</h3>
+                                    </div>
+                                    {isPermissionsExpanded && (
+                                        <>
                                     {/* List all principals with their permissions */}
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         {neuronData.permissions.map((p, index) => {
@@ -1322,11 +1361,36 @@ function Neuron() {
                                             {actionMsg && <div style={{ color: theme.colors.accent, fontSize: '12px' }}>{actionMsg}</div>}
                                         </div>
                                     )}
+                                        </>
+                                    )}
                                 </div>
 
                                 {/* Add followees section */}
                                 <div style={{ marginTop: '20px' }}>
-                                    <h3 style={{ color: '#888', marginBottom: '12px' }}>Following</h3>
+                                    <div 
+                                        style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            gap: '8px', 
+                                            marginBottom: '12px',
+                                            cursor: 'pointer',
+                                            userSelect: 'none'
+                                        }}
+                                        onClick={() => setIsFolloweesExpanded(!isFolloweesExpanded)}
+                                    >
+                                        <span style={{ 
+                                            color: '#888',
+                                            fontSize: '16px',
+                                            transform: isFolloweesExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                            transition: 'transform 0.2s ease'
+                                        }}>
+                                            ▶
+                                        </span>
+                                        <h3 style={{ color: '#888', margin: 0 }}>Following</h3>
+                                    </div>
+                                    {isFolloweesExpanded && (
+                                        <>
+                                    
                                     {(() => {
                                         const hasFollowees = neuronData.followees && neuronData.followees.length > 0;
                                         const hasTopicFollowees = neuronData.topic_followees && 
@@ -1523,6 +1587,8 @@ function Neuron() {
                                             </div>
                                             {actionMsg && <div style={{ color: theme.colors.mutedText }}>{actionMsg}</div>}
                                         </div>
+                                    )}
+                                        </>
                                     )}
                                 </div>
                             </div>
