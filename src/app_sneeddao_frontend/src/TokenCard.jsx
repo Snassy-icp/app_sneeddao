@@ -561,60 +561,107 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 return;
             }
             
+            // Check if trying to send to self
+            const userPrincipal = identity.getPrincipal();
+            if (recipientPrincipal.toString() === userPrincipal.toString()) {
+                alert('You cannot send a neuron to yourself.');
+                setNeuronActionBusy(false);
+                setSendNeuronProgress('');
+                return;
+            }
+            
             const governanceActor = createSnsGovernanceActor(governanceCanisterId, {
                 agentOptions: { identity }
             });
             
-            // Step 1: Add recipient with full permissions
-            setSendNeuronProgress('Adding recipient with full permissions...');
+            // Step 1: Check current neuron state and recipient's existing permissions
+            setSendNeuronProgress('Checking neuron permissions...');
+            
+            const neuronIdBytes = new Uint8Array(neuronIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            const currentNeuronResult = await governanceActor.get_neuron({
+                neuron_id: [{ id: Array.from(neuronIdBytes) }]
+            });
+            
+            if (!currentNeuronResult.result || currentNeuronResult.result.length === 0) {
+                alert('Failed to fetch neuron data');
+                setNeuronActionBusy(false);
+                setSendNeuronProgress('');
+                return;
+            }
+            
+            const currentNeuron = currentNeuronResult.result[0].Neuron || currentNeuronResult.result[0];
+            const recipientPerms = currentNeuron.permissions.find(p => 
+                p.principal?.[0]?.toString() === recipientPrincipal.toString()
+            );
             
             // All 10 permissions (excluding UNSPECIFIED which is 0)
             const fullPermissions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
             
-            const addResult = await manageNeuron(neuronIdHex, {
-                AddNeuronPermissions: {
-                    principal_id: [recipientPrincipal],
-                    permissions_to_add: [{ permissions: fullPermissions }]
+            // Step 2: Add recipient with full permissions if they don't already have them
+            const hasFullPermissions = recipientPerms && recipientPerms.permission_type.length === 10;
+            
+            if (!hasFullPermissions) {
+                setSendNeuronProgress('Adding recipient with full permissions...');
+                
+                const addResult = await manageNeuron(neuronIdHex, {
+                    AddNeuronPermissions: {
+                        principal_id: [recipientPrincipal],
+                        permissions_to_add: [{ permissions: fullPermissions }]
+                    }
+                });
+                
+                if (!addResult.ok) {
+                    alert(`Failed to add recipient: ${addResult.err}`);
+                    setNeuronActionBusy(false);
+                    setSendNeuronProgress('');
+                    return;
                 }
-            });
-            
-            if (!addResult.ok) {
-                alert(`Failed to add recipient: ${addResult.err}`);
-                setNeuronActionBusy(false);
-                setSendNeuronProgress('');
-                return;
-            }
-            
-            // Step 2: Verify recipient was added
-            setSendNeuronProgress('Verifying recipient was added...');
-            
-            const neuronIdBytes = new Uint8Array(neuronIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-            const verifyResult = await governanceActor.get_neuron({
-                neuron_id: [{ id: Array.from(neuronIdBytes) }]
-            });
-            
-            if (!verifyResult.result || verifyResult.result.length === 0) {
-                alert('Failed to verify neuron after adding recipient');
-                setNeuronActionBusy(false);
-                setSendNeuronProgress('');
-                return;
-            }
-            
-            const updatedNeuron = verifyResult.result[0].Neuron || verifyResult.result[0];
-            const recipientPerms = updatedNeuron.permissions.find(p => 
-                p.principal?.[0]?.toString() === recipientPrincipal.toString()
-            );
-            
-            if (!recipientPerms || recipientPerms.permission_type.length !== 10) {
-                alert('Failed to verify recipient has full permissions');
-                setNeuronActionBusy(false);
-                setSendNeuronProgress('');
-                return;
+                
+                // Verify recipient was added
+                setSendNeuronProgress('Verifying recipient was added...');
+                
+                const verifyResult = await governanceActor.get_neuron({
+                    neuron_id: [{ id: Array.from(neuronIdBytes) }]
+                });
+                
+                if (!verifyResult.result || verifyResult.result.length === 0) {
+                    alert('Failed to verify neuron after adding recipient');
+                    setNeuronActionBusy(false);
+                    setSendNeuronProgress('');
+                    return;
+                }
+                
+                const verifiedNeuron = verifyResult.result[0].Neuron || verifyResult.result[0];
+                const verifiedRecipientPerms = verifiedNeuron.permissions.find(p => 
+                    p.principal?.[0]?.toString() === recipientPrincipal.toString()
+                );
+                
+                if (!verifiedRecipientPerms || verifiedRecipientPerms.permission_type.length !== 10) {
+                    alert('Failed to verify recipient has full permissions');
+                    setNeuronActionBusy(false);
+                    setSendNeuronProgress('');
+                    return;
+                }
+            } else {
+                console.log('[TokenCard] Recipient already has full permissions, skipping add step');
             }
             
             // Step 3: Remove all other principals
             setSendNeuronProgress('Removing all other principals...');
             
+            // Re-fetch neuron to get current state
+            const finalNeuronResult = await governanceActor.get_neuron({
+                neuron_id: [{ id: Array.from(neuronIdBytes) }]
+            });
+            
+            if (!finalNeuronResult.result || finalNeuronResult.result.length === 0) {
+                alert('Failed to fetch neuron for cleanup');
+                setNeuronActionBusy(false);
+                setSendNeuronProgress('');
+                return;
+            }
+            
+            const updatedNeuron = finalNeuronResult.result[0].Neuron || finalNeuronResult.result[0];
             const principalsToRemove = updatedNeuron.permissions
                 .filter(p => p.principal?.[0]?.toString() !== recipientPrincipal.toString())
                 .map(p => p.principal[0]);
