@@ -594,11 +594,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 p.principal?.[0]?.toString() === recipientPrincipal.toString()
             );
             
-            // All 10 permissions (excluding UNSPECIFIED which is 0)
-            const fullPermissions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            // All 11 permissions (including UNSPECIFIED which is 0)
+            const fullPermissions = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
             
             // Step 2: Add recipient with full permissions if they don't already have them
-            const hasFullPermissions = recipientPerms && recipientPerms.permission_type.length === 10;
+            const hasFullPermissions = recipientPerms && recipientPerms.permission_type.length === 11;
             
             if (!hasFullPermissions) {
                 setSendNeuronProgress('Adding recipient with full permissions...');
@@ -636,7 +636,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     p.principal?.[0]?.toString() === recipientPrincipal.toString()
                 );
                 
-                if (!verifiedRecipientPerms || verifiedRecipientPerms.permission_type.length !== 10) {
+                if (!verifiedRecipientPerms || verifiedRecipientPerms.permission_type.length !== 11) {
                     alert('Failed to verify recipient has full permissions');
                     setNeuronActionBusy(false);
                     setSendNeuronProgress('');
