@@ -1413,6 +1413,28 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                                             ➕ Increase Stake
                                                                                         </button>
                                                                                     )}
+                                                                                    
+                                                                                    {/* Manage button - link to detailed neuron page */}
+                                                                                    <a
+                                                                                        href={`/neuron?neuronid=${neuronIdHex}&sns=${snsRootCanisterId}`}
+                                                                                        style={{
+                                                                                            background: theme.colors.secondaryBg,
+                                                                                            color: theme.colors.primaryText,
+                                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                                            borderRadius: '6px',
+                                                                                            padding: '8px 12px',
+                                                                                            cursor: 'pointer',
+                                                                                            fontSize: '0.85rem',
+                                                                                            fontWeight: '500',
+                                                                                            textDecoration: 'none',
+                                                                                            display: 'inline-block',
+                                                                                            transition: 'background 0.2s ease'
+                                                                                        }}
+                                                                                        onMouseEnter={(e) => e.target.style.background = theme.colors.border}
+                                                                                        onMouseLeave={(e) => e.target.style.background = theme.colors.secondaryBg}
+                                                                                    >
+                                                                                        ⚙️ Manage
+                                                                                    </a>
                                                                                 </div>
                                                                             )}
                                                                         </div>
