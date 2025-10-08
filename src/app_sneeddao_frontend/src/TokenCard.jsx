@@ -573,10 +573,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             
             const addResult = await manageNeuron(neuronIdHex, {
                 AddNeuronPermissions: {
-                    permissions_to_add: [{
-                        permissions: fullPermissions,
-                        principal: [recipientPrincipal]
-                    }]
+                    principal_id: [recipientPrincipal],
+                    permissions_to_add: [{ permissions: fullPermissions }]
                 }
             });
             
@@ -622,17 +620,19 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 .map(p => p.principal[0]);
             
             if (principalsToRemove.length > 0) {
-                const removeResult = await manageNeuron(neuronIdHex, {
-                    RemoveNeuronPermissions: {
-                        permissions_to_remove: principalsToRemove.map(principal => ({
-                            permissions: fullPermissions, // Remove all permissions
-                            principal: [principal]
-                        }))
+                // Remove each principal individually
+                for (const principal of principalsToRemove) {
+                    const removeResult = await manageNeuron(neuronIdHex, {
+                        RemoveNeuronPermissions: {
+                            principal_id: [principal],
+                            permissions_to_remove: [{ permissions: fullPermissions }]
+                        }
+                    });
+                    
+                    if (!removeResult.ok) {
+                        alert(`Warning: Recipient was added but failed to remove principal ${principal.toString()}: ${removeResult.err}. The neuron may have multiple owners.`);
+                        break; // Stop on first error
                     }
-                });
-                
-                if (!removeResult.ok) {
-                    alert(`Warning: Recipient was added but failed to remove other principals: ${removeResult.err}. The neuron may have multiple owners.`);
                 }
             }
             
