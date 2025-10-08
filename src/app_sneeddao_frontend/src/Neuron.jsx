@@ -541,6 +541,16 @@ function Neuron() {
         try {
             setActionBusy(true); setActionMsg('Updating permissions...'); setError('');
             const principal = Principal.fromText(managePrincipalInput);
+            
+            // Prevent users from modifying their own permissions
+            const userPrincipal = identity?.getPrincipal()?.toString();
+            if (userPrincipal && principal.toString() === userPrincipal) {
+                setError('You cannot modify your own permissions. Please ask another principal with management rights to change your permissions.');
+                setActionBusy(false);
+                setActionMsg('');
+                return;
+            }
+            
             const newPerms = getPermissionsArray(selectedPermissions);
             
             // If editing existing principal, first remove all their permissions, then add new ones
@@ -1262,6 +1272,7 @@ function Neuron() {
                                             const perms = getPermissionsFromArray(p.permission_type || []);
                                             const permCount = p.permission_type?.length || 0;
                                             const symbol = getPrincipalSymbol(p);
+                                            const isCurrentUser = identity && principalStr === identity.getPrincipal()?.toString();
                                             
                                             return (
                                                 <div key={index} style={{
@@ -1280,6 +1291,18 @@ function Neuron() {
                                                             showCopyButton={true}
                                                             short={true}
                                                         />
+                                                        {isCurrentUser && (
+                                                            <span style={{ 
+                                                                color: theme.colors.accent, 
+                                                                fontSize: '12px', 
+                                                                fontWeight: '600',
+                                                                backgroundColor: theme.colors.accent + '20',
+                                                                padding: '2px 8px',
+                                                                borderRadius: '12px'
+                                                            }}>
+                                                                (You)
+                                                            </span>
+                                                        )}
                                                         <span style={{ color: theme.colors.mutedText, fontSize: '12px', marginLeft: 'auto' }}>
                                                             {permCount} permission{permCount !== 1 ? 's' : ''}
                                                         </span>
@@ -1308,7 +1331,7 @@ function Neuron() {
                                                             );
                                                         })}
                                                     </div>
-                                                    {currentUserHasPermission(PERM.MANAGE_PRINCIPALS) && (
+                                                    {currentUserHasPermission(PERM.MANAGE_PRINCIPALS) && !isCurrentUser && (
                                                         <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                                                             <button
                                                                 disabled={actionBusy}
