@@ -355,7 +355,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 ? token.ledger_canister_id 
                 : token.ledger_canister_id?.toString();
             
-            const ledgerActor = createLedgerActor(ledgerIdString);
+            const ledgerActor = createLedgerActor(ledgerIdString, {
+                agentOptions: { identity }
+            });
             
             // Ensure subaccount is exactly 32 bytes (it should already be from SHA-256)
             const subaccount32 = new Uint8Array(32);
@@ -470,7 +472,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 ? token.ledger_canister_id 
                 : token.ledger_canister_id?.toString();
             
-            const ledgerActor = createLedgerActor(ledgerIdString);
+            const ledgerActor = createLedgerActor(ledgerIdString, {
+                agentOptions: { identity }
+            });
             
             // The neuron's subaccount is the neuron ID itself (as bytes)
             const neuronIdBytes = new Uint8Array(neuronIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
