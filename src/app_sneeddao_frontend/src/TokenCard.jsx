@@ -348,6 +348,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             
             const { nonce, subaccount } = nonceData;
             console.log(`[TokenCard] Creating neuron with nonce ${nonce}`);
+            console.log(`[TokenCard] Subaccount (hex):`, Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join(''));
+            console.log(`[TokenCard] Controller principal:`, identity.getPrincipal().toString());
             
             // Step 2: Transfer tokens to the neuron's subaccount
             setCreateNeuronProgress('Transferring tokens to neuron subaccount...');
@@ -415,6 +417,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             // Ensure subaccount is exactly 32 bytes for ClaimOrRefresh
             const claimSubaccount = new Uint8Array(32);
             claimSubaccount.set(subaccount, 0);
+            
+            console.log(`[TokenCard] ClaimOrRefresh details:`);
+            console.log(`- Subaccount (hex):`, Array.from(claimSubaccount).map(b => b.toString(16).padStart(2, '0')).join(''));
+            console.log(`- Memo:`, nonce);
+            console.log(`- Controller:`, userPrincipal.toString());
             
             const claimResult = await governanceActor.manage_neuron({
                 subaccount: Array.from(claimSubaccount),
@@ -1879,7 +1886,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             width: '100%',
                             maxHeight: '90vh',
                             overflow: 'auto',
-                            border: `1px solid ${theme.colors.border}`
+                            border: `1px solid ${theme.colors.border}`,
+                            pointerEvents: 'auto'
                         }}
                         onClick={(e) => e.stopPropagation()}
                         >
