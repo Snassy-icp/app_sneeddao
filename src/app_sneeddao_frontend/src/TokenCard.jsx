@@ -518,9 +518,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             }
             
             // Step 2: Call ClaimOrRefresh to update the neuron
+            // For existing neurons, use NeuronId variant (not MemoAndController)
             const result = await manageNeuron(neuronIdHex, {
                 ClaimOrRefresh: {
-                    by: []
+                    by: [{ NeuronId: {} }]
                 }
             });
             

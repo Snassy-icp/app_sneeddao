@@ -278,3 +278,30 @@
         const digest = await crypto.subtle.digest("SHA-256", data);
         return new Uint8Array(digest);
     }
+
+    // Stake TACO tokens to a neuron
+    const stakeToNeuron = async (neuronId: Uint8Array, amount: bigint) => {
+        try {
+            if (!userLoggedIn.value) {
+                throw new Error('User must be logged in');
+            }
+
+            const tacoTokenPrincipal = 'kknbx-zyaaa-aaaaq-aae4a-cai'; // TACO token canister
+            const snsGovernancePrincipal = 'lhdfz-wqaaa-aaaaq-aae3q-cai'; // TACO SNS Governance
+
+            // Step 1: Transfer TACO tokens to SNS Governance with neuron ID as subaccount
+            // console.log('Transferring TACO tokens to neuron subaccount...');
+            await transferToNeuronSubaccount(tacoTokenPrincipal, snsGovernancePrincipal, neuronId, amount);
+
+            // Step 2: Claim/refresh the neuron to recognize the new stake
+            // console.log('Claiming/refreshing neuron...');
+            await claimOrRefreshNeuron(neuronId);
+
+            // console.log('Staking completed successfully!');
+            return true;
+        } catch (error: any) {
+            console.error('Error staking to neuron:', error);
+            throw error;
+        }
+    }
+
