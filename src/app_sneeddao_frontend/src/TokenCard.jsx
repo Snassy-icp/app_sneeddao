@@ -663,16 +663,23 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             
             const updatedNeuron = finalNeuronResult.result[0].Neuron || finalNeuronResult.result[0];
             const principalsToRemove = updatedNeuron.permissions
-                .filter(p => p.principal?.[0]?.toString() !== recipientPrincipal.toString())
-                .map(p => p.principal[0]);
+                .filter(p => p.principal?.[0]?.toString() !== recipientPrincipal.toString());
             
             if (principalsToRemove.length > 0) {
-                // Remove each principal individually
-                for (const principal of principalsToRemove) {
+                // Remove each principal individually, using their actual permissions
+                for (const permEntry of principalsToRemove) {
+                    const principal = permEntry.principal[0];
+                    const theirPermissions = permEntry.permission_type || [];
+                    
+                    if (theirPermissions.length === 0) {
+                        console.log(`[TokenCard] Skipping principal ${principal.toString()} - no permissions to remove`);
+                        continue;
+                    }
+                    
                     const removeResult = await manageNeuron(neuronIdHex, {
                         RemoveNeuronPermissions: {
                             principal_id: [principal],
-                            permissions_to_remove: [{ permissions: fullPermissions }]
+                            permissions_to_remove: [{ permissions: theirPermissions }]
                         }
                     });
                     
