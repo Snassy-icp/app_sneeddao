@@ -50,6 +50,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [createNeuronAmount, setCreateNeuronAmount] = useState('');
     const [createNeuronDissolveDelay, setCreateNeuronDissolveDelay] = useState('');
     const [createNeuronProgress, setCreateNeuronProgress] = useState('');
+    const [showSendNeuronDialog, setShowSendNeuronDialog] = useState(false);
+    const [sendNeuronRecipient, setSendNeuronRecipient] = useState('');
+    const [sendNeuronProgress, setSendNeuronProgress] = useState('');
 
     // Debug logging for wrap/unwrap buttons
     console.log('TokenCard Debug:', {
@@ -540,6 +543,113 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         setManagingNeuronId(null);
         setShowIncreaseStakeDialog(false);
         setIncreaseStakeAmount('');
+    };
+
+    const sendNeuron = async (neuronIdHex, recipientPrincipalText) => {
+        setNeuronActionBusy(true);
+        setSendNeuronProgress('Validating recipient principal...');
+        
+        try {
+            // Validate the recipient principal
+            let recipientPrincipal;
+            try {
+                recipientPrincipal = Principal.fromText(recipientPrincipalText);
+            } catch (error) {
+                alert('Invalid principal format. Please enter a valid Internet Computer principal.');
+                setNeuronActionBusy(false);
+                setSendNeuronProgress('');
+                return;
+            }
+            
+            const governanceActor = createSnsGovernanceActor(governanceCanisterId, {
+                agentOptions: { identity }
+            });
+            
+            // Step 1: Add recipient with full permissions
+            setSendNeuronProgress('Adding recipient with full permissions...');
+            
+            // All 10 permissions (excluding UNSPECIFIED which is 0)
+            const fullPermissions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            
+            const addResult = await manageNeuron(neuronIdHex, {
+                AddNeuronPermissions: {
+                    permissions_to_add: [{
+                        permissions: fullPermissions,
+                        principal: [recipientPrincipal]
+                    }]
+                }
+            });
+            
+            if (!addResult.ok) {
+                alert(`Failed to add recipient: ${addResult.err}`);
+                setNeuronActionBusy(false);
+                setSendNeuronProgress('');
+                return;
+            }
+            
+            // Step 2: Verify recipient was added
+            setSendNeuronProgress('Verifying recipient was added...');
+            
+            const neuronIdBytes = new Uint8Array(neuronIdHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            const verifyResult = await governanceActor.get_neuron({
+                neuron_id: [{ id: Array.from(neuronIdBytes) }]
+            });
+            
+            if (!verifyResult.result || verifyResult.result.length === 0) {
+                alert('Failed to verify neuron after adding recipient');
+                setNeuronActionBusy(false);
+                setSendNeuronProgress('');
+                return;
+            }
+            
+            const updatedNeuron = verifyResult.result[0].Neuron || verifyResult.result[0];
+            const recipientPerms = updatedNeuron.permissions.find(p => 
+                p.principal?.[0]?.toString() === recipientPrincipal.toString()
+            );
+            
+            if (!recipientPerms || recipientPerms.permission_type.length !== 10) {
+                alert('Failed to verify recipient has full permissions');
+                setNeuronActionBusy(false);
+                setSendNeuronProgress('');
+                return;
+            }
+            
+            // Step 3: Remove all other principals
+            setSendNeuronProgress('Removing all other principals...');
+            
+            const principalsToRemove = updatedNeuron.permissions
+                .filter(p => p.principal?.[0]?.toString() !== recipientPrincipal.toString())
+                .map(p => p.principal[0]);
+            
+            if (principalsToRemove.length > 0) {
+                const removeResult = await manageNeuron(neuronIdHex, {
+                    RemoveNeuronPermissions: {
+                        permissions_to_remove: principalsToRemove.map(principal => ({
+                            permissions: fullPermissions, // Remove all permissions
+                            principal: [principal]
+                        }))
+                    }
+                });
+                
+                if (!removeResult.ok) {
+                    alert(`Warning: Recipient was added but failed to remove other principals: ${removeResult.err}. The neuron may have multiple owners.`);
+                }
+            }
+            
+            setSendNeuronProgress('Refreshing neuron list...');
+            await refetchNeurons();
+            
+            alert(`Successfully sent neuron to ${recipientPrincipalText}!`);
+        } catch (error) {
+            console.error('[TokenCard] Error sending neuron:', error);
+            alert(`Error: ${error.message || String(error)}`);
+        }
+        
+        setNeuronActionBusy(false);
+        setSendNeuronProgress('');
+        setShowSendNeuronDialog(false);
+        setSendNeuronRecipient('');
+        setManagingNeuronId(null);
     };
 
     // Fetch neurons and parameters for SNS tokens
@@ -1414,6 +1524,30 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                                         </button>
                                                                                     )}
                                                                                     
+                                                                                    {/* Send button - transfer neuron to another principal */}
+                                                                                    {userHasPermission(neuron, PERM.MANAGE_PRINCIPALS) && (
+                                                                                        <button
+                                                                                            onClick={() => {
+                                                                                                setManagingNeuronId(neuronIdHex);
+                                                                                                setShowSendNeuronDialog(true);
+                                                                                            }}
+                                                                                            disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                                            style={{
+                                                                                                background: theme.colors.accent,
+                                                                                                color: theme.colors.primaryBg,
+                                                                                                border: 'none',
+                                                                                                borderRadius: '6px',
+                                                                                                padding: '8px 12px',
+                                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                                                fontSize: '0.85rem',
+                                                                                                fontWeight: '500',
+                                                                                                opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                                            }}
+                                                                                        >
+                                                                                            📤 Send
+                                                                                        </button>
+                                                                                    )}
+                                                                                    
                                                                                     {/* Manage button - link to detailed neuron page */}
                                                                                     <a
                                                                                         href={`/neuron?neuronid=${neuronIdHex}&sns=${snsRootCanisterId}`}
@@ -2204,6 +2338,192 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     </div>
                 );
             })()}
+
+            {/* Send Neuron Dialog */}
+            {showSendNeuronDialog && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000,
+                        padding: '20px'
+                    }}
+                    onClick={() => {
+                        if (!neuronActionBusy && !sendNeuronProgress) {
+                            setShowSendNeuronDialog(false);
+                            setSendNeuronRecipient('');
+                            setManagingNeuronId(null);
+                        }
+                    }}
+                >
+                    <div style={{
+                        background: theme.colors.primaryBg,
+                        borderRadius: '12px',
+                        padding: '24px',
+                        maxWidth: '600px',
+                        width: '100%',
+                        maxHeight: '90vh',
+                        overflow: 'auto',
+                        border: `1px solid ${theme.colors.border}`,
+                        pointerEvents: 'auto'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 style={{ color: theme.colors.primaryText, marginTop: 0 }}>
+                            📤 Send Neuron
+                        </h3>
+                        
+                        {/* Progress Indicator */}
+                        {sendNeuronProgress && (
+                            <div style={{
+                                background: theme.colors.accent + '20',
+                                border: `2px solid ${theme.colors.accent}`,
+                                borderRadius: '8px',
+                                padding: '16px',
+                                marginBottom: '20px'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                                    <div className="spinner" style={{ width: '20px', height: '20px' }}></div>
+                                    <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                        {sendNeuronProgress}
+                                    </span>
+                                </div>
+                                <p style={{ 
+                                    color: theme.colors.warning || '#f59e0b', 
+                                    fontSize: '0.85rem', 
+                                    margin: 0,
+                                    fontWeight: '500'
+                                }}>
+                                    ⚠️ Do not close this window until the process completes!
+                                </p>
+                            </div>
+                        )}
+                        
+                        {/* Warning Box */}
+                        <div style={{
+                            background: theme.colors.warning + '20' || '#f59e0b20',
+                            border: `2px solid ${theme.colors.warning || '#f59e0b'}`,
+                            borderRadius: '8px',
+                            padding: '16px',
+                            marginBottom: '20px'
+                        }}>
+                            <h4 style={{ color: theme.colors.primaryText, marginTop: 0, marginBottom: '12px' }}>
+                                ⚠️ Important Information
+                            </h4>
+                            <div style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', lineHeight: '1.5' }}>
+                                <p style={{ marginTop: 0 }}>
+                                    <strong>Sending a neuron will:</strong>
+                                </p>
+                                <ol style={{ marginLeft: '20px', paddingLeft: 0 }}>
+                                    <li>Add the recipient principal with full permissions</li>
+                                    <li>Verify the recipient was added successfully</li>
+                                    <li>Remove all other principals (including you)</li>
+                                </ol>
+                                <p>
+                                    <strong>⚠️ After sending, you will lose all access to this neuron.</strong>
+                                </p>
+                                <p>
+                                    Only send to a principal that belongs to a recipient who can accept it, such as:
+                                </p>
+                                <ul style={{ marginLeft: '20px', paddingLeft: 0 }}>
+                                    <li>Another user using Sneed Wallet</li>
+                                    <li>The NNS wallet (note: NNS wallet can receive but cannot transfer neurons onwards)</li>
+                                </ul>
+                                <p style={{ marginBottom: 0 }}>
+                                    <strong>Need more control?</strong> Use the <strong>"Manage"</strong> button to access the "Principals & Permissions" section where you can add/remove principals and set custom permissions.
+                                </p>
+                            </div>
+                        </div>
+                        
+                        {/* Recipient Input */}
+                        <div style={{ marginBottom: '24px' }}>
+                            <label style={{ 
+                                display: 'block', 
+                                color: theme.colors.primaryText, 
+                                fontWeight: '600',
+                                marginBottom: '8px'
+                            }}>
+                                Recipient Principal:
+                            </label>
+                            <input
+                                type="text"
+                                value={sendNeuronRecipient}
+                                onChange={(e) => setSendNeuronRecipient(e.target.value)}
+                                placeholder="Enter recipient's Internet Computer principal"
+                                disabled={neuronActionBusy || sendNeuronProgress}
+                                style={{
+                                    width: '100%',
+                                    padding: '12px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    background: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
+                                    fontSize: '0.9rem',
+                                    boxSizing: 'border-box',
+                                    fontFamily: 'monospace'
+                                }}
+                            />
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                            <button
+                                onClick={() => {
+                                    setShowSendNeuronDialog(false);
+                                    setSendNeuronRecipient('');
+                                    setManagingNeuronId(null);
+                                }}
+                                disabled={neuronActionBusy || sendNeuronProgress}
+                                style={{
+                                    background: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '10px 20px',
+                                    cursor: (neuronActionBusy || sendNeuronProgress) ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '500',
+                                    opacity: (neuronActionBusy || sendNeuronProgress) ? 0.5 : 1
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (!sendNeuronRecipient.trim()) {
+                                        alert('Please enter a recipient principal');
+                                        return;
+                                    }
+                                    if (!confirm('Are you sure you want to send this neuron? You will lose all access to it.')) {
+                                        return;
+                                    }
+                                    sendNeuron(managingNeuronId, sendNeuronRecipient.trim());
+                                }}
+                                disabled={neuronActionBusy || sendNeuronProgress || !sendNeuronRecipient.trim()}
+                                style={{
+                                    background: theme.colors.warning || '#f59e0b',
+                                    color: theme.colors.primaryBg,
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '10px 20px',
+                                    cursor: (neuronActionBusy || sendNeuronProgress || !sendNeuronRecipient.trim()) ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '500',
+                                    opacity: (neuronActionBusy || sendNeuronProgress || !sendNeuronRecipient.trim()) ? 0.6 : 1
+                                }}
+                            >
+                                {neuronActionBusy || sendNeuronProgress ? 'Sending...' : 'Send Neuron'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
