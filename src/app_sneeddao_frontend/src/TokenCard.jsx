@@ -303,26 +303,33 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         }
     };
 
-    // Compute neuron subaccount from principal and nonce
-    // This follows the SNS neuron subaccount derivation
-    const computeNeuronSubaccount = (principal, nonce) => {
-        const principalBytes = principal.toUint8Array();
+    // Generate neuron subaccount using the correct SNS formula
+    // SHA256(0x0c, "neuron-stake", principal-bytes, nonce-u64-be)
+    const computeNeuronSubaccount = async (principal, nonce) => {
+        // Convert nonce to u64 big-endian bytes
         const nonceBytes = new Uint8Array(8);
-        // Write nonce as big-endian u64
-        new DataView(nonceBytes.buffer).setBigUint64(0, BigInt(nonce), false);
+        new DataView(nonceBytes.buffer).setBigUint64(0, BigInt(nonce), false); // false = big-endian
         
-        // Subaccount = hash(0x0c + "neuron-stake" + principal + nonce)
-        // For simplicity, we'll use a direct derivation
-        // The actual SNS uses a specific hash, but for finding the subaccount we can use:
-        // subaccount bytes = first 32 bytes of SHA256(principal_bytes || nonce_bytes)
-        const combined = new Uint8Array(principalBytes.length + nonceBytes.length);
-        combined.set(principalBytes);
-        combined.set(nonceBytes, principalBytes.length);
+        // Build the data to hash according to SNS spec
+        const chunks = [
+            Uint8Array.from([0x0c]),                          // len("neuron-stake") = 12 = 0x0c
+            new TextEncoder().encode("neuron-stake"),         // "neuron-stake"
+            principal.toUint8Array(),                         // controller principal bytes
+            nonceBytes,                                       // nonce as u64 big-endian
+        ];
         
-        // Use crypto.subtle.digest to hash
-        return crypto.subtle.digest('SHA-256', combined).then(hash => {
-            return new Uint8Array(hash);
-        });
+        // Concatenate all chunks
+        const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+        const data = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+            data.set(chunk, offset);
+            offset += chunk.length;
+        }
+        
+        // Hash with SHA-256
+        const digest = await crypto.subtle.digest('SHA-256', data);
+        return new Uint8Array(digest);
     };
 
     const createNeuron = async (amountE8s, dissolveDelaySeconds) => {
@@ -350,14 +357,25 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             
             const ledgerActor = createLedgerActor(ledgerIdString);
             
+            // Ensure subaccount is exactly 32 bytes (it should already be from SHA-256)
+            const subaccount32 = new Uint8Array(32);
+            subaccount32.set(subaccount, 0);
+            
+            // Convert nonce to memo bytes (8 bytes, big-endian)
+            const memoBytes = (() => {
+                const buffer = new ArrayBuffer(8);
+                new DataView(buffer).setBigUint64(0, BigInt(nonce), false); // false = big-endian
+                return Array.from(new Uint8Array(buffer));
+            })();
+            
             const transferArgs = {
                 to: {
                     owner: Principal.fromText(governanceCanisterId),
-                    subaccount: [Array.from(subaccount)]
+                    subaccount: [Array.from(subaccount32)]
                 },
                 amount: BigInt(amountE8s),
                 fee: [],
-                memo: [BigInt(nonce)], // Use nonce as memo
+                memo: [memoBytes],
                 from_subaccount: [],
                 created_at_time: []
             };
@@ -380,19 +398,29 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 return;
             }
             
-            // Step 3: Call ClaimOrRefresh with the specific subaccount to create the neuron
+            // Step 3: Wait a moment for the transfer to be processed
+            setCreateNeuronProgress('Waiting for transfer to be processed...');
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+            
+            // Step 4: Call ClaimOrRefresh with the specific subaccount to create the neuron
             setCreateNeuronProgress('Claiming neuron stake...');
             const governanceActor = createSnsGovernanceActor(governanceCanisterId, {
                 agentOptions: { identity }
             });
             
+            const userPrincipal = identity.getPrincipal();
+            
+            // Ensure subaccount is exactly 32 bytes for ClaimOrRefresh
+            const claimSubaccount = new Uint8Array(32);
+            claimSubaccount.set(subaccount, 0);
+            
             const claimResult = await governanceActor.manage_neuron({
-                subaccount: Array.from(subaccount),
+                subaccount: Array.from(claimSubaccount),
                 command: [{
                     ClaimOrRefresh: {
                         by: [{ MemoAndController: { 
-                            memo: BigInt(nonce),
-                            controller: []
+                            memo: nonce, // Use Number, not BigInt
+                            controller: [userPrincipal] // Provide the controller principal
                         }}]
                     }
                 }]
@@ -405,7 +433,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 return;
             }
             
-            // Step 4: Set dissolve delay
+            // Step 5: Set dissolve delay
             setCreateNeuronProgress('Setting dissolve delay...');
             const neuronIdHex = Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join('');
             await manageNeuron(neuronIdHex, {
