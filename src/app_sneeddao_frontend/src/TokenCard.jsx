@@ -53,6 +53,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [createNeuronNonce, setCreateNeuronNonce] = useState('');
     const [createNeuronNonceChecking, setCreateNeuronNonceChecking] = useState(false);
     const [createNeuronNonceFree, setCreateNeuronNonceFree] = useState(null); // null = not checked, true = free, false = taken
+    const [createNeuronAdvancedExpanded, setCreateNeuronAdvancedExpanded] = useState(false);
     const [showSendNeuronDialog, setShowSendNeuronDialog] = useState(false);
     const [sendNeuronRecipient, setSendNeuronRecipient] = useState('');
     const [sendNeuronProgress, setSendNeuronProgress] = useState('');
@@ -503,6 +504,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         setCreateNeuronDissolveDelay('');
         setCreateNeuronNonce('');
         setCreateNeuronNonceFree(null);
+        setCreateNeuronAdvancedExpanded(false);
     };
 
     const increaseNeuronStake = async (neuronIdHex, amountE8s) => {
@@ -2132,6 +2134,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 setCreateNeuronDissolveDelay('');
                                 setCreateNeuronNonce('');
                                 setCreateNeuronNonceFree(null);
+                                setCreateNeuronAdvancedExpanded(false);
                             }
                         }}
                     >
@@ -2314,79 +2317,113 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 />
                             </div>
                             
-                            {/* Nonce Section */}
+                            {/* Advanced Section (Collapsible) */}
                             <div style={{ marginBottom: '24px' }}>
-                                <h4 style={{ color: theme.colors.primaryText, marginTop: 0, marginBottom: '8px' }}>
-                                    Neuron Nonce
-                                </h4>
-                                
-                                <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '12px' }}>
-                                    {createNeuronNonceChecking ? (
-                                        <span>🔍 Searching for free nonce...</span>
-                                    ) : createNeuronNonceFree === true ? (
-                                        <span style={{ color: theme.colors.accent }}>✓ Nonce {createNeuronNonce} is available</span>
-                                    ) : createNeuronNonceFree === false ? (
-                                        <span style={{ color: theme.colors.error }}>✗ Nonce {createNeuronNonce} is already in use</span>
-                                    ) : (
-                                        <span>Enter a nonce and click "Check Free" to verify availability</span>
-                                    )}
-                                </p>
-                                
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                    <input
-                                        type="text"
-                                        value={createNeuronNonce}
-                                        onChange={(e) => {
-                                            const value = e.target.value;
-                                            if (value === '' || /^\d+$/.test(value)) {
-                                                setCreateNeuronNonce(value);
-                                                setCreateNeuronNonceFree(null); // Reset check status when user changes nonce
-                                            }
-                                        }}
-                                        placeholder="Nonce (e.g., 0, 1, 2...)"
-                                        disabled={neuronActionBusy || createNeuronNonceChecking}
-                                        style={{
-                                            flex: 1,
-                                            minWidth: 0,
-                                            padding: '12px',
-                                            borderRadius: '6px',
-                                            border: `1px solid ${
-                                                createNeuronNonceFree === true ? theme.colors.accent :
-                                                createNeuronNonceFree === false ? theme.colors.error :
-                                                theme.colors.border
-                                            }`,
-                                            background: theme.colors.secondaryBg,
-                                            color: theme.colors.primaryText,
-                                            fontSize: '1rem',
-                                            boxSizing: 'border-box'
-                                        }}
-                                    />
-                                    <button
-                                        onClick={async () => {
-                                            if (!createNeuronNonce) return;
-                                            setCreateNeuronNonceChecking(true);
-                                            const isFree = await checkNonceIsFree(parseInt(createNeuronNonce));
-                                            setCreateNeuronNonceFree(isFree);
-                                            setCreateNeuronNonceChecking(false);
-                                        }}
-                                        disabled={neuronActionBusy || createNeuronNonceChecking || !createNeuronNonce}
-                                        style={{
-                                            background: theme.colors.accent,
-                                            color: theme.colors.primaryBg,
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            padding: '12px 16px',
-                                            cursor: (neuronActionBusy || createNeuronNonceChecking || !createNeuronNonce) ? 'not-allowed' : 'pointer',
-                                            fontSize: '0.9rem',
-                                            fontWeight: '600',
-                                            flexShrink: 0,
-                                            whiteSpace: 'nowrap',
-                                            opacity: (neuronActionBusy || createNeuronNonceChecking || !createNeuronNonce) ? 0.5 : 1
-                                        }}
-                                    >
-                                        {createNeuronNonceChecking ? '...' : 'Check Free'}
-                                    </button>
+                                <div
+                                    onClick={() => setCreateNeuronAdvancedExpanded(!createNeuronAdvancedExpanded)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        cursor: 'pointer',
+                                        padding: '8px',
+                                        borderRadius: '6px',
+                                        background: theme.colors.secondaryBg,
+                                        marginBottom: createNeuronAdvancedExpanded ? '12px' : '0'
+                                    }}
+                                >
+                                    <span style={{
+                                        fontSize: '14px',
+                                        transform: createNeuronAdvancedExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                        transition: 'transform 0.2s ease'
+                                    }}>
+                                        ▶
+                                    </span>
+                                    <h4 style={{ color: theme.colors.primaryText, margin: 0, fontSize: '0.95rem' }}>
+                                        Advanced
+                                    </h4>
                                 </div>
+                                
+                                {createNeuronAdvancedExpanded && (
+                                    <div style={{
+                                        background: theme.colors.secondaryBg,
+                                        borderRadius: '6px',
+                                        padding: '16px',
+                                        border: `1px solid ${theme.colors.border}`
+                                    }}>
+                                        <h5 style={{ color: theme.colors.primaryText, marginTop: 0, marginBottom: '8px', fontSize: '0.9rem' }}>
+                                            Neuron Nonce
+                                        </h5>
+                                        
+                                        <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '12px' }}>
+                                            {createNeuronNonceChecking ? (
+                                                <span>🔍 Searching for free nonce...</span>
+                                            ) : createNeuronNonceFree === true ? (
+                                                <span style={{ color: theme.colors.accent }}>✓ Nonce {createNeuronNonce} is available</span>
+                                            ) : createNeuronNonceFree === false ? (
+                                                <span style={{ color: theme.colors.error }}>✗ Nonce {createNeuronNonce} is already in use</span>
+                                            ) : (
+                                                <span>A free nonce was automatically found. You can change it if needed.</span>
+                                            )}
+                                        </p>
+                                        
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                            <input
+                                                type="text"
+                                                value={createNeuronNonce}
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    if (value === '' || /^\d+$/.test(value)) {
+                                                        setCreateNeuronNonce(value);
+                                                        setCreateNeuronNonceFree(null); // Reset check status when user changes nonce
+                                                    }
+                                                }}
+                                                placeholder="Nonce (e.g., 0, 1, 2...)"
+                                                disabled={neuronActionBusy || createNeuronNonceChecking}
+                                                style={{
+                                                    flex: 1,
+                                                    minWidth: 0,
+                                                    padding: '12px',
+                                                    borderRadius: '6px',
+                                                    border: `1px solid ${
+                                                        createNeuronNonceFree === true ? theme.colors.accent :
+                                                        createNeuronNonceFree === false ? theme.colors.error :
+                                                        theme.colors.border
+                                                    }`,
+                                                    background: theme.colors.tertiaryBg || theme.colors.primaryBg,
+                                                    color: theme.colors.primaryText,
+                                                    fontSize: '1rem',
+                                                    boxSizing: 'border-box'
+                                                }}
+                                            />
+                                            <button
+                                                onClick={async () => {
+                                                    if (!createNeuronNonce) return;
+                                                    setCreateNeuronNonceChecking(true);
+                                                    const isFree = await checkNonceIsFree(parseInt(createNeuronNonce));
+                                                    setCreateNeuronNonceFree(isFree);
+                                                    setCreateNeuronNonceChecking(false);
+                                                }}
+                                                disabled={neuronActionBusy || createNeuronNonceChecking || !createNeuronNonce}
+                                                style={{
+                                                    background: theme.colors.accent,
+                                                    color: theme.colors.primaryBg,
+                                                    border: 'none',
+                                                    borderRadius: '6px',
+                                                    padding: '12px 16px',
+                                                    cursor: (neuronActionBusy || createNeuronNonceChecking || !createNeuronNonce) ? 'not-allowed' : 'pointer',
+                                                    fontSize: '0.9rem',
+                                                    fontWeight: '600',
+                                                    flexShrink: 0,
+                                                    whiteSpace: 'nowrap',
+                                                    opacity: (neuronActionBusy || createNeuronNonceChecking || !createNeuronNonce) ? 0.5 : 1
+                                                }}
+                                            >
+                                                {createNeuronNonceChecking ? '...' : 'Check Free'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                             
                             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
@@ -2397,6 +2434,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         setCreateNeuronDissolveDelay('');
                                         setCreateNeuronNonce('');
                                         setCreateNeuronNonceFree(null);
+                                        setCreateNeuronAdvancedExpanded(false);
                                     }}
                                     disabled={neuronActionBusy || createNeuronProgress}
                                     style={{
