@@ -279,7 +279,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             // Try nonces starting from 0
             for (let nonce = 0; nonce < 100; nonce++) {
                 // Compute subaccount from principal and nonce
-                const subaccount = computeNeuronSubaccount(principal, nonce);
+                const subaccount = await computeNeuronSubaccount(principal, nonce);
                 const neuronId = { id: Array.from(subaccount) };
                 
                 try {
@@ -350,7 +350,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             console.log(`[TokenCard] Creating neuron with nonce ${nonce}`);
             console.log(`[TokenCard] Subaccount (hex):`, Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join(''));
             console.log(`[TokenCard] Controller principal:`, identity.getPrincipal().toString());
-            
+
+            if (true) {
+                alert('BAIL');
+                setNeuronActionBusy(false);
+                setCreateNeuronProgress('');
+                return;
+            }
+
             // Step 2: Transfer tokens to the neuron's subaccount
             setCreateNeuronProgress('Transferring tokens to neuron subaccount...');
             const ledgerIdString = typeof token.ledger_canister_id === 'string' 
