@@ -76,8 +76,19 @@ function Neuron() {
     const [topicInput, setTopicInput] = useState('Governance');
     const [followeeInput, setFolloweeInput] = useState('');
     const [followeeAliasInput, setFolloweeAliasInput] = useState('');
-    const [isBulkFollowMode, setIsBulkFollowMode] = useState(false);
+    const [bulkMode, setBulkMode] = useState(null); // null = single, 'neurons' = bulk neurons, 'topics' = bulk topics
     const [bulkFolloweeInput, setBulkFolloweeInput] = useState('');
+    const [bulkTopicsNeuronId, setBulkTopicsNeuronId] = useState('');
+    const [bulkTopicsAlias, setBulkTopicsAlias] = useState('');
+    const [selectedTopics, setSelectedTopics] = useState({
+        Governance: true,
+        DaoCommunitySettings: false,
+        SnsFrameworkManagement: false,
+        DappCanisterManagement: false,
+        ApplicationBusinessLogic: false,
+        TreasuryAssetManagement: false,
+        CriticalDappOperations: false
+    });
     const [isPermissionsExpanded, setIsPermissionsExpanded] = useState(false);
     const [isFolloweesExpanded, setIsFolloweesExpanded] = useState(false);
     
@@ -875,6 +886,100 @@ function Neuron() {
                 await fetchNeuronData();
                 setBulkFolloweeInput('');
                 alert(`Successfully added ${newFollowees.length} followee(s) to ${topicInput}`);
+            }
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setActionBusy(false); setActionMsg('');
+        }
+    };
+
+    const bulkAddToMultipleTopics = async () => {
+        try {
+            setActionBusy(true); setActionMsg('Adding neuron to multiple topics...'); setError('');
+            
+            const neuronId = bulkTopicsNeuronId.trim();
+            
+            if (!neuronId) {
+                setError('Please enter a neuron ID');
+                return;
+            }
+            
+            // Validate neuron ID format (hex string)
+            if (!/^[0-9a-fA-F]+$/.test(neuronId)) {
+                setError('Invalid neuron ID format');
+                return;
+            }
+            
+            // Get selected topics
+            const topicsToFollow = Object.entries(selectedTopics)
+                .filter(([_, isSelected]) => isSelected)
+                .map(([topic, _]) => topic);
+            
+            if (topicsToFollow.length === 0) {
+                setError('Please select at least one topic');
+                return;
+            }
+            
+            // Build the followee object
+            const followeeObj = {
+                neuron_id: [{ id: Array.from(hexToBytes(neuronId)) }],
+                alias: bulkTopicsAlias.trim() ? [bulkTopicsAlias.trim()] : []
+            };
+            
+            // For each selected topic, add this neuron
+            const topicFollowingArray = [];
+            let addedCount = 0;
+            let skippedCount = 0;
+            
+            for (const topic of topicsToFollow) {
+                const existing = getCurrentFolloweesForTopic(topic);
+                const existingIds = new Set(existing.map(f => f.neuronId.toLowerCase()));
+                
+                // Skip if already following in this topic
+                if (existingIds.has(neuronId.toLowerCase())) {
+                    console.log(`Already following ${neuronId} in ${topic}, skipping`);
+                    skippedCount++;
+                    continue;
+                }
+                
+                // Combine existing and new followee
+                const allFollowees = [
+                    ...existing.map(f => ({
+                        neuron_id: [{ id: Array.from(hexToBytes(f.neuronId)) }],
+                        alias: f.alias ? [f.alias] : []
+                    })),
+                    followeeObj
+                ];
+                
+                topicFollowingArray.push({
+                    topic: [{ [topic]: null }],
+                    followees: allFollowees
+                });
+                addedCount++;
+            }
+            
+            if (topicFollowingArray.length === 0) {
+                setError('Neuron is already followed in all selected topics');
+                return;
+            }
+            
+            // Send all topics in one manage_neuron call
+            const result = await manageNeuron({
+                SetFollowing: {
+                    topic_following: topicFollowingArray
+                }
+            });
+            
+            if (!result.ok) {
+                setError(result.err);
+            } else {
+                await fetchNeuronData();
+                setBulkTopicsNeuronId('');
+                setBulkTopicsAlias('');
+                const message = `Successfully added neuron to ${addedCount} topic(s)` + 
+                    (skippedCount > 0 ? ` (skipped ${skippedCount} where already following)` : '');
+                alert(message);
             }
         } catch (e) {
             setError(e.message || String(e));
@@ -1783,41 +1888,77 @@ function Neuron() {
                                     {currentUserHasPermission(PERM.MANAGE_VOTING_PERMISSION) && (
                                         <div style={{ marginTop: '12px', padding: '12px', backgroundColor: theme.colors.secondaryBg, borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <div style={{ color: theme.colors.mutedText, fontWeight: 'bold' }}>Edit followees (by topic)</div>
-                                                <button
-                                                    onClick={() => {
-                                                        setIsBulkFollowMode(!isBulkFollowMode);
-                                                        setError('');
-                                                    }}
-                                                    style={{ 
-                                                        backgroundColor: isBulkFollowMode ? theme.colors.accent : theme.colors.tertiaryBg, 
-                                                        color: theme.colors.primaryText, 
-                                                        border: `1px solid ${theme.colors.border}`, 
-                                                        borderRadius: '4px', 
-                                                        padding: '4px 8px', 
-                                                        cursor: 'pointer',
-                                                        fontSize: '12px'
-                                                    }}
-                                                >
-                                                    {isBulkFollowMode ? '📝 Single Mode' : '📋 Bulk Mode'}
-                                                </button>
+                                                <div style={{ color: theme.colors.mutedText, fontWeight: 'bold' }}>Edit followees</div>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <button
+                                                        onClick={() => {
+                                                            setBulkMode(null);
+                                                            setError('');
+                                                        }}
+                                                        style={{ 
+                                                            backgroundColor: bulkMode === null ? theme.colors.accent : theme.colors.tertiaryBg, 
+                                                            color: theme.colors.primaryText, 
+                                                            border: `1px solid ${theme.colors.border}`, 
+                                                            borderRadius: '4px', 
+                                                            padding: '4px 8px', 
+                                                            cursor: 'pointer',
+                                                            fontSize: '11px'
+                                                        }}
+                                                    >
+                                                        📝 Single
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setBulkMode('neurons');
+                                                            setError('');
+                                                        }}
+                                                        style={{ 
+                                                            backgroundColor: bulkMode === 'neurons' ? theme.colors.accent : theme.colors.tertiaryBg, 
+                                                            color: theme.colors.primaryText, 
+                                                            border: `1px solid ${theme.colors.border}`, 
+                                                            borderRadius: '4px', 
+                                                            padding: '4px 8px', 
+                                                            cursor: 'pointer',
+                                                            fontSize: '11px'
+                                                        }}
+                                                    >
+                                                        📋 Bulk Neurons
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setBulkMode('topics');
+                                                            setError('');
+                                                        }}
+                                                        style={{ 
+                                                            backgroundColor: bulkMode === 'topics' ? theme.colors.accent : theme.colors.tertiaryBg, 
+                                                            color: theme.colors.primaryText, 
+                                                            border: `1px solid ${theme.colors.border}`, 
+                                                            borderRadius: '4px', 
+                                                            padding: '4px 8px', 
+                                                            cursor: 'pointer',
+                                                            fontSize: '11px'
+                                                        }}
+                                                    >
+                                                        🔀 Bulk Topics
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <select
-                                                value={topicInput}
-                                                onChange={(e) => setTopicInput(e.target.value)}
-                                                style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
-                                            >
-                                                <option value="Governance">Governance</option>
-                                                <option value="DaoCommunitySettings">DaoCommunitySettings</option>
-                                                <option value="SnsFrameworkManagement">SnsFrameworkManagement</option>
-                                                <option value="DappCanisterManagement">DappCanisterManagement</option>
-                                                <option value="ApplicationBusinessLogic">ApplicationBusinessLogic</option>
-                                                <option value="TreasuryAssetManagement">TreasuryAssetManagement</option>
-                                                <option value="CriticalDappOperations">CriticalDappOperations</option>
-                                            </select>
-                                            
-                                            {!isBulkFollowMode ? (
+                                            {/* Single Mode - Add one neuron to one topic */}
+                                            {bulkMode === null && (
                                                 <>
+                                                    <select
+                                                        value={topicInput}
+                                                        onChange={(e) => setTopicInput(e.target.value)}
+                                                        style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
+                                                    >
+                                                        <option value="Governance">Governance</option>
+                                                        <option value="DaoCommunitySettings">DaoCommunitySettings</option>
+                                                        <option value="SnsFrameworkManagement">SnsFrameworkManagement</option>
+                                                        <option value="DappCanisterManagement">DappCanisterManagement</option>
+                                                        <option value="ApplicationBusinessLogic">ApplicationBusinessLogic</option>
+                                                        <option value="TreasuryAssetManagement">TreasuryAssetManagement</option>
+                                                        <option value="CriticalDappOperations">CriticalDappOperations</option>
+                                                    </select>
                                                     <input
                                                         type="text"
                                                         placeholder="Followee Neuron ID (hex)"
@@ -1836,9 +1977,28 @@ function Neuron() {
                                                         <button disabled={actionBusy} onClick={addFollowee} style={{ backgroundColor: theme.colors.accent, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Add followee</button>
                                                         <button disabled={actionBusy} onClick={removeFollowee} style={{ backgroundColor: theme.colors.error, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Remove followee</button>
                                                     </div>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                        Current followees for {topicInput}: {getCurrentFolloweesForTopic(topicInput).map(f => f.alias || f.neuronId.substring(0, 8) + '...').join(', ') || 'None'}
+                                                    </div>
                                                 </>
-                                            ) : (
+                                            )}
+                                            
+                                            {/* Bulk Neurons Mode - Add many neurons to one topic */}
+                                            {bulkMode === 'neurons' && (
                                                 <>
+                                                    <select
+                                                        value={topicInput}
+                                                        onChange={(e) => setTopicInput(e.target.value)}
+                                                        style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
+                                                    >
+                                                        <option value="Governance">Governance</option>
+                                                        <option value="DaoCommunitySettings">DaoCommunitySettings</option>
+                                                        <option value="SnsFrameworkManagement">SnsFrameworkManagement</option>
+                                                        <option value="DappCanisterManagement">DappCanisterManagement</option>
+                                                        <option value="ApplicationBusinessLogic">ApplicationBusinessLogic</option>
+                                                        <option value="TreasuryAssetManagement">TreasuryAssetManagement</option>
+                                                        <option value="CriticalDappOperations">CriticalDappOperations</option>
+                                                    </select>
                                                     <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '4px' }}>
                                                         Enter neuron IDs (one per line). Optional: add an alias after the ID separated by space.
                                                         <br />
@@ -1873,14 +2033,79 @@ function Neuron() {
                                                             fontWeight: 'bold'
                                                         }}
                                                     >
-                                                        Add Multiple Followees
+                                                        Add Multiple Followees to {topicInput}
                                                     </button>
                                                 </>
                                             )}
                                             
-                                            <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                Current followees for {topicInput}: {getCurrentFolloweesForTopic(topicInput).map(f => f.alias || f.neuronId.substring(0, 8) + '...').join(', ') || 'None'}
-                                            </div>
+                                            {/* Bulk Topics Mode - Add one neuron to many topics */}
+                                            {bulkMode === 'topics' && (
+                                                <>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                        Follow one neuron across multiple topics at once
+                                                    </div>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Neuron ID (hex)"
+                                                        value={bulkTopicsNeuronId}
+                                                        onChange={(e) => setBulkTopicsNeuronId(e.target.value)}
+                                                        style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Alias (optional)"
+                                                        value={bulkTopicsAlias}
+                                                        onChange={(e) => setBulkTopicsAlias(e.target.value)}
+                                                        style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
+                                                    />
+                                                    <div style={{ 
+                                                        display: 'grid', 
+                                                        gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
+                                                        gap: '8px',
+                                                        padding: '8px',
+                                                        backgroundColor: theme.colors.tertiaryBg,
+                                                        borderRadius: '4px'
+                                                    }}>
+                                                        {Object.entries(selectedTopics).map(([topic, isSelected]) => (
+                                                            <label key={topic} style={{ 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '6px',
+                                                                color: theme.colors.primaryText,
+                                                                cursor: 'pointer',
+                                                                fontSize: '12px'
+                                                            }}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isSelected}
+                                                                    onChange={(e) => setSelectedTopics({
+                                                                        ...selectedTopics,
+                                                                        [topic]: e.target.checked
+                                                                    })}
+                                                                    style={{ cursor: 'pointer' }}
+                                                                />
+                                                                {topic}
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                    <button 
+                                                        disabled={actionBusy || !bulkTopicsNeuronId.trim() || Object.values(selectedTopics).every(v => !v)} 
+                                                        onClick={bulkAddToMultipleTopics} 
+                                                        style={{ 
+                                                            backgroundColor: theme.colors.accent, 
+                                                            color: theme.colors.primaryText, 
+                                                            border: 'none', 
+                                                            borderRadius: '4px', 
+                                                            padding: '8px 12px', 
+                                                            cursor: (actionBusy || !bulkTopicsNeuronId.trim() || Object.values(selectedTopics).every(v => !v)) ? 'not-allowed' : 'pointer',
+                                                            fontWeight: 'bold'
+                                                        }}
+                                                    >
+                                                        Follow Across {Object.values(selectedTopics).filter(v => v).length} Topic(s)
+                                                    </button>
+                                                </>
+                                            )}
+                                            
                                             {actionMsg && <div style={{ color: theme.colors.mutedText }}>{actionMsg}</div>}
                                         </div>
                                     )}
