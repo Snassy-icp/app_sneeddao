@@ -287,22 +287,31 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             const subaccount = await computeNeuronSubaccount(principal, nonce);
             const neuronId = { id: Array.from(subaccount) };
             
-            try {
-                const result = await governanceActor.get_neuron(neuronId);
-                // If get_neuron returns null/empty, this nonce is unused
-                if (!result || (result.result && result.result.length === 0)) {
-                    console.log(`[TokenCard] Nonce ${nonce} is free`);
+            console.log(`[TokenCard] Checking nonce ${nonce}, neuronId:`, neuronId);
+            
+            const result = await governanceActor.get_neuron(neuronId);
+            console.log(`[TokenCard] get_neuron result for nonce ${nonce}:`, result);
+            
+            // get_neuron returns { result: [{ Neuron: ... }] } if found, or { result: [{ Error: ... }] } if not found
+            if (result && result.result && result.result.length > 0) {
+                const innerResult = result.result[0];
+                if ('Neuron' in innerResult) {
+                    // Neuron exists - nonce is taken
+                    console.log(`[TokenCard] Nonce ${nonce} is taken (found neuron)`);
+                    return false;
+                } else if ('Error' in innerResult) {
+                    // Neuron not found - nonce is free
+                    console.log(`[TokenCard] Nonce ${nonce} is free (Error result):`, innerResult.Error);
                     return true;
                 }
-                console.log(`[TokenCard] Nonce ${nonce} is taken`);
-                return false;
-            } catch (error) {
-                // Error likely means neuron doesn't exist, so this nonce is free
-                console.log(`[TokenCard] Nonce ${nonce} is free (via error)`);
-                return true;
             }
+            
+            // Fallback: if result structure is unexpected, assume taken to be safe
+            console.log(`[TokenCard] Nonce ${nonce} - unexpected result structure, assuming taken`);
+            return false;
         } catch (error) {
             console.error('[TokenCard] Error checking nonce:', error);
+            // On error, assume taken to be safe
             return false;
         }
     };
@@ -323,17 +332,17 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 const subaccount = await computeNeuronSubaccount(principal, nonce);
                 const neuronId = { id: Array.from(subaccount) };
                 
-                try {
-                    const result = await governanceActor.get_neuron(neuronId);
-                    // If get_neuron returns null/empty, this nonce is unused
-                    if (!result || (result.result && result.result.length === 0)) {
+                const result = await governanceActor.get_neuron(neuronId);
+                
+                // get_neuron returns { result: [{ Neuron: ... }] } if found, or { result: [{ Error: ... }] } if not found
+                if (result && result.result && result.result.length > 0) {
+                    const innerResult = result.result[0];
+                    if ('Error' in innerResult) {
+                        // Neuron not found - nonce is free
                         console.log(`[TokenCard] Found unused nonce: ${nonce}`);
                         return { nonce, subaccount };
                     }
-                } catch (error) {
-                    // Error likely means neuron doesn't exist, so this nonce is free
-                    console.log(`[TokenCard] Found unused nonce (via error): ${nonce}`);
-                    return { nonce, subaccount };
+                    // If 'Neuron' in innerResult, neuron exists, continue to next nonce
                 }
             }
             
