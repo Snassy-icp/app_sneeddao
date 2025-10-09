@@ -255,6 +255,28 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         setManagingNeuronId(null);
     };
 
+    const disburseMaturity = async (neuronIdHex) => {
+        setNeuronActionBusy(true);
+        setManagingNeuronId(neuronIdHex);
+        
+        // Disburse 100% of maturity to the user's default account
+        const result = await manageNeuron(neuronIdHex, { 
+            DisburseMaturity: { 
+                to_account: [], 
+                percentage_to_disburse: 100 
+            } 
+        });
+        
+        if (result.ok) {
+            alert('Maturity disbursed successfully! The tokens will appear in your wallet shortly.');
+            await refetchNeurons();
+        } else {
+            alert(`Error disbursing maturity: ${result.err}`);
+        }
+        setNeuronActionBusy(false);
+        setManagingNeuronId(null);
+    };
+
     const refetchNeurons = async () => {
         if (!governanceCanisterId || !identity) return;
         
@@ -1521,8 +1543,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                     <span style={{ color: theme.colors.secondaryText }}>Age:</span>
                                                                     <span style={{ color: theme.colors.primaryText }}>
                                                                         {format_duration(Date.now() - Number(neuron.aging_since_timestamp_seconds || 0n) * 1000)}
-                                                                                    </span>
-                                                                                </div>
+                                                                    </span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span style={{ color: theme.colors.secondaryText }}>Maturity:</span>
+                                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>
+                                                                        {formatAmount(neuron.maturity_e8s_equivalent || 0n, token.decimals)} {token.symbol}
+                                                                    </span>
+                                                                </div>
                                                                             </div>
 
                                                                             {/* Action Buttons */}
@@ -1623,6 +1651,31 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                                             }}
                                                                                         >
                                                                                             💰 Disburse to Wallet
+                                                                                        </button>
+                                                                                    )}
+
+                                                                                    {/* Disburse Maturity button - when neuron has maturity */}
+                                                                                    {(neuron.maturity_e8s_equivalent || 0n) > 0n && userHasPermission(neuron, PERM.DISBURSE_MATURITY) && (
+                                                                                        <button
+                                                                                            onClick={() => {
+                                                                                                if (window.confirm(`Disburse ${formatAmount(neuron.maturity_e8s_equivalent, token.decimals)} ${token.symbol} maturity to your wallet?`)) {
+                                                                                                    disburseMaturity(neuronIdHex);
+                                                                                                }
+                                                                                            }}
+                                                                                            disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                                            style={{
+                                                                                                background: theme.colors.accent,
+                                                                                                color: theme.colors.primaryBg,
+                                                                                                border: 'none',
+                                                                                                borderRadius: '6px',
+                                                                                                padding: '8px 12px',
+                                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                                                fontSize: '0.85rem',
+                                                                                                fontWeight: '500',
+                                                                                                opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                                            }}
+                                                                                        >
+                                                                                            ✨ Disburse Maturity
                                                                                         </button>
                                                                                     )}
 
