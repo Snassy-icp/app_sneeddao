@@ -289,11 +289,19 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             
             console.log(`[TokenCard] Checking nonce ${nonce}, neuronId:`, neuronId);
             
-            const result = await governanceActor.get_neuron(neuronId);
+            const result = await governanceActor.get_neuron({
+                neuron_id: [neuronId]
+            });
             console.log(`[TokenCard] get_neuron result for nonce ${nonce}:`, result);
             
-            // get_neuron returns { result: [{ Neuron: ... }] } if found, or { result: [{ Error: ... }] } if not found
-            if (result && result.result && result.result.length > 0) {
+            // get_neuron returns { result: [{ Neuron: ... }] } if found, { result: [{ Error: ... }] } if not found, or { result: [] } if not found
+            if (result && result.result) {
+                // Empty result array means neuron doesn't exist - nonce is free
+                if (result.result.length === 0) {
+                    console.log(`[TokenCard] Nonce ${nonce} is free (empty result)`);
+                    return true;
+                }
+                
                 const innerResult = result.result[0];
                 if ('Neuron' in innerResult) {
                     // Neuron exists - nonce is taken
@@ -332,10 +340,18 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 const subaccount = await computeNeuronSubaccount(principal, nonce);
                 const neuronId = { id: Array.from(subaccount) };
                 
-                const result = await governanceActor.get_neuron(neuronId);
+                const result = await governanceActor.get_neuron({
+                    neuron_id: [neuronId]
+                });
                 
-                // get_neuron returns { result: [{ Neuron: ... }] } if found, or { result: [{ Error: ... }] } if not found
-                if (result && result.result && result.result.length > 0) {
+                // get_neuron returns { result: [{ Neuron: ... }] } if found, { result: [{ Error: ... }] } if not found, or { result: [] } if not found
+                if (result && result.result) {
+                    // Empty result array means neuron doesn't exist - nonce is free
+                    if (result.result.length === 0) {
+                        console.log(`[TokenCard] Found unused nonce: ${nonce}`);
+                        return { nonce, subaccount };
+                    }
+                    
                     const innerResult = result.result[0];
                     if ('Error' in innerResult) {
                         // Neuron not found - nonce is free
