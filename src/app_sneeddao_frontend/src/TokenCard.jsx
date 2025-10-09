@@ -53,6 +53,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [createNeuronNonce, setCreateNeuronNonce] = useState('');
     const [createNeuronNonceChecking, setCreateNeuronNonceChecking] = useState(false);
     const [createNeuronNonceFree, setCreateNeuronNonceFree] = useState(null); // null = not checked, true = free, false = taken
+    const [createNeuronSubaccountBalance, setCreateNeuronSubaccountBalance] = useState(null);
     const [createNeuronAdvancedExpanded, setCreateNeuronAdvancedExpanded] = useState(false);
     const [showSendNeuronDialog, setShowSendNeuronDialog] = useState(false);
     const [sendNeuronRecipient, setSendNeuronRecipient] = useState('');
@@ -2392,6 +2393,21 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             )}
                                         </p>
                                         
+                                        {createNeuronSubaccountBalance !== null && (
+                                            <p style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '0.85rem', 
+                                                marginBottom: '12px',
+                                                padding: '8px 12px',
+                                                background: theme.colors.tertiaryBg || theme.colors.primaryBg,
+                                                borderRadius: '6px',
+                                                border: `1px solid ${theme.colors.border}`
+                                            }}>
+                                                <span style={{ fontWeight: '600', color: theme.colors.primaryText }}>Subaccount Balance:</span>{' '}
+                                                {formatAmount(createNeuronSubaccountBalance, token.decimals)} {token.symbol}
+                                            </p>
+                                        )}
+                                        
                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                             <input
                                                 type="text"
@@ -2401,6 +2417,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                     if (value === '' || /^\d+$/.test(value)) {
                                                         setCreateNeuronNonce(value);
                                                         setCreateNeuronNonceFree(null); // Reset check status when user changes nonce
+                                                        setCreateNeuronSubaccountBalance(null); // Reset balance when user changes nonce
                                                     }
                                                 }}
                                                 placeholder="Nonce (e.g., 0, 1, 2...)"
@@ -2425,8 +2442,37 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                 onClick={async () => {
                                                     if (!createNeuronNonce) return;
                                                     setCreateNeuronNonceChecking(true);
-                                                    const isFree = await checkNonceIsFree(parseInt(createNeuronNonce));
-                                                    setCreateNeuronNonceFree(isFree);
+                                                    
+                                                    try {
+                                                        const nonce = parseInt(createNeuronNonce);
+                                                        
+                                                        // Check if nonce is free
+                                                        const isFree = await checkNonceIsFree(nonce);
+                                                        setCreateNeuronNonceFree(isFree);
+                                                        
+                                                        // Check subaccount balance
+                                                        const principal = identity.getPrincipal();
+                                                        const subaccount = await computeNeuronSubaccount(principal, nonce);
+                                                        
+                                                        const ledgerIdString = typeof token.ledger_canister_id === 'string' 
+                                                            ? token.ledger_canister_id 
+                                                            : token.ledger_canister_id?.toString();
+                                                        
+                                                        const ledgerActor = createLedgerActor(ledgerIdString, {
+                                                            agentOptions: { identity }
+                                                        });
+                                                        
+                                                        const balance = await ledgerActor.icrc1_balance_of({
+                                                            owner: principal,
+                                                            subaccount: [Array.from(subaccount)]
+                                                        });
+                                                        
+                                                        setCreateNeuronSubaccountBalance(balance);
+                                                    } catch (error) {
+                                                        console.error('[TokenCard] Error checking nonce/balance:', error);
+                                                        setCreateNeuronSubaccountBalance(null);
+                                                    }
+                                                    
                                                     setCreateNeuronNonceChecking(false);
                                                 }}
                                                 disabled={neuronActionBusy || createNeuronNonceChecking || !createNeuronNonce}
@@ -2459,6 +2505,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         setCreateNeuronDissolveDelay('');
                                         setCreateNeuronNonce('');
                                         setCreateNeuronNonceFree(null);
+                                        setCreateNeuronSubaccountBalance(null);
                                         setCreateNeuronAdvancedExpanded(false);
                                     }}
                                     disabled={neuronActionBusy || createNeuronProgress}
