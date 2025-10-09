@@ -76,6 +76,8 @@ function Neuron() {
     const [topicInput, setTopicInput] = useState('Governance');
     const [followeeInput, setFolloweeInput] = useState('');
     const [followeeAliasInput, setFolloweeAliasInput] = useState('');
+    const [isBulkFollowMode, setIsBulkFollowMode] = useState(false);
+    const [bulkFolloweeInput, setBulkFolloweeInput] = useState('');
     const [isPermissionsExpanded, setIsPermissionsExpanded] = useState(false);
     const [isFolloweesExpanded, setIsFolloweesExpanded] = useState(false);
     
@@ -786,6 +788,94 @@ function Neuron() {
                 }
             });
             if (!result.ok) setError(result.err); else { await fetchNeuronData(); setFolloweeInput(''); setFolloweeAliasInput(''); }
+        } catch (e) {
+            setError(e.message || String(e));
+        } finally {
+            setActionBusy(false); setActionMsg('');
+        }
+    };
+
+    const bulkAddFollowees = async () => {
+        try {
+            setActionBusy(true); setActionMsg('Adding multiple followees...'); setError('');
+            
+            // Parse the input - split by newlines and filter out empty lines
+            const lines = bulkFolloweeInput.split('\n').filter(line => line.trim());
+            
+            if (lines.length === 0) {
+                setError('Please enter at least one neuron ID');
+                return;
+            }
+            
+            const existing = getCurrentFolloweesForTopic(topicInput);
+            const existingIds = new Set(existing.map(f => f.neuronId.toLowerCase()));
+            
+            // Parse each line - format can be "neuronId" or "neuronId alias"
+            const newFollowees = [];
+            const errors = [];
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                const parts = line.split(/\s+/); // Split by whitespace
+                const neuronId = parts[0];
+                const alias = parts.slice(1).join(' '); // Everything after first part is alias
+                
+                // Validate neuron ID format (hex string)
+                if (!/^[0-9a-fA-F]+$/.test(neuronId)) {
+                    errors.push(`Line ${i + 1}: Invalid neuron ID format "${neuronId}"`);
+                    continue;
+                }
+                
+                // Skip if already following
+                if (existingIds.has(neuronId.toLowerCase())) {
+                    console.log(`Skipping duplicate: ${neuronId}`);
+                    continue;
+                }
+                
+                newFollowees.push({
+                    neuron_id: [{ id: Array.from(hexToBytes(neuronId)) }],
+                    alias: alias ? [alias] : []
+                });
+                
+                // Add to set to prevent duplicates within the same bulk add
+                existingIds.add(neuronId.toLowerCase());
+            }
+            
+            if (errors.length > 0) {
+                setError(errors.join('\n'));
+                return;
+            }
+            
+            if (newFollowees.length === 0) {
+                setError('No new followees to add (all may already be followed)');
+                return;
+            }
+            
+            // Combine existing and new followees
+            const allFollowees = [
+                ...existing.map(f => ({
+                    neuron_id: [{ id: Array.from(hexToBytes(f.neuronId)) }],
+                    alias: f.alias ? [f.alias] : []
+                })),
+                ...newFollowees
+            ];
+            
+            const result = await manageNeuron({
+                SetFollowing: {
+                    topic_following: [{
+                        topic: [{ [topicInput]: null }],
+                        followees: allFollowees
+                    }]
+                }
+            });
+            
+            if (!result.ok) {
+                setError(result.err);
+            } else {
+                await fetchNeuronData();
+                setBulkFolloweeInput('');
+                alert(`Successfully added ${newFollowees.length} followee(s) to ${topicInput}`);
+            }
         } catch (e) {
             setError(e.message || String(e));
         } finally {
@@ -1692,7 +1782,26 @@ function Neuron() {
                                     })()}
                                     {currentUserHasPermission(PERM.MANAGE_VOTING_PERMISSION) && (
                                         <div style={{ marginTop: '12px', padding: '12px', backgroundColor: theme.colors.secondaryBg, borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            <div style={{ color: theme.colors.mutedText, fontWeight: 'bold' }}>Edit followees (by topic)</div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div style={{ color: theme.colors.mutedText, fontWeight: 'bold' }}>Edit followees (by topic)</div>
+                                                <button
+                                                    onClick={() => {
+                                                        setIsBulkFollowMode(!isBulkFollowMode);
+                                                        setError('');
+                                                    }}
+                                                    style={{ 
+                                                        backgroundColor: isBulkFollowMode ? theme.colors.accent : theme.colors.tertiaryBg, 
+                                                        color: theme.colors.primaryText, 
+                                                        border: `1px solid ${theme.colors.border}`, 
+                                                        borderRadius: '4px', 
+                                                        padding: '4px 8px', 
+                                                        cursor: 'pointer',
+                                                        fontSize: '12px'
+                                                    }}
+                                                >
+                                                    {isBulkFollowMode ? '📝 Single Mode' : '📋 Bulk Mode'}
+                                                </button>
+                                            </div>
                                             <select
                                                 value={topicInput}
                                                 onChange={(e) => setTopicInput(e.target.value)}
@@ -1706,24 +1815,69 @@ function Neuron() {
                                                 <option value="TreasuryAssetManagement">TreasuryAssetManagement</option>
                                                 <option value="CriticalDappOperations">CriticalDappOperations</option>
                                             </select>
-                                            <input
-                                                type="text"
-                                                placeholder="Followee Neuron ID (hex)"
-                                                value={followeeInput}
-                                                onChange={(e) => setFolloweeInput(e.target.value)}
-                                                style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
-                                            />
-                                            <input
-                                                type="text"
-                                                placeholder="Alias (optional)"
-                                                value={followeeAliasInput}
-                                                onChange={(e) => setFolloweeAliasInput(e.target.value)}
-                                                style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
-                                            />
-                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                                <button disabled={actionBusy} onClick={addFollowee} style={{ backgroundColor: theme.colors.accent, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Add followee</button>
-                                                <button disabled={actionBusy} onClick={removeFollowee} style={{ backgroundColor: theme.colors.error, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Remove followee</button>
-                                            </div>
+                                            
+                                            {!isBulkFollowMode ? (
+                                                <>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Followee Neuron ID (hex)"
+                                                        value={followeeInput}
+                                                        onChange={(e) => setFolloweeInput(e.target.value)}
+                                                        style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Alias (optional)"
+                                                        value={followeeAliasInput}
+                                                        onChange={(e) => setFolloweeAliasInput(e.target.value)}
+                                                        style={{ backgroundColor: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, color: theme.colors.primaryText, borderRadius: '4px', padding: '6px 8px' }}
+                                                    />
+                                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                        <button disabled={actionBusy} onClick={addFollowee} style={{ backgroundColor: theme.colors.accent, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Add followee</button>
+                                                        <button disabled={actionBusy} onClick={removeFollowee} style={{ backgroundColor: theme.colors.error, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Remove followee</button>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '4px' }}>
+                                                        Enter neuron IDs (one per line). Optional: add an alias after the ID separated by space.
+                                                        <br />
+                                                        Example: abc123def456 MyNeuronName
+                                                    </div>
+                                                    <textarea
+                                                        placeholder="Paste neuron IDs here (one per line)&#10;Example:&#10;abc123def456 NeuronAlias1&#10;789ghi012jkl&#10;345mno678pqr AnotherNeuron"
+                                                        value={bulkFolloweeInput}
+                                                        onChange={(e) => setBulkFolloweeInput(e.target.value)}
+                                                        style={{ 
+                                                            backgroundColor: theme.colors.tertiaryBg, 
+                                                            border: `1px solid ${theme.colors.border}`, 
+                                                            color: theme.colors.primaryText, 
+                                                            borderRadius: '4px', 
+                                                            padding: '8px', 
+                                                            minHeight: '120px',
+                                                            fontFamily: 'monospace',
+                                                            fontSize: '12px',
+                                                            resize: 'vertical'
+                                                        }}
+                                                    />
+                                                    <button 
+                                                        disabled={actionBusy || !bulkFolloweeInput.trim()} 
+                                                        onClick={bulkAddFollowees} 
+                                                        style={{ 
+                                                            backgroundColor: theme.colors.accent, 
+                                                            color: theme.colors.primaryText, 
+                                                            border: 'none', 
+                                                            borderRadius: '4px', 
+                                                            padding: '8px 12px', 
+                                                            cursor: (actionBusy || !bulkFolloweeInput.trim()) ? 'not-allowed' : 'pointer',
+                                                            fontWeight: 'bold'
+                                                        }}
+                                                    >
+                                                        Add Multiple Followees
+                                                    </button>
+                                                </>
+                                            )}
+                                            
                                             <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
                                                 Current followees for {topicInput}: {getCurrentFolloweesForTopic(topicInput).map(f => f.alias || f.neuronId.substring(0, 8) + '...').join(', ') || 'None'}
                                             </div>
