@@ -893,15 +893,15 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             )}
                         </div>
                         <span className="token-usd-value">
-                            {(token.available || 0n) > 0n && token.conversion_rate > 0 && 
-                                `$${formatAmountWithConversion(token.available || 0n, token.decimals, token.conversion_rate)}`
+                            {((token.available || 0n) + (isSnsToken ? getTotalNeuronStake() : 0n)) > 0n && token.conversion_rate > 0 && 
+                                `$${formatAmountWithConversion((token.available || 0n) + (isSnsToken ? getTotalNeuronStake() : 0n), token.decimals, token.conversion_rate)}`
                             }
                         </span>
                     </div>
                     <div className="header-row-2">
                         <div className="amount-symbol">
                             {!hideAvailable && (
-                                <span className="token-amount">{formatAmount(token.available || 0n, token.decimals)}</span>
+                                <span className="token-amount">{formatAmount((token.available || 0n) + (isSnsToken ? getTotalNeuronStake() : 0n), token.decimals)}</span>
                             )}
                             <span className="token-symbol">{token.symbol}</span>
                         </div>
@@ -988,11 +988,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     <>
                         <div className="balance-item">
                             <div className="balance-label">Total</div>
-                            <div className="balance-value">${formatAmountWithConversion(availableOrZero(token.available) + token.locked + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate, 2)}</div>
+                            <div className="balance-value">${formatAmountWithConversion(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate, 2)}</div>
                         </div>
                         <div className="balance-item" style={{ cursor: 'pointer' }} onClick={() => setShowBalanceBreakdown(!showBalanceBreakdown)}>
                             <div className="balance-label">
-                                Available {showBalanceBreakdown ? '▼' : '▶'}
+                                Liquid {showBalanceBreakdown ? '▼' : '▶'}
                             </div>
                             <div className="balance-value">{formatAmount(token.available || 0n, token.decimals)}{getUSD(token.available || 0n, token.decimals, token.conversion_rate)}</div>
                         </div>
@@ -1075,7 +1075,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 <div className="balance-item">
                     <div className="balance-label">Locked</div>
                     <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate)}</div>
-                </div>    
+                </div>
+                {isSnsToken && neurons.length > 0 && (
+                    <div className="balance-item">
+                        <div className="balance-label">Staked</div>
+                        <div className="balance-value">{formatAmount(getTotalNeuronStake(), token.decimals)}{getUSD(getTotalNeuronStake(), token.decimals, token.conversion_rate)}</div>
+                    </div>
+                )}
                 {(!hideAvailable && (
                     (rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0) ? (
                         <div className="balance-item">
