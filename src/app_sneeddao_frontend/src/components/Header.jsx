@@ -193,7 +193,6 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             defaultPath: '/sneedlock',
             subMenu: [
                 { name: 'Locks', path: '/sneedlock' },
-                { name: 'Lock', path: '/tokenlock' },
                 { name: 'Dashboard', path: '/sneedlock_info' }
             ]
         }
@@ -283,8 +282,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             return true;
         }
         
-        // Special handling for Lock submenu item - highlight for both tokenlock and positionlock
-        if (itemPath === '/tokenlock' && ['/tokenlock', '/positionlock'].includes(currentPath)) {
+        // Special handling for Locks submenu item - highlight for sneedlock, tokenlock and positionlock
+        if (itemPath === '/sneedlock' && ['/sneedlock', '/tokenlock', '/positionlock'].includes(currentPath)) {
             return true;
         }
         
