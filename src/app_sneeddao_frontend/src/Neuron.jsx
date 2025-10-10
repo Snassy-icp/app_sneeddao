@@ -1456,6 +1456,13 @@ function Neuron() {
                                             ▶
                                         </span>
                                         <h3 style={{ color: '#888', margin: 0 }}>Principals & Permissions</h3>
+                                        <span style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '14px',
+                                            marginLeft: '8px'
+                                        }}>
+                                            ({neuronData.permissions.filter(p => p.principal).length} principals)
+                                        </span>
                                     </div>
                                     {isPermissionsExpanded && (
                                         <>
@@ -1724,6 +1731,35 @@ function Neuron() {
                                             ▶
                                         </span>
                                         <h3 style={{ color: '#888', margin: 0 }}>Following</h3>
+                                        <span style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '14px',
+                                            marginLeft: '8px'
+                                        }}>
+                                            {(() => {
+                                                let totalFollowees = 0;
+                                                let topicCount = 0;
+                                                
+                                                // Count general followees
+                                                if (neuronData.followees && neuronData.followees.length > 0) {
+                                                    neuronData.followees.forEach(([_, followees]) => {
+                                                        totalFollowees += followees.followees?.length || 0;
+                                                    });
+                                                    topicCount += neuronData.followees.length;
+                                                }
+                                                
+                                                // Count topic-specific followees
+                                                if (neuronData.topic_followees?.[0]?.topic_id_to_followees) {
+                                                    const topicFollowees = neuronData.topic_followees[0].topic_id_to_followees;
+                                                    topicFollowees.forEach(([_, tf]) => {
+                                                        totalFollowees += tf.followees?.length || 0;
+                                                    });
+                                                    topicCount += topicFollowees.length;
+                                                }
+                                                
+                                                return `(${totalFollowees} followee${totalFollowees !== 1 ? 's' : ''} across ${topicCount} topic${topicCount !== 1 ? 's' : ''})`;
+                                            })()}
+                                        </span>
                                     </div>
                                     {isFolloweesExpanded && (
                                         <>
