@@ -91,6 +91,8 @@ function Neuron() {
     });
     const [isPermissionsExpanded, setIsPermissionsExpanded] = useState(false);
     const [isFolloweesExpanded, setIsFolloweesExpanded] = useState(false);
+    const [showDissolveDelayDialog, setShowDissolveDelayDialog] = useState(false);
+    const [dissolveDelayInput, setDissolveDelayInput] = useState('');
     
     // Get naming context
     const { neuronNames, neuronNicknames, verifiedNames, fetchAllNames, principalNames, principalNicknames } = useNaming();
@@ -375,6 +377,22 @@ function Neuron() {
         }
         
         return 'Unknown';
+    };
+
+    const getDissolveDelaySeconds = (neuron) => {
+        const dissolveState = neuron.dissolve_state?.[0];
+        if (!dissolveState) return 0;
+        
+        if ('DissolveDelaySeconds' in dissolveState) {
+            return Number(dissolveState.DissolveDelaySeconds);
+        } else if ('WhenDissolvedTimestampSeconds' in dissolveState) {
+            const dissolveTime = Number(dissolveState.WhenDissolvedTimestampSeconds);
+            const now = Date.now() / 1000;
+            if (dissolveTime > now) {
+                return dissolveTime - now;
+            }
+        }
+        return 0;
     };
 
     const selectedSns = getSnsById(selectedSnsRoot);
@@ -1424,9 +1442,20 @@ function Neuron() {
                                     <div style={{ marginTop: '16px', padding: '12px', backgroundColor: theme.colors.secondaryBg, borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         <div style={{ color: theme.colors.mutedText, fontWeight: 'bold' }}>Manage Dissolve</div>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                            <button disabled={actionBusy} onClick={() => increaseDissolveDelay(24*60*60)} style={{ backgroundColor: theme.colors.accent, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>+1 day</button>
-                                            <button disabled={actionBusy} onClick={() => increaseDissolveDelay(7*24*60*60)} style={{ backgroundColor: theme.colors.accent, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>+1 week</button>
-                                            <button disabled={actionBusy} onClick={() => increaseDissolveDelay(30*24*60*60)} style={{ backgroundColor: theme.colors.accent, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>+1 month</button>
+                                            <button 
+                                                disabled={actionBusy} 
+                                                onClick={() => setShowDissolveDelayDialog(true)} 
+                                                style={{ 
+                                                    backgroundColor: theme.colors.accent, 
+                                                    color: theme.colors.primaryText, 
+                                                    border: 'none', 
+                                                    borderRadius: '4px', 
+                                                    padding: '6px 10px', 
+                                                    cursor: actionBusy ? 'not-allowed' : 'pointer' 
+                                                }}
+                                            >
+                                                ⏱️ Set/Extend Dissolve Delay
+                                            </button>
                                             <button disabled={actionBusy} onClick={startDissolving} style={{ backgroundColor: theme.colors.error, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Start dissolving</button>
                                             <button disabled={actionBusy} onClick={stopDissolving} style={{ backgroundColor: theme.colors.mutedText, color: theme.colors.primaryText, border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: actionBusy ? 'not-allowed' : 'pointer' }}>Stop dissolving</button>
                                         </div>
@@ -2309,6 +2338,156 @@ function Neuron() {
                     )}
                 </section>
             </main>
+
+            {/* Dissolve Delay Dialog */}
+            {showDissolveDelayDialog && neuronData && (() => {
+                const currentDelaySeconds = getDissolveDelaySeconds(neuronData);
+                const isIncreasing = currentDelaySeconds > 0;
+                
+                // Get min and max from nervous system parameters
+                const minDelaySeconds = nervousSystemParameters?.neuron_minimum_dissolve_delay_to_vote_seconds?.[0] 
+                    ? Number(nervousSystemParameters.neuron_minimum_dissolve_delay_to_vote_seconds[0]) 
+                    : 0;
+                const maxDelaySeconds = nervousSystemParameters?.max_dissolve_delay_seconds?.[0]
+                    ? Number(nervousSystemParameters.max_dissolve_delay_seconds[0])
+                    : 0;
+                
+                const minDelayDays = Math.ceil(minDelaySeconds / (24 * 60 * 60));
+                const maxDelayDays = Math.floor(maxDelaySeconds / (24 * 60 * 60));
+                const currentDelayDays = Math.floor(currentDelaySeconds / (24 * 60 * 60));
+                const maxAdditionalDays = isIncreasing ? maxDelayDays - currentDelayDays : maxDelayDays;
+                
+                return (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0, 0, 0, 0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000
+                    }}
+                    onClick={() => {
+                        if (!actionBusy) {
+                            setShowDissolveDelayDialog(false);
+                            setDissolveDelayInput('');
+                        }
+                    }}
+                    >
+                        <div style={{
+                            background: theme.colors.primaryBg,
+                            borderRadius: '12px',
+                            padding: '24px',
+                            maxWidth: '500px',
+                            width: '90%',
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        >
+                            <h3 style={{ color: theme.colors.primaryText, marginTop: 0 }}>
+                                ⏱️ {isIncreasing ? 'Increase' : 'Set'} Dissolve Delay
+                            </h3>
+                            
+                            {isIncreasing && (
+                                <p style={{ color: theme.colors.secondaryText, fontSize: '0.9rem', marginBottom: '8px' }}>
+                                    Current delay: <strong>{currentDelayDays} days</strong>
+                                </p>
+                            )}
+                            
+                            <p style={{ color: theme.colors.secondaryText, marginBottom: '8px' }}>
+                                Enter the number of days to {isIncreasing ? 'increase' : 'set'} the dissolve delay:
+                            </p>
+                            
+                            {maxDelayDays > 0 && (
+                                <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '16px' }}>
+                                    {isIncreasing ? (
+                                        <>Min: <strong>0 days</strong> • Max additional: <strong>{maxAdditionalDays} days</strong></>
+                                    ) : (
+                                        <>Min for voting power: <strong>{minDelayDays} days</strong> • Max: <strong>{maxDelayDays} days</strong></>
+                                    )}
+                                </p>
+                            )}
+                            
+                            <input
+                                type="number"
+                                value={dissolveDelayInput}
+                                onChange={(e) => setDissolveDelayInput(e.target.value)}
+                                placeholder={`Days (e.g., ${isIncreasing ? Math.min(180, maxAdditionalDays) : Math.min(180, maxDelayDays)})`}
+                                min="0"
+                                max={maxAdditionalDays > 0 ? maxAdditionalDays : undefined}
+                                disabled={actionBusy}
+                                style={{
+                                    width: '100%',
+                                    padding: '12px',
+                                    borderRadius: '6px',
+                                    border: `1px solid ${theme.colors.border}`,
+                                    background: theme.colors.secondaryBg,
+                                    color: theme.colors.primaryText,
+                                    fontSize: '1rem',
+                                    marginBottom: '20px'
+                                }}
+                            />
+                            
+                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                                <button
+                                    onClick={() => {
+                                        setShowDissolveDelayDialog(false);
+                                        setDissolveDelayInput('');
+                                    }}
+                                    disabled={actionBusy}
+                                    style={{
+                                        background: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '10px 20px',
+                                        cursor: actionBusy ? 'wait' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500'
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const days = parseInt(dissolveDelayInput);
+                                        if (isNaN(days) || days < 0) {
+                                            alert('Please enter a valid number of days');
+                                            return;
+                                        }
+                                        if (maxAdditionalDays > 0 && days > maxAdditionalDays) {
+                                            alert(`Maximum ${isIncreasing ? 'additional' : ''} dissolve delay is ${maxAdditionalDays} days`);
+                                            return;
+                                        }
+                                        const seconds = days * 24 * 60 * 60;
+                                        increaseDissolveDelay(seconds);
+                                        setShowDissolveDelayDialog(false);
+                                        setDissolveDelayInput('');
+                                    }}
+                                    disabled={actionBusy || !dissolveDelayInput}
+                                    style={{
+                                        background: theme.colors.accent,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '10px 20px',
+                                        cursor: (actionBusy || !dissolveDelayInput) ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500',
+                                        opacity: (actionBusy || !dissolveDelayInput) ? 0.6 : 1
+                                    }}
+                                >
+                                    {actionBusy ? 'Processing...' : 'Confirm'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
             <style>{spinKeyframes}</style>
         </div>
     );
