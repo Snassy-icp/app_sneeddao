@@ -1361,43 +1361,45 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             ) : (
                                 <>
                                     {/* Create Neuron Button */}
-                                    {token.available > 0n && (
-                                        <button
-                                            onClick={async () => {
-                                                setShowCreateNeuronDialog(true);
-                                                setCreateNeuronNonce('');
-                                                setCreateNeuronNonceFree(null);
-                                                setCreateNeuronNonceChecking(true);
-                                                const result = await findUnusedNonce();
-                                                if (result) {
-                                                    setCreateNeuronNonce(result.nonce.toString());
-                                                    setCreateNeuronNonceFree(true);
-                                                }
-                                                setCreateNeuronNonceChecking(false);
-                                            }}
-                                            style={{
-                                                background: theme.colors.accent,
-                                                color: theme.colors.primaryBg,
-                                                border: 'none',
-                                                borderRadius: '8px',
-                                                padding: '12px 16px',
-                                                cursor: 'pointer',
-                                                fontSize: '0.9rem',
-                                                fontWeight: '600',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                gap: '6px',
-                                                width: '100%',
-                                                marginBottom: '16px',
-                                                transition: 'opacity 0.2s ease'
-                                            }}
-                                            onMouseEnter={(e) => e.target.style.opacity = '0.9'}
-                                            onMouseLeave={(e) => e.target.style.opacity = '1'}
-                                        >
-                                            ➕ Create New Neuron
-                                        </button>
-                                    )}
+                                    <button
+                                        onClick={async () => {
+                                            if (token.available <= 0n) return;
+                                            setShowCreateNeuronDialog(true);
+                                            setCreateNeuronNonce('');
+                                            setCreateNeuronNonceFree(null);
+                                            setCreateNeuronNonceChecking(true);
+                                            const result = await findUnusedNonce();
+                                            if (result) {
+                                                setCreateNeuronNonce(result.nonce.toString());
+                                                setCreateNeuronNonceFree(true);
+                                            }
+                                            setCreateNeuronNonceChecking(false);
+                                        }}
+                                        disabled={token.available <= 0n}
+                                        title={token.available <= 0n ? `You need ${token.symbol} tokens to create a neuron` : 'Create a new neuron'}
+                                        style={{
+                                            background: token.available > 0n ? theme.colors.accent : theme.colors.mutedText,
+                                            color: theme.colors.primaryBg,
+                                            border: 'none',
+                                            borderRadius: '8px',
+                                            padding: '12px 16px',
+                                            cursor: token.available > 0n ? 'pointer' : 'not-allowed',
+                                            fontSize: '0.9rem',
+                                            fontWeight: '600',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '6px',
+                                            width: '100%',
+                                            marginBottom: '16px',
+                                            opacity: token.available > 0n ? 1 : 0.6,
+                                            transition: 'opacity 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => { if (token.available > 0n) e.target.style.opacity = '0.9' }}
+                                        onMouseLeave={(e) => { if (token.available > 0n) e.target.style.opacity = '1' }}
+                                    >
+                                        ➕ Create New Neuron
+                                    </button>
                                     
                                     {neurons.length > 0 ? (
                                         neurons.map((neuron, neuronIndex) => {
