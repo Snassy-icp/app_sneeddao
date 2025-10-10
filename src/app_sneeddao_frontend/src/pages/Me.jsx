@@ -68,6 +68,14 @@ export default function Me() {
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [isTransactionsCollapsed, setIsTransactionsCollapsed] = useState(true);
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
+    const [hideEmptyNeurons, setHideEmptyNeurons] = useState(() => {
+        try {
+            const saved = localStorage.getItem('hideEmptyNeurons_Me');
+            return saved !== null ? JSON.parse(saved) : false;
+        } catch (error) {
+            return false;
+        }
+    });
     
     // Get naming context
     const { neuronNames, neuronNicknames, fetchAllNames, verifiedNames, principalNames, principalNicknames } = useNaming();
@@ -93,6 +101,22 @@ export default function Me() {
         
         return "";
     };
+
+    // Helper to check if a neuron is empty (0 stake and 0 maturity)
+    const isNeuronEmpty = (neuron) => {
+        const stake = BigInt(neuron.cached_neuron_stake_e8s || 0);
+        const maturity = BigInt(neuron.maturity_e8s_equivalent || 0);
+        return stake === 0n && maturity === 0n;
+    };
+
+    // Save hideEmptyNeurons preference to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('hideEmptyNeurons_Me', JSON.stringify(hideEmptyNeurons));
+        } catch (error) {
+            console.warn('Could not save hideEmptyNeurons preference:', error);
+        }
+    }, [hideEmptyNeurons]);
 
     // Group neurons by owner
     const groupedNeurons = React.useMemo(() => {
@@ -122,7 +146,12 @@ export default function Me() {
             );
 
             if (hasAccess) {
-                const totalStake = ownerNeurons.reduce(
+                // Filter out empty neurons if hideEmptyNeurons is true
+                const filteredNeurons = hideEmptyNeurons 
+                    ? ownerNeurons.filter(n => !isNeuronEmpty(n))
+                    : ownerNeurons;
+                
+                const totalStake = filteredNeurons.reduce(
                     (sum, n) => sum + BigInt(n.cached_neuron_stake_e8s || 0), 
                     BigInt(0)
                 );
@@ -130,14 +159,14 @@ export default function Me() {
                 groups.set(owner, {
                     title: owner === userPrincipal ? 'My Neurons' : `Neurons from ${owner.slice(0, 6)}...${owner.slice(-6)}`,
                     tooltip: owner === userPrincipal ? undefined : `Principal ID: ${owner}`,
-                    neurons: ownerNeurons,
+                    neurons: filteredNeurons,
                     totalStake
                 });
             }
         });
 
         return groups;
-    }, [neurons, identity]);
+    }, [neurons, identity, hideEmptyNeurons]);
 
     // Fetch SNS data on component mount
     useEffect(() => {
@@ -699,7 +728,29 @@ export default function Me() {
 
                 </div>
 
-                <h1 style={{ color: theme.colors.primaryText, marginBottom: '20px' }}>My Neurons</h1>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                    <h1 style={{ color: theme.colors.primaryText, margin: 0 }}>My Neurons</h1>
+                    
+                    {neurons.length > 0 && (
+                        <label style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            cursor: 'pointer',
+                            color: theme.colors.secondaryText,
+                            fontSize: '0.9rem',
+                            userSelect: 'none'
+                        }}>
+                            <input
+                                type="checkbox"
+                                checked={hideEmptyNeurons}
+                                onChange={(e) => setHideEmptyNeurons(e.target.checked)}
+                                style={{ cursor: 'pointer' }}
+                            />
+                            Hide empty neurons
+                        </label>
+                    )}
+                </div>
 
                 {error && (
                     <div style={{ 

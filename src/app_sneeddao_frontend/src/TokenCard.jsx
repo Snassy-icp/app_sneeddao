@@ -34,6 +34,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [neuronsLoading, setNeuronsLoading] = useState(false);
     const [neuronsExpanded, setNeuronsExpanded] = useState(false);
     const [expandedNeurons, setExpandedNeurons] = useState(new Set());
+    const [hideEmptyNeurons, setHideEmptyNeurons] = useState(() => {
+        try {
+            const saved = localStorage.getItem('hideEmptyNeurons_Wallet');
+            return saved !== null ? JSON.parse(saved) : false;
+        } catch (error) {
+            return false;
+        }
+    });
     const [snsRootCanisterId, setSnsRootCanisterId] = useState(null);
     const [nervousSystemParameters, setNervousSystemParameters] = useState(null);
     const [votingPowerCalc, setVotingPowerCalc] = useState(null);
@@ -149,6 +157,22 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         }
         return 'Unknown';
     };
+
+    // Helper to check if a neuron is empty (0 stake and 0 maturity)
+    const isNeuronEmpty = (neuron) => {
+        const stake = BigInt(getNeuronStake(neuron));
+        const maturity = BigInt(neuron.maturity_e8s_equivalent || 0);
+        return stake === 0n && maturity === 0n;
+    };
+
+    // Save hideEmptyNeurons preference to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('hideEmptyNeurons_Wallet', JSON.stringify(hideEmptyNeurons));
+        } catch (error) {
+            console.warn('Could not save hideEmptyNeurons preference:', error);
+        }
+    }, [hideEmptyNeurons]);
 
     // Check if user has a specific permission on a neuron
     const userHasPermission = (neuron, permissionType) => {
@@ -1413,8 +1437,32 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         ➕ Create New Neuron
                                     </button>
                                     
+                                    {/* Hide empty neurons checkbox */}
+                                    {neurons.length > 0 && (
+                                        <label style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            cursor: 'pointer',
+                                            color: theme.colors.secondaryText,
+                                            fontSize: '0.85rem',
+                                            marginBottom: '12px',
+                                            userSelect: 'none'
+                                        }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={hideEmptyNeurons}
+                                                onChange={(e) => setHideEmptyNeurons(e.target.checked)}
+                                                style={{ cursor: 'pointer' }}
+                                            />
+                                            Hide empty neurons
+                                        </label>
+                                    )}
+                                    
                                     {neurons.length > 0 ? (
-                                        neurons.map((neuron, neuronIndex) => {
+                                        neurons
+                                            .filter(neuron => !hideEmptyNeurons || !isNeuronEmpty(neuron))
+                                            .map((neuron, neuronIndex) => {
                                             const neuronIdHex = getNeuronIdHex(neuron);
                                             const isExpanded = expandedNeurons.has(neuronIdHex);
                                             const stake = getNeuronStake(neuron);
