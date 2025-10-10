@@ -858,6 +858,30 @@ export default function Me() {
                                                                     ✏️
                                                                 </button>
                                                             )}
+                                                            <Link
+                                                                to={`/neuron?neuronid=${neuronId}&sns=${selectedSnsRoot}`}
+                                                                style={{
+                                                                    background: theme.colors.secondaryBg,
+                                                                    color: theme.colors.primaryText,
+                                                                    border: `1px solid ${theme.colors.border}`,
+                                                                    borderRadius: '6px',
+                                                                    padding: '6px 10px',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '0.8rem',
+                                                                    fontWeight: '500',
+                                                                    textDecoration: 'none',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    transition: 'background 0.2s ease',
+                                                                    marginLeft: 'auto'
+                                                                }}
+                                                                onMouseEnter={(e) => e.target.style.background = theme.colors.border}
+                                                                onMouseLeave={(e) => e.target.style.background = theme.colors.secondaryBg}
+                                                                title="Manage neuron"
+                                                            >
+                                                                ⚙️ Manage
+                                                            </Link>
                                                         </div>
                                                         {name && (
                                                             <div style={{ 
