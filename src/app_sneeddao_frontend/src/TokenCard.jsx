@@ -49,6 +49,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [showCreateNeuronDialog, setShowCreateNeuronDialog] = useState(false);
     const [createNeuronAmount, setCreateNeuronAmount] = useState('');
     const [createNeuronDissolveDelay, setCreateNeuronDissolveDelay] = useState('');
+    const [createNeuronSetDissolveDelay, setCreateNeuronSetDissolveDelay] = useState(true); // Whether to set dissolve delay
     const [createNeuronProgress, setCreateNeuronProgress] = useState('');
     const [createNeuronNonce, setCreateNeuronNonce] = useState('');
     const [createNeuronNonceChecking, setCreateNeuronNonceChecking] = useState(false);
@@ -421,7 +422,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         return new Uint8Array(digest);
     };
 
-    const createNeuron = async (amountE8s, dissolveDelaySeconds, nonce) => {
+    const createNeuron = async (amountE8s, dissolveDelaySeconds, nonce, shouldSetDissolveDelay = true) => {
         setNeuronActionBusy(true);
         
         try {
@@ -433,6 +434,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             console.log(`[TokenCard] Creating neuron with nonce ${nonce}`);
             console.log(`[TokenCard] Subaccount (hex):`, Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join(''));
             console.log(`[TokenCard] Controller principal:`, principal.toString());
+            console.log(`[TokenCard] Will set dissolve delay:`, shouldSetDissolveDelay);
 
             // Step 2: Transfer tokens to the neuron's subaccount
             setCreateNeuronProgress('Transferring tokens to neuron subaccount...');
@@ -525,16 +527,18 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 return;
             }
             
-            // Step 5: Set dissolve delay
-            setCreateNeuronProgress('Setting dissolve delay...');
-            const neuronIdHex = Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join('');
-            await manageNeuron(neuronIdHex, {
-                Configure: { operation: [{ 
-                    IncreaseDissolveDelay: { 
-                        additional_dissolve_delay_seconds: Number(dissolveDelaySeconds) 
-                    } 
-                }] }
-            });
+            // Step 5: Set dissolve delay (if requested)
+            if (shouldSetDissolveDelay && dissolveDelaySeconds > 0) {
+                setCreateNeuronProgress('Setting dissolve delay...');
+                const neuronIdHex = Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join('');
+                await manageNeuron(neuronIdHex, {
+                    Configure: { operation: [{ 
+                        IncreaseDissolveDelay: { 
+                            additional_dissolve_delay_seconds: Number(dissolveDelaySeconds) 
+                        } 
+                    }] }
+                });
+            }
             
             setCreateNeuronProgress('Refreshing neuron list...');
             await refetchNeurons();
@@ -550,8 +554,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         setShowCreateNeuronDialog(false);
         setCreateNeuronAmount('');
         setCreateNeuronDissolveDelay('');
+        setCreateNeuronSetDissolveDelay(true);
         setCreateNeuronNonce('');
         setCreateNeuronNonceFree(null);
+        setCreateNeuronSubaccountBalance(null);
         setCreateNeuronAdvancedExpanded(false);
     };
 
@@ -2213,8 +2219,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 setShowCreateNeuronDialog(false);
                                 setCreateNeuronAmount('');
                                 setCreateNeuronDissolveDelay('');
+                                setCreateNeuronSetDissolveDelay(true);
                                 setCreateNeuronNonce('');
                                 setCreateNeuronNonceFree(null);
+                                setCreateNeuronSubaccountBalance(null);
                                 setCreateNeuronAdvancedExpanded(false);
                             }
                         }}
@@ -2362,40 +2370,74 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             
                             {/* Dissolve Delay Section */}
                             <div style={{ marginBottom: '24px' }}>
-                                <h4 style={{ color: theme.colors.primaryText, marginTop: 0, marginBottom: '8px' }}>
-                                    Dissolve Delay
-                                </h4>
-                                
-                                <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '8px' }}>
-                                    Minimum: <strong>{format_duration(minDissolveDelaySeconds * 1000)}</strong>
-                                </p>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '8px',
+                                    marginBottom: '12px'
+                                }}>
+                                    <input
+                                        type="checkbox"
+                                        id="setDissolveDelay"
+                                        checked={createNeuronSetDissolveDelay}
+                                        onChange={(e) => setCreateNeuronSetDissolveDelay(e.target.checked)}
+                                        disabled={neuronActionBusy}
+                                        style={{ cursor: neuronActionBusy ? 'not-allowed' : 'pointer' }}
+                                    />
+                                    <label 
+                                        htmlFor="setDissolveDelay" 
+                                        style={{ 
+                                            color: theme.colors.primaryText, 
+                                            fontSize: '1rem',
+                                            fontWeight: '600',
+                                            cursor: neuronActionBusy ? 'not-allowed' : 'pointer',
+                                            userSelect: 'none'
+                                        }}
+                                    >
+                                        Set Dissolve Delay
+                                    </label>
+                                </div>
                                 
                                 <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '12px' }}>
-                                    Maximum: <strong>{format_duration(maxDissolveDelaySeconds * 1000)}</strong>
+                                    {createNeuronSetDissolveDelay 
+                                        ? 'Set an initial dissolve delay for your neuron. You can increase it later.'
+                                        : 'Skip setting dissolve delay now. You can set or increase it from 0 later.'}
                                 </p>
                                 
-                                <input
-                                    type="text"
-                                    value={createNeuronDissolveDelay}
-                                    onChange={(e) => {
-                                        const value = e.target.value;
-                                        if (value === '' || /^\d*\.?\d*$/.test(value)) {
-                                            setCreateNeuronDissolveDelay(value);
-                                        }
-                                    }}
-                                    placeholder="Days (e.g., 180)"
-                                    disabled={neuronActionBusy}
-                                    style={{
-                                        width: '100%',
-                                        padding: '12px',
-                                        borderRadius: '6px',
-                                        border: `1px solid ${theme.colors.border}`,
-                                        background: theme.colors.secondaryBg,
-                                        color: theme.colors.primaryText,
-                                        fontSize: '1rem',
-                                        boxSizing: 'border-box'
-                                    }}
-                                />
+                                {createNeuronSetDissolveDelay && (
+                                    <>
+                                        <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '8px' }}>
+                                            Minimum: <strong>{format_duration(minDissolveDelaySeconds * 1000)}</strong>
+                                        </p>
+                                        
+                                        <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '12px' }}>
+                                            Maximum: <strong>{format_duration(maxDissolveDelaySeconds * 1000)}</strong>
+                                        </p>
+                                        
+                                        <input
+                                            type="text"
+                                            value={createNeuronDissolveDelay}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                                                    setCreateNeuronDissolveDelay(value);
+                                                }
+                                            }}
+                                            placeholder="Days (e.g., 180)"
+                                            disabled={neuronActionBusy}
+                                            style={{
+                                                width: '100%',
+                                                padding: '12px',
+                                                borderRadius: '6px',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                background: theme.colors.secondaryBg,
+                                                color: theme.colors.primaryText,
+                                                fontSize: '1rem',
+                                                boxSizing: 'border-box'
+                                            }}
+                                        />
+                                    </>
+                                )}
                             </div>
                             
                             {/* Advanced Section (Collapsible) */}
@@ -2558,6 +2600,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         setShowCreateNeuronDialog(false);
                                         setCreateNeuronAmount('');
                                         setCreateNeuronDissolveDelay('');
+                                        setCreateNeuronSetDissolveDelay(true);
                                         setCreateNeuronNonce('');
                                         setCreateNeuronNonceFree(null);
                                         setCreateNeuronSubaccountBalance(null);
@@ -2602,22 +2645,25 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                 return;
                                             }
                                             
-                                            // Validate dissolve delay
-                                            const delayDays = parseFloat(createNeuronDissolveDelay);
-                                            if (isNaN(delayDays) || delayDays < 0) {
-                                                alert('Please enter a valid dissolve delay in days');
-                                                return;
-                                            }
-                                            const delaySeconds = Math.floor(delayDays * 24 * 60 * 60);
-                                            
-                                            // Check min/max dissolve delay
-                                            if (delaySeconds < minDissolveDelaySeconds) {
-                                                alert(`Dissolve delay must be at least ${format_duration(minDissolveDelaySeconds * 1000)}`);
-                                                return;
-                                            }
-                                            if (delaySeconds > maxDissolveDelaySeconds) {
-                                                alert(`Dissolve delay cannot exceed ${format_duration(maxDissolveDelaySeconds * 1000)}`);
-                                                return;
+                                            // Validate dissolve delay (if user chose to set it)
+                                            let delaySeconds = 0;
+                                            if (createNeuronSetDissolveDelay) {
+                                                const delayDays = parseFloat(createNeuronDissolveDelay);
+                                                if (isNaN(delayDays) || delayDays < 0) {
+                                                    alert('Please enter a valid dissolve delay in days');
+                                                    return;
+                                                }
+                                                delaySeconds = Math.floor(delayDays * 24 * 60 * 60);
+                                                
+                                                // Check min/max dissolve delay
+                                                if (delaySeconds < minDissolveDelaySeconds) {
+                                                    alert(`Dissolve delay must be at least ${format_duration(minDissolveDelaySeconds * 1000)}`);
+                                                    return;
+                                                }
+                                                if (delaySeconds > maxDissolveDelaySeconds) {
+                                                    alert(`Dissolve delay cannot exceed ${format_duration(maxDissolveDelaySeconds * 1000)}`);
+                                                    return;
+                                                }
                                             }
                                             
                                             // Validate nonce
@@ -2635,43 +2681,50 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                 return;
                                             }
                                             
-                                            createNeuron(stakeE8s, delaySeconds, nonce);
+                                            createNeuron(stakeE8s, delaySeconds, nonce, createNeuronSetDissolveDelay);
                                         } catch (error) {
                                             alert('Invalid input values');
                                         }
                                     }}
                                     disabled={(() => {
-                                        if (neuronActionBusy || !createNeuronAmount || !createNeuronDissolveDelay || !createNeuronNonce || createNeuronNonceFree !== true) return true;
+                                        if (neuronActionBusy || !createNeuronAmount || !createNeuronNonce || createNeuronNonceFree !== true) return true;
                                         
-                                        // Check if dissolve delay is within valid range
-                                        try {
-                                            const delayDays = parseFloat(createNeuronDissolveDelay);
-                                            if (isNaN(delayDays) || delayDays < 0) return true;
-                                            const delaySeconds = Math.floor(delayDays * 24 * 60 * 60);
-                                            if (delaySeconds < minDissolveDelaySeconds || delaySeconds > maxDissolveDelaySeconds) return true;
-                                        } catch {
-                                            return true;
+                                        // If user chose to set dissolve delay, validate it
+                                        if (createNeuronSetDissolveDelay) {
+                                            if (!createNeuronDissolveDelay) return true;
+                                            try {
+                                                const delayDays = parseFloat(createNeuronDissolveDelay);
+                                                if (isNaN(delayDays) || delayDays < 0) return true;
+                                                const delaySeconds = Math.floor(delayDays * 24 * 60 * 60);
+                                                if (delaySeconds < minDissolveDelaySeconds || delaySeconds > maxDissolveDelaySeconds) return true;
+                                            } catch {
+                                                return true;
+                                            }
                                         }
                                         
                                         return false;
                                     })()}
                                     style={(() => {
-                                        let isDisabled = neuronActionBusy || !createNeuronAmount || !createNeuronDissolveDelay || !createNeuronNonce || createNeuronNonceFree !== true;
+                                        let isDisabled = neuronActionBusy || !createNeuronAmount || !createNeuronNonce || createNeuronNonceFree !== true;
                                         
-                                        // Check if dissolve delay is within valid range
-                                        if (createNeuronDissolveDelay) {
-                                            try {
-                                                const delayDays = parseFloat(createNeuronDissolveDelay);
-                                                if (isNaN(delayDays) || delayDays < 0) {
-                                                    isDisabled = true;
-                                                } else {
-                                                    const delaySeconds = Math.floor(delayDays * 24 * 60 * 60);
-                                                    if (delaySeconds < minDissolveDelaySeconds || delaySeconds > maxDissolveDelaySeconds) {
-                                                        isDisabled = true;
-                                                    }
-                                                }
-                                            } catch {
+                                        // If user chose to set dissolve delay, validate it
+                                        if (createNeuronSetDissolveDelay) {
+                                            if (!createNeuronDissolveDelay) {
                                                 isDisabled = true;
+                                            } else {
+                                                try {
+                                                    const delayDays = parseFloat(createNeuronDissolveDelay);
+                                                    if (isNaN(delayDays) || delayDays < 0) {
+                                                        isDisabled = true;
+                                                    } else {
+                                                        const delaySeconds = Math.floor(delayDays * 24 * 60 * 60);
+                                                        if (delaySeconds < minDissolveDelaySeconds || delaySeconds > maxDissolveDelaySeconds) {
+                                                            isDisabled = true;
+                                                        }
+                                                    }
+                                                } catch {
+                                                    isDisabled = true;
+                                                }
                                             }
                                         }
                                         
