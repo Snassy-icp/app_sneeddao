@@ -2997,6 +2997,117 @@ function RLLInfo() {
                         i
                     </span>
                 </h1>
+
+                {/* Price Section */}
+                <section style={{
+                    ...styles.section,
+                    width: '100%',
+                    maxWidth: '800px',
+                    margin: '0 auto 30px',
+                    padding: '20px'
+                }}>
+                    <h2 style={{ 
+                        color: theme.colors.primaryText, 
+                        marginTop: 0, 
+                        marginBottom: '20px',
+                        textAlign: 'center',
+                        fontSize: '1.3em'
+                    }}>
+                        Current Prices
+                    </h2>
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                        gap: '15px'
+                    }}>
+                        {/* SNEED Price in ICP */}
+                        <div style={{
+                            background: theme.colors.tertiaryBg,
+                            border: `1px solid ${theme.colors.border}`,
+                            borderRadius: '8px',
+                            padding: '15px',
+                            textAlign: 'center',
+                            boxShadow: theme.colors.cardShadow
+                        }}>
+                            <div style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '0.9em',
+                                marginBottom: '8px'
+                            }}>
+                                SNEED Price (ICP)
+                            </div>
+                            <div style={{ 
+                                color: theme.colors.primaryText, 
+                                fontSize: '1.3em',
+                                fontWeight: 'bold',
+                                fontFamily: 'monospace'
+                            }}>
+                                {conversionRates['ICP'] && conversionRates['SNEED'] 
+                                    ? (conversionRates['SNEED'] / conversionRates['ICP']).toFixed(8)
+                                    : '...'
+                                } ICP
+                            </div>
+                        </div>
+
+                        {/* SNEED Price in USD */}
+                        <div style={{
+                            background: theme.colors.tertiaryBg,
+                            border: `1px solid ${theme.colors.border}`,
+                            borderRadius: '8px',
+                            padding: '15px',
+                            textAlign: 'center',
+                            boxShadow: theme.colors.cardShadow
+                        }}>
+                            <div style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '0.9em',
+                                marginBottom: '8px'
+                            }}>
+                                SNEED Price (USD)
+                            </div>
+                            <div style={{ 
+                                color: theme.colors.primaryText, 
+                                fontSize: '1.3em',
+                                fontWeight: 'bold',
+                                fontFamily: 'monospace'
+                            }}>
+                                ${conversionRates['SNEED'] 
+                                    ? conversionRates['SNEED'].toFixed(6)
+                                    : '...'
+                                }
+                            </div>
+                        </div>
+
+                        {/* ICP Price in USD */}
+                        <div style={{
+                            background: theme.colors.tertiaryBg,
+                            border: `1px solid ${theme.colors.border}`,
+                            borderRadius: '8px',
+                            padding: '15px',
+                            textAlign: 'center',
+                            boxShadow: theme.colors.cardShadow
+                        }}>
+                            <div style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '0.9em',
+                                marginBottom: '8px'
+                            }}>
+                                ICP Price (USD)
+                            </div>
+                            <div style={{ 
+                                color: theme.colors.primaryText, 
+                                fontSize: '1.3em',
+                                fontWeight: 'bold',
+                                fontFamily: 'monospace'
+                            }}>
+                                ${conversionRates['ICP'] 
+                                    ? conversionRates['ICP'].toFixed(2)
+                                    : '...'
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </section>
                 
                 <div className="rll-layout" style={{
                     display: 'grid',
@@ -3020,16 +3131,28 @@ function RLLInfo() {
                             style={styles.sectionHeader}
                             onClick={() => setExpandedSections(prev => ({ ...prev, totalAssets: !prev.totalAssets }))}
                         >
-                            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center' }}>
-                                Total Assets Overview
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="Comprehensive overview of all DAO assets across different protocols, including treasury holdings, staked positions, LP positions, and tokens pending distribution"
-                                    onClick={(e) => e.stopPropagation()}
-                                >
-                                    i
-                                </span>
-                            </h2>
+                            <div style={{ flex: 1 }}>
+                                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+                                    Total Assets Overview
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="Comprehensive overview of all DAO assets across different protocols, including treasury holdings, staked positions, LP positions, and tokens pending distribution"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        i
+                                    </span>
+                                </h2>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    gap: '20px', 
+                                    fontSize: '0.9em', 
+                                    color: theme.colors.mutedText,
+                                    fontFamily: 'monospace'
+                                }}>
+                                    <span>FDV: ${formatUSD(getUSDValue(getTotalSupply(), 8, 'SNEED'))}</span>
+                                    <span>NAV: ${formatUSD(getNAVUSDValue())}</span>
+                                </div>
+                            </div>
                             <button style={styles.expandButton}>
                                 {expandedSections.totalAssets ? '▼' : '▶'}
                             </button>
@@ -3922,7 +4045,7 @@ function RLLInfo() {
                         gridArea: 'flow',
                         width: '100%',
                         maxWidth: '800px',
-                        height: '800px',
+                        height: expandedSections.rllDiagram ? '800px' : 'auto',
                         minWidth: '0',
                         minHeight: '0',
                         overflow: 'hidden'
@@ -3948,7 +4071,7 @@ function RLLInfo() {
                         {expandedSections.rllDiagram && <div style={{
                             position: 'relative',
                             width: '100%',
-                            height: 'calc(100% - 40px)',
+                            height: 'calc(800px - 60px)',
                             background: theme.colors.secondaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                             borderRadius: '8px',
                             overflow: 'hidden'
