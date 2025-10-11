@@ -7,9 +7,9 @@ import { HttpAgent } from '@dfinity/agent';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
-import { createActor as createNeutriniteDappActor } from 'external/neutrinite_dapp';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
+import priceService from '../services/PriceService';
 import { 
     calculateTotalAssetsValue,
     getTokenLogo 
@@ -247,29 +247,21 @@ function DaoInfo() {
 
     console.log("tokenomics", tokenomics);
     console.log("daoMetrics", daoMetrics);
-    // Fetch conversion rates from Neutrinite
+    
+    // Fetch conversion rates using new PriceService
     useEffect(() => {
         const fetchConversionRates = async () => {
             try {
-                const neutriniteActor = createNeutriniteDappActor(Principal.fromText("u45jl-liaaa-aaaam-abppa-cai"));
-                const tokens = await neutriniteActor.get_latest_wallet_tokens();
-                const rates = {};
+                // Fetch prices for commonly used tokens (ICP and SNEED)
+                const [icpPrice, sneedPrice] = await Promise.all([
+                    priceService.getTokenUSDPrice('ryjl3-tyaaa-aaaaa-aaaba-cai', 8).catch(() => 0),
+                    priceService.getTokenUSDPrice('hvgxa-wqaaa-aaaaq-aacia-cai', 8).catch(() => 0)
+                ]);
                 
-                tokens.latest.forEach(token => {
-                    if (token.rates) {
-                        token.rates.forEach(rate => {
-                            if (rate.symbol.endsWith("/USD")) {
-                                const tokenSymbol = rate.symbol.split("/")[0];
-                                rates[tokenSymbol] = rate.rate;
-                            }
-                        });
-                    }
+                setConversionRates({
+                    'ICP': icpPrice,
+                    'SNEED': sneedPrice
                 });
-                
-                setConversionRates(prevRates => ({
-                    ...prevRates,
-                    ...rates
-                }));
             } catch (err) {
                 console.error('Error fetching conversion rates:', err);
             }

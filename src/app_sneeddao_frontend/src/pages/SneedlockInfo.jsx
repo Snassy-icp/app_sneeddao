@@ -203,25 +203,10 @@ function SneedlockInfo() {
 
     const fetchConversionRates = async () => {
         try {
-            const neutriniteActor = createNeutriniteDappActor(neutriniteCanisterId, { agentOptions: { identity } });
-            const tokens = await neutriniteActor.get_latest_wallet_tokens();
-            const rates = {};
-            
-            tokens.latest.forEach(token => {
-                if (token.rates) {
-                    token.rates.forEach(rate => {
-                        if (rate.symbol.endsWith("/USD")) {
-                            const tokenSymbol = rate.symbol.split("/")[0];
-                            rates[tokenSymbol] = rate.rate;
-                        }
-                    });
-                }
-            });
-            
-            setConversionRates(prevRates => ({
-                ...prevRates,
-                ...rates
-            }));
+            // TODO: Migrate to use priceService for specific tokens as needed
+            // For now, disable Neutrinite dependency
+            console.warn('fetchConversionRates: Rate fetching disabled. Migrate to use priceService per-token.');
+            setConversionRates({});
         } catch (err) {
             console.error('Error fetching conversion rates:', err);
         }

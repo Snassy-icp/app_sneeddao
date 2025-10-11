@@ -1,7 +1,7 @@
-import { createActor as createNeutriniteDappActor } from 'external/neutrinite_dapp';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { Principal } from "@dfinity/principal";
 import { formatAmountWithConversion } from './StringUtils';
+import priceService from '../services/PriceService';
 
 const get_available_backend = (token) => {
     return BigInt(Math.max(0, Number(BigInt(token.balance_backend) - BigInt(token.locked))));
@@ -97,27 +97,35 @@ async function getTokenMetaForSwap(swapActor, backendActor, swapCanisterId) {
     }
 }
 
-let tokenConversionRates = {};
-
-const get_token_conversion_rates = async () => {
-
-    if (Object.keys(tokenConversionRates).length < 1) {
-        let can = createNeutriniteDappActor(Principal.fromText("u45jl-liaaa-aaaam-abppa-cai"));
-        let tokens = await can.get_latest_wallet_tokens();
-
-        tokens.latest.forEach(token => {
-            if (token.rates) {
-                token.rates.forEach(rate => {
-                    if (rate.symbol.endsWith("/USD")) {
-                        const tokenSymbol = rate.symbol.split("/")[0];
-                        tokenConversionRates[tokenSymbol] = rate.rate;
-                    }
-                });
-            }
-        });
+/**
+ * Get USD conversion rate for a token using the new PriceService
+ * @param {string} tokenCanisterId - Token canister ID  
+ * @param {number} decimals - Token decimals (optional)
+ * @returns {Promise<number>} USD conversion rate, or 0 if unavailable
+ */
+const get_token_conversion_rate = async (tokenCanisterId, decimals = null) => {
+    try {
+        // Set decimals in cache if provided
+        if (decimals !== null) {
+            priceService.setTokenDecimals(tokenCanisterId, decimals);
+        }
+        
+        const usdPrice = await priceService.getTokenUSDPrice(tokenCanisterId, decimals);
+        return usdPrice;
+    } catch (error) {
+        console.warn(`Unable to fetch USD price for token ${tokenCanisterId}:`, error);
+        return 0;
     }
+};
 
-    return tokenConversionRates;
+/**
+ * Legacy function for backward compatibility
+ * Returns an empty object - use get_token_conversion_rate instead
+ * @deprecated Use get_token_conversion_rate(tokenCanisterId, decimals) instead
+ */
+const get_token_conversion_rates = async () => {
+    console.warn('get_token_conversion_rates is deprecated. Use get_token_conversion_rate(tokenCanisterId, decimals) instead');
+    return {};
 };
 
 function rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) {
@@ -240,7 +248,8 @@ export {
     get_available_backend,
     getTokenLogo,
     getTokenMetaData,
-    get_token_conversion_rates,
+    get_token_conversion_rates, // deprecated - kept for compatibility
+    get_token_conversion_rate,  // use this instead
     rewardAmountOrZero,
     availableOrZero,
     getTokenTVL,

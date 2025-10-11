@@ -4,7 +4,7 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
 import { createActor as createForumActor, canisterId as forumCanisterId } from 'declarations/sneed_sns_forum';
-import { getTokenLogo, get_token_conversion_rates } from '../utils/TokenUtils';
+import { getTokenLogo, get_token_conversion_rate } from '../utils/TokenUtils';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from '../utils/BackendUtils';
 
@@ -34,7 +34,12 @@ export const useTokens = (identity) => {
             ]);
 
             const logo = getTokenLogo(metadata);
-            const tokenConversionRates = await get_token_conversion_rates();
+            
+            // Fetch conversion rate using the new price service
+            const conversion_rate = await get_token_conversion_rate(
+                ledgerCanisterId.toString(), 
+                decimals
+            );
 
             return {
                 principal: ledgerCanisterId.toString(),
@@ -44,7 +49,7 @@ export const useTokens = (identity) => {
                 fee,
                 logo: symbol.toLowerCase() === "icp" && logo === "" ? "icp_symbol.svg" : logo,
                 balance,
-                conversion_rate: tokenConversionRates[symbol] || 0
+                conversion_rate
             };
         } catch (error) {
             console.error(`Error fetching token details for ${ledgerCanisterId}:`, error);
