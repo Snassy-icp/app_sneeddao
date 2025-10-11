@@ -5,7 +5,7 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rates } from './utils/TokenUtils';
+import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rate } from './utils/TokenUtils';
 import { getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { useNaming } from './NamingContext';
 import { useTheme } from './contexts/ThemeContext';
@@ -106,7 +106,11 @@ function PositionLock() {
             const metadata1 = await ledgerActor1.icrc1_metadata();
             const token1Logo = getTokenLogo(metadata1);
 
-            const conversion_rates = await get_token_conversion_rates();
+            // Fetch conversion rates for both tokens using the new price service
+            const [token0_conversion_rate, token1_conversion_rate] = await Promise.all([
+                get_token_conversion_rate(icrc1_ledger0, token0Decimals),
+                get_token_conversion_rate(icrc1_ledger1, token1Decimals)
+            ]);
 
             let offset = 0;
             const limit = 10;
@@ -171,8 +175,8 @@ function PositionLock() {
                     token1Logo: token1Logo,
                     token0Decimals: token0Decimals,
                     token1Decimals: token1Decimals,
-                    token0_conversion_rate: conversion_rates[token0Symbol] || 0,
-                    token1_conversion_rate: conversion_rates[token1Symbol] || 0,
+                    token0_conversion_rate,
+                    token1_conversion_rate,
                     details: {
                         positionId: position.id,
                         token0Amount: position.token0Amount,

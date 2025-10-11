@@ -5,7 +5,7 @@ import { createActor as createBackendActor, canisterId as backendCanisterId } fr
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
-import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rates } from './utils/TokenUtils';
+import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rate } from './utils/TokenUtils';
 import { lockFromLocks } from './utils/PositionUtils';
 import { formatAmount, getUSD } from './utils/StringUtils';
 import TokenCard from './TokenCard';
@@ -59,9 +59,6 @@ function TokenLocksOverview() {
             const ledgerActor = createLedgerActor(ledgerCanisterId);
             const ledgerPrincipal = Principal.fromText(ledgerCanisterId);
 
-            // Fetch conversion rates first as they're needed in multiple places
-            const conversion_rates = await get_token_conversion_rates();
-
             // Fetch token details
             try {
                 const [metadata, symbol, decimals] = await Promise.all([
@@ -77,7 +74,9 @@ function TokenLocksOverview() {
                 const totalSupply = await ledgerActor.icrc1_total_supply();
 
                 const logo = getTokenLogo(metadata);
-                const conversion_rate = conversion_rates[symbol] || 0;
+                
+                // Fetch conversion rate using the new price service
+                const conversion_rate = await get_token_conversion_rate(ledgerCanisterId, decimals);
 
                 const tokenState = {
                     ledger_canister_id: ledgerCanisterId,
@@ -168,6 +167,12 @@ function TokenLocksOverview() {
                                     const token0Logo = getTokenLogo(metadata0);
                                     const token1Logo = getTokenLogo(metadata1);
 
+                                    // Fetch conversion rates for both tokens using the new price service
+                                    const [token0_conversion_rate, token1_conversion_rate] = await Promise.all([
+                                        get_token_conversion_rate(token0, token0Decimals),
+                                        get_token_conversion_rate(token1, token1Decimals)
+                                    ]);
+
                                     // Get position locks for this swap canister
                                     const position_locks = await sneedLockActor.get_swap_position_locks(swapCanisterId);
 
@@ -208,8 +213,8 @@ function TokenLocksOverview() {
                                         token1Logo,
                                         token0Decimals,
                                         token1Decimals,
-                                        token0_conversion_rate: conversion_rates[token0Symbol] || 0,
-                                        token1_conversion_rate: conversion_rates[token1Symbol] || 0,
+                                        token0_conversion_rate,
+                                        token1_conversion_rate,
                                         details: {
                                             positionId: position.id,
                                             token0Amount: position.token0Amount,

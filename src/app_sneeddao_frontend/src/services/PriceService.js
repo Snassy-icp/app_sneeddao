@@ -10,8 +10,8 @@
 
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
-import { idlFactory as poolIdlFactory } from '../../../external/icp_swap/icp_swap.did.js';
-import { idlFactory as factoryIdlFactory } from '../../../external/icp_swap_factory/icp_swap_factory.did.js';
+import { idlFactory as poolIdlFactory } from 'external/icp_swap/icp_swap.did.js';
+import { idlFactory as factoryIdlFactory } from 'external/icp_swap_factory/icp_swap_factory.did.js';
 
 // Constants
 const ICP_USDC_POOL_ID = 'mohjv-bqaaa-aaaag-qjyia-cai';

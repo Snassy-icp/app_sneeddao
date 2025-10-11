@@ -4,7 +4,7 @@ import { useLocation, Link } from 'react-router-dom';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createSneedLockActor, canisterId as sneedLockCanisterId  } from 'external/sneed_lock';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-import { getTokenLogo, get_token_conversion_rates } from './utils/TokenUtils';
+import { getTokenLogo, get_token_conversion_rate } from './utils/TokenUtils';
 import { getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { useNaming } from './NamingContext';
 import { useTheme } from './contexts/ThemeContext';
@@ -91,8 +91,8 @@ function TokenLock() {
                 owner: lock[0].toString() // Extract the lock owner from lock[0]
             }));
 
-            const conversion_rates = await get_token_conversion_rates();
-            const conversion_rate = conversion_rates[symbol] || 0;
+            // Fetch conversion rate using the new price service
+            const conversion_rate = await get_token_conversion_rate(ledgerCanisterId, decimals);
 
             setToken({
                 ledger_canister_id: Principal.fromText(ledgerCanisterId),
