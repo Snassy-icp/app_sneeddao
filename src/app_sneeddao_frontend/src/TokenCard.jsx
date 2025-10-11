@@ -20,7 +20,7 @@ const SGLDT_CANISTER_ID = 'i2s4q-syaaa-aaaan-qz4sq-cai';
 
 console.log('TokenCard constants:', { GLDT_CANISTER_ID, SGLDT_CANISTER_ID });
 
-const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleRefreshToken, isSnsToken = false }) => {
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleRefreshToken, isSnsToken = false, onNeuronTotalsChange }) => {
 
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
@@ -130,6 +130,28 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             return total + BigInt(neuron.maturity_e8s_equivalent || 0n);
         }, 0n);
     };
+
+    // Report neuron totals (stake + maturity) in USD to parent component
+    useEffect(() => {
+        if (onNeuronTotalsChange && isSnsToken && token.conversion_rate) {
+            const totalStake = getTotalNeuronStake();
+            const totalMaturity = getTotalNeuronMaturity();
+            const totalNeuronTokens = totalStake + totalMaturity;
+            
+            // Convert to USD
+            const usdValue = parseFloat(formatAmountWithConversion(
+                totalNeuronTokens,
+                token.decimals,
+                token.conversion_rate,
+                2
+            ));
+            
+            onNeuronTotalsChange(usdValue);
+        } else if (onNeuronTotalsChange && !isSnsToken) {
+            // If not an SNS token, report 0
+            onNeuronTotalsChange(0);
+        }
+    }, [neurons, token.conversion_rate, token.decimals, isSnsToken, onNeuronTotalsChange]);
 
     const getDissolveDelaySeconds = (neuron) => {
         const dissolveState = neuron.dissolve_state?.[0];

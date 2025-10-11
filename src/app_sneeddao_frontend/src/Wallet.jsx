@@ -203,6 +203,7 @@ function Wallet() {
     const [rewardDetailsLoading, setRewardDetailsLoading] = useState({});
     const [totalDollarValue, setTotalDollarValue] = useState(0.0);
     const [snsTokens, setSnsTokens] = useState(new Set()); // Set of ledger canister IDs that are SNS tokens
+    const [neuronTotals, setNeuronTotals] = useState({}); // Track neuron USD values by token ledger ID
 
     const dex_icpswap = 1;
  
@@ -809,7 +810,14 @@ function Wallet() {
     useEffect(() => {
         var total = 0.0;
         for (const token of tokens) {
+            // Get base token TVL (liquid + locked + rewards)
             total += getTokenTVL(token, rewardDetailsLoading, false);
+            
+            // Add neuron totals (staked + maturity) if available
+            const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+            if (neuronTotals[ledgerId]) {
+                total += neuronTotals[ledgerId];
+            }
         }
 
         for (const lp of liquidityPositions) {
@@ -821,7 +829,7 @@ function Wallet() {
         total = total.toFixed(2);
 
         setTotalDollarValue(total);
-    }, [tokens, liquidityPositions, rewardDetailsLoading]);
+    }, [tokens, liquidityPositions, rewardDetailsLoading, neuronTotals]);
 
     const calc_send_amounts = (token, amount) => {
         console.log('=== calc_send_amounts START ===');
@@ -1652,6 +1660,13 @@ function Wallet() {
                                 handleWithdrawFromBackend={handleWithdrawFromBackend}
                                 handleRefreshToken={handleRefreshToken}
                                 isSnsToken={isSns}
+                                onNeuronTotalsChange={(usdValue) => {
+                                    const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+                                    setNeuronTotals(prev => ({
+                                        ...prev,
+                                        [ledgerId]: usdValue
+                                    }));
+                                }}
                             />
                         );
                     })}
