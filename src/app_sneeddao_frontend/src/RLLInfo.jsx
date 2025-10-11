@@ -3006,15 +3006,37 @@ function RLLInfo() {
                     margin: '0 auto 30px',
                     padding: '20px'
                 }}>
-                    <h2 style={{ 
-                        color: theme.colors.primaryText, 
-                        marginTop: 0, 
-                        marginBottom: '20px',
-                        textAlign: 'center',
-                        fontSize: '1.3em'
-                    }}>
-                        Current Prices
-                    </h2>
+                    <div style={{ marginBottom: '20px' }}>
+                        <h2 style={{ 
+                            color: theme.colors.primaryText, 
+                            marginTop: 0, 
+                            marginBottom: '8px',
+                            textAlign: 'center',
+                            fontSize: '1.3em'
+                        }}>
+                            Current Prices
+                        </h2>
+                        <div style={{
+                            textAlign: 'center',
+                            fontSize: '0.85em',
+                            color: theme.colors.mutedText
+                        }}>
+                            All prices from <a 
+                                href="https://icpswap.com" 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                style={{
+                                    color: theme.colors.accent,
+                                    textDecoration: 'none',
+                                    transition: 'all 0.3s ease'
+                                }}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                ICPSwap
+                            </a>
+                        </div>
+                    </div>
                     <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
@@ -3143,14 +3165,17 @@ function RLLInfo() {
                                     </span>
                                 </h2>
                                 <div style={{ 
-                                    display: 'flex', 
-                                    gap: '20px', 
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                                    gap: '15px', 
                                     fontSize: '0.9em', 
                                     color: theme.colors.mutedText,
                                     fontFamily: 'monospace'
                                 }}>
                                     <span>FDV: ${formatUSD(getUSDValue(getTotalSupply(), 8, 'SNEED'))}</span>
+                                    <span>Circ. MC: ${formatUSD(getUSDValue(getCirculatingSupply(), 8, 'SNEED'))}</span>
                                     <span>NAV: ${formatUSD(getNAVUSDValue())}</span>
+                                    <span>TVL: ${formatUSD(getTVL())}</span>
                                 </div>
                             </div>
                             <button style={styles.expandButton}>
