@@ -1224,45 +1224,12 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         {!hideButtons && (
                             <div style={{ 
                                 display: 'flex', 
+                                justifyContent: 'flex-end',
                                 gap: '12px', 
                                 marginBottom: '15px',
                                 paddingBottom: '12px',
                                 borderBottom: `1px solid ${theme.colors.border}`
                             }}>
-                                {/* Lock Button */}
-                                {token.available > 0n && (
-                                    <button
-                                        onClick={() => openLockModal(token)}
-                                        style={{
-                                            background: theme.colors.accent,
-                                            color: theme.colors.primaryBg,
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            padding: '6px 12px',
-                                            cursor: 'pointer',
-                                            fontSize: '0.85rem',
-                                            fontWeight: '500',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            transition: 'all 0.2s ease'
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            e.target.style.background = theme.colors.accentHover;
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.target.style.background = theme.colors.accent;
-                                        }}
-                                    >
-                                        <img 
-                                            src="sneedlock-logo-cropped.png" 
-                                            alt="Lock" 
-                                            style={{ width: '14px', height: '14px' }}
-                                        />
-                                        Lock
-                                    </button>
-                                )}
-                                
                                 {/* Link Button */}
                                 <a 
                                     href={getTokenLockUrl(token.ledger_canister_id, locks[token.ledger_canister_id])} 
@@ -1296,6 +1263,40 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     />
                                     Link
                                 </a>
+                                
+                                {/* Lock Button */}
+                                {token.available > 0n && (
+                                    <button
+                                        onClick={() => openLockModal(token)}
+                                        style={{
+                                            background: theme.colors.accent,
+                                            color: theme.colors.primaryBg,
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '6px 12px',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '500',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.target.style.background = theme.colors.accentHover;
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.target.style.background = theme.colors.accent;
+                                        }}
+                                    >
+                                        <img 
+                                            src="sneedlock-logo-cropped.png" 
+                                            alt="Lock" 
+                                            style={{ width: '14px', height: '14px' }}
+                                        />
+                                        Lock
+                                    </button>
+                                )}
                             </div>
                         )}
                         {lockDetailsLoading[token.ledger_canister_id] ? (
@@ -1572,6 +1573,73 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                             background: theme.colors.primaryBg,
                                                             borderTop: `1px solid ${theme.colors.border}`
                                                         }}>
+                                                            {/* Top buttons row - Manage and Send */}
+                                                            <div style={{ 
+                                                                display: 'flex',
+                                                                justifyContent: 'flex-end',
+                                                                gap: '8px',
+                                                                marginBottom: '12px',
+                                                                paddingBottom: '12px',
+                                                                borderBottom: `1px solid ${theme.colors.border}`
+                                                            }}>
+                                                                {/* Manage button - link to detailed neuron page */}
+                                                                <a
+                                                                    href={`/neuron?neuronid=${neuronIdHex}&sns=${snsRootCanisterId}`}
+                                                                    style={{
+                                                                        background: theme.colors.secondaryBg,
+                                                                        color: theme.colors.primaryText,
+                                                                        border: `1px solid ${theme.colors.border}`,
+                                                                        borderRadius: '6px',
+                                                                        padding: '8px 12px',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '0.85rem',
+                                                                        fontWeight: '500',
+                                                                        textDecoration: 'none',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                        transition: 'background 0.2s ease'
+                                                                    }}
+                                                                    onMouseEnter={(e) => e.target.style.background = theme.colors.border}
+                                                                    onMouseLeave={(e) => e.target.style.background = theme.colors.secondaryBg}
+                                                                >
+                                                                    ⚙️ Manage
+                                                                </a>
+                                                                
+                                                                {/* Send button - transfer neuron to another principal */}
+                                                                {userHasPermission(neuron, PERM.MANAGE_PRINCIPALS) && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setManagingNeuronId(neuronIdHex);
+                                                                            setShowSendNeuronDialog(true);
+                                                                        }}
+                                                                        disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                        style={{
+                                                                            background: theme.colors.accent,
+                                                                            color: theme.colors.primaryBg,
+                                                                            border: 'none',
+                                                                            borderRadius: '6px',
+                                                                            padding: '8px 12px',
+                                                                            cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                            fontSize: '0.85rem',
+                                                                            fontWeight: '500',
+                                                                            opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1,
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '6px'
+                                                                        }}
+                                                                    >
+                                                                        <img 
+                                                                            src="send-inverted.png" 
+                                                                            alt="Send" 
+                                                                            style={{ width: '14px', height: '14px' }}
+                                                                        />
+                                                                        Send
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                            
                                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                                     <span style={{ color: theme.colors.secondaryText }}>Neuron ID:</span>
@@ -1778,52 +1846,6 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                                             ➕ Increase Stake
                                                                                         </button>
                                                                                     )}
-                                                                                    
-                                                                                    {/* Send button - transfer neuron to another principal */}
-                                                                                    {userHasPermission(neuron, PERM.MANAGE_PRINCIPALS) && (
-                                                                                        <button
-                                                                                            onClick={() => {
-                                                                                                setManagingNeuronId(neuronIdHex);
-                                                                                                setShowSendNeuronDialog(true);
-                                                                                            }}
-                                                                                            disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
-                                                                                            style={{
-                                                                                                background: theme.colors.accent,
-                                                                                                color: theme.colors.primaryBg,
-                                                                                                border: 'none',
-                                                                                                borderRadius: '6px',
-                                                                                                padding: '8px 12px',
-                                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
-                                                                                                fontSize: '0.85rem',
-                                                                                                fontWeight: '500',
-                                                                                                opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
-                                                                                            }}
-                                                                                        >
-                                                                                            📤 Send
-                                                                                        </button>
-                                                                                    )}
-                                                                                    
-                                                                                    {/* Manage button - link to detailed neuron page */}
-                                                                                    <a
-                                                                                        href={`/neuron?neuronid=${neuronIdHex}&sns=${snsRootCanisterId}`}
-                                                                                        style={{
-                                                                                            background: theme.colors.secondaryBg,
-                                                                                            color: theme.colors.primaryText,
-                                                                                            border: `1px solid ${theme.colors.border}`,
-                                                                                            borderRadius: '6px',
-                                                                                            padding: '8px 12px',
-                                                                                            cursor: 'pointer',
-                                                                                            fontSize: '0.85rem',
-                                                                                            fontWeight: '500',
-                                                                                            textDecoration: 'none',
-                                                                                            display: 'inline-block',
-                                                                                            transition: 'background 0.2s ease'
-                                                                                        }}
-                                                                                        onMouseEnter={(e) => e.target.style.background = theme.colors.border}
-                                                                                        onMouseLeave={(e) => e.target.style.background = theme.colors.secondaryBg}
-                                                                                    >
-                                                                                        ⚙️ Manage
-                                                                                    </a>
                                                                                 </div>
                                                                             )}
                                                                         </div>
