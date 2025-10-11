@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
-import { createActor as createSwapRunnerActor } from 'external/swaprunner_backend';
+import { createActor as createIcpSwapFactoryActor, canisterId as factoryCanisterId } from 'declarations/icp_swap_factory';
 import './AddSwapCanisterModal.css';
 import { Principal } from "@dfinity/principal";
 import { useTheme } from './contexts/ThemeContext';
 import { useAuth } from './AuthContext';
 import TokenSelector from './components/TokenSelector';
 
-const swapRunnerCanisterId = 'avbj7-eaaaa-aaaak-qb2sa-cai'; // SwapRunner canister ID
+const DEFAULT_FEE = BigInt(3000); // 0.3% fee tier (most common)
 
 function AddSwapCanisterModal({ show, onClose, onSubmit }) {
   const { theme } = useTheme();
@@ -30,7 +30,14 @@ function AddSwapCanisterModal({ show, onClose, onSubmit }) {
     }
   }, [show]);
 
-  // Look up swap pair when both tokens are selected
+  // Sort tokens lexicographically (ICPSwap canonical order)
+  const sortTokens = (tokenA, tokenB) => {
+    return tokenA.toLowerCase() < tokenB.toLowerCase() 
+      ? [tokenA, tokenB] 
+      : [tokenB, tokenA];
+  };
+
+  // Look up swap pair using ICPSwap Factory
   const lookupSwapPair = async () => {
     if (!token0 || !token1) {
       return;
@@ -40,37 +47,41 @@ function AddSwapCanisterModal({ show, onClose, onSubmit }) {
     setErrorText('');
 
     try {
-      const swapRunnerActor = createSwapRunnerActor(swapRunnerCanisterId, {
+      const factoryActor = createIcpSwapFactoryActor(factoryCanisterId, {
         agentOptions: { identity }
       });
 
-      // Get user's registered pools
-      const userPools = await swapRunnerActor.get_user_pools();
+      // Sort tokens in canonical order (CRITICAL for ICPSwap)
+      const [sortedToken0, sortedToken1] = sortTokens(token0, token1);
 
-      // Find a pool that matches the selected token pair
-      const matchingPool = userPools.find(pool => {
-        if (!pool.metadata || !pool.metadata[0]) return false;
-        
-        const metadata = pool.metadata[0];
-        const poolToken0 = metadata.token0.address;
-        const poolToken1 = metadata.token1.address;
+      // Create token objects
+      const token0Obj = { 
+        address: sortedToken0, 
+        standard: 'ICRC1' 
+      };
+      const token1Obj = { 
+        address: sortedToken1, 
+        standard: 'ICRC1' 
+      };
 
-        // Check if tokens match in either order
-        return (
-          (poolToken0 === token0 && poolToken1 === token1) ||
-          (poolToken0 === token1 && poolToken1 === token0)
-        );
+      // Call factory to get pool
+      const response = await factoryActor.getPool({
+        token0: token0Obj,
+        token1: token1Obj,
+        fee: DEFAULT_FEE
       });
 
-      if (matchingPool) {
-        setSwapCanisterId(matchingPool.canisterId.toString());
+      if ('ok' in response) {
+        const poolData = response.ok;
+        setSwapCanisterId(poolData.canisterId.toString());
         setErrorText('');
-      } else {
+      } else if ('err' in response) {
         setSwapCanisterId('');
-        setErrorText(`No swap pool found for this token pair. You may need to add the pool manually, or register it in SwapRunner first.`);
+        setErrorText(`No pool found for this token pair at 0.3% fee tier. The pool may not exist, or you can try entering the pool canister ID manually.`);
       }
     } catch (error) {
       console.error('Error looking up swap pair:', error);
+      setSwapCanisterId('');
       setErrorText('Error looking up swap pair: ' + error.message);
     } finally {
       setLookingUpPair(false);
