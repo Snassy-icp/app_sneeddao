@@ -391,6 +391,17 @@ function RLL() {
     const [isClaimHistoryExpanded, setIsClaimHistoryExpanded] = useState(false);
     const [isHotkeyNeuronsExpanded, setIsHotkeyNeuronsExpanded] = useState(false);
     
+    // Section expansion state
+    const [expandedSections, setExpandedSections] = useState({
+        rewardsStatistics: true, // Expanded by default
+        balanceReconciliation: false,
+        distributionLimits: false,
+        distributionCycle: false,
+        importStatus: false,
+        distributionEvents: false,
+        claimEvents: false
+    });
+    
     // New state variables for enhanced features
     const [importedNeuronsCount, setImportedNeuronsCount] = useState(0);
     const [importedOwnersCount, setImportedOwnersCount] = useState(0);
@@ -1255,16 +1266,24 @@ function RLL() {
                 </h1>
                 
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>
-                        Event Statistics
-                        <span 
-                            style={styles.infoIcon} 
-                            title="Overview of all Reward events including distributions and claims per token"
+                    <div style={styles.sectionHeader}>
+                        <h2 style={styles.heading}>
+                            Rewards Statistics
+                            <span 
+                                style={styles.infoIcon} 
+                                title="Overview of all Reward events including distributions and claims per token"
+                            >
+                                i
+                            </span>
+                        </h2>
+                        <button 
+                            onClick={() => setExpandedSections(prev => ({ ...prev, rewardsStatistics: !prev.rewardsStatistics }))}
+                            style={styles.expandButton}
                         >
-                            i
-                        </span>
-                    </h2>
-                    {loadingEventStats || loadingTokens ? (
+                            {expandedSections.rewardsStatistics ? '▼' : '▶'}
+                        </button>
+                    </div>
+                    {expandedSections.rewardsStatistics && (loadingEventStats || loadingTokens ? (
                         <div style={styles.spinner} />
                     ) : eventStats && (
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
@@ -1433,7 +1452,7 @@ function RLL() {
                                 </div>
                             </div>
                         </div>
-                    )}
+                    ))}
                 </section>
 
                 {/* Data Issue Warning */}
@@ -1462,16 +1481,24 @@ function RLL() {
 
                 {/* Balance Reconciliation */}
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>
-                        Rewards Distribution Server Balances
-                        <span 
-                            style={styles.infoIcon} 
-                            title="Overview of token balances held by the Rewards Distribution Server for distribution, including total distributed amounts and currently claimable rewards"
+                    <div style={styles.sectionHeader}>
+                        <h2 style={styles.heading}>
+                            Balance Reconciliation
+                            <span 
+                                style={styles.infoIcon} 
+                                title="Overview of token balances held by the Rewards Distribution Server for distribution, including total distributed amounts and currently claimable rewards"
+                            >
+                                i
+                            </span>
+                        </h2>
+                        <button 
+                            onClick={() => setExpandedSections(prev => ({ ...prev, balanceReconciliation: !prev.balanceReconciliation }))}
+                            style={styles.expandButton}
                         >
-                            i
-                        </span>
-                    </h2>
-                    {loadingReconciliation ? (
+                            {expandedSections.balanceReconciliation ? '▼' : '▶'}
+                        </button>
+                    </div>
+                    {expandedSections.balanceReconciliation && (loadingReconciliation ? (
                         <div style={styles.spinner} />
                     ) : (
                     <div style={styles.reconciliationList}>
@@ -1523,21 +1550,29 @@ function RLL() {
                             );
                         })}
                     </div>
-                    )}
+                    ))}
                 </section>
 
                 {/* Token Distribution Limits */}
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>
-                        Token Distribution Limits
-                        <span 
-                            style={styles.infoIcon} 
-                            title="Distribution limits control token rewards: Min ensures users receive meaningful amounts (smaller rewards accumulate until min is reached), while Max caps the reward size per cycle (excess rewards carry over to future cycles)"
+                    <div style={styles.sectionHeader}>
+                        <h2 style={styles.heading}>
+                            Token Distribution Limits
+                            <span 
+                                style={styles.infoIcon} 
+                                title="Distribution limits control token rewards: Min ensures users receive meaningful amounts (smaller rewards accumulate until min is reached), while Max caps the reward size per cycle (excess rewards carry over to future cycles)"
+                            >
+                                i
+                            </span>
+                        </h2>
+                        <button 
+                            onClick={() => setExpandedSections(prev => ({ ...prev, distributionLimits: !prev.distributionLimits }))}
+                            style={styles.expandButton}
                         >
-                            i
-                        </span>
-                    </h2>
-                    {loadingDistributionLimits ? (
+                            {expandedSections.distributionLimits ? '▼' : '▶'}
+                        </button>
+                    </div>
+                    {expandedSections.distributionLimits && (loadingDistributionLimits ? (
                         <div style={styles.spinner} />
                     ) : (
                         <div style={styles.tokenList}>
@@ -1563,21 +1598,29 @@ function RLL() {
                                 })
                             }
                         </div>
-                    )}
+                    ))}
                 </section>
 
                 {/* Distribution Cycle Status */}
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>
-                        Distribution Cycle Status
-                        <span 
-                            style={styles.infoIcon} 
-                            title="Current status of the Rewards distribution cycle, including timing information and cycle frequency"
+                    <div style={styles.sectionHeader}>
+                        <h2 style={styles.heading}>
+                            Distribution Cycle Status
+                            <span 
+                                style={styles.infoIcon} 
+                                title="Current status of the Rewards distribution cycle, including timing information and cycle frequency"
+                            >
+                                i
+                            </span>
+                        </h2>
+                        <button 
+                            onClick={() => setExpandedSections(prev => ({ ...prev, distributionCycle: !prev.distributionCycle }))}
+                            style={styles.expandButton}
                         >
-                            i
-                        </span>
-                    </h2>
-                    <div style={styles.cycleInfo}>
+                            {expandedSections.distributionCycle ? '▼' : '▶'}
+                        </button>
+                    </div>
+                    {expandedSections.distributionCycle && <div style={styles.cycleInfo}>
                         <div style={styles.statusItem}>
                             <span>Status:</span>
                             <span style={{
@@ -1619,22 +1662,30 @@ function RLL() {
                             <span>Frequency:</span>
                             <span>{mainLoopStatus?.frequencySeconds ? formatDuration(Number(mainLoopStatus.frequencySeconds)) : 'Unknown'}</span>
                         </div>
-                    </div>
+                    </div>}
                 </section>
 
 
                 {/* Import Status Section */}
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>
-                        Import Status
-                        <span 
-                            style={styles.infoIcon} 
-                            title="Statistics about imported data from the Sneed governance system, including neurons, owners, and proposals"
+                    <div style={styles.sectionHeader}>
+                        <h2 style={styles.heading}>
+                            Import Status
+                            <span 
+                                style={styles.infoIcon} 
+                                title="Statistics about imported data from the Sneed governance system, including neurons, owners, and proposals"
+                            >
+                                i
+                            </span>
+                        </h2>
+                        <button 
+                            onClick={() => setExpandedSections(prev => ({ ...prev, importStatus: !prev.importStatus }))}
+                            style={styles.expandButton}
                         >
-                            i
-                        </span>
-                    </h2>
-                    <div style={styles.statusGrid}>
+                            {expandedSections.importStatus ? '▼' : '▶'}
+                        </button>
+                    </div>
+                    {expandedSections.importStatus && <div style={styles.statusGrid}>
                         <div style={styles.statusItem}>
                             <span>Imported Neurons:</span>
                             <span>{Number(importedNeuronsCount).toLocaleString()}</span>
@@ -1651,7 +1702,7 @@ function RLL() {
                             <span>Highest Closed Proposal:</span>
                             <span>{Number(highestClosedProposalId).toLocaleString()}</span>
                         </div>
-                    </div>
+                    </div>}
                 </section>
                 {/* Admin Controls */}
                 {isAdmin && (
@@ -1887,16 +1938,24 @@ function RLL() {
                 )}
 
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>
-                        Recent Distribution Events
-                        <span 
-                            style={styles.infoIcon} 
-                            title="History of recent token distributions, showing proposal ranges, timestamps, and distributed amounts"
+                    <div style={styles.sectionHeader}>
+                        <h2 style={styles.heading}>
+                            Recent Distribution Events
+                            <span 
+                                style={styles.infoIcon} 
+                                title="History of recent token distributions, showing proposal ranges, timestamps, and distributed amounts"
+                            >
+                                i
+                            </span>
+                        </h2>
+                        <button 
+                            onClick={() => setExpandedSections(prev => ({ ...prev, distributionEvents: !prev.distributionEvents }))}
+                            style={styles.expandButton}
                         >
-                            i
-                        </span>
-                    </h2>
-                    {loadingEvents ? (
+                            {expandedSections.distributionEvents ? '▼' : '▶'}
+                        </button>
+                    </div>
+                    {expandedSections.distributionEvents && (loadingEvents ? (
                         <div style={styles.spinner} />
                     ) : (
                         <div style={styles.eventList}>
@@ -1912,20 +1971,28 @@ function RLL() {
                                 </div>
                             ))}
                         </div>
-                    )}
+                    ))}
                 </section>
 
                 <section style={styles.section}>
-                    <h2 style={styles.heading}>
-                        Recent Claim Events
-                        <span 
-                            style={styles.infoIcon} 
-                            title="History of recent token claims by users, including timestamps and claimed amounts"
+                    <div style={styles.sectionHeader}>
+                        <h2 style={styles.heading}>
+                            Recent Claim Events
+                            <span 
+                                style={styles.infoIcon} 
+                                title="History of recent token claims by users, including timestamps and claimed amounts"
+                            >
+                                i
+                            </span>
+                        </h2>
+                        <button 
+                            onClick={() => setExpandedSections(prev => ({ ...prev, claimEvents: !prev.claimEvents }))}
+                            style={styles.expandButton}
                         >
-                            i
-                        </span>
-                    </h2>
-                    {loadingEvents ? (
+                            {expandedSections.claimEvents ? '▼' : '▶'}
+                        </button>
+                    </div>
+                    {expandedSections.claimEvents && (loadingEvents ? (
                         <div style={styles.spinner} />
                     ) : (
                         <div style={styles.eventList}>
@@ -1951,7 +2018,7 @@ function RLL() {
                                 </div>
                             ))}
                         </div>
-                    )}
+                    ))}
                 </section>
 
             </main>
