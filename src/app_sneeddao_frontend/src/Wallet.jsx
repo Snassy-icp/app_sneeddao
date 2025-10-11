@@ -514,10 +514,29 @@ function Wallet() {
             var singleUpdatedToken = [];
             var allUpdatedTokens = [];
             if (single_refresh_ledger_canister_id) {
+                // Mark this ledger as known
+                const ledger_id = single_refresh_ledger_canister_id.toText();
+                if (!known_icrc1_ledgers[ledger_id]) {
+                    known_icrc1_ledgers[ledger_id] = true;
+                }
+                
                 const updatedToken = await fetchTokenDetails(single_refresh_ledger_canister_id, summed_locks);
-                setTokens(prevTokens => prevTokens.map(token => 
-                    token.ledger_canister_id?.toText?.() === single_refresh_ledger_canister_id?.toText?.() ? updatedToken : token
-                ));
+                setTokens(prevTokens => {
+                    // Check if token already exists
+                    const existingIndex = prevTokens.findIndex(token => 
+                        token.ledger_canister_id?.toText?.() === single_refresh_ledger_canister_id?.toText?.()
+                    );
+                    
+                    if (existingIndex >= 0) {
+                        // Update existing token
+                        return prevTokens.map(token => 
+                            token.ledger_canister_id?.toText?.() === single_refresh_ledger_canister_id?.toText?.() ? updatedToken : token
+                        );
+                    } else {
+                        // Add new token to the end
+                        return [...prevTokens, updatedToken];
+                    }
+                });
                 singleUpdatedToken = [updatedToken];
             } else {
                 // Reverse order so most recently added tokens appear last
@@ -1430,7 +1449,8 @@ function Wallet() {
         const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
         await backendActor.register_ledger_canister_id(Principal.fromText(ledgerCanisterId));
 
-        /*await*/ fetchBalancesAndLocks();
+        // Pass the ledger canister ID so it only refreshes the new token, not all tokens
+        /*await*/ fetchBalancesAndLocks(Principal.fromText(ledgerCanisterId));
     };
 
     const handleAddSwapCanister = async (swapCanisterId) => {
