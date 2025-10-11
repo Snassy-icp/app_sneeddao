@@ -202,16 +202,29 @@ function TokenSelector({
         setSearchTerm('');
     };
 
-    // Close dropdown when clicking outside
+    // Close dropdown when clicking outside (handled differently with portal)
     useEffect(() => {
+        if (!isOpen) return;
+
         const handleClickOutside = (event) => {
-            if (isOpen && !event.target.closest('.token-selector-container')) {
-                setIsOpen(false);
-                setSearchTerm('');
-            }
+            // Check if click is on the trigger button
+            const trigger = event.target.closest('.token-selector-trigger');
+            if (trigger) return;
+
+            // Check if click is inside the portal dropdown
+            const dropdown = event.target.closest('.token-selector-dropdown');
+            if (dropdown) return;
+
+            // Click was outside - close dropdown
+            setIsOpen(false);
+            setSearchTerm('');
         };
 
-        document.addEventListener('mousedown', handleClickOutside);
+        // Use timeout to avoid catching the opening click
+        setTimeout(() => {
+            document.addEventListener('mousedown', handleClickOutside);
+        }, 0);
+
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isOpen]);
 
@@ -226,6 +239,7 @@ function TokenSelector({
         >
             {/* Selected token or placeholder */}
             <div
+                className="token-selector-trigger"
                 onClick={() => !disabled && !loading && setIsOpen(!isOpen)}
                 style={{
                     width: '100%',
@@ -280,6 +294,7 @@ function TokenSelector({
             {/* Dropdown - Use portal for proper z-index layering */}
             {isOpen && !disabled && createPortal(
                 <div
+                    className="token-selector-dropdown"
                     style={{
                         position: 'fixed',
                         top: '50%',
@@ -297,7 +312,6 @@ function TokenSelector({
                         display: 'flex',
                         flexDirection: 'column'
                     }}
-                    onClick={(e) => e.stopPropagation()}
                 >
                     {/* Search input */}
                     <div style={{ padding: '12px', borderBottom: `1px solid ${theme.colors.border}` }}>
