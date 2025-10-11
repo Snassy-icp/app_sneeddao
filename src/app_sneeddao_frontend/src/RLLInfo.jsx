@@ -1473,10 +1473,8 @@ function RLLInfo() {
         }
     });
     const [isLoadingLp, setIsLoadingLp] = useState(true);
-    const [conversionRates, setConversionRates] = useState({
-        ICP: 0,
-        SNEED: 0
-    });
+    const [conversionRates, setConversionRates] = useState({});
+    const [tokenPricesLoading, setTokenPricesLoading] = useState(true);
     const [rllBalances, setRllBalances] = useState({
         icp: null,
         sneed: null
@@ -1497,30 +1495,81 @@ function RLLInfo() {
     const [isLoadingStakingStats, setIsLoadingStakingStats] = useState(true);
     const [totalSupply, setTotalSupply] = useState(null);
 
-    // Update effect to fetch conversion rates
+    // Fetch prices for all known tokens
     useEffect(() => {
-        const fetchConversionRates = async () => {
+        const fetchAllTokenPrices = async () => {
+            if (knownTokens.length === 0 && defiKnownTokens.length === 0) {
+                return; // Wait for tokens to be loaded
+            }
+
+            setTokenPricesLoading(true);
             try {
-                // Fetch prices for commonly used tokens (ICP and SNEED) using new PriceService
-                const [icpPrice, sneedPrice] = await Promise.all([
-                    priceService.getTokenUSDPrice('ryjl3-tyaaa-aaaaa-aaaba-cai', 8).catch(() => 0),
-                    priceService.getTokenUSDPrice('hvgxa-wqaaa-aaaaq-aacia-cai', 8).catch(() => 0)
-                ]);
+                // Collect all unique tokens from both sources
+                const allTokens = new Map();
                 
-                setConversionRates({
-                    'ICP': icpPrice,
-                    'SNEED': sneedPrice
+                // Add RLL tokens
+                knownTokens.forEach(([tokenId, tokenInfo]) => {
+                    const id = tokenId.toString();
+                    allTokens.set(id, {
+                        symbol: tokenInfo.symbol,
+                        decimals: Number(tokenInfo.decimals)
+                    });
                 });
+                
+                // Add DeFi tokens
+                defiKnownTokens.forEach(([tokenId, tokenInfo]) => {
+                    const id = tokenId.toString();
+                    allTokens.set(id, {
+                        symbol: tokenInfo.symbol,
+                        decimals: Number(tokenInfo.decimals)
+                    });
+                });
+
+                // Add CLOWN token manually (used in ICP/CLOWN LP position)
+                allTokens.set('6rdgd-kyaaa-aaaaq-aaavq-cai', {
+                    symbol: 'CLOWN',
+                    decimals: 8
+                });
+
+                console.log('[RLLInfo] Attempting to fetch prices for tokens:', 
+                    Array.from(allTokens.entries()).map(([id, info]) => `${info.symbol} (${id})`));
+
+                // Fetch prices for all tokens in parallel
+                const pricePromises = Array.from(allTokens.entries()).map(async ([tokenId, tokenInfo]) => {
+                    try {
+                        console.log(`[RLLInfo] Fetching price for ${tokenInfo.symbol} (${tokenId})...`);
+                        const price = await priceService.getTokenUSDPrice(tokenId, tokenInfo.decimals);
+                        console.log(`[RLLInfo] ✓ ${tokenInfo.symbol}: $${price.toFixed(4)}`);
+                        return [tokenInfo.symbol, price];
+                    } catch (error) {
+                        console.warn(`[RLLInfo] ✗ Failed to fetch price for ${tokenInfo.symbol} (${tokenId}):`, error.message);
+                        return [tokenInfo.symbol, 0];
+                    }
+                });
+
+                const prices = await Promise.all(pricePromises);
+                const ratesMap = Object.fromEntries(prices);
+                
+                // Log summary
+                const successCount = Object.values(ratesMap).filter(p => p > 0).length;
+                const failCount = Object.values(ratesMap).filter(p => p === 0).length;
+                console.log(`[RLLInfo] Price fetch complete: ${successCount} succeeded, ${failCount} failed`);
+                console.log('[RLLInfo] Final conversion rates:', ratesMap);
+                
+                setConversionRates(ratesMap);
             } catch (error) {
-                console.error('Error fetching conversion rates:', error);
+                console.error('Error fetching token prices:', error);
+            } finally {
+                setTokenPricesLoading(false);
             }
         };
 
-        fetchConversionRates();
-        // Refresh rates every 5 minutes
-        const interval = setInterval(fetchConversionRates, 5 * 60 * 1000);
+        fetchAllTokenPrices();
+        
+        // Refresh prices every 5 minutes
+        const interval = setInterval(fetchAllTokenPrices, 5 * 60 * 1000);
         return () => clearInterval(interval);
-    }, []);
+    }, [knownTokens, defiKnownTokens]);
 
     // Helper function to calculate USD value
     const getUSDValue = (amount, decimals, symbol) => {
