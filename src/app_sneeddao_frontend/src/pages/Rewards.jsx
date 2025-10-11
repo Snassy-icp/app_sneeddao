@@ -8,7 +8,6 @@ import { createActor as createIcrc1Actor } from 'external/icrc1_ledger';
 import Header from '../components/Header';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 import Notification from '../Notification';
-import HotkeyNeurons from '../components/HotkeyNeurons';
 import priceService from '../services/PriceService';
 
 // Theme-aware styles function
@@ -136,7 +135,6 @@ function Rewards() {
     const [userBalances, setUserBalances] = useState([]);
     const [loadingUserBalances, setLoadingUserBalances] = useState(true);
     const [isClaimHistoryExpanded, setIsClaimHistoryExpanded] = useState(false);
-    const [isHotkeyNeuronsExpanded, setIsHotkeyNeuronsExpanded] = useState(false);
     const [userClaimEvents, setUserClaimEvents] = useState([]);
     const [loadingUserEvents, setLoadingUserEvents] = useState(true);
     const [claimingTokens, setClaimingTokens] = useState({});
@@ -707,25 +705,8 @@ function Rewards() {
                                 )
                             )}
                         </section>
-
-                        {/* Your Hotkey Neurons */}
-                        <HotkeyNeurons 
-                            fetchNeuronsFromSns={fetchNeuronsFromSns}
-                            showVotingStats={true}
-                            showExpandButton={true}
-                            defaultExpanded={isHotkeyNeuronsExpanded}
-                            forceSneedSns={true}
-                        />
                     </>
-                ) : (
-                    <HotkeyNeurons 
-                        fetchNeuronsFromSns={fetchNeuronsFromSns}
-                        showVotingStats={false}
-                        showExpandButton={false}
-                        defaultExpanded={true}
-                        forceSneedSns={true}
-                    />
-                )}
+                ) : null}
 
                 {notification && (
                     <Notification
