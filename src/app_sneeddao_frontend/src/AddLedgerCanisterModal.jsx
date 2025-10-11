@@ -3,34 +3,43 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import './AddLedgerCanisterModal.css';
 import { Principal } from "@dfinity/principal";
 import { useTheme } from './contexts/ThemeContext';
+import TokenSelector from './components/TokenSelector';
 
 function AddLedgerCanisterModal({ show, onClose, onSubmit }) {
   const { theme } = useTheme();
   const [ledgerCanisterId, setLedgerCanisterId] = useState('');
+  const [selectedFromDropdown, setSelectedFromDropdown] = useState('');
+  const [useManualInput, setUseManualInput] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
 
   useEffect(() => {
     if (show) {
         setErrorText('');
+        setLedgerCanisterId('');
+        setSelectedFromDropdown('');
+        setUseManualInput(false);
     }
   }, [show]);
 
   const handleSubmit = async () => {
     setErrorText('');
 
-    if (ledgerCanisterId == "") {
-      setErrorText("Please enter a ledger canister id first!");
+    // Get the canister ID from either dropdown or manual input
+    const canisterId = useManualInput ? ledgerCanisterId : selectedFromDropdown;
+
+    if (canisterId == "") {
+      setErrorText("Please select or enter a ledger canister id first!");
       return;
     }
     try {
-      var p = Principal.fromText(ledgerCanisterId);
+      var p = Principal.fromText(canisterId);
     } catch {
       setErrorText("Invalid canister id! Please enter a valid ledger canister id.");
       return;
     }
     try {
-      const ledgerActor = createLedgerActor(ledgerCanisterId);
+      const ledgerActor = createLedgerActor(canisterId);
       const metadata = await ledgerActor.icrc1_metadata();
     } catch {
       setErrorText("Invalid ICRC1 ledger canister id! Please enter a valid ICRC1 ledger canister id.");
@@ -40,7 +49,7 @@ function AddLedgerCanisterModal({ show, onClose, onSubmit }) {
     try {
       setIsLoading(true);
       setErrorText("");
-      await onSubmit(ledgerCanisterId);
+      await onSubmit(canisterId);
     } catch (error) {
       setErrorText("Error adding ledger canister: " + error);
     }
@@ -87,35 +96,98 @@ function AddLedgerCanisterModal({ show, onClose, onSubmit }) {
         }}>
           Add Token Ledger Canister
         </h2>
-        
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{
-            display: 'block',
-            color: theme.colors.primaryText,
-            marginBottom: '8px',
-            fontWeight: '500'
-          }}>
-            ICRC1 Token Ledger Canister Id:
-          </label>
-          <input 
-            type="text" 
-            value={ledgerCanisterId}
-            onChange={(e) => {
-              setLedgerCanisterId(e.target.value);
-            }}
-            placeholder="Enter canister ID (e.g., rdmx6-jaaaa-aaaah-qcaiq-cai)"
+
+        {/* Toggle between dropdown and manual input */}
+        <div style={{ 
+          marginBottom: '20px',
+          display: 'flex',
+          gap: '8px',
+          padding: '4px',
+          background: theme.colors.secondaryBg,
+          borderRadius: '8px'
+        }}>
+          <button
+            onClick={() => setUseManualInput(false)}
             style={{
-              width: '100%',
-              padding: '12px',
-              background: theme.colors.secondaryBg,
-              border: `1px solid ${theme.colors.border}`,
-              borderRadius: '8px',
-              color: theme.colors.primaryText,
-              fontSize: '0.9rem',
-              boxSizing: 'border-box'
+              flex: 1,
+              padding: '8px 16px',
+              background: !useManualInput ? theme.colors.accent : 'transparent',
+              color: !useManualInput ? theme.colors.primaryBg : theme.colors.mutedText,
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              fontWeight: '500',
+              transition: 'all 0.2s ease'
             }}
-          />
+          >
+            Select from List
+          </button>
+          <button
+            onClick={() => setUseManualInput(true)}
+            style={{
+              flex: 1,
+              padding: '8px 16px',
+              background: useManualInput ? theme.colors.accent : 'transparent',
+              color: useManualInput ? theme.colors.primaryBg : theme.colors.mutedText,
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              fontWeight: '500',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            Enter Manually
+          </button>
         </div>
+        
+        {useManualInput ? (
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{
+              display: 'block',
+              color: theme.colors.primaryText,
+              marginBottom: '8px',
+              fontWeight: '500'
+            }}>
+              ICRC1 Token Ledger Canister Id:
+            </label>
+            <input 
+              type="text" 
+              value={ledgerCanisterId}
+              onChange={(e) => {
+                setLedgerCanisterId(e.target.value);
+              }}
+              placeholder="Enter canister ID (e.g., rdmx6-jaaaa-aaaah-qcaiq-cai)"
+              style={{
+                width: '100%',
+                padding: '12px',
+                background: theme.colors.secondaryBg,
+                border: `1px solid ${theme.colors.border}`,
+                borderRadius: '8px',
+                color: theme.colors.primaryText,
+                fontSize: '0.9rem',
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+        ) : (
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{
+              display: 'block',
+              color: theme.colors.primaryText,
+              marginBottom: '8px',
+              fontWeight: '500'
+            }}>
+              Select Token:
+            </label>
+            <TokenSelector
+              value={selectedFromDropdown}
+              onChange={setSelectedFromDropdown}
+              placeholder="Choose a token from the list"
+            />
+          </div>
+        )}
 
         {errorText && (
           <p style={{
