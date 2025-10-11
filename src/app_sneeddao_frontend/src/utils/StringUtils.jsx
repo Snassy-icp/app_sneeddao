@@ -12,13 +12,13 @@ const formatAmount = (amount, decimals) => {
     const divisor = 10n ** decimalsBigInt;
     const integerPart = (balanceBigInt / divisor).toString();
     let fractionalPart = (balanceBigInt % divisor).toString().padStart(Number(decimals), '0');
-    fractionalPart = fractionalPart.replace(/0+$/, '');
+    fractionalPart = fractionalPart.replace(/0+$/, ''); // Remove trailing zeros
 
     // Always format integer part with commas
     const formattedIntegerPart = Number(integerPart).toLocaleString();
 
-    // Show decimals only if the value is less than 1000
-    if (Number(integerPart) < 1000 && fractionalPart) {
+    // Show decimals as needed (if there are any non-zero decimals)
+    if (fractionalPart) {
         return `${formattedIntegerPart}.${fractionalPart}`;
     }
     return formattedIntegerPart;
@@ -31,11 +31,8 @@ const formatAmountWithConversion = (amount, decimals, conversion_rate) => {
     const value = Number(balanceBigInt) / Number(divisor);
     const finalAmount = value * conversion_rate;
 
-    // Show 2 decimals only if the value is less than 1000
-    if (finalAmount < 1000) {
-        return finalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-    return finalAmount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    // Always show 2 decimals for USD amounts with commas
+    return finalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 function getUSD(amount, decimals, conversion_rate) {

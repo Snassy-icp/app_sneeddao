@@ -809,7 +809,6 @@ function Wallet() {
 
     useEffect(() => {
         var total = 0.0;
-        console.log('[Wallet] Calculating portfolio total...', { neuronTotals });
         
         for (const token of tokens) {
             // Get base token TVL (liquid + locked + rewards)
@@ -818,15 +817,6 @@ function Wallet() {
             
             // Add neuron totals (staked + maturity) if available
             const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
-            const neuronValue = neuronTotals[ledgerId] || 0;
-            
-            console.log(`[Wallet] ${token.symbol}:`, {
-                baseTVL,
-                neuronValue,
-                ledgerId,
-                total: baseTVL + neuronValue
-            });
-            
             if (neuronTotals[ledgerId]) {
                 total += neuronTotals[ledgerId];
             }
@@ -838,10 +828,13 @@ function Wallet() {
             }
         }
 
-        console.log('[Wallet] Total portfolio value:', total);
-        total = total.toFixed(2);
+        // Format with commas and 2 decimals
+        const formattedTotal = total.toLocaleString(undefined, { 
+            minimumFractionDigits: 2, 
+            maximumFractionDigits: 2 
+        });
 
-        setTotalDollarValue(total);
+        setTotalDollarValue(formattedTotal);
     }, [tokens, liquidityPositions, rewardDetailsLoading, neuronTotals]);
 
     const calc_send_amounts = (token, amount) => {
@@ -1675,10 +1668,6 @@ function Wallet() {
                                 isSnsToken={isSns}
                                 onNeuronTotalsChange={(usdValue) => {
                                     const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
-                                    console.log(`[Wallet] Received neuron totals for ${token.symbol}:`, {
-                                        ledgerId,
-                                        usdValue
-                                    });
                                     setNeuronTotals(prev => ({
                                         ...prev,
                                         [ledgerId]: usdValue
