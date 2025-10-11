@@ -389,8 +389,11 @@ function Wallet() {
         }
 
         if (new_icrc1_ledgers.length > 0) {
+            // Reverse order to match main tokens ordering
+            const reversedLedgers = [...new_icrc1_ledgers].reverse();
+            
             // Add placeholders at the end to preserve order
-            const placeholders = new_icrc1_ledgers.map(ledger => ({
+            const placeholders = reversedLedgers.map(ledger => ({
                 ledger_canister_id: ledger,
                 symbol: '...',
                 decimals: 8,
@@ -406,7 +409,7 @@ function Wallet() {
             }));
             setTokens(prevTokens => [...prevTokens, ...placeholders]);
             
-            const allUpdatedTokens = await Promise.all(new_icrc1_ledgers.map(async (icrc1_ledger) => {
+            const allUpdatedTokens = await Promise.all(reversedLedgers.map(async (icrc1_ledger) => {
                 const updatedToken = await fetchTokenDetails(icrc1_ledger, summed_locks);
                 // Update the specific token by matching ledger_canister_id
                 setTokens(prevTokens => prevTokens.map(token => 
@@ -442,8 +445,11 @@ function Wallet() {
             }
             
             if (new_tip_ledgers.length > 0) {
+                // Reverse order to match main tokens ordering
+                const reversedLedgers = [...new_tip_ledgers].reverse();
+                
                 // Add placeholders at the end to preserve order
-                const placeholders = new_tip_ledgers.map(ledger => ({
+                const placeholders = reversedLedgers.map(ledger => ({
                     ledger_canister_id: ledger,
                     symbol: '...',
                     decimals: 8,
@@ -459,7 +465,7 @@ function Wallet() {
                 }));
                 setTokens(prevTokens => [...prevTokens, ...placeholders]);
                 
-                const allUpdatedTokens = await Promise.all(new_tip_ledgers.map(async (icrc1_ledger) => {
+                const allUpdatedTokens = await Promise.all(reversedLedgers.map(async (icrc1_ledger) => {
                     const updatedToken = await fetchTokenDetails(icrc1_ledger, summed_locks);
                     // Update the specific token by matching ledger_canister_id
                     setTokens(prevTokens => prevTokens.map(token => 
@@ -514,8 +520,11 @@ function Wallet() {
                 ));
                 singleUpdatedToken = [updatedToken];
             } else {
+                // Reverse order so most recently added tokens appear last
+                const reversedLedgers = [...icrc1_ledgers].reverse();
+                
                 // Create placeholders immediately to preserve order
-                const placeholders = icrc1_ledgers.map(ledger => ({
+                const placeholders = reversedLedgers.map(ledger => ({
                     ledger_canister_id: ledger,
                     symbol: '...',
                     decimals: 8,
@@ -532,7 +541,7 @@ function Wallet() {
                 setTokens(placeholders);
                 
                 // Fetch details and update each token as data arrives
-                allUpdatedTokens = await Promise.all(icrc1_ledgers.map(async (icrc1_ledger, index) => {
+                allUpdatedTokens = await Promise.all(reversedLedgers.map(async (icrc1_ledger, index) => {
                     const updatedToken = await fetchTokenDetails(icrc1_ledger, summed_locks);
                     // Update the specific token by index to preserve order
                     setTokens(prevTokens => prevTokens.map((token, i) => 
