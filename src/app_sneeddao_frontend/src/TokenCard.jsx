@@ -20,7 +20,7 @@ const SGLDT_CANISTER_ID = 'i2s4q-syaaa-aaaan-qz4sq-cai';
 
 console.log('TokenCard constants:', { GLDT_CANISTER_ID, SGLDT_CANISTER_ID });
 
-const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, isSnsToken = false }) => {
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleRefreshToken, isSnsToken = false }) => {
 
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
@@ -935,7 +935,37 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             )}
                             <span className="token-symbol">{token.symbol}</span>
                         </div>
-                        <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            {handleRefreshToken && (
+                                <button
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await handleRefreshToken(token);
+                                        // Also refresh neurons if it's an SNS token
+                                        if (isSnsToken && refetchNeurons) {
+                                            await refetchNeurons();
+                                        }
+                                    }}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        color: theme.colors.mutedText,
+                                        fontSize: '1.2rem',
+                                        transition: 'color 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => e.target.style.color = theme.colors.primaryText}
+                                    onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
+                                    title="Refresh token data"
+                                >
+                                    🔄
+                                </button>
+                            )}
+                            <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -1472,6 +1472,13 @@ function Wallet() {
         setShowConfirmModal(true);
     };
 
+    const handleRefreshToken = async (token) => {
+        // Refresh token balance, locks, and rewards
+        await fetchBalancesAndLocks(token.ledger_canister_id);
+        await fetchRewardDetails(token.ledger_canister_id);
+        // Note: Neurons are refreshed within TokenCard itself
+    };
+
     const [isSneedLockExpanded, setIsSneedLockExpanded] = useState(() => {
         try {
             const saved = localStorage.getItem('sneedLockDisclaimerExpanded');
@@ -1612,6 +1619,7 @@ function Wallet() {
                                 rewardDetailsLoading={rewardDetailsLoading}
                                 handleClaimRewards={handleClaimRewards}
                                 handleWithdrawFromBackend={handleWithdrawFromBackend}
+                                handleRefreshToken={handleRefreshToken}
                                 isSnsToken={isSns}
                             />
                         );
