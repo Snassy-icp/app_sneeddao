@@ -153,6 +153,26 @@ const getStyles = (theme) => ({
         justifyContent: 'space-between',
         marginBottom: '20px'
     },
+    sectionHeader: {
+        background: theme.colors.tertiaryBg,
+        border: `1px solid ${theme.colors.border}`,
+        padding: '12px 16px',
+        borderRadius: '8px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '20px',
+        cursor: 'pointer'
+    },
+    expandButton: {
+        background: 'transparent',
+        border: 'none',
+        color: theme.colors.accent,
+        fontSize: '1.2em',
+        cursor: 'pointer',
+        padding: '0 5px',
+        lineHeight: 1
+    },
     headingLeft: {
         display: 'flex',
         alignItems: 'center'
@@ -1447,7 +1467,12 @@ function RLLInfo() {
     // Override global styles with theme-aware versions
     const themedNodeStyles = getNodeStyles(theme);
     const themedEdgeStyles = getEdgeStyles(theme);
-    const [expandedSections, setExpandedSections] = useState({});
+    const [expandedSections, setExpandedSections] = useState({
+        // Main section states
+        totalAssets: false,  // Collapsed by default
+        rllDiagram: true,    // Expanded by default
+        systemComponents: true  // Expanded by default
+    });
     const [expandedItems, setExpandedItems] = useState({});
     const [tooltip, setTooltip] = useState(null);
     const [treasuryBalances, setTreasuryBalances] = useState({
@@ -2991,17 +3016,25 @@ function RLLInfo() {
                         maxWidth: '800px',
                         alignSelf: 'start'
                     }}>
-                        <h2 style={{ ...styles.heading }}>
-                            Total Assets Overview
-                            <span 
-                                style={styles.infoIcon} 
-                                title="Comprehensive overview of all DAO assets across different protocols, including treasury holdings, staked positions, LP positions, and tokens pending distribution"
-                            >
-                                i
-                            </span>
-                        </h2>
-                        {/* Remove the nested grid, just stack items vertically */}
-                        <div style={{
+                        <div 
+                            style={styles.sectionHeader}
+                            onClick={() => setExpandedSections(prev => ({ ...prev, totalAssets: !prev.totalAssets }))}
+                        >
+                            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center' }}>
+                                Total Assets Overview
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="Comprehensive overview of all DAO assets across different protocols, including treasury holdings, staked positions, LP positions, and tokens pending distribution"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    i
+                                </span>
+                            </h2>
+                            <button style={styles.expandButton}>
+                                {expandedSections.totalAssets ? '▼' : '▶'}
+                            </button>
+                        </div>
+                        {expandedSections.totalAssets && <div style={{
                             background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                             borderRadius: '8px',
                             padding: '20px'
@@ -3880,7 +3913,7 @@ function RLLInfo() {
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </div>}
                     </section>
 
                     {/* Flow Diagram Section */}
@@ -3894,16 +3927,25 @@ function RLLInfo() {
                         minHeight: '0',
                         overflow: 'hidden'
                     }}>
-                        <h2 style={{ ...styles.heading }}>
-                            Recursive Liquidity Loop (RLL)
-                            <span 
-                                style={styles.infoIcon} 
-                                title="Interactive visualization of token flows between different system components. Hover over nodes and edges for detailed information. Click nodes to visit relevant external links."
-                            >
-                                i
-                            </span>
-                        </h2>
-                        <div style={{
+                        <div 
+                            style={styles.sectionHeader}
+                            onClick={() => setExpandedSections(prev => ({ ...prev, rllDiagram: !prev.rllDiagram }))}
+                        >
+                            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center' }}>
+                                Recursive Liquidity Loop (RLL)
+                                <span 
+                                    style={styles.infoIcon} 
+                                    title="Interactive visualization of token flows between different system components. Hover over nodes and edges for detailed information. Click nodes to visit relevant external links."
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    i
+                                </span>
+                            </h2>
+                            <button style={styles.expandButton}>
+                                {expandedSections.rllDiagram ? '▼' : '▶'}
+                            </button>
+                        </div>
+                        {expandedSections.rllDiagram && <div style={{
                             position: 'relative',
                             width: '100%',
                             height: 'calc(100% - 40px)',
@@ -3929,7 +3971,7 @@ function RLLInfo() {
                                 <TokenAnimationManager edges={initialEdges} nodes={initialNodes} />
                                 <TooltipOverlay tooltip={tooltip} theme={theme} />
                             </ReactFlow>
-                        </div>
+                        </div>}
                     </section>
 
                     {/* Combined Details Section */}
@@ -3940,21 +3982,25 @@ function RLLInfo() {
                         maxWidth: '800px',
                         alignSelf: 'start'
                     }}>
-                        <h2 style={styles.heading}>
-                            <div style={styles.headingLeft}>
-                                <span>System Components</span>
-                            </div>
-                            <div style={styles.headingRight}>
+                        <div 
+                            style={styles.sectionHeader}
+                            onClick={() => setExpandedSections(prev => ({ ...prev, systemComponents: !prev.systemComponents }))}
+                        >
+                            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center' }}>
+                                System Components
                                 <span 
                                     style={styles.infoIcon} 
                                     title="Detailed information about each component in the system, including infrastructure nodes, token management canisters, and revenue sources"
+                                    onClick={(e) => e.stopPropagation()}
                                 >
                                     i
                                 </span>
-                                <span style={{ width: '20px' }}></span>
-                            </div>
-                        </h2>
-                        {Object.entries(nodes).map(([key, section]) => (
+                            </h2>
+                            <button style={styles.expandButton}>
+                                {expandedSections.systemComponents ? '▼' : '▶'}
+                            </button>
+                        </div>
+                        {expandedSections.systemComponents && Object.entries(nodes).map(([key, section]) => (
                             <div key={key}>
                                 <div 
                                     style={styles.expandableHeader}
@@ -4027,7 +4073,7 @@ function RLLInfo() {
                             </div>
                         ))}
 
-                        <h2 style={{ marginTop: '40px', ...styles.heading }}>
+                        {expandedSections.systemComponents && <h2 style={{ marginTop: '40px', ...styles.heading }}>
                             <div style={styles.headingLeft}>
                                 <span>Token Flows</span>
                             </div>
@@ -4040,8 +4086,8 @@ function RLLInfo() {
                                 </span>
                                 <span style={{ width: '20px' }}></span>
                             </div>
-                        </h2>
-                        {Object.entries(edges).map(([key, section]) => (
+                        </h2>}
+                        {expandedSections.systemComponents && Object.entries(edges).map(([key, section]) => (
                             <div key={key}>
                                 <div 
                                     style={styles.expandableHeader}
