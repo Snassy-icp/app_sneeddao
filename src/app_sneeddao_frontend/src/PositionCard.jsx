@@ -227,12 +227,47 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         {/* Lock Actions Row */}
                         {!hideButtons && (
                             <div style={{ 
-                                display: 'flex', 
+                                display: 'flex',
+                                justifyContent: 'flex-end',
                                 gap: '12px', 
                                 marginBottom: '15px',
                                 paddingBottom: '12px',
                                 borderBottom: `1px solid ${theme.colors.border}`
                             }}>
+                                {/* Link Button */}
+                                <a 
+                                    href={getPositionLockUrl(position.swapCanisterId, positionDetails.positionId)} 
+                                    target="_blank"
+                                    style={{
+                                        background: theme.colors.accent,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'all 0.2s ease',
+                                        textDecoration: 'none'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.background = theme.colors.accentHover;
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.background = theme.colors.accent;
+                                    }}
+                                >
+                                    <img 
+                                        src="link-chain.png" 
+                                        alt="Link" 
+                                        style={{ width: '14px', height: '14px' }}
+                                    />
+                                    Link
+                                </a>
+                                
                                 {/* Lock Button */}
                                 <button
                                     onClick={() => {
@@ -274,40 +309,6 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                     />
                                     Lock
                                 </button>
-                                
-                                {/* Link Button */}
-                                <a 
-                                    href={getPositionLockUrl(position.swapCanisterId, positionDetails.positionId)} 
-                                    target="_blank"
-                                    style={{
-                                        background: theme.colors.accent,
-                                        color: theme.colors.primaryBg,
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '6px 12px',
-                                        cursor: 'pointer',
-                                        fontSize: '0.85rem',
-                                        fontWeight: '500',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        transition: 'all 0.2s ease',
-                                        textDecoration: 'none'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        e.target.style.background = theme.colors.accentHover;
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        e.target.style.background = theme.colors.accent;
-                                    }}
-                                >
-                                    <img 
-                                        src="link-chain.png" 
-                                        alt="Link" 
-                                        style={{ width: '14px', height: '14px' }}
-                                    />
-                                    Link
-                                </a>
                             </div>
                         )}
                 <div className="lock-item">
