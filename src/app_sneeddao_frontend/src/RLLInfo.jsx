@@ -1575,11 +1575,30 @@ function RLLInfo() {
     const getUSDValue = (amount, decimals, symbol) => {
         if (!amount) return 0;
         const value = Number(amount) / Math.pow(10, decimals);
-        return value * (conversionRates[symbol] || 0);
+        const rate = conversionRates[symbol] || 0;
+        const usdValue = value * rate;
+        
+        // Cap suspicious values at calculation level (not just display)
+        if (!isFinite(usdValue) || usdValue > 1e15) {
+            console.warn(`[RLLInfo] Suspicious USD value for ${symbol} - capping to 0:`, {
+                amount: amount.toString(),
+                decimals,
+                tokenValue: value,
+                rate,
+                usdValue
+            });
+            return 0; // Return 0 for overflow values
+        }
+        
+        return usdValue;
     };
 
     // Helper function to format USD
     const formatUSD = (value) => {
+        // Handle invalid/overflow values (should rarely happen now since getUSDValue caps it)
+        if (!isFinite(value) || value > 1e15 || value < 0) {
+            return '0.00';
+        }
         return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
 
