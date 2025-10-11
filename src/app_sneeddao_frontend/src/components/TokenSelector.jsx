@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { createActor as createBackendActor } from 'declarations/app_sneeddao_backend';
@@ -7,8 +8,9 @@ import { getTokenLogo } from '../utils/TokenUtils';
 
 const backendCanisterId = process.env.CANISTER_ID_APP_SNEEDDAO_BACKEND || process.env.REACT_APP_BACKEND_CANISTER_ID;
 
-// Global cache for token metadata (logos)
-const logoCache = new Map();
+// Global cache for token metadata (logos and errors)
+const metadataCache = new Map();
+const failedTokens = new Set(); // Track tokens that failed to load
 
 /**
  * TokenSelector - A reusable dropdown component for selecting tokens
@@ -43,6 +45,7 @@ function TokenSelector({
     const [searchTerm, setSearchTerm] = useState('');
     const [isOpen, setIsOpen] = useState(false);
     const [tokensWithLogos, setTokensWithLogos] = useState([]);
+    const [loadingLogos, setLoadingLogos] = useState(true);
 
     // Fetch whitelisted tokens
     useEffect(() => {
@@ -69,65 +72,118 @@ function TokenSelector({
         fetchTokens();
     }, [identity, excludeTokens]);
 
-    // Fetch logos for tokens (using cache)
+    // Fetch logos for tokens progressively (using cache)
     useEffect(() => {
-        const fetchLogos = async () => {
-            const tokensWithLogoData = await Promise.all(
-                tokens.map(async (token) => {
-                    const principalStr = token.ledger_id.toString();
+        if (tokens.length === 0) return;
+
+        let isMounted = true;
+        setLoadingLogos(true);
+
+        const fetchLogosProgressively = async () => {
+            // Initialize with cached or placeholder data
+            const initialTokens = tokens.map(token => {
+                const principalStr = token.ledger_id.toString();
+                
+                if (metadataCache.has(principalStr)) {
+                    const cached = metadataCache.get(principalStr);
+                    return { ...token, ...cached };
+                }
+                
+                return {
+                    ...token,
+                    logo: '',
+                    loading: true
+                };
+            });
+
+            if (isMounted) {
+                setTokensWithLogos(initialTokens);
+            }
+
+            // Fetch logos progressively
+            for (let i = 0; i < tokens.length; i++) {
+                if (!isMounted) break;
+
+                const token = tokens[i];
+                const principalStr = token.ledger_id.toString();
+
+                // Skip if already cached or previously failed
+                if (metadataCache.has(principalStr) || failedTokens.has(principalStr)) {
+                    continue;
+                }
+
+                try {
+                    const ledgerActor = createLedgerActor(token.ledger_id, {
+                        agentOptions: { identity }
+                    });
+                    const metadata = await ledgerActor.icrc1_metadata();
+                    const logo = getTokenLogo(metadata);
+                    const finalLogo = token.symbol.toLowerCase() === "icp" && logo === "" 
+                        ? "icp_symbol.svg" 
+                        : logo;
                     
-                    // Check cache first
-                    if (logoCache.has(principalStr)) {
-                        return {
-                            ...token,
-                            logo: logoCache.get(principalStr)
-                        };
+                    // Cache successful result
+                    const tokenData = {
+                        logo: finalLogo,
+                        loading: false,
+                        failed: false
+                    };
+                    metadataCache.set(principalStr, tokenData);
+                    
+                    // Update state progressively
+                    if (isMounted) {
+                        setTokensWithLogos(prev => prev.map(t => 
+                            t.ledger_id.toString() === principalStr 
+                                ? { ...t, ...tokenData }
+                                : t
+                        ));
                     }
-
-                    // Fetch logo from ledger
-                    try {
-                        const ledgerActor = createLedgerActor(token.ledger_id, {
-                            agentOptions: { identity }
-                        });
-                        const metadata = await ledgerActor.icrc1_metadata();
-                        const logo = getTokenLogo(metadata);
-                        const finalLogo = token.symbol.toLowerCase() === "icp" && logo === "" 
-                            ? "icp_symbol.svg" 
-                            : logo;
-                        
-                        // Cache it
-                        logoCache.set(principalStr, finalLogo);
-                        
-                        return {
-                            ...token,
-                            logo: finalLogo
-                        };
-                    } catch (error) {
-                        console.error(`Error fetching logo for token ${principalStr}:`, error);
-                        return {
-                            ...token,
-                            logo: ''
-                        };
+                } catch (error) {
+                    // Silently handle error, cache as failed
+                    const failedData = {
+                        logo: '',
+                        loading: false,
+                        failed: true,
+                        symbol: 'Unknown',
+                        name: 'Unknown Token'
+                    };
+                    metadataCache.set(principalStr, failedData);
+                    failedTokens.add(principalStr);
+                    
+                    // Update state with failed token
+                    if (isMounted) {
+                        setTokensWithLogos(prev => prev.map(t => 
+                            t.ledger_id.toString() === principalStr 
+                                ? { ...t, ...failedData }
+                                : t
+                        ));
                     }
-                })
-            );
+                }
+            }
 
-            setTokensWithLogos(tokensWithLogoData);
+            if (isMounted) {
+                setLoadingLogos(false);
+            }
         };
 
-        if (tokens.length > 0) {
-            fetchLogos();
-        }
+        fetchLogosProgressively();
+
+        return () => {
+            isMounted = false;
+        };
     }, [tokens, identity]);
 
-    // Filter tokens based on search term
+    // Filter tokens based on search term (exclude failed tokens)
     const filteredTokens = useMemo(() => {
+        // Filter out failed tokens
+        const validTokens = tokensWithLogos.filter(token => !token.failed);
+
         if (!searchTerm.trim()) {
-            return tokensWithLogos;
+            return validTokens;
         }
 
         const lowerSearch = searchTerm.toLowerCase();
-        return tokensWithLogos.filter(token => 
+        return validTokens.filter(token => 
             token.symbol.toLowerCase().includes(lowerSearch) ||
             token.name.toLowerCase().includes(lowerSearch) ||
             token.ledger_id.toString().toLowerCase().includes(lowerSearch)
@@ -187,7 +243,7 @@ function TokenSelector({
                     transition: 'all 0.2s ease'
                 }}
             >
-                {loading ? (
+                {loading || loadingLogos ? (
                     <span>Loading tokens...</span>
                 ) : selectedToken ? (
                     <>
@@ -221,25 +277,27 @@ function TokenSelector({
                 </span>
             </div>
 
-            {/* Dropdown */}
-            {isOpen && !disabled && (
+            {/* Dropdown - Use portal for proper z-index layering */}
+            {isOpen && !disabled && createPortal(
                 <div
                     style={{
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        marginTop: '4px',
+                        position: 'fixed',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
                         background: theme.colors.cardGradient,
                         border: `1px solid ${theme.colors.border}`,
                         borderRadius: '8px',
                         boxShadow: theme.colors.cardShadow,
-                        zIndex: 1000,
-                        maxHeight: '400px',
+                        zIndex: 10000,
+                        width: '90%',
+                        maxWidth: '500px',
+                        maxHeight: '80vh',
                         overflow: 'hidden',
                         display: 'flex',
                         flexDirection: 'column'
                     }}
+                    onClick={(e) => e.stopPropagation()}
                 >
                     {/* Search input */}
                     <div style={{ padding: '12px', borderBottom: `1px solid ${theme.colors.border}` }}>
@@ -264,10 +322,28 @@ function TokenSelector({
                     </div>
 
                     {/* Token list */}
-                    <div style={{ overflowY: 'auto', maxHeight: '320px' }}>
-                        {filteredTokens.length === 0 ? (
+                    <div style={{ overflowY: 'auto', flex: 1 }}>
+                        {loading ? (
                             <div style={{ 
-                                padding: '20px', 
+                                padding: '40px', 
+                                textAlign: 'center', 
+                                color: theme.colors.mutedText,
+                                fontSize: '0.9rem'
+                            }}>
+                                <div className="spinner" style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    border: `3px solid ${theme.colors.border}`,
+                                    borderTop: `3px solid ${theme.colors.accent}`,
+                                    borderRadius: '50%',
+                                    animation: 'spin 1s linear infinite',
+                                    margin: '0 auto 12px'
+                                }}></div>
+                                Loading tokens...
+                            </div>
+                        ) : filteredTokens.length === 0 ? (
+                            <div style={{ 
+                                padding: '40px', 
                                 textAlign: 'center', 
                                 color: theme.colors.mutedText,
                                 fontSize: '0.9rem'
@@ -352,7 +428,35 @@ function TokenSelector({
                             ))
                         )}
                     </div>
-                </div>
+
+                    {/* Close button */}
+                    <div style={{ 
+                        padding: '12px', 
+                        borderTop: `1px solid ${theme.colors.border}`,
+                        display: 'flex',
+                        justifyContent: 'flex-end'
+                    }}>
+                        <button
+                            onClick={() => {
+                                setIsOpen(false);
+                                setSearchTerm('');
+                            }}
+                            style={{
+                                padding: '8px 24px',
+                                background: theme.colors.secondaryBg,
+                                color: theme.colors.primaryText,
+                                border: `1px solid ${theme.colors.border}`,
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontSize: '0.9rem',
+                                fontWeight: '500'
+                            }}
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>,
+                document.body
             )}
         </div>
     );
