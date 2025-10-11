@@ -1464,7 +1464,14 @@ function Wallet() {
         setConfirmAction(() => async () => {
             const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
             await backendActor.unregister_ledger_canister_id(ledgerCanisterId);
-            /*await*/ fetchBalancesAndLocks();
+            
+            // Remove the token from state and mark as unknown
+            const ledger_id = ledgerCanisterId.toText();
+            delete known_icrc1_ledgers[ledger_id];
+            
+            setTokens(prevTokens => prevTokens.filter(token => 
+                token.ledger_canister_id?.toText?.() !== ledger_id
+            ));
         });
         setConfirmMessage(`You are about to unregister ledger canister ${ledgerCanisterId}?`);
         setShowConfirmModal(true);
