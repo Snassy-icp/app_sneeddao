@@ -138,13 +138,20 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             const totalMaturity = getTotalNeuronMaturity();
             const totalNeuronTokens = totalStake + totalMaturity;
             
-            // Convert to USD
-            const usdValue = parseFloat(formatAmountWithConversion(
-                totalNeuronTokens,
-                token.decimals,
-                token.conversion_rate,
-                2
-            ));
+            // Convert to USD (do raw calculation without formatting)
+            const divisor = 10n ** BigInt(token.decimals);
+            const tokenValue = Number(totalNeuronTokens) / Number(divisor);
+            const usdValue = tokenValue * token.conversion_rate;
+            
+            console.log(`[TokenCard] Reporting neuron USD for ${token.symbol}:`, {
+                totalStake: totalStake.toString(),
+                totalMaturity: totalMaturity.toString(),
+                totalNeuronTokens: totalNeuronTokens.toString(),
+                tokenValue,
+                conversion_rate: token.conversion_rate,
+                usdValue,
+                ledger_canister_id: token.ledger_canister_id
+            });
             
             onNeuronTotalsChange(usdValue);
         } else if (onNeuronTotalsChange && !isSnsToken) {

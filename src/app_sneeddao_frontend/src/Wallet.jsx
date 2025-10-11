@@ -809,12 +809,24 @@ function Wallet() {
 
     useEffect(() => {
         var total = 0.0;
+        console.log('[Wallet] Calculating portfolio total...', { neuronTotals });
+        
         for (const token of tokens) {
             // Get base token TVL (liquid + locked + rewards)
-            total += getTokenTVL(token, rewardDetailsLoading, false);
+            const baseTVL = getTokenTVL(token, rewardDetailsLoading, false);
+            total += baseTVL;
             
             // Add neuron totals (staked + maturity) if available
             const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+            const neuronValue = neuronTotals[ledgerId] || 0;
+            
+            console.log(`[Wallet] ${token.symbol}:`, {
+                baseTVL,
+                neuronValue,
+                ledgerId,
+                total: baseTVL + neuronValue
+            });
+            
             if (neuronTotals[ledgerId]) {
                 total += neuronTotals[ledgerId];
             }
@@ -826,6 +838,7 @@ function Wallet() {
             }
         }
 
+        console.log('[Wallet] Total portfolio value:', total);
         total = total.toFixed(2);
 
         setTotalDollarValue(total);
@@ -1662,6 +1675,10 @@ function Wallet() {
                                 isSnsToken={isSns}
                                 onNeuronTotalsChange={(usdValue) => {
                                     const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+                                    console.log(`[Wallet] Received neuron totals for ${token.symbol}:`, {
+                                        ledgerId,
+                                        usdValue
+                                    });
                                     setNeuronTotals(prev => ({
                                         ...prev,
                                         [ledgerId]: usdValue
