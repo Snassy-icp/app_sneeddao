@@ -9,6 +9,7 @@ import Header from '../components/Header';
 import { fetchUserNeuronsForSns } from '../utils/NeuronUtils';
 import Notification from '../Notification';
 import HotkeyNeurons from '../components/HotkeyNeurons';
+import priceService from '../services/PriceService';
 
 // Theme-aware styles function
 const getStyles = (theme) => ({
@@ -141,6 +142,8 @@ function Rewards() {
     const [claimingTokens, setClaimingTokens] = useState({});
     const [notification, setNotification] = useState(null);
     const [tokenSymbols, setTokenSymbols] = useState({});
+    const [tokenPrices, setTokenPrices] = useState({});
+    const [tokenDecimals, setTokenDecimals] = useState({});
 
     // Function to fetch neurons directly from SNS
     const fetchNeuronsFromSns = async () => {
@@ -182,7 +185,7 @@ function Rewards() {
         return BigInt(10000); // Default fee if not found
     };
 
-    // Modify useEffect to fetch token symbols
+    // Fetch token metadata (symbols, decimals) and prices
     useEffect(() => {
         const fetchUserBalances = async () => {
             if (!isAuthenticated || !identity) {
@@ -199,12 +202,47 @@ function Rewards() {
                 const balances = await rllActor.balances_of_hotkey_neurons(neurons);
                 setUserBalances(balances);
 
-                // Fetch symbols for all tokens
+                // Fetch metadata and prices for all tokens
                 const symbols = {};
+                const decimals = {};
+                const prices = {};
+                
                 for (const [tokenId] of balances) {
-                    symbols[tokenId.toString()] = await fetchTokenSymbol(tokenId);
+                    const tokenIdStr = tokenId.toString();
+                    
+                    // Fetch symbol
+                    symbols[tokenIdStr] = await fetchTokenSymbol(tokenId);
+                    
+                    // Fetch decimals from metadata
+                    try {
+                        const icrc1Actor = createIcrc1Actor(tokenIdStr, {
+                            agentOptions: { identity }
+                        });
+                        const metadata = await icrc1Actor.icrc1_metadata();
+                        const decimalsEntry = metadata.find(entry => entry[0] === 'icrc1:decimals');
+                        if (decimalsEntry && decimalsEntry[1]) {
+                            decimals[tokenIdStr] = Number(decimalsEntry[1].Nat);
+                        } else {
+                            decimals[tokenIdStr] = 8; // Default to 8
+                        }
+                    } catch (error) {
+                        console.warn(`Failed to fetch decimals for ${tokenIdStr}:`, error);
+                        decimals[tokenIdStr] = 8; // Default to 8
+                    }
+                    
+                    // Fetch price
+                    try {
+                        const price = await priceService.getTokenUSDPrice(tokenIdStr, decimals[tokenIdStr]);
+                        prices[tokenIdStr] = price;
+                    } catch (error) {
+                        console.warn(`Failed to fetch price for ${symbols[tokenIdStr]} (${tokenIdStr}):`, error);
+                        prices[tokenIdStr] = 0;
+                    }
                 }
+                
                 setTokenSymbols(symbols);
+                setTokenDecimals(decimals);
+                setTokenPrices(prices);
             } catch (error) {
                 console.error('Error fetching user balances:', error);
             } finally {
@@ -323,7 +361,38 @@ function Rewards() {
 
     const formatBalance = (balance, decimals) => {
         if (!balance) return '0';
-        return (Number(balance) / Math.pow(10, decimals)).toFixed(decimals);
+        const value = Number(balance) / Math.pow(10, decimals);
+        // Remove trailing zeros
+        return value.toLocaleString(undefined, { 
+            minimumFractionDigits: 0,
+            maximumFractionDigits: decimals 
+        });
+    };
+
+    // Calculate USD value for a token balance
+    const getTokenUSDValue = (balance, tokenId) => {
+        if (!balance || balance === 0n) return 0;
+        const tokenIdStr = tokenId.toString();
+        const decimals = tokenDecimals[tokenIdStr] || 8;
+        const price = tokenPrices[tokenIdStr] || 0;
+        const tokenAmount = Number(balance) / Math.pow(10, decimals);
+        return tokenAmount * price;
+    };
+
+    // Format USD value
+    const formatUSD = (usdValue) => {
+        if (!usdValue || usdValue === 0) return '$0.00';
+        return '$' + usdValue.toLocaleString(undefined, { 
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2 
+        });
+    };
+
+    // Calculate total USD value of all rewards
+    const getTotalRewardsUSD = () => {
+        return userBalances.reduce((total, [tokenId, balance]) => {
+            return total + getTokenUSDValue(balance, tokenId);
+        }, 0);
     };
 
     // Add helper function to format status
@@ -441,6 +510,33 @@ function Rewards() {
                                     i
                                 </span>
                             </h2>
+                            
+                            {/* Total Rewards Value */}
+                            {userBalances.length > 0 && (
+                                <div style={{
+                                    backgroundColor: theme.colors.tertiaryBg,
+                                    padding: '15px 20px',
+                                    borderRadius: '8px',
+                                    marginBottom: '20px',
+                                    border: `1px solid ${theme.colors.accent}`
+                                }}>
+                                    <div style={{ 
+                                        color: theme.colors.mutedText,
+                                        fontSize: '0.9em',
+                                        marginBottom: '5px'
+                                    }}>
+                                        Total Unclaimed Rewards Value
+                                    </div>
+                                    <div style={{ 
+                                        color: theme.colors.accent,
+                                        fontSize: '1.8em',
+                                        fontWeight: 'bold'
+                                    }}>
+                                        {formatUSD(getTotalRewardsUSD())}
+                                    </div>
+                                </div>
+                            )}
+                            
                             <p style={{ 
                                 color: theme.colors.primaryText, 
                                 marginBottom: '20px',
@@ -463,50 +559,66 @@ function Rewards() {
                                 </div>
                             ) : userBalances.length > 0 ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                    {userBalances.map(([tokenId, balance]) => (
-                                        <div key={tokenId.toString()} style={{
-                                            backgroundColor: theme.colors.tertiaryBg,
-                                            padding: '15px',
-                                            borderRadius: '6px',
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            alignItems: 'center'
-                                        }}>
-                                            <div>
-                                                <div style={{ fontSize: '18px', marginBottom: '5px', color: theme.colors.primaryText }}>
-                                                    {tokenSymbols[tokenId.toString()] || tokenId.toString()}
+                                    {userBalances.map(([tokenId, balance]) => {
+                                        const tokenIdStr = tokenId.toString();
+                                        const decimals = tokenDecimals[tokenIdStr] || 8;
+                                        const usdValue = getTokenUSDValue(balance, tokenId);
+                                        
+                                        return (
+                                            <div key={tokenIdStr} style={{
+                                                backgroundColor: theme.colors.tertiaryBg,
+                                                padding: '15px',
+                                                borderRadius: '6px',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center'
+                                            }}>
+                                                <div>
+                                                    <div style={{ fontSize: '18px', marginBottom: '5px', color: theme.colors.primaryText }}>
+                                                        {tokenSymbols[tokenIdStr] || tokenIdStr}
+                                                    </div>
+                                                    <div style={{ color: theme.colors.mutedText }}>
+                                                        {formatBalance(balance, decimals)} {tokenSymbols[tokenIdStr]}
+                                                    </div>
+                                                    {usdValue > 0 && (
+                                                        <div style={{ 
+                                                            color: theme.colors.accent,
+                                                            fontSize: '0.95em',
+                                                            marginTop: '3px',
+                                                            fontWeight: '500'
+                                                        }}>
+                                                            {formatUSD(usdValue)}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                <div style={{ color: theme.colors.mutedText }}>
-                                                    Balance: {formatBalance(balance, 8)}
-                                                </div>
+                                                <button
+                                                    onClick={() => handleClaimRewards(tokenId, balance)}
+                                                    disabled={!balance || Number(balance) === 0 || claimingTokens[tokenIdStr]}
+                                                    style={{
+                                                        backgroundColor: theme.colors.accent,
+                                                        color: theme.colors.primaryText,
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        padding: '8px 16px',
+                                                        cursor: !balance || Number(balance) === 0 || claimingTokens[tokenIdStr] ? 'not-allowed' : 'pointer',
+                                                        opacity: !balance || Number(balance) === 0 || claimingTokens[tokenIdStr] ? 0.7 : 1,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px'
+                                                    }}
+                                                >
+                                                    {claimingTokens[tokenIdStr] ? (
+                                                        <>
+                                                            <div style={styles.spinner} />
+                                                            Claiming...
+                                                        </>
+                                                    ) : (
+                                                        'Claim'
+                                                    )}
+                                                </button>
                                             </div>
-                                            <button
-                                                onClick={() => handleClaimRewards(tokenId, balance)}
-                                                disabled={!balance || Number(balance) === 0 || claimingTokens[tokenId.toString()]}
-                                                style={{
-                                                    backgroundColor: theme.colors.accent,
-                                                    color: theme.colors.primaryText,
-                                                    border: 'none',
-                                                    borderRadius: '4px',
-                                                    padding: '8px 16px',
-                                                    cursor: !balance || Number(balance) === 0 || claimingTokens[tokenId.toString()] ? 'not-allowed' : 'pointer',
-                                                    opacity: !balance || Number(balance) === 0 || claimingTokens[tokenId.toString()] ? 0.7 : 1,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '8px'
-                                                }}
-                                            >
-                                                {claimingTokens[tokenId.toString()] ? (
-                                                    <>
-                                                        <div style={styles.spinner} />
-                                                        Claiming...
-                                                    </>
-                                                ) : (
-                                                    'Claim'
-                                                )}
-                                            </button>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             ) : (
                                 <p style={{ color: theme.colors.mutedText }}>No rewards available to claim</p>
@@ -560,7 +672,20 @@ function Rewards() {
                                                         </div>
                                                         <div style={eventStyles.eventDetails}>
                                                             <span>Sequence: {seqNum}</span>
-                                                            <span>Amount: {formatBalance(latestEvent.amount, 8)} {tokenSymbols[latestEvent.token_id.toString()] || latestEvent.token_id.toString()}</span>
+                                                            <div>
+                                                                <span>Amount: {formatBalance(latestEvent.amount, 8)} {tokenSymbols[latestEvent.token_id.toString()] || latestEvent.token_id.toString()}</span>
+                                                                {(() => {
+                                                                    const usdValue = getTokenUSDValue(latestEvent.amount, latestEvent.token_id);
+                                                                    return usdValue > 0 ? (
+                                                                        <span style={{ 
+                                                                            color: theme.colors.accent,
+                                                                            marginLeft: '8px'
+                                                                        }}>
+                                                                            ({formatUSD(usdValue)})
+                                                                        </span>
+                                                                    ) : null;
+                                                                })()}
+                                                            </div>
                                                             <span>Fee: {formatBalance(latestEvent.fee, 8)} {tokenSymbols[latestEvent.token_id.toString()] || latestEvent.token_id.toString()}</span>
                                                             {events.some(e => e.tx_index && e.tx_index.length > 0) && (
                                                                 <span>Transaction ID: {events.find(e => e.tx_index && e.tx_index.length > 0).tx_index[0].toString()}</span>
