@@ -389,9 +389,29 @@ function Wallet() {
         }
 
         if (new_icrc1_ledgers.length > 0) {
+            // Add placeholders at the end to preserve order
+            const placeholders = new_icrc1_ledgers.map(ledger => ({
+                ledger_canister_id: ledger,
+                symbol: '...',
+                decimals: 8,
+                fee: 0n,
+                logo: '',
+                balance: 0n,
+                balance_backend: 0n,
+                locked: 0n,
+                available: 0n,
+                available_backend: 0n,
+                conversion_rate: 0,
+                loading: true
+            }));
+            setTokens(prevTokens => [...prevTokens, ...placeholders]);
+            
             const allUpdatedTokens = await Promise.all(new_icrc1_ledgers.map(async (icrc1_ledger) => {
                 const updatedToken = await fetchTokenDetails(icrc1_ledger, summed_locks);
-                setTokens(prevTokens => [...prevTokens, updatedToken]);
+                // Update the specific token by matching ledger_canister_id
+                setTokens(prevTokens => prevTokens.map(token => 
+                    token.ledger_canister_id?.toText?.() === icrc1_ledger.toText() ? updatedToken : token
+                ));
                 return updatedToken;
             }));
 
@@ -422,9 +442,29 @@ function Wallet() {
             }
             
             if (new_tip_ledgers.length > 0) {
+                // Add placeholders at the end to preserve order
+                const placeholders = new_tip_ledgers.map(ledger => ({
+                    ledger_canister_id: ledger,
+                    symbol: '...',
+                    decimals: 8,
+                    fee: 0n,
+                    logo: '',
+                    balance: 0n,
+                    balance_backend: 0n,
+                    locked: 0n,
+                    available: 0n,
+                    available_backend: 0n,
+                    conversion_rate: 0,
+                    loading: true
+                }));
+                setTokens(prevTokens => [...prevTokens, ...placeholders]);
+                
                 const allUpdatedTokens = await Promise.all(new_tip_ledgers.map(async (icrc1_ledger) => {
                     const updatedToken = await fetchTokenDetails(icrc1_ledger, summed_locks);
-                    setTokens(prevTokens => [...prevTokens, updatedToken]);
+                    // Update the specific token by matching ledger_canister_id
+                    setTokens(prevTokens => prevTokens.map(token => 
+                        token.ledger_canister_id?.toText?.() === icrc1_ledger.toText() ? updatedToken : token
+                    ));
                     return updatedToken;
                 }));
 
@@ -474,9 +514,30 @@ function Wallet() {
                 ));
                 singleUpdatedToken = [updatedToken];
             } else {
-                allUpdatedTokens = await Promise.all(icrc1_ledgers.map(async (icrc1_ledger) => {
+                // Create placeholders immediately to preserve order
+                const placeholders = icrc1_ledgers.map(ledger => ({
+                    ledger_canister_id: ledger,
+                    symbol: '...',
+                    decimals: 8,
+                    fee: 0n,
+                    logo: '',
+                    balance: 0n,
+                    balance_backend: 0n,
+                    locked: 0n,
+                    available: 0n,
+                    available_backend: 0n,
+                    conversion_rate: 0,
+                    loading: true
+                }));
+                setTokens(placeholders);
+                
+                // Fetch details and update each token as data arrives
+                allUpdatedTokens = await Promise.all(icrc1_ledgers.map(async (icrc1_ledger, index) => {
                     const updatedToken = await fetchTokenDetails(icrc1_ledger, summed_locks);
-                    setTokens(prevTokens => [...prevTokens, updatedToken]);
+                    // Update the specific token by index to preserve order
+                    setTokens(prevTokens => prevTokens.map((token, i) => 
+                        i === index ? updatedToken : token
+                    ));
                     return updatedToken;
                 }));
             }
