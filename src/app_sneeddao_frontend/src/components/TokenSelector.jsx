@@ -285,7 +285,7 @@ function TokenSelector({
                         top: '50%',
                         left: '50%',
                         transform: 'translate(-50%, -50%)',
-                        background: theme.colors.cardGradient,
+                        background: theme.colors.primaryBg,
                         border: `1px solid ${theme.colors.border}`,
                         borderRadius: '8px',
                         boxShadow: theme.colors.cardShadow,
