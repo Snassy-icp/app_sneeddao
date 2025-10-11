@@ -257,7 +257,7 @@ function TokenSelector({
                     transition: 'all 0.2s ease'
                 }}
             >
-                {loading || loadingLogos ? (
+                {loading ? (
                     <span>Loading tokens...</span>
                 ) : selectedToken ? (
                     <>
