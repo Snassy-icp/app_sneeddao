@@ -23,9 +23,8 @@ import { createActor as createVectorActor } from 'external/icrc55_vector';
 import { createActor as createExVectorActor } from 'external/icrc55_exvector';
 import { encodeIcrcAccount } from '@dfinity/ledger-icrc';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
-import { get_token_conversion_rates } from './utils/TokenUtils';
 import { createActor as createRllActor, canisterId as rllCanisterId } from 'external/rll';
-import { createActor as createNeutriniteDappActor } from 'external/neutrinite_dapp';
+import priceService from './services/PriceService';
 import Header from './components/Header';
 import { useTheme } from './contexts/ThemeContext';
 
@@ -1502,16 +1501,25 @@ function RLLInfo() {
     useEffect(() => {
         const fetchConversionRates = async () => {
             try {
-                // TODO: Migrate to use priceService for specific tokens as needed
-                // For now, disable Neutrinite dependency
-                console.warn('fetchConversionRates: Rate fetching disabled. Migrate to use priceService per-token.');
-                setConversionRates({});
+                // Fetch prices for commonly used tokens (ICP and SNEED) using new PriceService
+                const [icpPrice, sneedPrice] = await Promise.all([
+                    priceService.getTokenUSDPrice('ryjl3-tyaaa-aaaaa-aaaba-cai', 8).catch(() => 0),
+                    priceService.getTokenUSDPrice('hvgxa-wqaaa-aaaaq-aacia-cai', 8).catch(() => 0)
+                ]);
+                
+                setConversionRates({
+                    'ICP': icpPrice,
+                    'SNEED': sneedPrice
+                });
             } catch (error) {
                 console.error('Error fetching conversion rates:', error);
             }
         };
 
         fetchConversionRates();
+        // Refresh rates every 5 minutes
+        const interval = setInterval(fetchConversionRates, 5 * 60 * 1000);
+        return () => clearInterval(interval);
     }, []);
 
     // Helper function to calculate USD value
