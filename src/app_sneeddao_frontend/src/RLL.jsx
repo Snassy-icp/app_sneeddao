@@ -2051,71 +2051,7 @@ function RLL() {
                                                 <span title="This percentage represents your share of distributed rewards based on your voting participation">{((Number(hotkeyNeurons.total_voting_power) / Number(hotkeyNeurons.distribution_voting_power)) * 100).toFixed(2)}%</span>
                                             </div>
                                         </div>
-                                        
-                                        <div style={{marginTop: '20px'}}>
-                                            {hotkeyNeurons.neurons_by_owner.map(([owner, neurons], index) => (
-                                                <div key={owner.toText()} style={{
-                                                    background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
-                                                    borderRadius: '6px',
-                                                    padding: '15px',
-                                                    marginBottom: '15px'
-                                                }}>
-                                                    <div style={{
-                                                        ...styles.statusItem,
-                                                        borderBottom: '1px solid #4a4a4a',
-                                                        paddingBottom: '10px',
-                                                        marginBottom: '10px'
-                                                    }}>
-                                                        <span>Owner:</span>
-                                                        <span style={{fontFamily: 'monospace'}}>{owner.toText()}</span>
-                                                    </div>
-                                                    <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                                                        {neurons.map((neuron, neuronIndex) => (
-                                                            <div key={neuronIndex} style={{
-                                                                background: theme.colors.cardGradient, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
-                                                                borderRadius: '4px',
-                                                                padding: '10px'
-                                                            }}>
-                                                                <div style={styles.statusItem}>
-                                                                    <span>Neuron ID:</span>
-                                                                    <span style={{
-                                                                        fontFamily: 'monospace',
-                                                                        wordBreak: 'break-all',
-                                                                        maxWidth: '100%'
-                                                                    }}>
-                                                                        {neuron.id && neuron.id[0] && neuron.id[0].id ? 
-                                                                            uint8ArrayToHex(neuron.id[0].id)
-                                                                            : 'Unknown'}
-                                                                    </span>
-                                                                </div>
-                                                                <div style={styles.statusItem}>
-                                                                    <span>Stake:</span>
-                                                                    <span title={`${Number(neuron.cached_neuron_stake_e8s).toLocaleString()} e8s`}>
-                                                                        {formatE8s(neuron.cached_neuron_stake_e8s)} SNEED
-                                                                    </span>
-                                                                </div>
-                                                                <div style={styles.statusItem}>
-                                                                    <span>Dissolve State:</span>
-                                                                    <span>{neuron.dissolve_state ? 
-                                                                        (neuron.dissolve_state[0].WhenDissolvedTimestampSeconds ? 
-                                                                            `Dissolving until: ${formatTimestamp(neuron.dissolve_state[0].WhenDissolvedTimestampSeconds)}` : 
-                                                                            neuron.dissolve_state[0].DissolveDelaySeconds ? 
-                                                                                `Not dissolving (delay: ${formatDuration(Number(neuron.dissolve_state[0].DissolveDelaySeconds))})` :
-                                                                                'Not dissolving') 
-                                                                        : 'Not dissolving'}</span>
-                                                                </div>
-                                                                <div style={styles.statusItem}>
-                                                                    <span>Age:</span>
-                                                                    <span title={`Aging since: ${formatTimestamp(neuron.aging_since_timestamp_seconds)}`}>
-                                                                        {calculateAge(neuron.aging_since_timestamp_seconds)}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
+
                                     </div>
                                 )
                             )}
