@@ -399,7 +399,10 @@ function RLL() {
         distributionCycle: false,
         importStatus: false,
         distributionEvents: false,
-        claimEvents: false
+        claimEvents: false,
+        adminControls: false,
+        manageDistributionLimits: false,
+        errorClaims: false
     });
     
     // New state variables for enhanced features
@@ -1708,16 +1711,24 @@ function RLL() {
                 {isAdmin && (
                     <>
                         <section style={styles.section}>
-                            <h2 style={styles.heading}>
-                                Admin Controls
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="Administrative functions for managing the Rewards Distribution system, including cycle control and data import operations"
+                            <div style={styles.sectionHeader}>
+                                <h2 style={styles.heading}>
+                                    Admin Controls
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="Administrative functions for managing the Rewards Distribution system, including cycle control and data import operations"
+                                    >
+                                        i
+                                    </span>
+                                </h2>
+                                <button 
+                                    onClick={() => setExpandedSections(prev => ({ ...prev, adminControls: !prev.adminControls }))}
+                                    style={styles.expandButton}
                                 >
-                                    i
-                                </span>
-                            </h2>
-                            <div style={styles.adminControls}>
+                                    {expandedSections.adminControls ? '▼' : '▶'}
+                                </button>
+                            </div>
+                            {expandedSections.adminControls && <div style={styles.adminControls}>
                                 <button 
                                     onClick={handleStartDistributionCycle}
                                     style={styles.adminButton}
@@ -1754,21 +1765,29 @@ function RLL() {
                                 >
                                     Stop Main Loop
                                 </button>
-                            </div>
+                            </div>}
                         </section>
 
                         {/* Token Distribution Limits Admin Section */}
                         <section style={styles.section}>
-                            <h2 style={styles.heading}>
-                                Manage Token Distribution Limits
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="Set or remove minimum and maximum distribution limits for each token"
+                            <div style={styles.sectionHeader}>
+                                <h2 style={styles.heading}>
+                                    Manage Token Distribution Limits
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="Set or remove minimum and maximum distribution limits for each token"
+                                    >
+                                        i
+                                    </span>
+                                </h2>
+                                <button 
+                                    onClick={() => setExpandedSections(prev => ({ ...prev, manageDistributionLimits: !prev.manageDistributionLimits }))}
+                                    style={styles.expandButton}
                                 >
-                                    i
-                                </span>
-                            </h2>
-                            <div style={{
+                                    {expandedSections.manageDistributionLimits ? '▼' : '▶'}
+                                </button>
+                            </div>
+                            {expandedSections.manageDistributionLimits && <div style={{
                                 background: theme.colors.tertiaryBg, border: `1px solid ${theme.colors.border}`, boxShadow: theme.colors.cardShadow,
                                 borderRadius: '6px',
                                 padding: '20px',
@@ -1857,20 +1876,28 @@ function RLL() {
                                         Remove Limits
                                     </button>
                                 </div>
-                            </div>
+                            </div>}
                         </section>
 
                         <section style={styles.section}>
-                            <h2 style={styles.heading}>
-                                Error Claims & Unmatched Pending Claims
-                                <span 
-                                    style={styles.infoIcon} 
-                                    title="List of claims that encountered errors or are pending without matches"
+                            <div style={styles.sectionHeader}>
+                                <h2 style={styles.heading}>
+                                    Error Claims & Unmatched Pending Claims
+                                    <span 
+                                        style={styles.infoIcon} 
+                                        title="List of claims that encountered errors or are pending without matches"
+                                    >
+                                        i
+                                    </span>
+                                </h2>
+                                <button 
+                                    onClick={() => setExpandedSections(prev => ({ ...prev, errorClaims: !prev.errorClaims }))}
+                                    style={styles.expandButton}
                                 >
-                                    i
-                                </span>
-                            </h2>
-                            {loadingErrorClaims || loadingUnmatchedClaims ? (
+                                    {expandedSections.errorClaims ? '▼' : '▶'}
+                                </button>
+                            </div>
+                            {expandedSections.errorClaims && (loadingErrorClaims || loadingUnmatchedClaims ? (
                                 <div style={styles.spinner} />
                             ) : (
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
@@ -1932,7 +1959,7 @@ function RLL() {
                                         )}
                                     </div>
                                 </div>
-                            )}
+                            ))}
                         </section>
                     </>
                 )}
