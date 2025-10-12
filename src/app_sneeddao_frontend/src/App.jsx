@@ -61,6 +61,7 @@ import Post from './pages/Post';
 import Forum from './pages/Forum';
 import Feed from './pages/Feed';
 import Topic from './pages/Topic';
+import HelpNeurons from './pages/HelpNeurons';
 
 // Component to set up global naming function
 function GlobalNamingSetup() {
@@ -92,6 +93,7 @@ function App() {
                     <Route path="/wallet" element={<Wallet />} />
                     <Route path="/doc" element={<Doc />} />
                     <Route path="/help" element={<Help />} />
+                    <Route path="/help/neurons" element={<HelpNeurons />} />
                     <Route path="/rll" element={<RLL />} />
                     <Route path="/rll_info" element={<RLLInfo />} />
                     <Route path="/scan_wallet" element={<ScanWallet />} />

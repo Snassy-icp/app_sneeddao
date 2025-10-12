@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss } from 'react-icons/fa';
+import { FaWallet, FaLock, FaUser, FaBuilding, FaNetworkWired, FaCog, FaTools, FaSignInAlt, FaChevronDown, FaChevronUp, FaRss, FaQuestionCircle } from 'react-icons/fa';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { headerStyles } from '../styles/HeaderStyles';
@@ -41,6 +41,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path)) return 'Locks';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
+        if (['/help', '/doc'].includes(path) || location.pathname.startsWith('/help/')) return 'Help';
         return 'Hub';
     });
 
@@ -105,6 +106,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Locks');
         } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
             setActiveSection('Admin');
+        } else if (['/help', '/doc'].includes(path) || path.startsWith('/help/')) {
+            setActiveSection('Help');
         }
     }, [location.pathname]);
 
@@ -194,6 +197,15 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             subMenu: [
                 { name: 'Locks', path: '/sneedlock' },
                 { name: 'Dashboard', path: '/sneedlock_info' }
+            ]
+        },
+        'Help': {
+            icon: <FaQuestionCircle size={18} />,
+            displayName: 'Help',
+            defaultPath: '/help',
+            subMenu: [
+                { name: 'Help', path: '/help' },
+                { name: 'Doc', path: '/doc' }
             ]
         }
     };

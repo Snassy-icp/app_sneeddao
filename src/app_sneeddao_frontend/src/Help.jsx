@@ -2,52 +2,92 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import './Help.css';
 import Header from './components/Header';
+import { useTheme } from './contexts/ThemeContext';
+
+const getStyles = (theme) => ({
+    container: {
+        maxWidth: '1200px',
+        margin: '0 auto',
+        padding: '2rem',
+        color: theme.colors.primaryText,
+    },
+    section: {
+        backgroundColor: theme.colors.secondaryBg,
+        borderRadius: '8px',
+        padding: '2rem',
+        marginBottom: '2rem',
+        textAlign: 'center',
+    },
+    heading: {
+        fontSize: '2.5rem',
+        marginBottom: '1.5rem',
+        color: theme.colors.primaryText,
+    },
+    paragraph: {
+        marginBottom: '1rem',
+        lineHeight: '1.6',
+        color: theme.colors.secondaryText,
+        fontSize: '1.1rem',
+    },
+    linkSection: {
+        backgroundColor: theme.colors.secondaryBg,
+        borderRadius: '8px',
+        padding: '2rem',
+        marginBottom: '2rem',
+    },
+    subheading: {
+        fontSize: '1.8rem',
+        marginBottom: '1rem',
+        color: theme.colors.primaryText,
+    },
+    linkList: {
+        listStyle: 'none',
+        padding: 0,
+        margin: 0,
+    },
+    linkItem: {
+        marginBottom: '0.8rem',
+    },
+    link: {
+        color: theme.colors.accent,
+        textDecoration: 'none',
+        fontSize: '1.1rem',
+    },
+});
 
 function Help() {
-  return (
-    <div className='page-container'>
-      <Header />
-      <main className="help-container">
-        <h1>Sneedlock Help Guide</h1>
-        <p>Welcome to Sneedlock, a decentralized application built on the Internet Computer. Here's what you can do with our dApp:</p>
+    const { theme } = useTheme();
+    const styles = getStyles(theme);
 
-        <h2>Managing Tokens</h2>
-        <ul>
-          <li>View your token balances, including available and locked amounts</li>
-          <li>Add new tokens by registering ledger canister IDs</li>
-          <li>Send tokens to other addresses</li>
-          <li>Lock tokens for a specified duration</li>
-          <li>View lock details including amount, expiry date, and duration</li>
-          <li>Remove tokens from your list (if balance is zero)</li>
-        </ul>
+    return (
+        <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <Header />
+            <main style={styles.container}>
+                <div style={styles.section}>
+                    <h1 style={styles.heading}>Help Center</h1>
+                    <p style={styles.paragraph}>
+                        More help content coming soon!
+                    </p>
+                </div>
 
-        <h2>Managing Liquidity Positions</h2>
-        <ul>
-          <li>View your liquidity positions for different token pairs</li>
-          <li>Add new swap canisters to track more liquidity positions</li>
-          <li>See details of each position, including liquidity and unclaimed fees</li>
-          <li>Send liquidity positions to other addresses</li>
-          <li>Lock liquidity positions for a specified duration</li>
-          <li>Remove swap canisters from your list (if no positions exist)</li>
-          <li>(Coming Soon) Withdraw unclaimed fees from your positions</li>
-        </ul>
-
-        <h2>Additional Features</h2>
-        <ul>
-          <li>View your principal ID</li>
-          <li>Log out of your account</li>
-          <li>Refresh your token balances and liquidity positions</li>
-        </ul>
-
-        <h2>Important Notes</h2>
-        <ul>
-        <li>This is beta software. Use small amounts and proceed at your own risk.</li>
-        <li>Maximum lock time is 7 days.</li>
-        <li>At this time, only liquidity positions from ICPSwap are supported.</li>
-        </ul>
-      </main>
-    </div>
-  );
+                <div style={styles.linkSection}>
+                    <h2 style={styles.subheading}>Available Help Topics</h2>
+                    <ul style={styles.linkList}>
+                        <li style={styles.linkItem}>
+                            <Link 
+                                to="/help/neurons" 
+                                style={styles.link}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                Understanding SNS Neurons
+                            </Link>
+                        </li>
+                    </ul>
+                </div>
+            </main>
+        </div>
+    );
 }
 
 export default Help;
