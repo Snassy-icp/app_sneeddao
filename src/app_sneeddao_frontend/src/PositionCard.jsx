@@ -7,6 +7,7 @@ import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
 import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
+import ConfirmationModal from './ConfirmationModal';
 
 const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleWithdrawPosition, handleTransferPositionOwnership, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
 
@@ -16,6 +17,8 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [locksExpanded, setLocksExpanded] = useState(defaultLocksExpanded);
     const [infoExpanded, setInfoExpanded] = useState(false);
+    const [isClaiming, setIsClaiming] = useState(false);
+    const [showClaimConfirm, setShowClaimConfirm] = useState(false);
 
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
@@ -284,20 +287,14 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                             <div className="withdraw-button-container">
                                 <button 
                                     className="withdraw-button" 
-                                    onClick={async () => {
-                                        try {
-                                            await handleWithdrawPositionRewards({
-                                                swapCanisterId: position.swapCanisterId,
-                                                id: positionDetails.positionId,
-                                                frontendOwnership: positionDetails.frontendOwnership,
-                                                symbols: position.token0Symbol + '/' + position.token1Symbol
-                                            });
-                                        } catch (error) {
-                                            alert(`Failed to claim fees: ${error.message || error.toString()}`);
-                                        }
+                                    onClick={() => setShowClaimConfirm(true)}
+                                    disabled={isClaiming}
+                                    style={{
+                                        opacity: isClaiming ? 0.6 : 1,
+                                        cursor: isClaiming ? 'not-allowed' : 'pointer'
                                     }}
                                 >
-                                    Claim Fees
+                                    {isClaiming ? 'Claiming...' : 'Claim Fees'}
                                 </button>
                             </div>
                         )}
@@ -807,6 +804,31 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
             </div>
                 </>
             )}
+            
+            {/* Claim Fees Confirmation Modal */}
+            <ConfirmationModal
+                show={showClaimConfirm}
+                onClose={() => setShowClaimConfirm(false)}
+                onSubmit={async () => {
+                    try {
+                        setIsClaiming(true);
+                        setShowClaimConfirm(false);
+                        await handleWithdrawPositionRewards({
+                            swapCanisterId: position.swapCanisterId,
+                            id: positionDetails.positionId,
+                            frontendOwnership: positionDetails.frontendOwnership,
+                            symbols: position.token0Symbol + '/' + position.token1Symbol
+                        });
+                    } catch (error) {
+                        console.error('Error claiming fees:', error);
+                        alert(`Failed to claim fees: ${error.message || error.toString()}`);
+                    } finally {
+                        setIsClaiming(false);
+                    }
+                }}
+                message={`You are about to claim and withdraw trading fees from position #${positionDetails.positionId} (${position.token0Symbol}/${position.token1Symbol}). The fees will be transferred to your wallet. Continue?`}
+                doAwait={true}
+            />
         </div>
     );
 };

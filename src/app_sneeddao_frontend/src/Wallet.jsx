@@ -1513,6 +1513,7 @@ function Wallet() {
     const handleWithdrawPositionRewards = async (liquidityPosition) => {
         console.log('=== Withdrawing position rewards ===');
         console.log('Position:', liquidityPosition.symbols, 'ID:', liquidityPosition.id);
+        console.log('Full liquidityPosition object:', liquidityPosition);
         
         // Only available for frontend positions
         if (!liquidityPosition.frontendOwnership) {
@@ -1521,19 +1522,22 @@ function Wallet() {
         }
 
         try {
+            console.log('Creating swap actor for canister:', liquidityPosition.swapCanisterId);
             const swapActor = createIcpSwapActor(liquidityPosition.swapCanisterId, { 
                 agentOptions: { identity } 
             });
 
             // Step 1: Claim the position fees
-            console.log('Claiming fees for position', liquidityPosition.id);
+            console.log('Calling claim for position', liquidityPosition.id);
             const claimResult = await swapActor.claim({ 
                 positionId: Number(liquidityPosition.id) 
             });
 
+            console.log('Claim result:', toJsonString(claimResult));
+
             if (!claimResult.ok) {
-                console.error('Claim failed:', toJsonString(claimResult.err));
-                throw new Error(`Failed to claim fees: ${toJsonString(claimResult.err)}`);
+                console.error('Claim failed:', toJsonString(claimResult.err || claimResult));
+                throw new Error(`Failed to claim fees: ${toJsonString(claimResult.err || claimResult)}`);
             }
 
             const claimedAmount0 = claimResult.ok.amount0;
@@ -1575,36 +1579,40 @@ function Wallet() {
 
             // Step 3: Withdraw token0 if amount exceeds fee
             if (totalAmount0 > 0n && totalAmount0 > fee0) {
-                console.log('Withdrawing token0:', totalAmount0.toString());
+                console.log('Withdrawing token0:', totalAmount0.toString(), 'from ledger:', token0Ledger);
                 const withdraw0Result = await swapActor.withdraw({
                     fee: fee0,
                     token: token0Ledger,
                     amount: totalAmount0
                 });
                 
+                console.log('Token0 withdraw result:', toJsonString(withdraw0Result));
+                
                 if (withdraw0Result.err) {
                     console.error('Token0 withdraw failed:', toJsonString(withdraw0Result.err));
                     throw new Error(`Failed to withdraw token0: ${toJsonString(withdraw0Result.err)}`);
                 }
-                console.log('Token0 withdrawn successfully');
+                console.log('Token0 withdrawn successfully:', toJsonString(withdraw0Result.ok));
             } else {
                 console.log('Token0 amount too small to withdraw:', totalAmount0.toString(), 'fee:', fee0.toString());
             }
 
             // Step 4: Withdraw token1 if amount exceeds fee
             if (totalAmount1 > 0n && totalAmount1 > fee1) {
-                console.log('Withdrawing token1:', totalAmount1.toString());
+                console.log('Withdrawing token1:', totalAmount1.toString(), 'from ledger:', token1Ledger);
                 const withdraw1Result = await swapActor.withdraw({
                     fee: fee1,
                     token: token1Ledger,
                     amount: totalAmount1
                 });
                 
+                console.log('Token1 withdraw result:', toJsonString(withdraw1Result));
+                
                 if (withdraw1Result.err) {
                     console.error('Token1 withdraw failed:', toJsonString(withdraw1Result.err));
                     throw new Error(`Failed to withdraw token1: ${toJsonString(withdraw1Result.err)}`);
                 }
-                console.log('Token1 withdrawn successfully');
+                console.log('Token1 withdrawn successfully:', toJsonString(withdraw1Result.ok));
             } else {
                 console.log('Token1 amount too small to withdraw:', totalAmount1.toString(), 'fee:', fee1.toString());
             }
@@ -1910,12 +1918,12 @@ function Wallet() {
                             ? token.ledger_canister_id 
                             : token.ledger_canister_id?.toString();
                         const isSns = snsTokens.has(ledgerIdString);
-                        console.log(`[Wallet] Token ${token.symbol}:`, {
-                            ledger_canister_id: token.ledger_canister_id,
-                            ledger_canister_id_string: ledgerIdString,
-                            isSnsToken: isSns,
-                            snsTokensSet: Array.from(snsTokens)
-                        });
+                        //console.log(`[Wallet] Token ${token.symbol}:`, {
+                        //    ledger_canister_id: token.ledger_canister_id,
+                        //    ledger_canister_id_string: ledgerIdString,
+                        //    isSnsToken: isSns,
+                        //    snsTokensSet: Array.from(snsTokens)
+                        //});
                         
                         return (
                             <TokenCard

@@ -72,7 +72,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [splitNeuronAmount, setSplitNeuronAmount] = useState('');
 
     // Debug logging for wrap/unwrap buttons
-    console.log('TokenCard Debug:', {
+    /*console.log('TokenCard Debug:', {
         symbol: token.symbol,
         ledger_canister_id: token.ledger_canister_id,
         available: token.available?.toString(),
@@ -84,7 +84,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         hideButtons,
         openWrapModal: typeof openWrapModal,
         openUnwrapModal: typeof openUnwrapModal
-    });
+    });*/
 
     function getTokenLockUrl(ledger, locks) {
         const baseUrl = '/tokenlock';
