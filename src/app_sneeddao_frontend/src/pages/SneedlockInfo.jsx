@@ -493,26 +493,37 @@ function SneedlockInfo() {
             // Process metadata for ALL tokens (both from token locks and position locks)
             for (const tokenKey of Object.keys(aggregatedData)) {
                 const whitelistedToken = whitelistedTokenMap.get(tokenKey);
-                if (whitelistedToken) {
-                    try {
-                        const ledgerActor = createLedgerActor(whitelistedToken.ledger_id, { agentOptions: { identity } });
-                        const tokenMetadata = await ledgerActor.icrc1_metadata();
-                        const logo = getTokenLogo(tokenMetadata);
-                        
-                        setTokenMetadata(prev => ({
-                            ...prev,
-                            [tokenKey]: {
-                                ...whitelistedToken,
-                                logo
-                            }
-                        }));
-                    } catch (error) {
-                        console.error(`Error fetching metadata for token ${tokenKey}:`, error);
-                        setTokenMetadata(prev => ({
-                            ...prev,
-                            [tokenKey]: whitelistedToken
-                        }));
-                    }
+                
+                try {
+                    // Always try to fetch metadata directly from the ledger, even if not whitelisted
+                    const ledgerActor = createLedgerActor(tokenKey, { agentOptions: { identity } });
+                    const metadata = await ledgerActor.icrc1_metadata();
+                    const logo = getTokenLogo(metadata);
+                    const symbol = await ledgerActor.icrc1_symbol();
+                    const decimals = await ledgerActor.icrc1_decimals();
+                    
+                    setTokenMetadata(prev => ({
+                        ...prev,
+                        [tokenKey]: {
+                            ledger_id: tokenKey,
+                            symbol,
+                            decimals,
+                            logo,
+                            ...(whitelistedToken || {})  // Merge whitelisted data if available
+                        }
+                    }));
+                } catch (error) {
+                    console.error(`Error fetching metadata for token ${tokenKey}:`, error);
+                    // Fall back to whitelisted data if available, or minimal data
+                    setTokenMetadata(prev => ({
+                        ...prev,
+                        [tokenKey]: whitelistedToken || {
+                            ledger_id: tokenKey,
+                            symbol: tokenKey.slice(0, 8) + '...',
+                            decimals: 8,
+                            logo: ''
+                        }
+                    }));
                 }
             }
 
@@ -939,7 +950,7 @@ function SneedlockInfo() {
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: theme.colors.mutedText, fontSize: '0.9em', alignItems: 'center' }}>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                                     <a 
-                                                                        href={`/tokenlock?ledger=${token?.ledger_id || ''}&locks=${lock.lockId?.toString() || ''}`}
+                                                                        href={`/tokenlock?ledger=${tokenKey}&locks=${lock.lockId?.toString() || ''}`}
                                                                         style={{ 
                                                                             color: theme.colors.mutedText,
                                                                             textDecoration: 'none',
