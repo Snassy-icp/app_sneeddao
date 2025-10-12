@@ -17,6 +17,9 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
     const [locksExpanded, setLocksExpanded] = useState(defaultLocksExpanded);
     const [infoExpanded, setInfoExpanded] = useState(false);
     const [isClaiming, setIsClaiming] = useState(false);
+    const [isClaimingLocked, setIsClaimingLocked] = useState(false);
+    const [claimRequestId, setClaimRequestId] = useState(null);
+    const [claimStatus, setClaimStatus] = useState(null);
 
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);

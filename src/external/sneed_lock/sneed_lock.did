@@ -58,6 +58,7 @@ type SneedLock =
    admin_resume_claim_queue: () -> ();
    admin_return_token: (icrc1_ledger_canister_id: principal, amount: 
     nat, user_principal: principal) -> (TransferResult);
+   admin_set_enforce_zero_balance_before_claim: (enforce: bool) -> ();
    claim_position: (swap_canister_id: principal, position_id: PositionId) ->
     (bool);
    clear_expired_locks: () -> ();
@@ -79,6 +80,11 @@ type SneedLock =
        processing_count: nat;
        processing_state: QueueProcessingState;
      }) query;
+   get_claim_request_status: (request_id: ClaimRequestId) ->
+    (opt variant {
+           Active: ClaimRequest;
+           Completed: text;
+         }) query;
    get_claimed_positions_for_principal: (owner: principal) ->
     (vec ClaimedPosition) query;
    get_completed_claim_requests: (start: nat, length: nat) ->
@@ -87,6 +93,7 @@ type SneedLock =
                                                        nat;
                                                        nat;
                                                      }) query;
+   get_enforce_zero_balance_before_claim: () -> (bool) query;
    get_error_entries: (start: nat, length: nat) -> (vec opt BufferEntry);
    get_error_id_range: () -> (opt record {
                                     nat;
