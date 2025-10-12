@@ -85,8 +85,12 @@ function PositionLock() {
 
             const swap_meta = await swapActor.metadata();
 
-            const token0 = swap_meta.ok.token0.address;
-            const token1 = swap_meta.ok.token1.address;
+            // Get token addresses - they're already strings from the swap metadata
+            const icrc1_ledger0 = swap_meta.ok.token0.address;
+            const icrc1_ledger1 = swap_meta.ok.token1.address;
+            
+            const token0 = Principal.fromText(icrc1_ledger0);
+            const token1 = Principal.fromText(icrc1_ledger1);
 
             const token_meta = await getTokenMetaForSwap(swapActor, backendActor, swap_canister_id);
 
@@ -96,12 +100,10 @@ function PositionLock() {
             const token1Decimals = token_meta?.token1?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 8;
             const token1Symbol = token_meta?.token1?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
             
-            const icrc1_ledger0 = swap_meta.ok.token0.address;
             const ledgerActor0 = createLedgerActor(icrc1_ledger0);
             const metadata0 = await ledgerActor0.icrc1_metadata();
             const token0Logo = getTokenLogo(metadata0);
 
-            const icrc1_ledger1 = swap_meta.ok.token1.address;
             const ledgerActor1 = createLedgerActor(icrc1_ledger1);
             const metadata1 = await ledgerActor1.icrc1_metadata();
             const token1Logo = getTokenLogo(metadata1);
@@ -154,7 +156,10 @@ function PositionLock() {
                             ownershipStatus = 'match';
                         } else {
                             // Second check: does the SneedLock canister own it?
-                            const canisterPositions = await ownerCheckActor.getUserPositionIdsByPrincipal(Principal.fromText(sneedLockCanisterId));
+                            const sneedLockPrincipal = typeof sneedLockCanisterId === 'string' 
+                                ? Principal.fromText(sneedLockCanisterId) 
+                                : sneedLockCanisterId;
+                            const canisterPositions = await ownerCheckActor.getUserPositionIdsByPrincipal(sneedLockPrincipal);
                             if (canisterPositions.ok && canisterPositions.ok.some(pos => pos === position.id)) {
                                 ownershipStatus = 'locked';
                             }

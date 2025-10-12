@@ -342,7 +342,7 @@ class PriceService {
             }
 
             // Adjust for decimal differences between token and ICP
-            const decimals = tokenDecimals ?? this.tokenDecimalsCache[tokenCanisterId] ?? 8;
+            const decimals = Number(tokenDecimals ?? this.tokenDecimalsCache[tokenCanisterId] ?? 8);
             const decimalAdjustment = 10 ** (decimals - ICP_DECIMALS);
             price = price * decimalAdjustment;
 

@@ -327,13 +327,17 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                     <span className="lock-label">SneedLock Owner:</span>
                                     <span className="lock-value">
                                         <PrincipalDisplay 
-                                            principal={Principal.fromText(positionDetails.owner)}
+                                            principal={typeof positionDetails.owner === 'string' 
+                                                ? Principal.fromText(positionDetails.owner) 
+                                                : positionDetails.owner}
                                             showCopyButton={true}
                                             short={true}
                                             enableContextMenu={true}
                                             isAuthenticated={isAuthenticated}
                                             displayInfo={getPrincipalDisplayInfoFromContext(
-                                                Principal.fromText(positionDetails.owner), 
+                                                typeof positionDetails.owner === 'string' 
+                                                    ? Principal.fromText(positionDetails.owner) 
+                                                    : positionDetails.owner, 
                                                 principalNames, 
                                                 principalNicknames
                                             )}
