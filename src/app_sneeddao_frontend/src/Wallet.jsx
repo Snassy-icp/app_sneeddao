@@ -1577,13 +1577,14 @@ function Wallet() {
                 });
             }
 
-            // Step 3: Withdraw token0 if amount exceeds fee
-            if (totalAmount0 > 0n && totalAmount0 > fee0) {
-                console.log('Withdrawing token0:', totalAmount0.toString(), 'from ledger:', token0Ledger);
+            // Step 3: Withdraw token0 if amount exceeds fee (amount must be after fee deduction)
+            if (totalAmount0 > fee0) {
+                const withdrawAmount0 = totalAmount0 - fee0;
+                console.log('Withdrawing token0:', withdrawAmount0.toString(), '(total:', totalAmount0.toString(), '- fee:', fee0.toString(), ') from ledger:', token0Ledger);
                 const withdraw0Result = await swapActor.withdraw({
                     fee: fee0,
                     token: token0Ledger,
-                    amount: totalAmount0
+                    amount: withdrawAmount0
                 });
                 
                 console.log('Token0 withdraw result:', toJsonString(withdraw0Result));
@@ -1594,16 +1595,17 @@ function Wallet() {
                 }
                 console.log('Token0 withdrawn successfully:', toJsonString(withdraw0Result.ok));
             } else {
-                console.log('Token0 amount too small to withdraw:', totalAmount0.toString(), 'fee:', fee0.toString());
+                console.log('Token0 amount too small to withdraw (after fee):', totalAmount0.toString(), 'fee:', fee0.toString());
             }
 
-            // Step 4: Withdraw token1 if amount exceeds fee
-            if (totalAmount1 > 0n && totalAmount1 > fee1) {
-                console.log('Withdrawing token1:', totalAmount1.toString(), 'from ledger:', token1Ledger);
+            // Step 4: Withdraw token1 if amount exceeds fee (amount must be after fee deduction)
+            if (totalAmount1 > fee1) {
+                const withdrawAmount1 = totalAmount1 - fee1;
+                console.log('Withdrawing token1:', withdrawAmount1.toString(), '(total:', totalAmount1.toString(), '- fee:', fee1.toString(), ') from ledger:', token1Ledger);
                 const withdraw1Result = await swapActor.withdraw({
                     fee: fee1,
                     token: token1Ledger,
-                    amount: totalAmount1
+                    amount: withdrawAmount1
                 });
                 
                 console.log('Token1 withdraw result:', toJsonString(withdraw1Result));
@@ -1614,7 +1616,7 @@ function Wallet() {
                 }
                 console.log('Token1 withdrawn successfully:', toJsonString(withdraw1Result.ok));
             } else {
-                console.log('Token1 amount too small to withdraw:', totalAmount1.toString(), 'fee:', fee1.toString());
+                console.log('Token1 amount too small to withdraw (after fee):', totalAmount1.toString(), 'fee:', fee1.toString());
             }
 
             // Refresh liquidity positions to update the UI
