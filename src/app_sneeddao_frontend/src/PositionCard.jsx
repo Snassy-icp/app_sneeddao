@@ -9,7 +9,7 @@ import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
 import ClaimFeesModal from './ClaimFeesModal';
 
-const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleWithdrawPosition, handleTransferPositionOwnership, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
+const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, swapCanisterBalance0, swapCanisterBalance1, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
 
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -274,11 +274,11 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         <div className="token-amounts">
                             <div className="token-amount">
                                 <span className="token-symbol">{position.token0Symbol}:</span>
-                                <span className="amount-value">{formatAmount(positionDetails.tokensOwed0 + positionDetails.tokensUnused0, position.token0Decimals)}{getUSD(positionDetails.tokensOwed0 + positionDetails.tokensUnused0, position.token0Decimals, position.token0_conversion_rate)}</span>
+                                <span className="amount-value">{formatAmount(positionDetails.tokensOwed0, position.token0Decimals)}{getUSD(positionDetails.tokensOwed0, position.token0Decimals, position.token0_conversion_rate)}</span>
                             </div>
                             <div className="token-amount">
                                 <span className="token-symbol">{position.token1Symbol}:</span>
-                                <span className="amount-value">{formatAmount(positionDetails.tokensOwed1 + positionDetails.tokensUnused1, position.token1Decimals)}{getUSD(positionDetails.tokensOwed1 + positionDetails.tokensUnused1, position.token1Decimals, position.token1_conversion_rate)}</span>
+                                <span className="amount-value">{formatAmount(positionDetails.tokensOwed1, position.token1Decimals)}{getUSD(positionDetails.tokensOwed1, position.token1Decimals, position.token1_conversion_rate)}</span>
                             </div>
                         </div>
                         {/* Only show claim button for frontend positions */}
@@ -294,6 +294,44 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         )}
                     </div>
                 }
+                
+                {/* Swap Canister Balance */}
+                {!hideUnclaimedFees && positionDetails.frontendOwnership && (swapCanisterBalance0 > 0n || swapCanisterBalance1 > 0n) && (
+                    <div className="balance-item" style={{ marginTop: '15px', paddingTop: '15px', borderTop: `1px solid ${theme.colors.border}` }}>
+                        <div className="balance-label">Swap Canister Balance</div>
+                        <div className="token-amounts">
+                            <div className="token-amount">
+                                <span className="token-symbol">{position.token0Symbol}:</span>
+                                <span className="amount-value">{formatAmount(swapCanisterBalance0 || 0n, position.token0Decimals)}{getUSD(swapCanisterBalance0 || 0n, position.token0Decimals, position.token0_conversion_rate)}</span>
+                            </div>
+                            <div className="token-amount">
+                                <span className="token-symbol">{position.token1Symbol}:</span>
+                                <span className="amount-value">{formatAmount(swapCanisterBalance1 || 0n, position.token1Decimals)}{getUSD(swapCanisterBalance1 || 0n, position.token1Decimals, position.token1_conversion_rate)}</span>
+                            </div>
+                        </div>
+                        {handleWithdrawSwapBalance && (
+                            <div className="withdraw-button-container">
+                                <button 
+                                    className="withdraw-button"
+                                    onClick={async () => {
+                                        if (window.confirm(`Withdraw all available balance from swap canister?\n${formatAmount(swapCanisterBalance0, position.token0Decimals)} ${position.token0Symbol}\n${formatAmount(swapCanisterBalance1, position.token1Decimals)} ${position.token1Symbol}`)) {
+                                            try {
+                                                await handleWithdrawSwapBalance({
+                                                    swapCanisterId: position.swapCanisterId,
+                                                    symbols: position.token0Symbol + '/' + position.token1Symbol
+                                                });
+                                            } catch (error) {
+                                                alert(`Failed to withdraw: ${error.message || error.toString()}`);
+                                            }
+                                        }
+                                    }}
+                                >
+                                    Withdraw
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
                 
                 {/* Withdraw from Backend Button */}
                 {canWithdrawFromBackend() && handleWithdrawPosition && !hideButtons && (
@@ -809,7 +847,8 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     frontendOwnership: positionDetails.frontendOwnership,
                     symbols: position.token0Symbol + '/' + position.token1Symbol,
                     requestedToken0Amount: amounts.token0Amount,
-                    requestedToken1Amount: amounts.token1Amount
+                    requestedToken1Amount: amounts.token1Amount,
+                    claimAndWithdraw: amounts.claimAndWithdraw
                 })}
                 position={{
                     positionId: positionDetails.positionId,
@@ -820,8 +859,8 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     swapCanisterId: position.swapCanisterId
                 }}
                 unclaimedFees={{
-                    token0Amount: positionDetails.tokensOwed0 + positionDetails.tokensUnused0,
-                    token1Amount: positionDetails.tokensOwed1 + positionDetails.tokensUnused1
+                    token0Amount: positionDetails.tokensOwed0,
+                    token1Amount: positionDetails.tokensOwed1
                 }}
             />
         </div>

@@ -7,6 +7,7 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
     const { theme } = useTheme();
     const [token0Amount, setToken0Amount] = useState('');
     const [token1Amount, setToken1Amount] = useState('');
+    const [claimAndWithdraw, setClaimAndWithdraw] = useState(true);
     const [isClaiming, setIsClaiming] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
     const [errorText, setErrorText] = useState('');
@@ -16,6 +17,7 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
         if (show && unclaimedFees) {
             setToken0Amount(formatAmount(unclaimedFees.token0Amount, position.token0Decimals));
             setToken1Amount(formatAmount(unclaimedFees.token1Amount, position.token1Decimals));
+            setClaimAndWithdraw(true); // Default to Claim & Withdraw
             setErrorText('');
         }
     }, [show, unclaimedFees, position]);
@@ -42,7 +44,8 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
 
             await onClaim({
                 token0Amount: token0AmountBigInt,
-                token1Amount: token1AmountBigInt
+                token1Amount: token1AmountBigInt,
+                claimAndWithdraw: claimAndWithdraw
             });
             
             onClose();
@@ -92,6 +95,66 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
                     }}>
                         Position #{position.positionId} ({position.token0Symbol}/{position.token1Symbol})
                     </p>
+
+                    {/* Claim Mode Selection */}
+                    <div style={{ marginBottom: '20px' }}>
+                        <label style={{
+                            display: 'block',
+                            color: theme.colors.text,
+                            marginBottom: '10px',
+                            fontSize: '0.9rem',
+                            fontWeight: '500',
+                        }}>
+                            Action
+                        </label>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button
+                                onClick={() => setClaimAndWithdraw(true)}
+                                disabled={isClaiming}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px',
+                                    borderRadius: '6px',
+                                    border: `2px solid ${claimAndWithdraw ? theme.colors.success : theme.colors.border}`,
+                                    background: claimAndWithdraw ? `${theme.colors.success}20` : 'transparent',
+                                    color: claimAndWithdraw ? theme.colors.success : theme.colors.text,
+                                    cursor: isClaiming ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: claimAndWithdraw ? '600' : '500',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
+                                Claim & Withdraw
+                            </button>
+                            <button
+                                onClick={() => setClaimAndWithdraw(false)}
+                                disabled={isClaiming}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px',
+                                    borderRadius: '6px',
+                                    border: `2px solid ${!claimAndWithdraw ? theme.colors.accent : theme.colors.border}`,
+                                    background: !claimAndWithdraw ? `${theme.colors.accent}20` : 'transparent',
+                                    color: !claimAndWithdraw ? theme.colors.accent : theme.colors.text,
+                                    cursor: isClaiming ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: !claimAndWithdraw ? '600' : '500',
+                                    transition: 'all 0.2s ease',
+                                }}
+                            >
+                                Claim Only
+                            </button>
+                        </div>
+                        <p style={{
+                            fontSize: '0.8rem',
+                            color: theme.colors.secondaryText,
+                            marginTop: '6px',
+                        }}>
+                            {claimAndWithdraw 
+                                ? 'Claims fees and withdraws them to your wallet immediately'
+                                : 'Claims fees to swap canister balance (withdraw later)'}
+                        </p>
+                    </div>
 
                     {/* Token 0 Amount */}
                     <div style={{ marginBottom: '20px' }}>

@@ -685,6 +685,15 @@ function Wallet() {
                         hasMorePositions = allPositions.length === limit;
                     }
 
+                    // Get the swap canister balance once (shared across all positions)
+                    var swapCanisterBalance0 = 0n;
+                    var swapCanisterBalance1 = 0n;
+                    const unused = await swapActor.getUserUnusedBalance(identity.getPrincipal());
+                    if (unused.ok) {
+                        swapCanisterBalance0 = unused.ok.balance0;
+                        swapCanisterBalance1 = unused.ok.balance1;
+                    }
+
                     const positionDetails = await Promise.all(userPositions.map(async (compoundPosition) => {
 
                         const position = compoundPosition.position;
@@ -693,21 +702,11 @@ function Wallet() {
                         const tokensOwed1 = position.tokensOwed1;
                         const token0Amount = position.token0Amount;
                         const token1Amount = position.token1Amount;
-                        var tokensUnused0 = 0;
-                        var tokensUnused1 = 0;
-
-                        const unused = await swapActor.getUserUnusedBalance(identity.getPrincipal());
-                        if (unused.ok) {
-                            tokensUnused0 = unused.ok.balance0;
-                            tokensUnused1 = unused.ok.balance1;
-                        }
 
                         return {
                             positionId: position.id,
                             tokensOwed0: tokensOwed0,
                             tokensOwed1: tokensOwed1,
-                            tokensUnused0: tokensUnused0,
-                            tokensUnused1: tokensUnused1,
                             token0Amount: token0Amount,
                             token1Amount: token1Amount,
                             frontendOwnership: compoundPosition.frontendOwnership,
@@ -730,6 +729,8 @@ function Wallet() {
                         token1Decimals : token1Decimals,
                         token0_conversion_rate: token0_conversion_rate,
                         token1_conversion_rate: token1_conversion_rate,
+                        swapCanisterBalance0: swapCanisterBalance0,
+                        swapCanisterBalance1: swapCanisterBalance1,
                         positions: positionDetails
                     };
 
@@ -1509,19 +1510,110 @@ function Wallet() {
 
     };
 
+    const handleWithdrawSwapBalance = async (liquidityPosition) => {
+        console.log('=== Withdrawing swap canister balance ===');
+        console.log('Swap Canister:', liquidityPosition.swapCanisterId);
+        
+        try {
+            const swapActor = createIcpSwapActor(liquidityPosition.swapCanisterId, { 
+                agentOptions: { identity } 
+            });
+
+            // Get token metadata
+            const swapMeta = await swapActor.metadata();
+            if (!swapMeta.ok) {
+                throw new Error('Failed to get swap metadata');
+            }
+
+            const token0Ledger = swapMeta.ok.token0.address;
+            const token1Ledger = swapMeta.ok.token1.address;
+
+            // Get current balance
+            const unused = await swapActor.getUserUnusedBalance(identity.getPrincipal());
+            if (!unused.ok) {
+                throw new Error('Failed to get swap canister balance');
+            }
+
+            const balance0 = unused.ok.balance0;
+            const balance1 = unused.ok.balance1;
+
+            console.log('Current balances:', {
+                token0: balance0.toString(),
+                token1: balance1.toString()
+            });
+
+            // Get fees for both tokens
+            const ledgerActor0 = createLedgerActor(token0Ledger);
+            const fee0 = await ledgerActor0.icrc1_fee();
+
+            const ledgerActor1 = createLedgerActor(token1Ledger);
+            const fee1 = await ledgerActor1.icrc1_fee();
+
+            // Withdraw token0 if balance exceeds fee
+            if (balance0 > fee0) {
+                console.log('Withdrawing token0:', balance0.toString());
+                const withdraw0Result = await swapActor.withdraw({
+                    fee: fee0,
+                    token: token0Ledger,
+                    amount: balance0
+                });
+                
+                console.log('Token0 withdraw result:', toJsonString(withdraw0Result));
+                
+                if (withdraw0Result.err) {
+                    console.error('Token0 withdraw failed:', toJsonString(withdraw0Result.err));
+                }
+            } else {
+                console.log('Token0 balance too small to withdraw:', balance0.toString());
+            }
+
+            // Withdraw token1 if balance exceeds fee
+            if (balance1 > fee1) {
+                console.log('Withdrawing token1:', balance1.toString());
+                const withdraw1Result = await swapActor.withdraw({
+                    fee: fee1,
+                    token: token1Ledger,
+                    amount: balance1
+                });
+                
+                console.log('Token1 withdraw result:', toJsonString(withdraw1Result));
+                
+                if (withdraw1Result.err) {
+                    console.error('Token1 withdraw failed:', toJsonString(withdraw1Result.err));
+                }
+            } else {
+                console.log('Token1 balance too small to withdraw:', balance1.toString());
+            }
+
+            // Refresh liquidity positions to update the UI
+            await fetchLiquidityPositions();
+            
+            // Also refresh token balances for both tokens
+            await fetchBalancesAndLocks(Principal.fromText(token0Ledger));
+            await fetchBalancesAndLocks(Principal.fromText(token1Ledger));
+            
+            console.log('=== Swap balance withdrawal completed ===');
+
+        } catch (error) {
+            console.error('=== Error withdrawing swap balance ===');
+            console.error('Error:', error);
+            throw error;
+        }
+    };
     
     const handleWithdrawPositionRewards = async (liquidityPosition) => {
-        console.log('=== Withdrawing position rewards ===');
+        console.log('=== Claiming position rewards ===');
         console.log('Position:', liquidityPosition.symbols, 'ID:', liquidityPosition.id);
         console.log('Requested amounts:', {
             token0: liquidityPosition.requestedToken0Amount?.toString(),
             token1: liquidityPosition.requestedToken1Amount?.toString()
         });
+        console.log('Claim and withdraw:', liquidityPosition.claimAndWithdraw !== false); // default true
         
         // Only available for frontend positions
         if (!liquidityPosition.frontendOwnership) {
-            console.error('Cannot withdraw rewards from backend position');
-            throw new Error('Reward withdrawal is only available for positions in your frontend wallet');
+            console.error('Cannot claim rewards from backend position');
+            throw new Error('Reward claiming is only available for positions in your frontend wallet');
         }
 
         try {
@@ -1549,6 +1641,14 @@ function Wallet() {
                 token0: claimedAmount0.toString(),
                 token1: claimedAmount1.toString()
             });
+
+            // If claimAndWithdraw is false, stop here (just claim, don't withdraw)
+            if (liquidityPosition.claimAndWithdraw === false) {
+                console.log('Claim only mode - skipping withdrawal');
+                await fetchLiquidityPositions();
+                console.log('=== Claim process completed ===');
+                return;
+            }
 
             // Get token metadata
             const swapMeta = await swapActor.metadata();
@@ -1630,10 +1730,10 @@ function Wallet() {
             await fetchBalancesAndLocks(Principal.fromText(token0Ledger));
             await fetchBalancesAndLocks(Principal.fromText(token1Ledger));
             
-            console.log('=== Rewards withdrawal process completed ===');
+            console.log('=== Claim & withdrawal process completed ===');
 
         } catch (error) {
-            console.error('=== Error withdrawing position rewards ===');
+            console.error('=== Error claiming position rewards ===');
             console.error('Error:', error);
             throw error;
         }
@@ -1996,7 +2096,10 @@ function Wallet() {
                                 openLockPositionModal={openLockPositionModal}
                                 handleWithdrawPositionRewards={handleWithdrawPositionRewards}
                                 handleWithdrawPosition={handleWithdrawPosition}
+                                handleWithdrawSwapBalance={handleWithdrawSwapBalance}
                                 handleTransferPositionOwnership={handleSendLiquidityPosition}
+                                swapCanisterBalance0={position.swapCanisterBalance0}
+                                swapCanisterBalance1={position.swapCanisterBalance1}
                                 hideButtons={false}
                                 hideUnclaimedFees={false}
                             />
