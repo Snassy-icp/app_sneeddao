@@ -109,7 +109,9 @@ function HelpWallet() {
                 
                 <p style={styles.paragraph}>
                     The <Link to="/wallet" style={styles.link}>Wallet page</Link> is your comprehensive financial hub in Sneed Hub. 
-                    It provides a unified interface for managing tokens, liquidity positions, and SNS neurons all in one place.
+                    It provides a unified interface for managing tokens, liquidity positions, and SNS neurons all in one place. 
+                    You can also lock tokens and LP positions with <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>, 
+                    claim Sneed voting rewards, and wrap/unwrap GLDT/sGLDT—all directly from your wallet.
                 </p>
 
                 {/* Your Principal ID */}
@@ -206,6 +208,22 @@ function HelpWallet() {
                         and USD values (when available).
                     </p>
                     
+                    <h3 style={styles.subsubheading}>Understanding Your Token Balances</h3>
+                    <p style={styles.paragraph}>
+                        Your wallet uses a two-tier system to manage tokens:
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Frontend Wallet:</strong> Tokens directly available in your browser session
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Backend Wallet:</strong> Tokens held in the Sneed Hub backend canister. 
+                            When you lock tokens with <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>, they're 
+                            first transferred to the backend wallet. After a lock expires, tokens remain in the backend wallet 
+                            until you withdraw them to the frontend (or send them directly from the backend).
+                        </li>
+                    </ul>
+                    
                     <h3 style={styles.subsubheading}>Adding Tokens to Your Wallet</h3>
                     <p style={styles.paragraph}>
                         To track a token in your wallet, click the <strong style={styles.strong}>"+ Add Token"</strong> button 
@@ -213,9 +231,18 @@ function HelpWallet() {
                     </p>
                     <ul style={styles.list}>
                         <li style={styles.listItem}>Token symbol, name, and logo</li>
-                        <li style={styles.listItem}>Total balance (available + locked)</li>
-                        <li style={styles.listItem}>Available balance (what you can send or lock)</li>
-                        <li style={styles.listItem}>Locked balance (tokens in <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>)</li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Totals:</strong> Complete balance including liquid + locked + 
+                            rewards + staked (in neurons) + maturity
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Liquid:</strong> Tokens in your frontend and backend wallets 
+                            that are immediately available to send or lock
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Locked:</strong> Tokens currently locked in{' '}
+                            <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link> with future expiration dates
+                        </li>
                         <li style={styles.listItem}>USD value (when conversion rates are available)</li>
                     </ul>
                     
@@ -288,8 +315,8 @@ function HelpWallet() {
                     
                     <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>📤 Send Positions</h4>
                     <p style={styles.paragraph}>
-                        Transfer liquidity positions to another principal. This is a unique feature that allows you to 
-                        move entire LP positions without closing them.
+                        Transfer liquidity positions to another principal. This allows you to move entire LP positions 
+                        without closing them, preserving the position's state and accumulated fees.
                     </p>
                     
                     <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>🔒 Lock Positions</h4>
@@ -423,8 +450,9 @@ function HelpWallet() {
                                 dates for your tokens and positions
                             </li>
                             <li style={styles.listItem}>
-                                <strong style={styles.strong}>Claim Fees Regularly:</strong> If you have liquidity positions, 
-                                remember to claim accumulated trading fees
+                                <strong style={styles.strong}>Understand Frontend vs Backend:</strong> Remember that tokens 
+                                in your backend wallet (especially after lock expiration) need to be withdrawn to the frontend 
+                                or can be sent directly from the backend
                             </li>
                             <li style={styles.listItem}>
                                 <strong style={styles.strong}>Organize Your Tokens:</strong> Remove tokens you no longer 
@@ -449,8 +477,10 @@ function HelpWallet() {
                     <ul style={styles.list}>
                         <li style={styles.listItem}>Some tokens are locked in Sneedlock</li>
                         <li style={styles.listItem}>Tokens are staked in neurons</li>
+                        <li style={styles.listItem}>Tokens are in your backend wallet (after lock expiration or rewards)</li>
                         <li style={styles.listItem}>You have pending transactions</li>
-                        <li style={styles.listItem}>The wallet is showing "available" balance instead of "total" balance</li>
+                        <li style={styles.listItem}>The wallet is showing "Liquid" balance instead of "Totals"</li>
+                        <li style={styles.listItem}>You have maturity or unclaimed rewards that haven't been disbursed yet</li>
                     </ul>
                     
                     <h3 style={styles.subsubheading}>Can I cancel a lock?</h3>
