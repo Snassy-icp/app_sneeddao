@@ -43,17 +43,23 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
             setShowConfirm(false);
             setErrorText('');
 
-            // Convert string amounts to BigInt (in base units)
-            // Ensure decimals is a regular number, not BigInt
-            const decimals0 = typeof position.token0Decimals === 'bigint' 
-                ? Number(position.token0Decimals) 
-                : position.token0Decimals;
-            const decimals1 = typeof position.token1Decimals === 'bigint' 
-                ? Number(position.token1Decimals) 
-                : position.token1Decimals;
+            let token0AmountBigInt = 0n;
+            let token1AmountBigInt = 0n;
 
-            const token0AmountBigInt = BigInt(Math.floor(parseFloat(token0Amount || '0') * Math.pow(10, decimals0)));
-            const token1AmountBigInt = BigInt(Math.floor(parseFloat(token1Amount || '0') * Math.pow(10, decimals1)));
+            // Only convert amounts if we're doing claim & withdraw
+            if (claimAndWithdraw) {
+                // Convert string amounts to BigInt (in base units)
+                // Ensure decimals is a regular number, not BigInt
+                const decimals0 = typeof position.token0Decimals === 'bigint' 
+                    ? Number(position.token0Decimals) 
+                    : position.token0Decimals;
+                const decimals1 = typeof position.token1Decimals === 'bigint' 
+                    ? Number(position.token1Decimals) 
+                    : position.token1Decimals;
+
+                token0AmountBigInt = BigInt(Math.floor(parseFloat(token0Amount || '0') * Math.pow(10, decimals0)));
+                token1AmountBigInt = BigInt(Math.floor(parseFloat(token1Amount || '0') * Math.pow(10, decimals1)));
+            }
 
             await onClaim({
                 token0Amount: token0AmountBigInt,
@@ -164,11 +170,13 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
                             marginTop: '6px',
                         }}>
                             {claimAndWithdraw 
-                                ? 'Claims fees and withdraws them to your wallet immediately'
-                                : 'Claims fees to swap canister balance (withdraw later)'}
+                                ? 'Claim all fees and withdraw specified amounts to your wallet'
+                                : 'Claim all fees to swap canister balance (no withdrawal)'}
                         </p>
                     </div>
 
+                    {claimAndWithdraw && (
+                        <>
                     {/* Token 0 Amount */}
                     <div style={{ marginBottom: '20px' }}>
                         <label style={{
@@ -276,6 +284,8 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
                             Available: {formatAmount(unclaimedFees.token1Amount, position.token1Decimals)} {position.token1Symbol}
                         </div>
                     </div>
+                    </>
+                    )}
 
                     {errorText && (
                         <div style={{
@@ -311,7 +321,7 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
                         </button>
                         <button
                             onClick={() => setShowConfirm(true)}
-                            disabled={isClaiming || (!parseFloat(token0Amount) && !parseFloat(token1Amount))}
+                            disabled={isClaiming || (claimAndWithdraw && !parseFloat(token0Amount) && !parseFloat(token1Amount))}
                             style={{
                                 flex: 1,
                                 padding: '12px',
@@ -319,13 +329,13 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
                                 border: 'none',
                                 background: theme.colors.success,
                                 color: theme.colors.primaryBg,
-                                cursor: (isClaiming || (!parseFloat(token0Amount) && !parseFloat(token1Amount))) ? 'not-allowed' : 'pointer',
+                                cursor: (isClaiming || (claimAndWithdraw && !parseFloat(token0Amount) && !parseFloat(token1Amount))) ? 'not-allowed' : 'pointer',
                                 fontSize: '1rem',
                                 fontWeight: '600',
-                                opacity: (isClaiming || (!parseFloat(token0Amount) && !parseFloat(token1Amount))) ? 0.6 : 1,
+                                opacity: (isClaiming || (claimAndWithdraw && !parseFloat(token0Amount) && !parseFloat(token1Amount))) ? 0.6 : 1,
                             }}
                         >
-                            {isClaiming ? 'Claiming...' : 'Claim Fees'}
+                            {isClaiming ? 'Claiming...' : (claimAndWithdraw ? 'Claim & Withdraw' : 'Claim Fees')}
                         </button>
                     </div>
                 </div>
@@ -335,7 +345,10 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
                 show={showConfirm}
                 onClose={() => setShowConfirm(false)}
                 onSubmit={handleClaim}
-                message={`You are about to claim and withdraw trading fees:\n${token0Amount} ${position.token0Symbol}\n${token1Amount} ${position.token1Symbol}\n\nThe fees will be transferred to your wallet. Continue?`}
+                message={claimAndWithdraw 
+                    ? `You are about to claim all fees and withdraw:\n${token0Amount} ${position.token0Symbol}\n${token1Amount} ${position.token1Symbol}\n\nThese amounts will be transferred to your wallet. Continue?`
+                    : `You are about to claim all trading fees from position #${position.positionId}.\n\nThe fees will be moved to your swap canister balance and can be withdrawn later. Continue?`
+                }
                 doAwait={true}
             />
         </>
