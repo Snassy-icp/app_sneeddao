@@ -739,16 +739,24 @@ function HelpNeurons() {
                         <h4 style={styles.subsubheading}>Security Considerations</h4>
                         <ul style={styles.list}>
                             <li style={styles.listItem}>
-                                Hotkeys can vote and manage neurons but <strong style={styles.strong}>cannot disburse</strong> them
+                                <strong style={styles.strong}>Be Extremely Careful With Permissions:</strong> On Sneed Hub, you have full control 
+                                over which permissions you grant to hotkeys. Unlike the NNS (which only allows hotkeys with voting and proposal 
+                                creation permissions), Sneed Hub lets you grant any combination of permissions, including disbursement rights.
                             </li>
                             <li style={styles.listItem}>
-                                Only the principal that created the neuron (the controller) can disburse it
+                                <strong style={styles.strong}>NNS Hotkeys are Limited:</strong> Hotkeys created on the NNS dApp are restricted 
+                                to voting and creating proposals only - they cannot disburse neurons or modify critical security settings.
                             </li>
                             <li style={styles.listItem}>
-                                Be careful when adding hotkeys - only add principals you control or fully trust
+                                <strong style={styles.strong}>Sneed Hub Hotkeys are Flexible:</strong> When adding hotkeys on Sneed Hub, YOU choose 
+                                what permissions to grant. Only grant disburse permissions to principals you completely trust and control.
                             </li>
                             <li style={styles.listItem}>
-                                You can remove hotkeys at any time if needed
+                                <strong style={styles.strong}>Only Trust Yourself:</strong> Only add principals you personally control as hotkeys. 
+                                Never add someone else's principal with powerful permissions like disbursement.
+                            </li>
+                            <li style={styles.listItem}>
+                                You can remove hotkeys at any time if needed, so review your hotkey configurations regularly
                             </li>
                         </ul>
                     </div>
@@ -759,15 +767,7 @@ function HelpNeurons() {
                     <h2 style={styles.subheading}>Best Practices for Neuron Management</h2>
                     
                     <div style={styles.highlight}>
-                        <h3 style={styles.subsubheading}>1. Start with Longer Dissolve Delays</h3>
-                        <p style={styles.paragraph}>
-                            Longer dissolve delays provide higher voting power multipliers and demonstrate commitment to the DAO. 
-                            You can always start dissolving later if you need to unlock your tokens.
-                        </p>
-                    </div>
-
-                    <div style={styles.highlight}>
-                        <h3 style={styles.subsubheading}>2. Set Up Following for Automated Voting</h3>
+                        <h3 style={styles.subsubheading}>1. Set Up Following for Automated Voting</h3>
                         <p style={styles.paragraph}>
                             Configure your neurons to follow trusted neurons to ensure you never miss voting rewards, even when 
                             you're unavailable to vote manually.
@@ -775,7 +775,7 @@ function HelpNeurons() {
                     </div>
 
                     <div style={styles.highlight}>
-                        <h3 style={styles.subsubheading}>3. Use Multiple Neurons for Flexibility</h3>
+                        <h3 style={styles.subsubheading}>2. Use Multiple Neurons for Flexibility</h3>
                         <p style={styles.paragraph}>
                             Consider splitting your stake into multiple neurons with different dissolve delays. This gives you 
                             flexibility to access some funds earlier while maintaining long-term voting power with others.
@@ -783,7 +783,7 @@ function HelpNeurons() {
                     </div>
 
                     <div style={styles.highlight}>
-                        <h3 style={styles.subsubheading}>4. Keep Track of Your Neurons</h3>
+                        <h3 style={styles.subsubheading}>3. Keep Track of Your Neurons</h3>
                         <p style={styles.paragraph}>
                             Regularly check your neurons on the <Link to="/wallet" style={styles.link}>Wallet page</Link> or{' '}
                             <Link to="/me" style={styles.link}>Me page</Link> to monitor their status, voting power, and any pending actions.
@@ -791,7 +791,7 @@ function HelpNeurons() {
                     </div>
 
                     <div style={styles.highlight}>
-                        <h3 style={styles.subsubheading}>5. Participate Actively in Governance</h3>
+                        <h3 style={styles.subsubheading}>4. Participate Actively in Governance</h3>
                         <p style={styles.paragraph}>
                             Active voting not only earns you rewards but also helps shape the future of the DAO. Review proposals 
                             carefully and vote according to what you believe is best for the community.
@@ -815,9 +815,10 @@ function HelpNeurons() {
                     <div style={styles.highlight}>
                         <h3 style={styles.subsubheading}>What happens to my rewards?</h3>
                         <p style={styles.paragraph}>
-                            Voting rewards are automatically added to your neuron's stake, increasing its voting power over time. 
-                            This is called the "maturity" of the neuron. You can claim maturity by spawning a new neuron or 
-                            merging it into the existing stake.
+                            Voting rewards accumulate as "maturity" in your neuron. You can optionally add this maturity back to your 
+                            neuron's stake (increasing its voting power), or you can disburse the maturity to claim your rewards as 
+                            liquid tokens. Sneed Hub provides UI options in the <Link to="/wallet" style={styles.link}>Wallet page</Link> to 
+                            manage your maturity, including disbursing it to your wallet.
                         </p>
                     </div>
 
@@ -858,9 +859,6 @@ function HelpNeurons() {
                         If you have questions or encounter issues with neuron management:
                     </p>
                     <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            Join our community on <a href="https://oc.app/community/fp274-iaaaa-aaaaq-aacha-cai" target="_blank" rel="noopener noreferrer" style={styles.link}>OpenChat</a>
-                        </li>
                         <li style={styles.listItem}>
                             Visit our <Link to="/forum" style={styles.link}>Forum</Link> to ask questions and discuss with other users
                         </li>
