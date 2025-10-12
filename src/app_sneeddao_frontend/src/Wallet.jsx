@@ -197,6 +197,7 @@ function Wallet() {
     const [lockDetailsLoading, setLockDetailsLoading] = useState({});
     const [tokensExpanded, setTokensExpanded] = useState(true);
     const [positionsExpanded, setPositionsExpanded] = useState(true);
+    const [principalExpanded, setPrincipalExpanded] = useState(true);
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [confirmAction, setConfirmAction] = useState(null);
     const [confirmMessage, setConfirmMessage] = useState('');
@@ -1564,77 +1565,103 @@ function Wallet() {
                         background: theme.colors.cardGradient,
                         border: `1px solid ${theme.colors.border}`,
                         borderRadius: '12px',
-                        padding: '20px',
                         marginBottom: '20px',
-                        boxShadow: theme.colors.cardShadow
+                        boxShadow: theme.colors.cardShadow,
+                        overflow: 'hidden'
                     }}>
-                        <div style={{
-                            color: theme.colors.mutedText,
-                            fontSize: '14px',
-                            letterSpacing: '1px',
-                            textTransform: 'uppercase',
-                            marginBottom: '8px'
-                        }}>
-                            Your Sneed Wallet Principal
-                        </div>
-                        <div style={{
-                            color: theme.colors.primaryText,
-                            fontSize: '16px',
-                            fontWeight: '500',
-                            marginBottom: '12px',
-                            wordBreak: 'break-all',
-                            fontFamily: 'monospace',
-                            background: theme.colors.tertiaryBg,
-                            padding: '12px',
-                            borderRadius: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: '12px',
-                            flexWrap: 'wrap'
-                        }}>
-                            <span style={{ flex: 1, minWidth: '200px' }}>
-                                {identity.getPrincipal().toText()}
+                        {/* Collapsible Header */}
+                        <div 
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                padding: '16px 20px',
+                                cursor: 'pointer',
+                                borderBottom: principalExpanded ? `1px solid ${theme.colors.border}` : 'none'
+                            }}
+                            onClick={() => setPrincipalExpanded(!principalExpanded)}
+                        >
+                            <span style={{
+                                fontSize: '1.2rem',
+                                color: theme.colors.secondaryText,
+                                transition: 'transform 0.2s ease'
+                            }}>
+                                {principalExpanded ? '▼' : '▶'}
                             </span>
-                            <button
-                                onClick={async () => {
-                                    try {
-                                        await navigator.clipboard.writeText(identity.getPrincipal().toText());
-                                        // Could add a toast notification here
-                                    } catch (err) {
-                                        console.error('Failed to copy:', err);
-                                    }
-                                }}
-                                style={{
-                                    background: theme.colors.accent,
-                                    color: theme.colors.primaryBg,
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '8px 16px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.85rem',
+                            <div style={{
+                                color: theme.colors.mutedText,
+                                fontSize: '14px',
+                                letterSpacing: '1px',
+                                textTransform: 'uppercase',
+                                fontWeight: '600'
+                            }}>
+                                Your Sneed Wallet Principal
+                            </div>
+                        </div>
+
+                        {/* Collapsible Content */}
+                        {principalExpanded && (
+                            <div style={{ padding: '20px' }}>
+                                <div style={{
+                                    color: theme.colors.primaryText,
+                                    fontSize: '16px',
                                     fontWeight: '500',
-                                    transition: 'all 0.2s ease',
-                                    whiteSpace: 'nowrap'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.target.style.background = theme.colors.accentHover || `${theme.colors.accent}dd`;
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.background = theme.colors.accent;
-                                }}
-                            >
-                                Copy
-                            </button>
-                        </div>
-                        <div style={{
-                            color: theme.colors.secondaryText,
-                            fontSize: '14px',
-                            lineHeight: '1.6'
-                        }}>
-                            Use this principal to send tokens, LP positions, or neurons to your Sneed Wallet. 
-                            You can also add this as a hotkey to your neurons on the NNS dApp to manage them from Sneed Hub.
-                        </div>
+                                    marginBottom: '12px',
+                                    wordBreak: 'break-all',
+                                    fontFamily: 'monospace',
+                                    background: theme.colors.tertiaryBg,
+                                    padding: '12px',
+                                    borderRadius: '8px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '12px',
+                                    flexWrap: 'wrap'
+                                }}>
+                                    <span style={{ flex: 1, minWidth: '200px' }}>
+                                        {identity.getPrincipal().toText()}
+                                    </span>
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                await navigator.clipboard.writeText(identity.getPrincipal().toText());
+                                                // Could add a toast notification here
+                                            } catch (err) {
+                                                console.error('Failed to copy:', err);
+                                            }
+                                        }}
+                                        style={{
+                                            background: theme.colors.accent,
+                                            color: theme.colors.primaryBg,
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '8px 16px',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '500',
+                                            transition: 'all 0.2s ease',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.target.style.background = theme.colors.accentHover || `${theme.colors.accent}dd`;
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.target.style.background = theme.colors.accent;
+                                        }}
+                                    >
+                                        Copy
+                                    </button>
+                                </div>
+                                <div style={{
+                                    color: theme.colors.secondaryText,
+                                    fontSize: '14px',
+                                    lineHeight: '1.6'
+                                }}>
+                                    Use this principal to send tokens, LP positions, or neurons to your Sneed Wallet. 
+                                    You can also add this as a hotkey to your neurons on the NNS dApp to manage them from Sneed Hub.
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
                 

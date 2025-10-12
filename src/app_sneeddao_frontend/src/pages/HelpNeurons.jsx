@@ -351,65 +351,106 @@ function HelpNeurons() {
                     <h2 style={styles.subheading}>Managing SNS Neurons in Sneed Hub</h2>
                     
                     <p style={styles.paragraph}>
-                        Sneed Hub provides comprehensive tools for creating and managing your SNS neurons directly from our platform. 
-                        All neuron management features are accessible in two main areas:
+                        Sneed Hub provides comprehensive tools for browsing, creating, and managing SNS neurons across multiple pages. 
+                        Each page serves a different purpose in your neuron management workflow:
                     </p>
 
                     <h3 style={styles.subsubheading}>1. Wallet Page</h3>
                     <p style={styles.paragraph}>
-                        The <Link to="/wallet" style={styles.link}>Wallet page</Link> provides basic neuron creation and staking functionality:
+                        The <Link to="/wallet" style={styles.link}>Wallet page</Link> is your all-in-one neuron management hub that shows 
+                        neurons across all SNSes for which you've added tokens:
                     </p>
                     <ul style={styles.list}>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>Stake Tokens:</strong> Convert your tokens into neurons by staking them with a chosen dissolve delay
+                            <strong style={styles.strong}>View All Your Neurons:</strong> See all neurons you own across all SNSes that you've added tokens for in your wallet
                         </li>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>View Balance:</strong> See your available token balance and staked amounts
+                            <strong style={styles.strong}>Create Neurons:</strong> Stake tokens to create new neurons with your chosen dissolve delay
                         </li>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>Quick Staking:</strong> Use preset dissolve delay options for fast neuron creation
-                        </li>
-                    </ul>
-
-                    <h3 style={styles.subsubheading}>2. Neurons Page</h3>
-                    <p style={styles.paragraph}>
-                        The <Link to="/neurons" style={styles.link}>Neurons page</Link> is your central hub for comprehensive neuron management:
-                    </p>
-                    <ul style={styles.list}>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>View All Neurons:</strong> See all neurons you own or have hotkey access to
+                            <strong style={styles.strong}>Add Stake:</strong> Increase the stake of existing neurons
                         </li>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>Vote on Proposals:</strong> Cast votes directly from the neurons list
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Manage Following:</strong> Configure which neurons to follow for automated voting
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Adjust Dissolve Delay:</strong> Increase or decrease your neuron's lock period
+                            <strong style={styles.strong}>Set Dissolve Time:</strong> Adjust dissolve delay settings
                         </li>
                         <li style={styles.listItem}>
                             <strong style={styles.strong}>Start/Stop Dissolving:</strong> Control the dissolving state of your neurons
                         </li>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>Add/Remove Hotkeys:</strong> Manage which principals can access your neurons
-                        </li>
-                        <li style={styles.listItem}>
-                            <strong style={styles.strong}>Split & Merge:</strong> Organize your neurons for optimal management
-                        </li>
-                        <li style={styles.listItem}>
                             <strong style={styles.strong}>Disburse:</strong> Withdraw tokens from fully dissolved neurons
                         </li>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>View Voting Power:</strong> See the voting power of each neuron based on stake, dissolve delay, and age
+                            <strong style={styles.strong}>Disburse Maturity:</strong> Claim accumulated voting rewards
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Send Neurons:</strong> Transfer neurons to other users' wallets (a unique Sneed Hub feature not available on the NNS!)
                         </li>
                     </ul>
 
-                    <div style={styles.successBox}>
+                    <h3 style={styles.subsubheading}>2. Me Page</h3>
+                    <p style={styles.paragraph}>
+                        The <Link to="/me" style={styles.link}>Me page</Link> provides a focused view of your neurons for the currently selected SNS:
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Your Neurons Only:</strong> See all neurons you own or have hotkey access to for the selected SNS
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>SNS-Specific View:</strong> Filter by the SNS you're currently working with using the SNS selector
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Quick Access:</strong> Jump directly to individual neuron details
+                        </li>
+                    </ul>
+
+                    <h3 style={styles.subsubheading}>3. Neurons Page (Browse All)</h3>
+                    <p style={styles.paragraph}>
+                        The <Link to="/neurons" style={styles.link}>Neurons page</Link> is a public browser for exploring all neurons in the selected SNS:
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Browse All Neurons:</strong> See all neurons that exist in the currently selected SNS, not just your own
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Research Governance:</strong> Explore how others are voting and which neurons to follow
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Public Information:</strong> View voting power, voting history, and following relationships for any neuron
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>SNS-Specific:</strong> Limited to neurons from the SNS selected in the dropdown
+                        </li>
+                    </ul>
+
+                    <h3 style={styles.subsubheading}>4. Neuron Detail Page</h3>
+                    <p style={styles.paragraph}>
+                        The <Link to="/neuron" style={styles.link}>Neuron page</Link> (accessible via <span style={styles.code}>/neuron?id=NEURON_ID</span>) 
+                        provides detailed inspection and management of individual neurons:
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Inspect Any Neuron:</strong> View comprehensive details about any neuron by ID
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Manage With Permissions:</strong> Perform management operations when you have appropriate permissions
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Edit Permissions:</strong> Configure detailed permissions for hotkeys (voting, proposal creation, neuron management, etc.)
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Edit Following:</strong> Set up and modify which neurons to follow for each proposal type
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>All Operations:</strong> Access to staking, dissolving, disbursing, and sending neurons
+                        </li>
+                    </ul>
+
+                    <div style={styles.infoBox}>
                         <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>Pro Tip:</strong> The Neurons page also shows a detailed view of each individual 
-                            neuron when you click on it, accessible via the <span style={styles.code}>/neuron?id=NEURON_ID</span> URL. 
-                            This detail view provides in-depth information and all management options in one place.
+                            <strong style={styles.strong}>Unique Sneed Hub Features:</strong> Unlike the NNS dApp, Sneed Hub allows you to 
+                            send neurons to other users and configure detailed permissions for hotkeys. The NNS only allows adding hotkeys 
+                            with exactly 2 permissions (voting and creating proposals), while Sneed Hub gives you granular control over 
+                            each permission type.
                         </p>
                     </div>
                 </div>
@@ -583,8 +624,8 @@ function HelpNeurons() {
                     <div style={styles.highlight}>
                         <h3 style={styles.subsubheading}>4. Keep Track of Your Neurons</h3>
                         <p style={styles.paragraph}>
-                            Regularly check your neurons on the <Link to="/neurons" style={styles.link}>Neurons page</Link> to 
-                            monitor their status, voting power, and any pending actions.
+                            Regularly check your neurons on the <Link to="/wallet" style={styles.link}>Wallet page</Link> or{' '}
+                            <Link to="/me" style={styles.link}>Me page</Link> to monitor their status, voting power, and any pending actions.
                         </p>
                     </div>
 
@@ -640,9 +681,11 @@ function HelpNeurons() {
                     <div style={styles.highlight}>
                         <h3 style={styles.subsubheading}>Why don't I see all my neurons on Sneed Hub?</h3>
                         <p style={styles.paragraph}>
-                            Sneed Hub displays neurons where your current principal is either the controller or a hotkey. 
-                            If you created a neuron on NNS and haven't added your Sneed Hub principal as a hotkey, it won't 
-                            appear on Sneed Hub. Follow Scenario 1 above to make NNS neurons visible on Sneed Hub.
+                            The <Link to="/wallet" style={styles.link}>Wallet</Link> and <Link to="/me" style={styles.link}>Me</Link> pages 
+                            display neurons where your current principal is either the controller or a hotkey. If you created a neuron on NNS 
+                            and haven't added your Sneed Hub principal as a hotkey, it won't appear on these pages. Follow Scenario 1 above to 
+                            make NNS neurons visible on Sneed Hub. Note that the <Link to="/neurons" style={styles.link}>Neurons page</Link> shows 
+                            all neurons in the selected SNS, not just yours.
                         </p>
                     </div>
                 </div>
