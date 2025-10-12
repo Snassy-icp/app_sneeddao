@@ -279,7 +279,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 <span className="amount-value">{formatAmount(positionDetails.tokensOwed1 + positionDetails.tokensUnused1, position.token1Decimals)}{getUSD(positionDetails.tokensOwed1 + positionDetails.tokensUnused1, position.token1Decimals, position.token1_conversion_rate)}</span>
                             </div>
                         </div>
-                        {/* Only show withdraw button for frontend positions */}
+                        {/* Only show claim button for frontend positions */}
                         {positionDetails.frontendOwnership && handleWithdrawPositionRewards && (
                             <div className="withdraw-button-container">
                                 <button 
@@ -293,11 +293,11 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                                 symbols: position.token0Symbol + '/' + position.token1Symbol
                                             });
                                         } catch (error) {
-                                            alert(`Failed to withdraw rewards: ${error.message || error.toString()}`);
+                                            alert(`Failed to claim fees: ${error.message || error.toString()}`);
                                         }
                                     }}
                                 >
-                                    Withdraw Fees
+                                    Claim Fees
                                 </button>
                             </div>
                         )}

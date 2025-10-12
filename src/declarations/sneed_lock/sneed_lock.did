@@ -52,6 +52,10 @@ type SwapCanisterId = principal;
 type Subaccount = blob;
 type SneedLock = 
  service {
+   admin_clear_completed_claim_requests_buffer: () -> (nat);
+   admin_pause_claim_queue: (reason: text) -> ();
+   admin_remove_active_claim_request: (request_id: ClaimRequestId) -> (bool);
+   admin_resume_claim_queue: () -> ();
    admin_return_token: (icrc1_ledger_canister_id: principal, amount: 
     nat, user_principal: principal) -> (TransferResult);
    claim_position: (swap_canister_id: principal, position_id: PositionId) ->
@@ -63,10 +67,26 @@ type SneedLock =
    create_position_lock: (swap_canister_id: principal, dex: Dex, position_id:
     PositionId, expires_at: Expiry, token0: TokenType, token1: TokenType) ->
     (CreateLockResult);
+   get_active_claim_request: (request_id: ClaimRequestId) ->
+    (opt ClaimRequest) query;
    get_all_position_locks: () -> (vec FullyQualifiedPositionLock) query;
    get_all_token_locks: () -> (vec FullyQualifiedLock) query;
+   get_claim_queue_status: () ->
+    (record {
+       active_total: nat;
+       completed_buffer_count: nat;
+       pending_count: nat;
+       processing_count: nat;
+       processing_state: QueueProcessingState;
+     }) query;
    get_claimed_positions_for_principal: (owner: principal) ->
     (vec ClaimedPosition) query;
+   get_completed_claim_requests: (start: nat, length: nat) ->
+    (vec opt BufferEntry) query;
+   get_completed_claim_requests_id_range: () -> (opt record {
+                                                       nat;
+                                                       nat;
+                                                     }) query;
    get_error_entries: (start: nat, length: nat) -> (vec opt BufferEntry);
    get_error_id_range: () -> (opt record {
                                     nat;
@@ -79,6 +99,7 @@ type SneedLock =
                                  });
    get_ledger_token_locks: (ledger_canister_id: TokenType) ->
     (vec FullyQualifiedLock) query;
+   get_my_active_claim_requests: () -> (vec ClaimRequest) query;
    get_position_ownerships: () ->
     (vec record {
            SwapCanisterId;
@@ -102,6 +123,8 @@ type SneedLock =
     (vec FullyQualifiedPositionLock) query;
    has_expired_locks: () -> (bool) query;
    has_expired_position_locks: () -> (bool) query;
+   request_claim_and_withdraw: (swap_canister_id: SwapCanisterId,
+    position_id: PositionId) -> (ClaimAndWithdrawResult);
    set_max_lock_length_days: (new_max_lock_length_days: nat64) -> ();
    set_token_lock_fee_sneed_e8s: (new_token_lock_fee_sneed_e8s: nat) ->
     (SetLockFeeResult);
@@ -121,6 +144,11 @@ type SetLockFeeResult =
  variant {
    Err: text;
    Ok: nat;
+ };
+type QueueProcessingState = 
+ variant {
+   Active;
+   Paused: text;
  };
 type PositionLock = 
  record {
@@ -169,6 +197,55 @@ type ClaimedPosition =
    position_id: PositionId;
    position_lock: opt PositionLock;
    swap_canister_id: SwapCanisterId;
+ };
+type ClaimRequestStatus = 
+ variant {
+   BalanceRecorded:
+    record {
+      balance0_before: Balance;
+      balance1_before: Balance;
+    };
+   ClaimAttempted:
+    record {
+      balance0_before: Balance;
+      balance1_before: Balance;
+      claim_attempt: nat;
+    };
+   ClaimVerified:
+    record {
+      amount0_claimed: Balance;
+      amount1_claimed: Balance;
+      balance0_before: Balance;
+      balance1_before: Balance;
+    };
+   Completed;
+   Failed: text;
+   Pending;
+   Processing;
+   TimedOut;
+   Withdrawn: record {
+                amount0_claimed: Balance;
+                amount1_claimed: Balance;
+              };
+ };
+type ClaimRequestId = nat;
+type ClaimRequest = 
+ record {
+   caller: principal;
+   completed_at: opt Timestamp;
+   created_at: Timestamp;
+   position_id: PositionId;
+   request_id: ClaimRequestId;
+   started_processing_at: opt Timestamp;
+   status: ClaimRequestStatus;
+   swap_canister_id: SwapCanisterId;
+   token0: TokenType;
+   token1: TokenType;
+ };
+type ClaimAndWithdrawResult = 
+ variant {
+   Err: text;
+   Ok: ClaimRequestId;
  };
 type BufferEntry = 
  record {

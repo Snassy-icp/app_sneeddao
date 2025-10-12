@@ -286,7 +286,6 @@ body {
     font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.3s ease;
-    visibility: hidden;
 }
 
 .withdraw-button:hover {
