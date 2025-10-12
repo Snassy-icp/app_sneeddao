@@ -252,13 +252,34 @@ function HelpSneedlock() {
                         canister for your liquidity pair using the <strong style={styles.strong}>"+ Add Swap Pair"</strong> button.
                     </p>
                     
-                    <h3 style={styles.subsubheading}>Step 2: Select the Position</h3>
+                    <h3 style={styles.subsubheading}>Step 2: Transfer Position to Sneed Wallet</h3>
                     <p style={styles.paragraph}>
-                        Find the position you want to lock in the Liquidity Positions section. Expand the card to see 
+                        Before you can lock a position in Sneed Hub, you need to transfer it from your ICPSwap wallet to 
+                        your Sneed Wallet principal:
+                    </p>
+                    <ol style={styles.list}>
+                        <li style={styles.listItem}>
+                            Copy your Sneed Wallet principal from the <Link to="/wallet" style={styles.link}>Wallet page</Link> 
+                            (displayed at the top in the collapsible section)
+                        </li>
+                        <li style={styles.listItem}>
+                            Go to ICPSwap and find your liquidity position
+                        </li>
+                        <li style={styles.listItem}>
+                            Use ICPSwap's transfer function to send the position to your Sneed Wallet principal
+                        </li>
+                        <li style={styles.listItem}>
+                            Return to Sneed Hub and refresh your wallet—the position should now appear in your Liquidity Positions
+                        </li>
+                    </ol>
+                    
+                    <h3 style={styles.subsubheading}>Step 3: Select the Position</h3>
+                    <p style={styles.paragraph}>
+                        Find the position you want to lock in the Liquidity Positions section of your wallet. Expand the card to see 
                         all your positions for that pair.
                     </p>
                     
-                    <h3 style={styles.subsubheading}>Step 3: Lock the Position</h3>
+                    <h3 style={styles.subsubheading}>Step 4: Lock the Position</h3>
                     <p style={styles.paragraph}>
                         Click the <strong style={styles.strong}>"Lock Position"</strong> button and specify the expiration date. 
                         The entire position (both tokens and any unclaimed fees) will be locked.

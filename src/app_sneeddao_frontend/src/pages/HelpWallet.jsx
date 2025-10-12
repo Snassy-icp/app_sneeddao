@@ -298,10 +298,27 @@ function HelpWallet() {
                         add the swap canister pair.
                     </p>
                     
-                    <h3 style={styles.subsubheading}>Adding Swap Pairs</h3>
+                    <h3 style={styles.subsubheading}>Adding Swap Pairs and Receiving Positions</h3>
                     <p style={styles.paragraph}>
                         Click <strong style={styles.strong}>"+ Add Swap Pair"</strong> and enter the ICPSwap canister ID 
-                        for the trading pair. The wallet will display all your positions for that pair, including:
+                        for the trading pair. The wallet will display all your positions for that pair.
+                    </p>
+                    
+                    <div style={styles.infoBox}>
+                        <p style={{...styles.paragraph, marginBottom: '0.5rem'}}>
+                            <strong style={styles.strong}>Transferring Positions from ICPSwap:</strong>
+                        </p>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            Liquidity positions created on ICPSwap are initially owned by your ICPSwap wallet. To manage them 
+                            in Sneed Hub (including the ability to lock them), you need to transfer them to your Sneed Wallet 
+                            principal. Use ICPSwap's position transfer feature to send the position to your Sneed Wallet principal 
+                            (displayed in the collapsible section at the top of this page). Once transferred, the position will 
+                            appear in your Sneed Wallet.
+                        </p>
+                    </div>
+                    
+                    <p style={styles.paragraph}>
+                        Once you have positions in your Sneed Wallet, you'll see:
                     </p>
                     <ul style={styles.list}>
                         <li style={styles.listItem}>Token pair (e.g., ICP/SNEED)</li>
@@ -316,14 +333,17 @@ function HelpWallet() {
                     <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>📤 Send Positions</h4>
                     <p style={styles.paragraph}>
                         Transfer liquidity positions to another principal. This allows you to move entire LP positions 
-                        without closing them, preserving the position's state and accumulated fees.
+                        without closing them, preserving the position's state and accumulated fees. You can send positions 
+                        to other users' Sneed Wallet principals or back to ICPSwap wallets.
                     </p>
                     
                     <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>🔒 Lock Positions</h4>
                     <p style={styles.paragraph}>
                         Lock entire liquidity positions using <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>. 
-                        This locks both tokens in the position until the expiration date. See the{' '}
-                        <Link to="/help/sneedlock" style={styles.link}>Sneedlock help page</Link> for more details.
+                        This locks both tokens in the position until the expiration date. Note that you can only lock positions 
+                        that are owned by your Sneed Wallet principal—positions still on ICPSwap must be transferred to your 
+                        Sneed Wallet first. See the <Link to="/help/sneedlock" style={styles.link}>Sneedlock help page</Link> for 
+                        detailed instructions.
                     </p>
                 </div>
 
