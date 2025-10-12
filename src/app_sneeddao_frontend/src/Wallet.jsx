@@ -612,8 +612,6 @@ function Wallet() {
 
             setLiquidityPositions([]);
 
-            const conversion_rates = await get_token_conversion_rates();
-
             await Promise.all(swap_canisters.map(async (swap_canister) => {
                     
                 try {
@@ -649,6 +647,16 @@ function Wallet() {
                     // ICP does not produce a logo in metadata.
                     if (token0Symbol?.toLowerCase() === "icp" && token0Logo === "") { token0Logo = "icp_symbol.svg"; }
                     if (token1Symbol?.toLowerCase() === "icp" && token1Logo === "") { token1Logo = "icp_symbol.svg"; }
+
+                    // Fetch conversion rates for both tokens
+                    const token0_conversion_rate = await get_token_conversion_rate(
+                        icrc1_ledger0,
+                        token0Decimals
+                    );
+                    const token1_conversion_rate = await get_token_conversion_rate(
+                        icrc1_ledger1,
+                        token1Decimals
+                    );
 
                     const userPositionIds = (await swapActor.getUserPositionIdsByPrincipal(identity.getPrincipal())).ok;
 
@@ -716,8 +724,8 @@ function Wallet() {
                         token1Logo: token1Logo,
                         token0Decimals : token0Decimals,
                         token1Decimals : token1Decimals,
-                        token0_conversion_rate: conversion_rates[token0Symbol] || 0,
-                        token1_conversion_rate: conversion_rates[token1Symbol] || 0,
+                        token0_conversion_rate: token0_conversion_rate,
+                        token1_conversion_rate: token1_conversion_rate,
                         positions: positionDetails
                     };
 
