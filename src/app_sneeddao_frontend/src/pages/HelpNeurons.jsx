@@ -531,9 +531,11 @@ function HelpNeurons() {
                     <h2 style={styles.subheading}>Cross-Platform Neuron Management: NNS & Sneed Hub</h2>
                     
                     <p style={styles.paragraph}>
-                        One of the most powerful features of SNS neurons is the ability to manage them from multiple platforms 
-                        using hotkeys. This section explains how to set up your neurons so you can vote and manage them from 
-                        both the NNS dApp and Sneed Hub, giving you maximum flexibility.
+                        One of the most powerful features of SNS neurons is the ability to manage them from multiple platforms. 
+                        There are two main approaches to achieve this: using <strong style={styles.strong}>following relationships</strong> (where 
+                        neurons automatically copy each other's votes) or using <strong style={styles.strong}>hotkeys</strong> (where you can 
+                        directly control neurons from different principals). This section explains both methods and how to set them up for 
+                        maximum flexibility between the NNS dApp and Sneed Hub.
                     </p>
 
                     <h3 style={styles.subsubheading}>Understanding the Setup Scenarios</h3>
@@ -549,9 +551,89 @@ function HelpNeurons() {
                         </li>
                     </ul>
 
-                    {/* Scenario 1 */}
+                    <h3 style={styles.subsubheading}>Method 1: Using Following (Recommended for Automated Voting)</h3>
+                    <p style={styles.paragraph}>
+                        The following approach allows neurons to automatically vote based on how other neurons vote. This is simpler 
+                        to set up than hotkeys and doesn't require managing multiple principals.
+                    </p>
+
+                    {/* Following Unidirectional */}
                     <div style={styles.scenarioBox}>
-                        <h4 style={styles.subsubheading}>Scenario 1: Vote with Both Neurons from Sneed Hub</h4>
+                        <h4 style={styles.subsubheading}>Set Up Neuron Following (Unidirectional)</h4>
+                        <p style={styles.paragraph}>
+                            Configure one neuron to automatically follow and copy the votes of another:
+                        </p>
+                        <ol style={styles.stepList}>
+                            <li style={styles.stepItem}>
+                                Decide which neuron will be the "follower" and which will be the "leader"
+                            </li>
+                            <li style={styles.stepItem}>
+                                On Sneed Hub or NNS, navigate to the follower neuron's detail page
+                            </li>
+                            <li style={styles.stepItem}>
+                                Find the "Following" or "Followees" configuration section
+                            </li>
+                            <li style={styles.stepItem}>
+                                Add the leader neuron's ID to the following list for the desired proposal types
+                            </li>
+                            <li style={styles.stepItem}>
+                                Save the configuration
+                            </li>
+                        </ol>
+                        <div style={styles.successBox}>
+                            <p style={{...styles.paragraph, marginBottom: 0}}>
+                                <strong style={styles.strong}>Result:</strong> When you vote with the leader neuron from either platform, 
+                                the follower neuron will automatically vote the same way. This means you only need to vote once, and both 
+                                neurons' voting power is applied!
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Following Bidirectional */}
+                    <div style={styles.scenarioBox}>
+                        <h4 style={styles.subsubheading}>Set Up Bidirectional Following (Advanced)</h4>
+                        <p style={styles.paragraph}>
+                            For maximum flexibility, you can set up both neurons to follow each other. The first neuron to vote will 
+                            cause the other to automatically vote the same way:
+                        </p>
+                        <ol style={styles.stepList}>
+                            <li style={styles.stepItem}>
+                                Configure Neuron 1 to follow Neuron 2 (for all proposal types or specific types)
+                            </li>
+                            <li style={styles.stepItem}>
+                                Configure Neuron 2 to follow Neuron 1 (for the same proposal types)
+                            </li>
+                            <li style={styles.stepItem}>
+                                Now both neurons follow each other
+                            </li>
+                        </ol>
+                        <div style={styles.successBox}>
+                            <p style={{...styles.paragraph, marginBottom: 0}}>
+                                <strong style={styles.strong}>Result:</strong> You can vote with either neuron from either platform (NNS or Sneed Hub), 
+                                and the other neuron will automatically cast the same vote. This gives you complete flexibility - vote from wherever 
+                                you're logged in, and both neurons will vote together!
+                            </p>
+                        </div>
+                    </div>
+
+                    <div style={styles.infoBox}>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>Why Use Following?</strong> Following is ideal when you want automatic voting 
+                            synchronization between neurons. You don't need to manage multiple principals or hotkeys, and it ensures your 
+                            full voting power is always applied with a single vote. This is particularly useful if you have neurons across 
+                            different platforms or want to ensure consistent voting without manual effort.
+                        </p>
+                    </div>
+
+                    <h3 style={styles.subsubheading}>Method 2: Using Hotkeys (For Direct Control)</h3>
+                    <p style={styles.paragraph}>
+                        The hotkey approach gives you direct control over neurons created with different principals. This is useful when 
+                        you want to manage neurons individually or need more granular control.
+                    </p>
+
+                    {/* Hotkey Scenario 1 */}
+                    <div style={styles.scenarioBox}>
+                        <h4 style={styles.subsubheading}>Hotkey Setup 1: Vote with Both Neurons from Sneed Hub</h4>
                         <p style={styles.paragraph}>
                             To access and vote with Neuron 1 (created on NNS) from Sneed Hub:
                         </p>
@@ -570,7 +652,7 @@ function HelpNeurons() {
                                 Add your Sneed Hub principal as a hotkey to Neuron 1
                             </li>
                             <li style={styles.stepItem}>
-                                Return to Sneed Hub and refresh the <Link to="/neurons" style={styles.link}>Neurons page</Link>
+                                Return to Sneed Hub and refresh the <Link to="/wallet" style={styles.link}>Wallet page</Link>
                             </li>
                             <li style={styles.stepItem}>
                                 You will now see both Neuron 1 and Neuron 2, and can vote with both from Sneed Hub!
@@ -584,9 +666,9 @@ function HelpNeurons() {
                         </div>
                     </div>
 
-                    {/* Scenario 2 */}
+                    {/* Hotkey Scenario 2 */}
                     <div style={styles.scenarioBox}>
-                        <h4 style={styles.subsubheading}>Scenario 2: Vote with Both Neurons from NNS</h4>
+                        <h4 style={styles.subsubheading}>Hotkey Setup 2: Vote with Both Neurons from NNS</h4>
                         <p style={styles.paragraph}>
                             To access and vote with Neuron 2 (created on Sneed Hub) from the NNS dApp:
                         </p>
@@ -595,10 +677,10 @@ function HelpNeurons() {
                                 Get your NNS principal ID from the NNS dApp
                             </li>
                             <li style={styles.stepItem}>
-                                Go to Sneed Hub and navigate to the <Link to="/neurons" style={styles.link}>Neurons page</Link>
+                                Go to Sneed Hub and navigate to the <Link to="/wallet" style={styles.link}>Wallet page</Link>
                             </li>
                             <li style={styles.stepItem}>
-                                Click on Neuron 2 to open its detail view
+                                Find Neuron 2 and access its detail view
                             </li>
                             <li style={styles.stepItem}>
                                 In the neuron management section, add your NNS principal as a hotkey
@@ -607,30 +689,29 @@ function HelpNeurons() {
                                 Return to the NNS dApp and refresh
                             </li>
                             <li style={styles.stepItem}>
-                                You should now see both Neuron 1 and Neuron 2 in the NNS interface!
+                                You will now see both Neuron 1 and Neuron 2 in the NNS interface!
                             </li>
                         </ol>
-                        <div style={styles.infoBox}>
+                        <div style={styles.successBox}>
                             <p style={{...styles.paragraph, marginBottom: 0}}>
-                                <strong style={styles.strong}>Note:</strong> While this setup should work according to the 
-                                SNS specification, it has not been extensively tested. If you encounter any issues, please 
-                                let us know so we can investigate and provide support.
+                                <strong style={styles.strong}>Result:</strong> You can now manage and vote with both neurons 
+                                from the NNS dApp interface.
                             </p>
                         </div>
                     </div>
 
-                    {/* Scenario 3 */}
+                    {/* Hotkey Scenario 3 */}
                     <div style={styles.scenarioBox}>
-                        <h4 style={styles.subsubheading}>Scenario 3: Vote from Both Platforms (Recommended for Power Users)</h4>
+                        <h4 style={styles.subsubheading}>Hotkey Setup 3: Vote from Both Platforms (Maximum Flexibility)</h4>
                         <p style={styles.paragraph}>
-                            For maximum flexibility, you can set up bidirectional access by combining both scenarios above:
+                            For maximum flexibility, you can set up bidirectional hotkey access by combining both setups above:
                         </p>
                         <ol style={styles.stepList}>
                             <li style={styles.stepItem}>
-                                Follow the steps in Scenario 1 to add your Sneed Hub principal as a hotkey to Neuron 1 (on NNS)
+                                Follow Hotkey Setup 1 to add your Sneed Hub principal as a hotkey to Neuron 1 (on NNS)
                             </li>
                             <li style={styles.stepItem}>
-                                Follow the steps in Scenario 2 to add your NNS principal as a hotkey to Neuron 2 (on Sneed Hub)
+                                Follow Hotkey Setup 2 to add your NNS principal as a hotkey to Neuron 2 (on Sneed Hub)
                             </li>
                             <li style={styles.stepItem}>
                                 Now both neurons have both principals as hotkeys
@@ -643,6 +724,15 @@ function HelpNeurons() {
                                 happen to be logged in!
                             </p>
                         </div>
+                    </div>
+
+                    <div style={styles.infoBox}>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>Following vs. Hotkeys:</strong> Following is simpler and provides automatic 
+                            vote synchronization (one vote applies both neurons), while hotkeys give you direct individual control over 
+                            each neuron. You can even combine both approaches - use hotkeys for direct access and following for automatic 
+                            voting synchronization!
+                        </p>
                     </div>
 
                     <div style={styles.warningBox}>
