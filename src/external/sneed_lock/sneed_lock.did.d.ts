@@ -10,6 +10,50 @@ export interface BufferEntry {
   'caller' : Principal,
   'correlation_id' : bigint,
 }
+export type ClaimAndWithdrawResult = { 'Ok' : ClaimRequestId } |
+  { 'Err' : string };
+export interface ClaimRequest {
+  'request_id' : ClaimRequestId,
+  'status' : ClaimRequestStatus,
+  'started_processing_at' : [] | [Timestamp],
+  'created_at' : Timestamp,
+  'token0' : TokenType,
+  'token1' : TokenType,
+  'caller' : Principal,
+  'swap_canister_id' : SwapCanisterId,
+  'completed_at' : [] | [Timestamp],
+  'position_id' : PositionId,
+}
+export type ClaimRequestId = bigint;
+export type ClaimRequestStatus = { 'Failed' : string } |
+  {
+    'ClaimVerified' : {
+      'balance1_before' : Balance,
+      'amount1_claimed' : Balance,
+      'amount0_claimed' : Balance,
+      'balance0_before' : Balance,
+    }
+  } |
+  {
+    'Withdrawn' : { 'amount1_claimed' : Balance, 'amount0_claimed' : Balance }
+  } |
+  {
+    'ClaimAttempted' : {
+      'balance1_before' : Balance,
+      'claim_attempt' : bigint,
+      'balance0_before' : Balance,
+    }
+  } |
+  { 'Processing' : null } |
+  { 'TimedOut' : null } |
+  { 'Completed' : null } |
+  { 'Pending' : null } |
+  {
+    'BalanceRecorded' : {
+      'balance1_before' : Balance,
+      'balance0_before' : Balance,
+    }
+  };
 export interface ClaimedPosition {
   'owner' : Principal,
   'swap_canister_id' : SwapCanisterId,
@@ -45,9 +89,15 @@ export interface PositionLock {
   'expiry' : Expiry,
   'position_id' : PositionId,
 }
+export type QueueProcessingState = { 'Paused' : string } |
+  { 'Active' : null };
 export type SetLockFeeResult = { 'Ok' : bigint } |
   { 'Err' : string };
 export interface SneedLock {
+  'admin_clear_completed_claim_requests_buffer' : ActorMethod<[], bigint>,
+  'admin_pause_claim_queue' : ActorMethod<[string], undefined>,
+  'admin_remove_active_claim_request' : ActorMethod<[ClaimRequestId], boolean>,
+  'admin_resume_claim_queue' : ActorMethod<[], undefined>,
   'admin_return_token' : ActorMethod<
     [Principal, bigint, Principal],
     TransferResult
@@ -60,11 +110,33 @@ export interface SneedLock {
     [Principal, Dex, PositionId, Expiry, TokenType, TokenType],
     CreateLockResult
   >,
+  'get_active_claim_request' : ActorMethod<
+    [ClaimRequestId],
+    [] | [ClaimRequest]
+  >,
   'get_all_position_locks' : ActorMethod<[], Array<FullyQualifiedPositionLock>>,
   'get_all_token_locks' : ActorMethod<[], Array<FullyQualifiedLock>>,
+  'get_claim_queue_status' : ActorMethod<
+    [],
+    {
+      'pending_count' : bigint,
+      'processing_count' : bigint,
+      'active_total' : bigint,
+      'completed_buffer_count' : bigint,
+      'processing_state' : QueueProcessingState,
+    }
+  >,
   'get_claimed_positions_for_principal' : ActorMethod<
     [Principal],
     Array<ClaimedPosition>
+  >,
+  'get_completed_claim_requests' : ActorMethod<
+    [bigint, bigint],
+    Array<[] | [BufferEntry]>
+  >,
+  'get_completed_claim_requests_id_range' : ActorMethod<
+    [],
+    [] | [[bigint, bigint]]
   >,
   'get_error_entries' : ActorMethod<
     [bigint, bigint],
@@ -77,6 +149,7 @@ export interface SneedLock {
     [TokenType],
     Array<FullyQualifiedLock>
   >,
+  'get_my_active_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
   'get_position_ownerships' : ActorMethod<
     [],
     Array<[SwapCanisterId, PositionId]>
@@ -97,6 +170,10 @@ export interface SneedLock {
   >,
   'has_expired_locks' : ActorMethod<[], boolean>,
   'has_expired_position_locks' : ActorMethod<[], boolean>,
+  'request_claim_and_withdraw' : ActorMethod<
+    [SwapCanisterId, PositionId],
+    ClaimAndWithdrawResult
+  >,
   'set_max_lock_length_days' : ActorMethod<[bigint], undefined>,
   'set_token_lock_fee_sneed_e8s' : ActorMethod<[bigint], SetLockFeeResult>,
   'transfer_position' : ActorMethod<

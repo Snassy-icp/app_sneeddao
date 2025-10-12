@@ -8,7 +8,7 @@ import { useNaming } from './NamingContext';
 import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
 
-const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, withdraw_position_rewards, handleWithdrawPosition, handleTransferPositionOwnership, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
+const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleWithdrawPosition, handleTransferPositionOwnership, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
 
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -279,16 +279,28 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 <span className="amount-value">{formatAmount(positionDetails.tokensOwed1 + positionDetails.tokensUnused1, position.token1Decimals)}{getUSD(positionDetails.tokensOwed1 + positionDetails.tokensUnused1, position.token1Decimals, position.token1_conversion_rate)}</span>
                             </div>
                         </div>
-                        <div className="withdraw-button-container">
-                            <button className="withdraw-button" onClick={() => withdraw_position_rewards({
-                                swapCanisterId: position.swapCanisterId,
-                                id: positionDetails.positionId,
-                                frontendOwnership: positionDetails.frontendOwnership,
-                                symbols: position.token0Symbol + '/' + position.token1Symbol
-                            })}>
-                                Withdraw
-                            </button>
-                        </div>
+                        {/* Only show withdraw button for frontend positions */}
+                        {positionDetails.frontendOwnership && handleWithdrawPositionRewards && (
+                            <div className="withdraw-button-container">
+                                <button 
+                                    className="withdraw-button" 
+                                    onClick={async () => {
+                                        try {
+                                            await handleWithdrawPositionRewards({
+                                                swapCanisterId: position.swapCanisterId,
+                                                id: positionDetails.positionId,
+                                                frontendOwnership: positionDetails.frontendOwnership,
+                                                symbols: position.token0Symbol + '/' + position.token1Symbol
+                                            });
+                                        } catch (error) {
+                                            alert(`Failed to withdraw rewards: ${error.message || error.toString()}`);
+                                        }
+                                    }}
+                                >
+                                    Withdraw Fees
+                                </button>
+                            </div>
+                        )}
                     </div>
                 }
                 
