@@ -8,7 +8,7 @@ import { useNaming } from './NamingContext';
 import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
 
-const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, withdraw_position_rewards, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
+const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, withdraw_position_rewards, handleWithdrawPosition, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
 
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -19,6 +19,37 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
     };
+
+    // Helper function to determine if position can be withdrawn from backend
+    const canWithdrawFromBackend = () => {
+        if (positionDetails.frontendOwnership) return false;
+        if (!positionDetails.lockInfo) return true; // No lock, can withdraw
+        // Check if lock has expired
+        const now = new Date();
+        // Convert BigInt nanoseconds to milliseconds for Date
+        const lockExpiry = new Date(Number(positionDetails.lockInfo.expiry / 1000000n));
+        return lockExpiry <= now;
+    };
+
+    // Helper function to get location status
+    const getLocationStatus = () => {
+        if (positionDetails.frontendOwnership) {
+            return { text: 'Frontend Wallet', color: theme.colors.success, icon: '💼' };
+        } else if (isLockedPosition(positionDetails)) {
+            const now = new Date();
+            // Convert BigInt nanoseconds to milliseconds for Date
+            const lockExpiry = new Date(Number(positionDetails.lockInfo.expiry / 1000000n));
+            if (lockExpiry > now) {
+                return { text: 'Backend (Locked)', color: theme.colors.warning, icon: '🔒' };
+            } else {
+                return { text: 'Backend (Unlocked)', color: theme.colors.accent, icon: '🔓' };
+            }
+        } else {
+            return { text: 'Backend (Unlocked)', color: theme.colors.accent, icon: '🔓' };
+        }
+    };
+
+    const locationStatus = getLocationStatus();
 
     function getPositionLockUrl(swap, positionId) {
         const baseUrl = '/positionlock';
@@ -55,6 +86,23 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     <div className="header-row-2">
                         <div className="amount-symbol">
                             <span className="token-amount">#{positionDetails.positionId.toString()}</span>
+                            {/* Location Status Badge */}
+                            <span style={{
+                                marginLeft: '8px',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                background: `linear-gradient(135deg, ${locationStatus.color}30, ${locationStatus.color}15)`,
+                                color: locationStatus.color,
+                                border: `1px solid ${locationStatus.color}40`,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                whiteSpace: 'nowrap'
+                            }}>
+                                <span>{locationStatus.icon}</span>
+                                <span>{locationStatus.text}</span>
+                            </span>
                         </div>
                         <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
                     </div>
@@ -133,6 +181,42 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                     />
                                     Send
                                     </button>
+                            )}
+
+                            {canWithdrawFromBackend() && handleWithdrawPosition && (
+                                <button
+                                    onClick={() =>
+                                        handleWithdrawPosition({
+                                            swapCanisterId: position.swapCanisterId,
+                                            id: positionDetails.positionId,
+                                            token0: position.token0,
+                                            token1: position.token1,
+                                            symbols: position.token0Symbol + '/' + position.token1Symbol
+                                        })}
+                                    style={{
+                                        background: theme.colors.success,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.background = theme.colors.successHover || `${theme.colors.success}dd`;
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.background = theme.colors.success;
+                                    }}
+                                >
+                                    <span style={{ fontSize: '14px' }}>⬇️</span>
+                                    Withdraw
+                                </button>
                             )}
 
                         </div>

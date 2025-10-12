@@ -1265,6 +1265,43 @@ function Wallet() {
         /*await*/ fetchLiquidityPositions();
     };
 
+    const handleWithdrawPosition = async (liquidityPosition) => {
+        console.log('=== Withdrawing position from backend ===');
+        console.log('Position:', liquidityPosition.symbols, 'ID:', liquidityPosition.id);
+        
+        // Show confirmation dialog
+        setConfirmAction(() => async () => {
+            try {
+                console.log('=== Starting confirmed position withdrawal ===');
+                
+                const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { 
+                    agentOptions: { identity } 
+                });
+
+                // Transfer position from backend to user's frontend wallet
+                const result = await sneedLockActor.transfer_position(
+                    identity.getPrincipal(),
+                    liquidityPosition.swapCanisterId,
+                    liquidityPosition.id
+                );
+
+                console.log('Position withdrawal result:', toJsonString(result));
+
+                // Refresh the liquidity positions
+                await fetchLiquidityPositions();
+                console.log('=== Position withdrawal completed ===');
+                
+            } catch (error) {
+                console.error('=== Position withdrawal error ===');
+                console.error('Error details:', error);
+                throw error;
+            }
+        });
+
+        setConfirmMessage(`You are about to withdraw position #${liquidityPosition.id} (${liquidityPosition.symbols}) from the backend to your frontend wallet. Continue?`);
+        setShowConfirmModal(true);
+    };
+
     const openSendLiquidityPositionModal = (liquidityPosition) => {
         setSelectedLiquidityPosition(liquidityPosition);
         setShowSendLiquidityPositionModal(true);
@@ -1827,6 +1864,7 @@ function Wallet() {
                                 openSendLiquidityPositionModal={openSendLiquidityPositionModal}
                                 openLockPositionModal={openLockPositionModal}
                                 withdraw_position_rewards={withdraw_position_rewards}
+                                handleWithdrawPosition={handleWithdrawPosition}
                                 hideButtons={false}
                                 hideUnclaimedFees={false}
                             />
