@@ -1,0 +1,162 @@
+type TxIndex = nat;
+type TransferResult = 
+ variant {
+   Err: TransferError;
+   Ok: TxIndex;
+ };
+type TransferPositionResult = 
+ variant {
+   err: TransferPositionError;
+   ok: bool;
+ };
+type TransferPositionError = 
+ variant {
+   CommonError;
+   InsufficientFunds;
+   InternalError: text;
+   UnsupportedToken: text;
+ };
+type TransferError = 
+ variant {
+   BadBurn: record {min_burn_amount: Balance;};
+   BadFee: record {expected_fee: Balance;};
+   CreatedInFuture: record {ledger_time: Timestamp;};
+   Duplicate: record {duplicate_of: TxIndex;};
+   GenericError: record {
+                   error_code: nat;
+                   message: text;
+                 };
+   InsufficientFunds: record {balance: Balance;};
+   TemporarilyUnavailable;
+   TooOld;
+ };
+type TokenType__1 = principal;
+type TokenType = principal;
+type Timestamp = nat64;
+type SwapCanisterId = principal;
+type Subaccount = blob;
+type SneedLock = 
+ service {
+   claim_position: (principal, PositionId) -> (bool);
+   clear_expired_locks: () -> ();
+   clear_expired_position_locks: () -> ();
+   create_lock: (nat, principal, Expiry) -> (CreateLockResult__1);
+   create_position_lock: (principal, Dex, PositionId, Expiry, TokenType,
+    TokenType) -> (CreateLockResult);
+   get_all_position_locks: () -> (vec FullyQualifiedPositionLock) query;
+   get_all_token_locks: () -> (vec FullyQualifiedLock) query;
+   get_claimed_positions_for_principal: (principal) ->
+    (vec ClaimedPosition) query;
+   get_error_entries: (nat, nat) -> (vec opt BufferEntry);
+   get_error_id_range: () -> (opt record {
+                                    nat;
+                                    nat;
+                                  });
+   get_info_entries: (nat, nat) -> (vec opt BufferEntry);
+   get_info_id_range: () -> (opt record {
+                                   nat;
+                                   nat;
+                                 });
+   get_ledger_token_locks: (TokenType) -> (vec FullyQualifiedLock) query;
+   get_position_ownerships: () ->
+    (vec record {
+           SwapCanisterId;
+           PositionId;
+         }) query;
+   get_summed_locks: () -> (vec record {
+                                  TokenType__1;
+                                  Balance__1;
+                                }) query;
+   get_swap_position_locks: (SwapCanisterId) ->
+    (vec FullyQualifiedPositionLock) query;
+   get_token_lock_fee_sneed_e8s: () -> (nat) query;
+   get_token_locks: () ->
+    (vec record {
+           LockId;
+           TokenType__1;
+           Balance__1;
+           Expiry;
+         }) query;
+   get_token_position_locks: (TokenType) ->
+    (vec FullyQualifiedPositionLock) query;
+   has_expired_locks: () -> (bool) query;
+   has_expired_position_locks: () -> (bool) query;
+   set_max_lock_length_days: (nat64) -> ();
+   set_token_lock_fee_sneed_e8s: (nat) -> (SetLockFeeResult);
+   transfer_position: (principal, principal, PositionId) ->
+    (TransferPositionResult);
+   transfer_tokens: (principal, opt Subaccount, principal, Balance) ->
+    (TransferResult);
+   update_position_lock: (principal, PositionId, Expiry) ->
+    (CreateLockResult);
+ };
+type SetLockFeeResult = 
+ variant {
+   Err: text;
+   Ok: nat;
+ };
+type PositionLock = 
+ record {
+   dex: Dex;
+   expiry: Expiry__1;
+   lock_id: LockId;
+   position_id: PositionId;
+   token0: TokenType;
+   token1: TokenType;
+ };
+type PositionId = nat;
+type LockId = nat;
+type Lock = 
+ record {
+   amount: Balance;
+   expiry: Expiry__1;
+   lock_id: LockId;
+ };
+type FullyQualifiedPositionLock = 
+ record {
+   principal;
+   SwapCanisterId;
+   PositionLock;
+ };
+type FullyQualifiedLock = 
+ record {
+   principal;
+   TokenType;
+   Lock;
+ };
+type Expiry__1 = nat64;
+type Expiry = nat64;
+type Dex = nat;
+type CreateLockResult__1 = 
+ variant {
+   Err: CreateLockError;
+   Ok: LockId;
+ };
+type CreateLockResult = 
+ variant {
+   Err: CreateLockError;
+   Ok: LockId;
+ };
+type CreateLockError = 
+ record {
+   message: text;
+   transfer_error: opt TransferError;
+ };
+type ClaimedPosition = 
+ record {
+   owner: principal;
+   position_id: PositionId;
+   position_lock: opt PositionLock;
+   swap_canister_id: SwapCanisterId;
+ };
+type BufferEntry = 
+ record {
+   caller: principal;
+   content: text;
+   correlation_id: nat;
+   id: nat;
+   timestamp: int;
+ };
+type Balance__1 = nat;
+type Balance = nat;
+service : () -> SneedLock

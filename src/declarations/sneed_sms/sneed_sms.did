@@ -1,0 +1,73 @@
+type SMSError = 
+ variant {
+   AlreadyExists: text;
+   InvalidInput: text;
+   NotFound: text;
+   RateLimited: text;
+   Unauthorized: text;
+ };
+type Result_1 = 
+ variant {
+   err: SMSError;
+   ok: nat;
+ };
+type Result = 
+ variant {
+   err: SMSError;
+   ok;
+ };
+type MessageResponse = 
+ record {
+   body: text;
+   can_remove_self: bool;
+   created_at: int;
+   id: nat;
+   recipients: vec principal;
+   reply_to: opt vec nat;
+   sender: principal;
+   subject: text;
+   updated_at: int;
+ };
+type CreateMessageInput = 
+ record {
+   body: text;
+   recipients: vec principal;
+   reply_to: opt vec nat;
+   subject: text;
+ };
+type AdminInfo = 
+ record {
+   added_at: int;
+   added_by: nat32;
+   "principal": principal;
+ };
+service : {
+  add_admin: (new_admin: principal) -> (Result);
+  get_admins: () -> (vec AdminInfo) query;
+  get_all_messages: () -> (vec MessageResponse) query;
+  get_all_messages_admin: () -> (vec MessageResponse) query;
+  get_config: () ->
+   (record {
+      max_body_length: nat;
+      max_recipients: nat;
+      max_subject_length: nat;
+      rate_limit_minutes: nat;
+    }) query;
+  get_last_seen_messages_timestamp: (user_principal: principal) ->
+   (opt int) query;
+  get_message: (message_id: nat) -> (opt MessageResponse) query;
+  get_received_messages: () -> (vec MessageResponse) query;
+  get_recent_messages_count: (user_principal: principal) -> (nat) query;
+  get_sent_messages: () -> (vec MessageResponse) query;
+  get_stats: () -> (record {
+                      total_messages: nat;
+                      total_users: nat;
+                    }) query;
+  is_admin_query: ("principal": principal) -> (bool) query;
+  mark_messages_seen_up_to: (timestamp: int) -> ();
+  remove_admin: (admin_to_remove: principal) -> (Result);
+  remove_self_from_message: (message_id: nat) -> (Result);
+  send_message: (input: CreateMessageInput) -> (Result_1);
+  update_config: (rate_limit_minutes: opt nat, max_subject_length: opt nat,
+   max_body_length: opt nat, max_recipients: opt nat) -> (Result);
+}

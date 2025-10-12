@@ -1,0 +1,481 @@
+type VoteType = 
+ variant {
+   downvote;
+   upvote;
+ };
+type VoteResponse = 
+ record {
+   created_at: int;
+   neuron_id: NeuronId;
+   post_id: nat;
+   updated_at: int;
+   vote_type: VoteType;
+   voter_principal: principal;
+   voting_power: nat;
+ };
+type UpdateTextLimitsInput = 
+ record {
+   forum_description_max_length: opt nat;
+   forum_title_max_length: opt nat;
+   post_body_max_length: opt nat;
+   post_title_max_length: opt nat;
+   thread_body_max_length: opt nat;
+   thread_title_max_length: opt nat;
+   topic_description_max_length: opt nat;
+   topic_title_max_length: opt nat;
+ };
+type TopicStatistics = 
+ record {
+   thread_count: nat;
+   topic_id: nat;
+   total_unread_posts: nat;
+ };
+type TopicResponse = 
+ record {
+   created_at: int;
+   created_by: principal;
+   deleted: bool;
+   description: text;
+   forum_id: nat;
+   id: nat;
+   parent_topic_id: opt nat;
+   title: text;
+   updated_at: int;
+   updated_by: principal;
+ };
+type TipTokenSummary = 
+ record {
+   tip_count: nat;
+   token_ledger_principal: principal;
+   total_amount: nat;
+ };
+type TipStats = 
+ record {
+   total_tip_amount_by_token: vec record {
+                                    principal;
+                                    nat;
+                                  };
+   total_tips: nat;
+ };
+type TipResponse = 
+ record {
+   amount: nat;
+   created_at: int;
+   created_by: principal;
+   from_principal: principal;
+   id: nat;
+   post_id: nat;
+   thread_id: nat;
+   to_principal: principal;
+   token_ledger_principal: principal;
+   transaction_block_index: opt nat;
+ };
+type ThreadVoteResponse = 
+ record {
+   neuron_votes: vec NeuronVote;
+   post_id: nat;
+ };
+type ThreadResponse = 
+ record {
+   body: text;
+   created_at: int;
+   created_by: principal;
+   deleted: bool;
+   id: nat;
+   title: opt text;
+   topic_id: nat;
+   total_posts_count: opt nat;
+   unread_posts_count: opt nat;
+   updated_at: int;
+   updated_by: principal;
+ };
+type ThreadContextResponse = 
+ record {
+   forum_id: nat;
+   sns_root_canister_id: opt principal;
+   thread_id: nat;
+   topic_id: nat;
+ };
+type TextLimits = 
+ record {
+   forum_description_max_length: nat;
+   forum_title_max_length: nat;
+   post_body_max_length: nat;
+   post_title_max_length: nat;
+   thread_body_max_length: nat;
+   thread_title_max_length: nat;
+   topic_description_max_length: nat;
+   topic_title_max_length: nat;
+ };
+type SpecialTopicType = 
+ variant {
+   General;
+   Governance;
+   Preproposals;
+ };
+type SetProposalTopicInput = 
+ record {
+   forum_id: nat;
+   topic_id: nat;
+ };
+type SetLastReadPostResponse = 
+ record {
+   message: text;
+   success: bool;
+ };
+type SetLastReadPostRequest = 
+ record {
+   last_read_post_id: nat;
+   thread_id: nat;
+ };
+type Result_1 = 
+ variant {
+   err: ForumError;
+   ok: nat;
+ };
+type Result = 
+ variant {
+   err: ForumError;
+   ok;
+ };
+type ProposalTopicMappingResponse = 
+ record {
+   forum_id: nat;
+   proposals_topic_id: nat;
+   set_at: int;
+   set_by: principal;
+ };
+type ProposalThreadMappingResponse = 
+ record {
+   created_at: int;
+   created_by: principal;
+   proposal_id: nat;
+   sns_root_canister_id: principal;
+   thread_id: nat;
+ };
+type PostResponse = 
+ record {
+   body: text;
+   created_at: int;
+   created_by: principal;
+   deleted: bool;
+   downvote_score: nat;
+   id: nat;
+   reply_to_post_id: opt nat;
+   thread_id: nat;
+   title: opt text;
+   updated_at: int;
+   updated_by: principal;
+   upvote_score: nat;
+ };
+type PollVoteResponse = 
+ record {
+   created_at: int;
+   neuron_id: NeuronId;
+   option_id: nat;
+   poll_id: nat;
+   updated_at: int;
+   voter_principal: principal;
+   voting_power: nat;
+ };
+type PollResponse = 
+ record {
+   allow_vote_changes: bool;
+   body: text;
+   created_at: int;
+   created_by: principal;
+   deleted: bool;
+   end_timestamp: int;
+   has_ended: bool;
+   id: nat;
+   options: vec PollOptionResponse;
+   post_id: opt nat;
+   thread_id: nat;
+   title: text;
+   updated_at: int;
+   updated_by: principal;
+   vp_power: float64;
+ };
+type PollOptionResponse = 
+ record {
+   body: opt text;
+   id: nat;
+   title: text;
+   total_voting_power: nat;
+   vote_count: nat;
+ };
+type NeuronVote = 
+ record {
+   created_at: int;
+   neuron_id: NeuronId;
+   updated_at: int;
+   vote_type: VoteType;
+   voting_power: nat;
+ };
+type NeuronId = record {id: blob;};
+type GetThreadsByActivityResponse = 
+ record {
+   has_more: bool;
+   next_start_from: opt nat;
+   threads: vec ThreadResponse;
+ };
+type GetLastReadPostResponse = record {last_read_post_id: opt nat;};
+type GetLastReadPostRequest = record {thread_id: nat;};
+type GetFeedResponse = 
+ record {
+   has_more: bool;
+   items: vec FeedItem;
+   next_start_id: opt nat;
+ };
+type GetFeedInput = 
+ record {
+   filter: opt FeedFilter;
+   length: nat;
+   start_id: opt nat;
+ };
+type ForumStats = 
+ record {
+   total_forums: nat;
+   total_posts: nat;
+   total_threads: nat;
+   total_topics: nat;
+   total_votes: nat;
+ };
+type ForumResponse = 
+ record {
+   created_at: int;
+   created_by: principal;
+   deleted: bool;
+   description: text;
+   id: nat;
+   sns_root_canister_id: opt principal;
+   title: text;
+   updated_at: int;
+   updated_by: principal;
+ };
+type ForumError = 
+ variant {
+   AlreadyExists: text;
+   InternalError: text;
+   InvalidInput: text;
+   NotFound: text;
+   Unauthorized: text;
+ };
+type FeedItemType = 
+ variant {
+   forum;
+   post;
+   thread;
+   topic;
+ };
+type FeedItem = 
+ record {
+   body: opt text;
+   created_at: int;
+   created_by: principal;
+   forum_id: opt nat;
+   forum_title: opt text;
+   id: nat;
+   item_type: FeedItemType;
+   poll_id: opt nat;
+   replied_to_post: opt record {
+                          body: text;
+                          id: nat;
+                          title: opt text;
+                        };
+   sns_root_canister_id: opt principal;
+   thread_id: opt nat;
+   thread_title: opt text;
+   title: opt text;
+   topic_id: opt nat;
+   topic_title: opt text;
+ };
+type FeedFilter = 
+ record {
+   creator_principals: opt vec principal;
+   search_text: opt text;
+   sns_root_canister_ids: opt vec principal;
+   topic_ids: opt vec nat;
+ };
+type CreateTopicInput = 
+ record {
+   description: text;
+   forum_id: nat;
+   parent_topic_id: opt nat;
+   title: text;
+ };
+type CreateThreadInput = 
+ record {
+   body: text;
+   title: opt text;
+   topic_id: nat;
+ };
+type CreateSpecialTopicInput = 
+ record {
+   sns_root_canister_id: principal;
+   special_topic_type: SpecialTopicType;
+ };
+type CreateProposalThreadInput = 
+ record {
+   proposal_id: nat;
+   sns_root_canister_id: principal;
+ };
+type CreatePollOptionInput = 
+ record {
+   body: opt text;
+   title: text;
+ };
+type CreatePollInput = 
+ record {
+   allow_vote_changes: opt bool;
+   body: text;
+   end_timestamp: int;
+   options: vec CreatePollOptionInput;
+   post_id: opt nat;
+   thread_id: nat;
+   title: text;
+   vp_power: opt float64;
+ };
+type CreateForumInput = 
+ record {
+   description: text;
+   sns_root_canister_id: opt principal;
+   title: text;
+ };
+type AdminInfo = 
+ record {
+   added_at: int;
+   added_by: nat32;
+   "principal": principal;
+ };
+service : {
+  add_admin: (new_admin: principal) -> (Result);
+  create_forum: (input: CreateForumInput) -> (Result_1);
+  create_poll: (input: CreatePollInput) -> (Result_1);
+  create_post: (thread_id: nat, reply_to_post_id: opt nat, title: opt text,
+   body: text) -> (Result_1);
+  create_proposal_thread: (input: CreateProposalThreadInput) -> (Result_1);
+  create_proposal_thread_with_auto_setup: (input:
+   CreateProposalThreadInput) -> (Result_1);
+  create_sns_forum_setup: (sns_root_canister_id: principal) -> (Result_1);
+  create_special_topic: (input: CreateSpecialTopicInput) -> (Result_1);
+  create_thread: (input: CreateThreadInput) -> (Result_1);
+  create_tip: (to_principal: principal, post_id: nat, token_ledger_principal:
+   principal, amount: nat, transaction_block_index: opt nat) -> (Result_1);
+  create_topic: (input: CreateTopicInput) -> (Result_1);
+  delete_forum: (id: nat) -> (Result);
+  delete_post: (id: nat) -> (Result);
+  delete_thread: (id: nat) -> (Result);
+  delete_topic: (id: nat) -> (Result);
+  get_admins: () -> (vec AdminInfo) query;
+  get_current_counter: () -> (nat) query;
+  get_feed: (input: GetFeedInput) -> (GetFeedResponse) query;
+  get_forum: (id: nat) -> (opt ForumResponse) query;
+  get_forum_admin: (id: nat) -> (opt ForumResponse) query;
+  get_forum_by_sns_root: (sns_root_canister_id: principal) ->
+   (opt ForumResponse) query;
+  get_forums: () -> (vec ForumResponse) query;
+  get_forums_admin: () -> (vec ForumResponse) query;
+  get_last_read_post: (request: GetLastReadPostRequest) ->
+   (GetLastReadPostResponse) query;
+  get_last_seen_replies_timestamp: (user_principal: principal) ->
+   (opt int) query;
+  get_last_seen_tip_timestamp: (user_principal: principal) -> (opt int) query;
+  get_poll: (id: nat) -> (opt PollResponse) query;
+  get_poll_votes: (poll_id: nat) -> (vec PollVoteResponse) query;
+  get_polls_by_post: (post_id: nat) -> (vec PollResponse) query;
+  get_polls_by_thread: (thread_id: nat) -> (vec PollResponse) query;
+  get_post: (id: nat) -> (opt PostResponse) query;
+  get_post_admin: (id: nat) -> (opt PostResponse) query;
+  get_post_replies: (post_id: nat) -> (vec PostResponse) query;
+  get_post_replies_admin: (post_id: nat) -> (vec PostResponse) query;
+  get_post_votes: (post_id: nat) -> (vec VoteResponse) query;
+  get_post_votes_for_neurons: (post_id: nat, neuron_ids: vec NeuronId) ->
+   (opt ThreadVoteResponse) query;
+  get_posts_by_thread: (thread_id: nat) -> (vec PostResponse) query;
+  get_posts_by_thread_admin: (thread_id: nat) -> (vec PostResponse) query;
+  get_posts_by_user: (user_principal: principal) -> (vec PostResponse) query;
+  get_proposal_thread: (sns_root: principal, proposal_id: nat) ->
+   (opt ProposalThreadMappingResponse) query;
+  get_proposals_topic: (forum_id: nat) ->
+   (opt ProposalTopicMappingResponse) query;
+  get_proposals_topic_by_sns_root: (sns_root_canister_id: principal) ->
+   (opt ProposalTopicMappingResponse) query;
+  get_recent_replies_count: (user_principal: principal) -> (nat) query;
+  get_recent_tips_count: (user_principal: principal) -> (nat) query;
+  get_recent_tips_received: (user_principal: principal) ->
+   (vec TipResponse) query;
+  get_replies_to_user: (user_principal: principal) ->
+   (vec PostResponse) query;
+  get_stats: () -> (ForumStats) query;
+  get_subtopics: (topic_id: nat) -> (vec TopicResponse) query;
+  get_text_limits: () -> (TextLimits) query;
+  get_thread: (id: nat) -> (opt ThreadResponse) query;
+  get_thread_admin: (id: nat) -> (opt ThreadResponse) query;
+  get_thread_context: (thread_id: nat) -> (opt ThreadContextResponse) query;
+  get_thread_proposal_id: (thread_id: nat) -> (opt record {
+                                                     nat32;
+                                                     nat;
+                                                   }) query;
+  get_thread_votes_for_neurons: (thread_id: nat, neuron_ids: vec NeuronId) ->
+   (vec ThreadVoteResponse) query;
+  get_threads_by_activity: (topic_id: nat, start_from: opt nat, length: 
+   nat, reverse: bool) -> (GetThreadsByActivityResponse) query;
+  get_threads_by_activity_with_unread_counts: (topic_id: nat, start_from:
+   opt nat, length: nat, reverse: bool) ->
+   (GetThreadsByActivityResponse) query;
+  get_threads_by_topic: (topic_id: nat) -> (vec ThreadResponse) query;
+  get_threads_by_topic_admin: (topic_id: nat) -> (vec ThreadResponse) query;
+  get_threads_by_topic_with_unread_counts: (topic_id: nat) ->
+   (vec ThreadResponse) query;
+  get_threads_by_user: (user_principal: principal) ->
+   (vec ThreadResponse) query;
+  get_tip: (id: nat) -> (opt TipResponse) query;
+  get_tip_stats: () -> (TipStats) query;
+  get_tip_tokens_received_by_user: (user_principal: principal) ->
+   (vec TipTokenSummary) query;
+  get_tips_by_post: (post_id: nat) -> (vec TipResponse) query;
+  get_tips_by_thread: (thread_id: nat) -> (vec TipResponse) query;
+  get_tips_given_by_user: (user_principal: principal) ->
+   (vec TipResponse) query;
+  get_tips_received_by_user: (user_principal: principal) ->
+   (vec TipResponse) query;
+  get_tips_received_since: (user_principal: principal, since_timestamp:
+   int) -> (vec TipResponse) query;
+  get_topic: (id: nat) -> (opt TopicResponse) query;
+  get_topic_admin: (id: nat) -> (opt TopicResponse) query;
+  get_topic_statistics: (topic_id: nat) -> (TopicStatistics) query;
+  get_topics_by_forum: (forum_id: nat) -> (vec TopicResponse) query;
+  get_topics_by_forum_admin: (forum_id: nat) -> (vec TopicResponse) query;
+  get_user_thread_reads_for_topic: (topic_id: nat) ->
+   (vec record {
+          nat;
+          nat;
+        }) query;
+  health_check: () -> (bool) query;
+  is_admin: ("principal": principal) -> (bool) query;
+  mark_replies_seen_up_to: (timestamp: int) -> ();
+  mark_tips_seen_up_to: (timestamp: int) -> ();
+  remove_admin: (admin_to_remove: principal) -> (Result);
+  remove_proposals_topic: (forum_id: nat) -> (Result);
+  retract_vote: (post_id: nat) -> (Result);
+  retract_vote_with_neurons: (post_id: nat, neuron_ids: vec NeuronId) ->
+   (Result);
+  set_last_read_post: (request: SetLastReadPostRequest) ->
+   (SetLastReadPostResponse);
+  set_proposals_topic: (input: SetProposalTopicInput) -> (Result);
+  undelete_forum: (id: nat) -> (Result);
+  undelete_post: (id: nat) -> (Result);
+  undelete_thread: (id: nat) -> (Result);
+  undelete_topic: (id: nat) -> (Result);
+  update_forum: (id: nat, input: CreateForumInput) -> (Result);
+  update_post: (id: nat, title: opt text, body: text) -> (Result);
+  update_text_limits: (input: UpdateTextLimitsInput) -> (Result);
+  update_thread: (id: nat, title: opt text, body: text) -> (Result);
+  update_topic: (id: nat, input: CreateTopicInput) -> (Result);
+  vote_on_poll_with_neurons: (poll_id: nat, option_id: nat, neuron_ids:
+   vec NeuronId) -> (Result);
+  vote_on_post: (post_id: nat, vote_type: VoteType) -> (Result);
+  vote_on_post_with_neurons: (post_id: nat, vote_type: VoteType, neuron_ids:
+   vec NeuronId) -> (Result);
+}

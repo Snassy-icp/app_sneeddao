@@ -1,0 +1,669 @@
+type UserTokenSubaccounts = 
+ record {
+   subaccounts: vec NamedSubaccount;
+   token_id: principal;
+ };
+type UserTokenStats = 
+ record {
+   input_volume_e8s_icpswap: nat;
+   input_volume_e8s_kong: nat;
+   input_volume_e8s_split: nat;
+   output_volume_e8s_icpswap: nat;
+   output_volume_e8s_kong: nat;
+   output_volume_e8s_split: nat;
+   savings_as_output_icpswap_e8s: nat;
+   savings_as_output_kong_e8s: nat;
+   savings_as_output_split_e8s: nat;
+   swaps_as_input_icpswap: nat;
+   swaps_as_input_kong: nat;
+   swaps_as_input_split: nat;
+   swaps_as_output_icpswap: nat;
+   swaps_as_output_kong: nat;
+   swaps_as_output_split: nat;
+   total_deposits: nat;
+   total_sends: nat;
+   total_withdrawals: nat;
+ };
+type UserTokenAllocationStats = 
+ record {
+   allocation_count: nat;
+   claim_count: nat;
+   total_allocated_e8s: nat;
+   total_claimed_e8s: nat;
+   total_cuts_paid_e8s: nat;
+   total_fees_paid_e8s: nat;
+ };
+type UserStats = 
+ record {
+   icpswap_swaps: nat;
+   kong_swaps: nat;
+   split_swaps: nat;
+   total_deposits: nat;
+   total_sends: nat;
+   total_swaps: nat;
+   total_withdrawals: nat;
+ };
+type UserProfile = 
+ record {
+   created_at: int;
+   created_by: principal;
+   description: text;
+   logo_url: opt text;
+   name: text;
+   "principal": principal;
+   social_links: vec SocialLink;
+   updated_at: int;
+   verified: bool;
+ };
+type UserAchievement = 
+ record {
+   achievement_id: text;
+   discovered_at: int;
+   user: principal;
+ };
+type UpdateUserProfileArgs = 
+ record {
+   description: opt text;
+   logo_url: opt text;
+   name: opt text;
+   social_links: opt vec SocialLink;
+   verified: opt bool;
+ };
+type TokenStats = 
+ record {
+   deposits_volume_e8s: nat;
+   icpswap_swaps: nat;
+   kong_swaps: nat;
+   sends_volume_e8s: nat;
+   split_swaps: nat;
+   total_deposits: nat;
+   total_sends: nat;
+   total_swaps: nat;
+   total_withdrawals: nat;
+   volume_e8s: nat;
+   withdrawals_volume_e8s: nat;
+ };
+type TokenSavingsStats = 
+ record {
+   icpswap_savings_e8s: nat;
+   kong_savings_e8s: nat;
+   split_savings_e8s: nat;
+ };
+type TokenMetadata = 
+ record {
+   decimals: opt nat8;
+   fee: opt nat;
+   hasLogo: bool;
+   name: opt text;
+   standard: text;
+   symbol: opt text;
+ };
+type TokenAllocationStats = 
+ record {
+   allocation_count: nat;
+   claim_count: nat;
+   total_allocated_e8s: nat;
+   total_claimed_e8s: nat;
+   total_cuts_paid_e8s: nat;
+   total_fees_paid_e8s: nat;
+ };
+type Token = 
+ record {
+   address: text;
+   standard: text;
+ };
+type SwapRunner = 
+ service {
+   activate_allocation: (nat) -> (Result_1);
+   add_achievement: (Achievement) -> (Result_1);
+   add_admin: (principal) -> (Result_1);
+   add_named_subaccount: (AddSubaccountArgs) -> (Result_1);
+   add_pool: (principal) -> (Result_1);
+   add_pool_for: (principal, principal) -> (Result_1);
+   add_token: (AddTokenArgs) -> (Result_1);
+   add_wallet_token: (text) -> (bool);
+   cancel_allocation: (nat) -> (Result_1);
+   cancel_top_up: (nat) -> (Result_1);
+   claim_allocation: (nat) -> (Result);
+   claim_and_withdraw_allocation: (nat) -> (Result);
+   clear_icpswap_tokens: () -> (Result_1);
+   clear_logo_cache: () -> (Result_1);
+   clear_metadata_discrepancies: () -> ();
+   clear_user_token_savings_stats: () -> ();
+   clear_whitelist: () -> (Result_1);
+   copy_icpswap_trusted_tokens: () -> (Result_2);
+   createUserProfile: (CreateUserProfileArgs) -> (Result_3);
+   create_allocation: (CreateAllocationArgs) -> (Result_13);
+   deleteUserProfile: (principal) -> (Result_12);
+   getUserProfile: (principal) -> (Result_3) query;
+   getUserProfileCount: () -> (nat) query;
+   get_achievement_allocations: (text) ->
+    (vec record {
+           allocation: Allocation;
+           status: AllocationStatus;
+         }) query;
+   get_achievement_details: (text) -> (Result_11) query;
+   get_actual_server_balance: (principal) -> (nat);
+   get_admins: () -> (vec principal) query;
+   get_all_achievements: () -> (vec Achievement) query;
+   get_all_allocation_claims: () -> (vec AllocationClaim) query;
+   get_all_allocation_creators: () -> (vec principal) query;
+   get_all_conditions: () -> (vec Condition) query;
+   get_all_custom_tokens: () -> (vec record {
+                                       principal;
+                                       TokenMetadata;
+                                     }) query;
+   get_all_donations: () -> (vec DonationEvent) query;
+   get_all_named_subaccounts: () -> (Result_10) query;
+   get_all_suspended_principals: () ->
+    (vec record {
+           principal;
+           SuspendedStatus;
+         }) query;
+   get_all_token_allocation_stats: () ->
+    (vec record {
+           text;
+           TokenAllocationStats;
+         }) query;
+   get_all_token_savings_stats: () ->
+    (vec record {
+           text;
+           TokenSavingsStats;
+         }) query;
+   get_all_token_stats: () -> (vec record {
+                                     text;
+                                     TokenStats;
+                                   }) query;
+   get_all_tokens: () -> (vec record {
+                                principal;
+                                TokenMetadata;
+                              }) query;
+   get_all_user_allocations: () ->
+    (vec record {
+           allocation: Allocation;
+           status: AllocationStatus;
+         }) query;
+   get_all_user_logins: () -> (vec record {
+                                     text;
+                                     nat;
+                                   }) query;
+   get_all_user_stats: () -> (vec record {
+                                    text;
+                                    UserStats;
+                                  }) query;
+   get_allocation: (text) -> (Result_9) query;
+   get_allocation_balance: (nat, principal) -> (nat) query;
+   get_allocation_claims: (text) ->
+    (vec record {
+           amount_e8s: nat;
+           claimed_at: int;
+           user: principal;
+         }) query;
+   get_allocation_fee_config: () -> (AllocationFeeConfig) query;
+   get_available_claims: () ->
+    (vec
+      record {
+        achievement_id: text;
+        allocation_id: text;
+        claimable_amount: record {
+                            max_e8s: nat;
+                            min_e8s: nat;
+                          };
+        token_canister_id: principal;
+      }) query;
+   get_available_claims_with_sponsors: () ->
+    (vec
+      record {
+        achievement_id: text;
+        allocation_id: text;
+        claimable_amount: record {
+                            max_e8s: nat;
+                            min_e8s: nat;
+                          };
+        sponsor: SponsorInfo;
+        token_canister_id: principal;
+      }) query;
+   get_cached_logo_count: () -> (nat) query;
+   get_custom_tokens: () -> (vec record {
+                                   principal;
+                                   TokenMetadata;
+                                 }) query;
+   get_cut_account: () -> (opt Account) query;
+   get_cycle_balance: () -> (nat) query;
+   get_derived_subaccount: (principal, nat) -> (Result_8);
+   get_global_stats: () -> (GlobalStats) query;
+   get_icpswap_token_count: () -> (nat) query;
+   get_icpswap_tokens: () -> (vec record {
+                                    principal;
+                                    TokenMetadata;
+                                  }) query;
+   get_import_progress: () -> (ImportProgress) query;
+   get_logo_update_progress: () ->
+    (record {
+       failed_count: nat;
+       is_running: bool;
+       last_processed: opt principal;
+       processed_count: nat;
+       skipped_count: nat;
+       total_tokens: nat;
+       updated_count: nat;
+     }) query;
+   get_metadata_discrepancies: () -> (vec MetadataDiscrepancy) query;
+   get_metadata_refresh_progress: () -> (MetadataRefreshProgress) query;
+   get_my_created_allocations: () -> (Result_7) query;
+   get_my_token_savings_stats: () ->
+    (vec record {
+           text;
+           TokenSavingsStats;
+         }) query;
+   get_my_token_stats: () -> (vec record {
+                                    text;
+                                    UserTokenStats;
+                                  }) query;
+   get_named_subaccounts: (principal) -> (Result_6) query;
+   get_next_user_index: () -> (nat16) query;
+   get_paginated_logos: (nat) -> (PaginatedLogosResponse) query;
+   get_panic_mode: () -> (bool) query;
+   get_payment_account: () -> (opt Account) query;
+   get_pool_metadata: (principal) -> (opt PoolMetadata) query;
+   get_popular_tokens: (nat) -> (vec record {
+                                       principal;
+                                       TokenMetadata;
+                                     }) query;
+   get_psa_message: () -> (text) query;
+   get_server_balance: (principal) -> (nat) query;
+   get_token_logo: (principal) -> (opt text) query;
+   get_token_metadata: (principal) -> (opt TokenMetadata) query;
+   get_token_savings_stats: (text) -> (opt TokenSavingsStats) query;
+   get_token_stats: (text) -> (opt TokenStats) query;
+   get_unique_trader_count: () -> (nat) query;
+   get_unique_user_count: () -> (nat) query;
+   get_user_achievements: () -> (vec UserAchievement) query;
+   get_user_balance: (principal) -> (nat) query;
+   get_user_claim: (text, principal) -> (opt AllocationClaim) query;
+   get_user_claims: () ->
+    (vec record {
+           allocation: Allocation;
+           claim: AllocationClaim;
+         }) query;
+   get_user_claims_with_sponsors: () ->
+    (vec
+      record {
+        allocation: Allocation;
+        claim: AllocationClaim;
+        sponsor: SponsorInfo;
+      }) query;
+   get_user_donations: (principal) -> (vec DonationEvent) query;
+   get_user_pools: () ->
+    (vec record {
+           canisterId: principal;
+           metadata: opt PoolMetadata;
+         }) query;
+   get_user_stats: (principal) -> (opt UserStats) query;
+   get_user_token_allocation_stats: (text) ->
+    (vec record {
+           text;
+           UserTokenAllocationStats;
+         }) query;
+   get_wallet_tokens: () -> (vec text) query;
+   get_whitelisted_tokens: () ->
+    (vec record {
+           principal;
+           TokenMetadata;
+         }) query;
+   init_admin: () -> (Result_1);
+   is_admin: () -> (bool) query;
+   is_suspended: (principal) -> (opt SuspendedStatus) query;
+   listUserProfiles: (nat, nat) -> (vec UserProfile) query;
+   record_deposit: (principal, text, nat, principal) -> ();
+   record_donation: (nat, principal, float64, text) -> (Result_1);
+   record_icpswap_swap: (principal, text, nat, text, nat, nat, principal) ->
+    ();
+   record_kong_swap: (principal, text, nat, text, nat, nat) -> ();
+   record_login: (principal) -> ();
+   record_send: (principal, text, nat) -> ();
+   record_split_swap: (principal, text, nat, nat, text, nat, nat, nat,
+    principal) -> ();
+   record_transfer: (principal, text, nat, principal) -> ();
+   record_withdrawal: (principal, text, nat, principal) -> ();
+   refresh_token_metadata: (principal) -> (Result_5);
+   register_custom_token: (principal) -> (Result_4);
+   remove_achievement: (text) -> (Result_1);
+   remove_admin: (principal) -> (Result_1);
+   remove_custom_token: (principal) -> (bool);
+   remove_named_subaccount: (RemoveSubaccountArgs) -> (Result_1);
+   remove_pool: (principal) -> (Result_1);
+   remove_token: (principal) -> (Result_1);
+   remove_wallet_token: (text) -> (bool);
+   resume_metadata_refresh: (nat) -> (Result_1);
+   scan_for_new_achievements: () ->
+    (record {
+       available_claims:
+        vec
+         record {
+           achievement_id: text;
+           allocation_id: text;
+           claimable_amount: record {
+                               max_e8s: nat;
+                               min_e8s: nat;
+                             };
+         };
+       new_achievements: vec UserAchievement;
+     });
+   searchUserProfiles: (text) -> (vec UserProfile) query;
+   set_panic_mode: (bool) -> (Result_1);
+   set_psa_message: (text) -> (Result_1);
+   set_token_logo: (principal, text) -> (Result_1);
+   start_icpswap_import: (nat) -> (Result_1);
+   start_metadata_refresh: (nat) -> (Result_1);
+   stop_icpswap_import: () -> (Result_1);
+   stop_logo_update: () -> (Result_1);
+   stop_metadata_refresh: () -> (Result_1);
+   suspend_principal: (principal, SuspendedStatus) -> (Result_1);
+   top_up_allocation: (nat, nat) -> (Result_1);
+   transfer_allocation: (nat, principal) -> (Result_1);
+   unsuspend_principal: (principal) -> (Result_1);
+   updateUserProfile: (principal, UpdateUserProfileArgs) -> (Result_3);
+   update_achievement: (Achievement) -> (Result_1);
+   update_allocation_fee_config: (AllocationFeeConfig) -> (Result_1);
+   update_cut_account: (Account) -> (Result_1);
+   update_icpswap_token_logos: (nat) -> (Result_2);
+   update_payment_account: (Account) -> (Result_1);
+   update_pool_metadata: (principal, PoolMetadata) -> (Result_1);
+   withdraw_from_balance: (principal, nat) -> (Result);
+ };
+type SuspendedStatus = 
+ variant {
+   Permanent: text;
+   Temporary: text;
+ };
+type SponsorInfo = 
+ record {
+   logo_url: opt text;
+   name: text;
+   "principal": principal;
+ };
+type SocialLink = 
+ record {
+   platform: text;
+   url: text;
+ };
+type Result_9 = 
+ variant {
+   err: text;
+   ok: record {
+         allocation: Allocation;
+         status: AllocationStatus;
+       };
+ };
+type Result_8 = 
+ variant {
+   err: text;
+   ok: vec nat8;
+ };
+type Result_7 = 
+ variant {
+   err: text;
+   ok: vec record {
+             allocation: Allocation;
+             status: AllocationStatus;
+           };
+ };
+type Result_6 = 
+ variant {
+   err: text;
+   ok: vec NamedSubaccount;
+ };
+type Result_5 = 
+ variant {
+   err: text;
+   ok: TokenMetadata;
+ };
+type Result_4 = 
+ variant {
+   err: text;
+   ok: RegisterTokenResponse;
+ };
+type Result_3 = 
+ variant {
+   err: ProfileError;
+   ok: UserProfile;
+ };
+type Result_2 = 
+ variant {
+   err: text;
+   ok: text;
+ };
+type Result_13 = 
+ variant {
+   err: text;
+   ok: Allocation;
+ };
+type Result_12 = 
+ variant {
+   err: ProfileError;
+   ok;
+ };
+type Result_11 = 
+ variant {
+   err: text;
+   ok: Achievement;
+ };
+type Result_10 = 
+ variant {
+   err: text;
+   ok: vec UserTokenSubaccounts;
+ };
+type Result_1 = 
+ variant {
+   err: text;
+   ok;
+ };
+type Result = 
+ variant {
+   err: text;
+   ok: nat;
+ };
+type RemoveSubaccountArgs = 
+ record {
+   subaccount: vec nat8;
+   token_id: principal;
+ };
+type RegisterTokenResponse = 
+ record {
+   logo: opt text;
+   metadata: TokenMetadata;
+ };
+type ProfileError = 
+ variant {
+   AlreadyExists;
+   InvalidInput: text;
+   NotAuthorized;
+   NotFound;
+ };
+type PredicateExpression = 
+ variant {
+   AND: record {
+          PredicateExpression;
+          PredicateExpression;
+        };
+   NOT: PredicateExpression;
+   OR: record {
+         PredicateExpression;
+         PredicateExpression;
+       };
+   REF: nat;
+ };
+type PoolMetadata = 
+ record {
+   fee: nat;
+   key: text;
+   token0: Token;
+   token1: Token;
+ };
+type PaginatedLogosResponse = 
+ record {
+   items: vec record {
+                principal;
+                opt text;
+              };
+   start_index: nat;
+   total: nat;
+ };
+type NamedSubaccount = 
+ record {
+   created_at: int;
+   name: text;
+   subaccount: vec nat8;
+ };
+type MetadataRefreshProgress = 
+ record {
+   failed_count: nat;
+   is_running: bool;
+   last_processed: opt principal;
+   processed_count: nat;
+   skipped_count: nat;
+   total_tokens: nat;
+   updated_count: nat;
+ };
+type MetadataDiscrepancy = 
+ record {
+   ledger_id: principal;
+   new_metadata: TokenMetadata;
+   old_metadata: TokenMetadata;
+   timestamp: int;
+ };
+type ImportProgress = 
+ record {
+   failed_count: nat;
+   imported_count: nat;
+   is_running: bool;
+   last_processed: opt text;
+   processed_count: nat;
+   skipped_count: nat;
+   total_tokens: nat;
+ };
+type GlobalStats = 
+ record {
+   icpswap_swaps: nat;
+   kong_swaps: nat;
+   split_swaps: nat;
+   total_deposits: nat;
+   total_sends: nat;
+   total_swaps: nat;
+   total_withdrawals: nat;
+ };
+type DonationEvent = 
+ record {
+   amount_e8s: nat;
+   donor: principal;
+   timestamp: int;
+   token_ledger_id: principal;
+   tx_id: text;
+   usd_value: float64;
+ };
+type CreateUserProfileArgs = 
+ record {
+   description: text;
+   logo_url: opt text;
+   name: text;
+   "principal": principal;
+   social_links: vec SocialLink;
+ };
+type CreateAllocationArgs = 
+ record {
+   achievement_id: text;
+   per_user_max_e8s: nat;
+   per_user_min_e8s: nat;
+   token_canister_id: principal;
+   total_amount_e8s: nat;
+ };
+type ConditionUsage = 
+ record {
+   condition_key: text;
+   parameters: vec variant {
+                     Nat: nat;
+                     Principal: principal;
+                     Text: text;
+                   };
+ };
+type Condition = 
+ record {
+   description: text;
+   key: text;
+   name: text;
+   parameter_specs:
+    vec
+     record {
+       default_value: opt text;
+       name: text;
+       param_type: variant {
+                     Nat;
+                     Principal;
+                     Text;
+                   };
+     };
+ };
+type AllocationStatus = 
+ variant {
+   Active;
+   Cancelled;
+   Depleted;
+   Draft;
+ };
+type AllocationFeeConfig = 
+ record {
+   cut_basis_points: nat;
+   icp_fee_e8s: nat;
+ };
+type AllocationClaim = 
+ record {
+   allocation_id: text;
+   amount_e8s: nat;
+   claimed_at: int;
+   user: principal;
+ };
+type Allocation = 
+ record {
+   achievement_id: text;
+   created_at: int;
+   creator: principal;
+   id: text;
+   token:
+    record {
+      canister_id: principal;
+      per_user: record {
+                  max_e8s: nat;
+                  min_e8s: nat;
+                };
+      total_amount_e8s: nat;
+    };
+ };
+type AddTokenArgs = 
+ record {
+   canisterId: principal;
+   logo: opt text;
+   metadata: TokenMetadata;
+ };
+type AddSubaccountArgs = 
+ record {
+   name: text;
+   subaccount: vec nat8;
+   token_id: principal;
+ };
+type Achievement = 
+ record {
+   condition_usages: vec ConditionUsage;
+   criteria: text;
+   description: text;
+   id: text;
+   logo_url: opt text;
+   name: text;
+   predicate: opt PredicateExpression;
+ };
+type Account = 
+ record {
+   owner: principal;
+   subaccount: opt vec nat8;
+ };
+service : () -> SwapRunner

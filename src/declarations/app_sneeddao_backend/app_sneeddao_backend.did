@@ -1,0 +1,262 @@
+type WhitelistedToken = 
+ record {
+   decimals: nat8;
+   fee: nat;
+   ledger_id: principal;
+   name: text;
+   standard: text;
+   symbol: text;
+ };
+type TxIndex = nat;
+type TransferResult = 
+ variant {
+   Err: TransferError;
+   Ok: TxIndex;
+ };
+type TransferPositionResult = 
+ variant {
+   err: TransferPositionError;
+   ok: bool;
+ };
+type TransferPositionError = 
+ variant {
+   CommonError;
+   InsufficientFunds;
+   InternalError: text;
+   UnsupportedToken: text;
+ };
+type TransferError = 
+ variant {
+   BadBurn: record {min_burn_amount: Balance;};
+   BadFee: record {expected_fee: Balance;};
+   CreatedInFuture: record {ledger_time: Timestamp;};
+   Duplicate: record {duplicate_of: TxIndex;};
+   GenericError: record {
+                   error_code: nat;
+                   message: text;
+                 };
+   InsufficientFunds: record {balance: Balance;};
+   TemporarilyUnavailable;
+   TooOld;
+ };
+type TokenMetaValue = 
+ variant {
+   Blob: blob;
+   Int: int;
+   Nat: nat;
+   Text: text;
+ };
+type TokenMeta = 
+ record {
+   token0: vec record {
+                 text;
+                 TokenMetaValue;
+               };
+   token1: vec record {
+                 text;
+                 TokenMetaValue;
+               };
+ };
+type Timestamp = nat64;
+type Result_5 = 
+ variant {
+   err: text;
+   ok: nat;
+ };
+type Result_4 = 
+ variant {
+   err: text;
+   ok: vec record {
+             principal;
+             int;
+           };
+ };
+type Result_3 = 
+ variant {
+   err: text;
+   ok: vec BanLogEntry;
+ };
+type Result_2 = 
+ variant {
+   err: text;
+   ok: vec Neuron;
+ };
+type Result_1 = 
+ variant {
+   err: text;
+   ok;
+ };
+type Result = 
+ variant {
+   err: text;
+   ok: text;
+ };
+type ProjectType = 
+ variant {
+   fork;
+   product;
+   project;
+ };
+type ProjectLink = 
+ record {
+   title: text;
+   url: text;
+ };
+type Project = 
+ record {
+   created_at: int;
+   description: text;
+   id: nat;
+   index: opt nat;
+   links: vec ProjectLink;
+   logo_url: opt text;
+   name: text;
+   project_type: ProjectType;
+   updated_at: int;
+ };
+type PartnerLink = 
+ record {
+   title: text;
+   url: text;
+ };
+type Partner = 
+ record {
+   created_at: int;
+   description: text;
+   id: nat;
+   index: opt nat;
+   links: vec PartnerLink;
+   logo_url: text;
+   name: text;
+   updated_at: int;
+ };
+type NeuronNameKey = 
+ record {
+   neuron_id: NeuronId;
+   sns_root_canister_id: principal;
+ };
+type NeuronId = record {id: blob;};
+type Neuron = 
+ record {
+   id: opt NeuronId;
+   permissions: vec record {
+                      principal;
+                      vec int32;
+                    };
+ };
+type BanLogEntry = 
+ record {
+   admin: principal;
+   ban_timestamp: int;
+   expiry_timestamp: int;
+   reason: text;
+   user: principal;
+ };
+type Balance = nat;
+type AppSneedDaoBackend = 
+ service {
+   add_admin: ("principal": principal) -> ();
+   add_blacklisted_word: (word: text) -> (Result_1);
+   add_partner: (name: text, logo_url: text, description: text, links:
+    vec PartnerLink, index: opt nat) -> (Result_5);
+   add_project: (name: text, logo_url: opt text, description: text,
+    project_type: ProjectType, links: vec ProjectLink, index: opt nat) ->
+    (Result_5);
+   add_whitelisted_token: (token: WhitelistedToken) -> ();
+   ban_user: (user: principal, duration_hours: nat, reason: text) ->
+    (Result_1);
+   caller_is_admin: () -> (bool) query;
+   check_ban_status: (user: principal) -> (Result_1) query;
+   get_admins: () -> (vec principal) query;
+   get_all_neuron_names: () ->
+    (vec record {
+           NeuronNameKey;
+           record {
+             text;
+             bool;
+           };
+         }) query;
+   get_all_neuron_nicknames: () -> (vec record {
+                                          NeuronNameKey;
+                                          text;
+                                        }) query;
+   get_all_principal_names: () ->
+    (vec record {
+           principal;
+           record {
+             text;
+             bool;
+           };
+         }) query;
+   get_all_principal_nicknames: () -> (vec record {
+                                             principal;
+                                             text;
+                                           }) query;
+   get_ban_log: () -> (Result_3) query;
+   get_banned_users: () -> (Result_4) query;
+   get_blacklisted_words: () -> (vec text) query;
+   get_cached_token_meta: (swap_canister_id: principal) ->
+    (opt TokenMeta) query;
+   get_ledger_canister_ids: () -> (vec principal) query;
+   get_neuron_name: (sns_root_canister_id: principal, neuron_id: NeuronId) ->
+    (opt record {
+           text;
+           bool;
+         }) query;
+   get_neuron_nickname: (sns_root_canister_id: principal, neuron_id:
+    NeuronId) -> (opt text) query;
+   get_partner: (id: nat) -> (opt Partner) query;
+   get_partners: () -> (vec Partner) query;
+   get_principal_name: ("principal": principal) ->
+    (opt record {
+           text;
+           bool;
+         }) query;
+   get_principal_nickname: ("principal": principal) -> (opt text) query;
+   get_project: (id: nat) -> (opt Project) query;
+   get_projects: () -> (vec Project) query;
+   get_swap_canister_ids: () -> (vec principal) query;
+   get_user_ban_history: (user: principal) -> (Result_3) query;
+   get_user_neurons: () -> (Result_2);
+   get_whitelisted_tokens: () -> (vec WhitelistedToken) query;
+   import_whitelist_from_swaprunner: () -> ();
+   is_token_whitelisted: (ledger_id: principal) -> (bool) query;
+   register_ledger_canister_id: (icrc1_ledger_canister_id: principal) -> ();
+   register_swap_canister_id: (icrc1_swap_canister_id: principal) -> ();
+   remove_admin: ("principal": principal) -> ();
+   remove_blacklisted_word: (word: text) -> (Result_1);
+   remove_partner: (id: nat) -> (Result_1);
+   remove_project: (id: nat) -> (Result_1);
+   remove_whitelisted_token: (ledger_id: principal) -> ();
+   send_tokens: (icrc1_ledger_canister_id: principal, amount: nat, to:
+    principal) -> (TransferResult);
+   set_cached_token_meta: (swap_canister_id: principal, new_token_meta:
+    TokenMeta) -> ();
+   set_neuron_name: (sns_root_canister_id: principal, neuron_id: NeuronId,
+    name: text) -> (Result);
+   set_neuron_nickname: (sns_root_canister_id: principal, neuron_id:
+    NeuronId, nickname: text) -> (Result);
+   set_principal_name: (name: text) -> (Result);
+   set_principal_name_for: ("principal": principal, name: text,
+    sns_root_canister_id: opt principal) -> (Result);
+   set_principal_nickname: ("principal": principal, nickname: text) ->
+    (Result);
+   test_calculate_ban_duration: (user: principal) -> (nat);
+   transfer_position: (swap_canister_id: principal, to: principal,
+    position_id: nat) -> (TransferPositionResult);
+   unban_user: (user: principal) -> (Result_1);
+   unregister_ledger_canister_id: (icrc1_ledger_canister_id: principal) -> ();
+   unregister_swap_canister_id: (icrc1_swap_canister_id: principal) -> ();
+   unverify_neuron_name: (sns_root_canister_id: principal, neuron_id:
+    NeuronId) -> (Result);
+   unverify_principal_name: ("principal": principal) -> (Result);
+   update_partner: (id: nat, name: text, logo_url: text, description: 
+    text, links: vec PartnerLink, index: opt nat) -> (Result_1);
+   update_project: (id: nat, name: text, logo_url: opt text, description:
+    text, project_type: ProjectType, links: vec ProjectLink, index:
+    opt nat) -> (Result_1);
+   verify_neuron_name: (sns_root_canister_id: principal, neuron_id:
+    NeuronId) -> (Result);
+   verify_principal_name: ("principal": principal) -> (Result);
+ };
+service : () -> AppSneedDaoBackend

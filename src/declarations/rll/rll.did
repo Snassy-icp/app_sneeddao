@@ -1,0 +1,613 @@
+type WaitForQuietState = record {current_deadline_timestamp_seconds: nat64;};
+type VotingRewardsParameters = 
+ record {
+   final_reward_rate_basis_points: opt nat64;
+   initial_reward_rate_basis_points: opt nat64;
+   reward_rate_transition_duration_seconds: opt nat64;
+   round_duration_seconds: opt nat64;
+ };
+type UserDistributionEvent = 
+ record {
+   amount: nat;
+   proposal_range: record {
+                     first: nat64;
+                     last: nat64;
+                   };
+   timestamp: int;
+   token_id: principal;
+   user: principal;
+ };
+type UpgradeSnsControlledCanister = 
+ record {
+   canister_id: opt principal;
+   canister_upgrade_arg: opt blob;
+   mode: opt int32;
+   new_canister_wasm: blob;
+ };
+type TxIndex = nat;
+type TransferSnsTreasuryFunds = 
+ record {
+   amount_e8s: nat64;
+   from_treasury: int32;
+   memo: opt nat64;
+   to_principal: opt principal;
+   to_subaccount: opt Subaccount;
+ };
+type TransferResult = 
+ variant {
+   Err: TransferError;
+   Ok: TxIndex;
+ };
+type TransferError = 
+ variant {
+   BadBurn: record {min_burn_amount: Balance;};
+   BadFee: record {expected_fee: Balance;};
+   CreatedInFuture: record {ledger_time: Timestamp;};
+   Duplicate: record {duplicate_of: TxIndex;};
+   GenericError: record {
+                   error_code: nat;
+                   message: text;
+                 };
+   InsufficientFunds: record {balance: Balance;};
+   TemporarilyUnavailable;
+   TooOld;
+ };
+type TokenMetadata = 
+ record {
+   decimals: nat8;
+   fee: nat;
+   name: text;
+   symbol: text;
+ };
+type Timestamp = nat64;
+type Tally = 
+ record {
+   no: nat64;
+   timestamp_seconds: nat64;
+   total: nat64;
+   yes: nat64;
+ };
+type Subaccount = blob;
+type SneedRLL = 
+ service {
+   acceptsVote: (ProposalData, nat64) -> (bool) query;
+   add_admin: (principal) -> (Result);
+   add_known_token: (principal) -> ();
+   all_token_balances: () -> (vec record {
+                                    principal;
+                                    nat;
+                                  }) query;
+   balance_of: (principal, principal) -> (nat) query;
+   balance_reconciliation: () ->
+    (vec
+      record {
+        local_total: nat;
+        remaining: nat;
+        server_balance: nat;
+        token_id: principal;
+        underflow: nat;
+      });
+   balance_reconciliation_from_balances: (vec record {
+                                                principal;
+                                                nat;
+                                              }) ->
+    (vec
+      record {
+        local_total: nat;
+        remaining: nat;
+        server_balance: nat;
+        token_id: principal;
+        underflow: nat;
+      }) query;
+   balances_count: () -> (nat) query;
+   balances_of_hotkey: () -> (vec record {
+                                    principal;
+                                    nat;
+                                  });
+   balances_of_hotkey_neurons: (vec Neuron) ->
+    (vec record {
+           principal;
+           nat;
+         }) query;
+   caller_is_admin: () -> (bool) query;
+   check_wallet_token_balances: (principal) -> (Result);
+   check_whitelisted_token_balances: () -> (Result);
+   claim_full_balance_of_hotkey: (principal, nat) -> (TransferResult);
+   clear_all_balances_and_distributions: () -> ();
+   clear_balances: () -> ();
+   clear_claim_events: () -> ();
+   clear_distribution_events: () -> ();
+   clear_imported_neurons: () -> ();
+   clear_imported_owners: () -> ();
+   clear_imported_props: () -> ();
+   clear_known_tokens: () -> ();
+   clear_total_distributions: () -> ();
+   clear_user_distribution_events: () -> ();
+   clear_user_distributions: () -> ();
+   clear_whitelisted_tokens: () -> ();
+   get_all_token_max_distributions: () -> (vec record {
+                                                 principal;
+                                                 nat;
+                                               }) query;
+   get_all_token_min_distributions: () -> (vec record {
+                                                 principal;
+                                                 nat;
+                                               }) query;
+   get_claim_events: () -> (vec ClaimEvent) query;
+   get_claim_events_for_hotkey: (principal) -> (vec ClaimEvent) query;
+   get_distribution_events: () -> (vec DistributionEvent) query;
+   get_empty_ballot_proposals: () ->
+    (record {
+       proposal_ids: vec nat64;
+       total_count: nat;
+     }) query;
+   get_error_claim_events: () -> (Result_1) query;
+   get_event_statistics: () ->
+    (record {
+       all_time:
+        record {
+          claims:
+           record {
+             failed: nat;
+             pending: nat;
+             per_token: vec record {
+                              principal;
+                              nat;
+                            };
+             successful: nat;
+             total: nat;
+             unique_users: nat;
+           };
+          server_distributions:
+           record {
+             per_token: vec record {
+                              principal;
+                              nat;
+                            };
+             total: nat;
+           };
+          user_distributions:
+           record {
+             per_token: vec record {
+                              principal;
+                              nat;
+                            };
+             total: nat;
+             unique_users: nat;
+           };
+        };
+       last_24h:
+        record {
+          claims:
+           record {
+             failed: nat;
+             pending: nat;
+             per_token: vec record {
+                              principal;
+                              nat;
+                            };
+             successful: nat;
+             total: nat;
+             unique_users: nat;
+           };
+          server_distributions:
+           record {
+             per_token: vec record {
+                              principal;
+                              nat;
+                            };
+             total: nat;
+           };
+          user_distributions:
+           record {
+             per_token: vec record {
+                              principal;
+                              nat;
+                            };
+             total: nat;
+             unique_users: nat;
+           };
+        };
+     }) query;
+   get_highest_closed_proposal_id: () -> (nat64) query;
+   get_hotkey_claimed_amounts: (principal) ->
+    (vec record {
+           principal;
+           nat;
+         }) query;
+   get_hotkey_voting_power: (vec Neuron) ->
+    (record {
+       distribution_voting_power: nat64;
+       neurons_by_owner: vec record {
+                               principal;
+                               vec Neuron;
+                             };
+       total_voting_power: nat64;
+     }) query;
+   get_import_next_neuron_id: () -> (opt NeuronId) query;
+   get_import_stage: () -> (text) query;
+   get_imported_proposal_max: () -> (nat64) query;
+   get_known_tokens: () -> (vec record {
+                                  principal;
+                                  TokenMetadata;
+                                }) query;
+   get_main_loop_status: () ->
+    (record {
+       current_time: int;
+       frequency_seconds: nat;
+       is_running: bool;
+       last_cycle_ended: opt int;
+       last_cycle_started: opt int;
+       last_started: opt int;
+       last_stopped: opt int;
+       next_scheduled: opt int;
+     }) query;
+   get_neuron_import_status: () -> (Result) query;
+   get_neuron_statistics: () ->
+    (record {
+       active_neurons: nat;
+       dissolve_state:
+        record {
+          dissolved: nat;
+          dissolved_stake: nat64;
+          dissolving: nat;
+          dissolving_stake: nat64;
+          not_dissolving: nat;
+          not_dissolving_stake: nat64;
+        };
+       dissolve_times:
+        record {
+          avg_dissolve_delay_seconds: float64;
+          max_delay_neurons: record {
+                               count: nat;
+                               total_voting_power: nat64;
+                             };
+          max_dissolve_delay_seconds: opt nat64;
+          min_delay_neurons: record {
+                               count: nat;
+                               total_voting_power: nat64;
+                             };
+          min_dissolve_delay_seconds: opt nat64;
+        };
+       permissions: record {
+                      multi_hotkey_neurons: nat;
+                      total_hotkeys: nat;
+                    };
+       total_neurons: nat;
+       total_stake: nat64;
+       voting_power:
+        record {
+          avg: float64;
+          max: nat64;
+          min: nat64;
+          total: nat64;
+        };
+     }) query;
+   get_neuron_voting_history: (blob) ->
+    (vec
+      record {
+        proposal_action: nat64;
+        proposal_id: nat64;
+        proposal_title: opt text;
+        timestamp: nat64;
+        vote: int32;
+        voting_power: nat64;
+      }) query;
+   get_proposal_ballots: (nat64) -> (vec record {
+                                           text;
+                                           Ballot;
+                                         }) query;
+   get_proposal_import_status: () -> (Result) query;
+   get_token_balance_check_status: () ->
+    (record {
+       is_running: bool;
+       processed: nat;
+       ticks: nat;
+       total: nat;
+     }) query;
+   get_token_distribution_events: (principal) ->
+    (vec DistributionEvent) query;
+   get_token_max_distribution: (principal) -> (opt nat) query;
+   get_token_metadata: (principal) -> (opt TokenMetadata) query;
+   get_token_min_distribution: (principal) -> (opt nat) query;
+   get_token_total_distribution: (principal) -> (nat) query;
+   get_total_distributions: () -> (vec record {
+                                         principal;
+                                         nat;
+                                       }) query;
+   get_unmatched_pending_claims: () -> (Result_1) query;
+   get_user_distribution_events: () -> (vec UserDistributionEvent) query;
+   get_user_distributions: (principal) -> (vec record {
+                                                 principal;
+                                                 nat;
+                                               }) query;
+   get_user_specific_distribution_events: (principal) ->
+    (vec UserDistributionEvent) query;
+   get_user_token_distribution: (principal, principal) -> (nat) query;
+   get_user_token_distribution_events: (principal, principal) ->
+    (vec UserDistributionEvent) query;
+   get_user_voting_history: (principal) ->
+    (vec
+      record {
+        neuron_votes:
+         vec
+          record {
+            neuron_id: text;
+            timestamp: nat64;
+            vote: int32;
+            voting_power: nat64;
+          };
+        proposal_action: nat64;
+        proposal_id: nat64;
+        proposal_title: opt text;
+        timestamp: nat64;
+        vote: int32;
+        voting_power: nat64;
+      }) query;
+   get_wallet_known_tokens: (principal) ->
+    (vec record {
+           principal;
+           TokenMetadata;
+         }) query;
+   get_wallet_token_check_status: () ->
+    (record {
+       is_running: bool;
+       processed: nat;
+       ticks: nat;
+       total: nat;
+       wallet: opt principal;
+     }) query;
+   get_whitelisted_tokens: () ->
+    (vec record {
+           principal;
+           TokenMetadata;
+         }) query;
+   import_all_neurons: () -> (Result);
+   import_all_new_neurons: () -> (Result);
+   import_all_new_proposals: () -> (Result);
+   import_all_proposals: () -> (Result);
+   import_whitelisted_tokens_from_swaprunner: () -> ();
+   imported_neurons_count: () -> (nat) query;
+   imported_owners_count: () -> (nat) query;
+   imported_props_count: () -> (nat) query;
+   list_admins: () -> (vec principal) query;
+   principal_is_admin: (principal) -> (bool) query;
+   remove_admin: (principal) -> (Result);
+   remove_known_token: (principal) -> ();
+   remove_token_max_distribution: (principal) -> (Result);
+   remove_token_min_distribution: (principal) -> (Result);
+   set_token_max_distribution: (principal, nat) -> (Result);
+   set_token_min_distribution: (principal, nat) -> (Result);
+   start_distribution_cycle: () -> (Result);
+   start_rll_main_loop: () -> (Result);
+   stop_distribution_cycle: () -> (Result);
+   stop_neuron_import: () -> (Result);
+   stop_proposal_import: () -> (Result);
+   stop_rll_main_loop: () -> (Result);
+   stop_token_balance_check: () -> (Result);
+   stop_wallet_token_check: () -> (Result);
+   total_balance: (principal) -> (nat) query;
+ };
+type Result_1 = 
+ variant {
+   err: text;
+   ok: vec ClaimEvent;
+ };
+type Result = 
+ variant {
+   err: text;
+   ok: text;
+ };
+type RegisterDappCanisters = record {canister_ids: vec principal;};
+type ProposalId = record {id: nat64;};
+type ProposalData = 
+ record {
+   action: nat64;
+   ballots: vec record {
+                  text;
+                  Ballot;
+                };
+   decided_timestamp_seconds: nat64;
+   executed_timestamp_seconds: nat64;
+   failed_timestamp_seconds: nat64;
+   failure_reason: opt GovernanceError;
+   id: opt ProposalId;
+   initial_voting_period_seconds: nat64;
+   is_eligible_for_rewards: bool;
+   latest_tally: opt Tally;
+   minimum_yes_proportion_of_exercised: opt Percentage;
+   minimum_yes_proportion_of_total: opt Percentage;
+   payload_text_rendering: opt text;
+   proposal: opt Proposal;
+   proposal_creation_timestamp_seconds: nat64;
+   proposer: opt NeuronId;
+   reject_cost_e8s: nat64;
+   reward_event_end_timestamp_seconds: opt nat64;
+   reward_event_round: nat64;
+   wait_for_quiet_deadline_increase_seconds: nat64;
+   wait_for_quiet_state: opt WaitForQuietState;
+ };
+type Proposal = 
+ record {
+   action: opt Action;
+   summary: text;
+   title: text;
+   url: text;
+ };
+type Percentage = record {basis_points: opt nat64;};
+type NeuronPermissionList = record {permissions: vec int32;};
+type NeuronPermission = 
+ record {
+   permission_type: vec int32;
+   "principal": opt principal;
+ };
+type NeuronId = record {id: blob;};
+type Neuron = 
+ record {
+   aging_since_timestamp_seconds: nat64;
+   auto_stake_maturity: opt bool;
+   cached_neuron_stake_e8s: nat64;
+   created_timestamp_seconds: nat64;
+   disburse_maturity_in_progress: vec DisburseMaturityInProgress;
+   dissolve_state: opt DissolveState;
+   followees: vec record {
+                    nat64;
+                    Followees;
+                  };
+   id: opt NeuronId;
+   maturity_e8s_equivalent: nat64;
+   neuron_fees_e8s: nat64;
+   permissions: vec NeuronPermission;
+   source_nns_neuron_id: opt nat64;
+   staked_maturity_e8s_equivalent: opt nat64;
+   vesting_period_seconds: opt nat64;
+   voting_power_percentage_multiplier: nat64;
+ };
+type NervousSystemParameters = 
+ record {
+   default_followees: opt DefaultFollowees;
+   initial_voting_period_seconds: opt nat64;
+   maturity_modulation_disabled: opt bool;
+   max_age_bonus_percentage: opt nat64;
+   max_dissolve_delay_bonus_percentage: opt nat64;
+   max_dissolve_delay_seconds: opt nat64;
+   max_followees_per_function: opt nat64;
+   max_neuron_age_for_age_bonus: opt nat64;
+   max_number_of_neurons: opt nat64;
+   max_number_of_principals_per_neuron: opt nat64;
+   max_number_of_proposals_with_ballots: opt nat64;
+   max_proposals_to_keep_per_action: opt nat32;
+   neuron_claimer_permissions: opt NeuronPermissionList;
+   neuron_grantable_permissions: opt NeuronPermissionList;
+   neuron_minimum_dissolve_delay_to_vote_seconds: opt nat64;
+   neuron_minimum_stake_e8s: opt nat64;
+   reject_cost_e8s: opt nat64;
+   transaction_fee_e8s: opt nat64;
+   voting_rewards_parameters: opt VotingRewardsParameters;
+   wait_for_quiet_deadline_increase_seconds: opt nat64;
+ };
+type NervousSystemFunction = 
+ record {
+   description: opt text;
+   function_type: opt FunctionType;
+   id: nat64;
+   name: text;
+ };
+type Motion = record {motion_text: text;};
+type MintSnsTokens = 
+ record {
+   amount_e8s: opt nat64;
+   memo: opt nat64;
+   to_principal: opt principal;
+   to_subaccount: opt Subaccount;
+ };
+type ManageSnsMetadata = 
+ record {
+   description: opt text;
+   logo: opt text;
+   name: opt text;
+   url: opt text;
+ };
+type ManageLedgerParameters = record {transfer_fee: opt nat64;};
+type GovernanceError = 
+ record {
+   error_message: text;
+   error_type: int32;
+ };
+type GenericNervousSystemFunction = 
+ record {
+   target_canister_id: opt principal;
+   target_method_name: opt text;
+   validator_canister_id: opt principal;
+   validator_method_name: opt text;
+ };
+type FunctionType = 
+ variant {
+   GenericNervousSystemFunction: GenericNervousSystemFunction;
+   NativeNervousSystemFunction: record {};
+ };
+type Followees = record {followees: vec NeuronId;};
+type ExecuteGenericNervousSystemFunction = 
+ record {
+   function_id: nat64;
+   payload: blob;
+ };
+type DistributionEvent = 
+ record {
+   amount: nat;
+   proposal_range: record {
+                     first: nat64;
+                     last: nat64;
+                   };
+   timestamp: int;
+   token_id: principal;
+ };
+type DissolveState = 
+ variant {
+   DissolveDelaySeconds: nat64;
+   WhenDissolvedTimestampSeconds: nat64;
+ };
+type DisburseMaturityInProgress = 
+ record {
+   account_to_disburse_to: opt Account;
+   amount_e8s: nat64;
+   finalize_disbursement_timestamp_seconds: opt nat64;
+   timestamp_of_disbursement_seconds: nat64;
+ };
+type DeregisterDappCanisters = 
+ record {
+   canister_ids: vec principal;
+   new_controllers: vec principal;
+ };
+type DefaultFollowees = record {followees: vec record {
+                                                 nat64;
+                                                 Followees;
+                                               };};
+type ClaimStatus = 
+ variant {
+   Failed;
+   Pending;
+   Success;
+ };
+type ClaimEvent = 
+ record {
+   amount: nat;
+   error_message: opt text;
+   fee: nat;
+   hotkey: principal;
+   sequence_number: nat;
+   status: ClaimStatus;
+   timestamp: Timestamp;
+   token_id: principal;
+   tx_index: opt nat;
+ };
+type Ballot = 
+ record {
+   cast_timestamp_seconds: nat64;
+   vote: int32;
+   voting_power: nat64;
+ };
+type Balance = nat;
+type Action = 
+ variant {
+   AddGenericNervousSystemFunction: NervousSystemFunction;
+   DeregisterDappCanisters: DeregisterDappCanisters;
+   ExecuteGenericNervousSystemFunction: ExecuteGenericNervousSystemFunction;
+   ManageLedgerParameters: ManageLedgerParameters;
+   ManageNervousSystemParameters: NervousSystemParameters;
+   ManageSnsMetadata: ManageSnsMetadata;
+   MintSnsTokens: MintSnsTokens;
+   Motion: Motion;
+   RegisterDappCanisters: RegisterDappCanisters;
+   RemoveGenericNervousSystemFunction: nat64;
+   TransferSnsTreasuryFunds: TransferSnsTreasuryFunds;
+   Unspecified: record {};
+   UpgradeSnsControlledCanister: UpgradeSnsControlledCanister;
+   UpgradeSnsToNextVersion: record {};
+ };
+type Account = 
+ record {
+   owner: principal;
+   subaccount: opt Subaccount;
+ };
+service : () -> SneedRLL
