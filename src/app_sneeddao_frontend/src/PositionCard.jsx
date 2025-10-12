@@ -86,23 +86,6 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     <div className="header-row-2">
                         <div className="amount-symbol">
                             <span className="token-amount">#{positionDetails.positionId.toString()}</span>
-                            {/* Location Status Badge */}
-                            <span style={{
-                                marginLeft: '8px',
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                background: `linear-gradient(135deg, ${locationStatus.color}30, ${locationStatus.color}15)`,
-                                color: locationStatus.color,
-                                border: `1px solid ${locationStatus.color}40`,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                whiteSpace: 'nowrap'
-                            }}>
-                                <span>{locationStatus.icon}</span>
-                                <span>{locationStatus.text}</span>
-                            </span>
                         </div>
                         <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
                     </div>
@@ -183,44 +166,35 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                     </button>
                             )}
 
-                            {canWithdrawFromBackend() && handleWithdrawPosition && (
-                                <button
-                                    onClick={() =>
-                                        handleWithdrawPosition({
-                                            swapCanisterId: position.swapCanisterId,
-                                            id: positionDetails.positionId,
-                                            token0: position.token0,
-                                            token1: position.token1,
-                                            symbols: position.token0Symbol + '/' + position.token1Symbol
-                                        })}
-                                    style={{
-                                        background: theme.colors.success,
-                                        color: theme.colors.primaryBg,
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '6px 12px',
-                                        cursor: 'pointer',
-                                        fontSize: '0.85rem',
-                                        fontWeight: '500',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        transition: 'all 0.2s ease'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        e.target.style.background = theme.colors.successHover || `${theme.colors.success}dd`;
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        e.target.style.background = theme.colors.success;
-                                    }}
-                                >
-                                    <span style={{ fontSize: '14px' }}>⬇️</span>
-                                    Withdraw
-                                </button>
-                            )}
-
                         </div>
                     )}
+                    
+                    {/* Location Status Badge */}
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        padding: '12px 0',
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        marginBottom: '15px'
+                    }}>
+                        <span style={{
+                            padding: '6px 16px',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            fontWeight: '500',
+                            background: `linear-gradient(135deg, ${locationStatus.color}30, ${locationStatus.color}15)`,
+                            color: locationStatus.color,
+                            border: `1px solid ${locationStatus.color}40`,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                        }}>
+                            <span style={{ fontSize: '16px' }}>{locationStatus.icon}</span>
+                            <span>{locationStatus.text}</span>
+                        </span>
+                    </div>
+
                     <div className="balance-section">
                 <div className="balance-item">
                     <div className="token-amount">
@@ -266,6 +240,52 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         </div>
                     </div>
                 }
+                
+                {/* Withdraw from Backend Button */}
+                {canWithdrawFromBackend() && handleWithdrawPosition && !hideButtons && (
+                    <div className="balance-item" style={{ marginTop: '15px', paddingTop: '15px', borderTop: `1px solid ${theme.colors.border}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <button
+                                onClick={() =>
+                                    handleWithdrawPosition({
+                                        swapCanisterId: position.swapCanisterId,
+                                        id: positionDetails.positionId,
+                                        token0: position.token0,
+                                        token1: position.token1,
+                                        symbols: position.token0Symbol + '/' + position.token1Symbol
+                                    })}
+                                style={{
+                                    background: theme.colors.success,
+                                    color: theme.colors.primaryBg,
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    padding: '10px 24px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.95rem',
+                                    fontWeight: '600',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    transition: 'all 0.2s ease',
+                                    width: '100%',
+                                    maxWidth: '300px',
+                                    justifyContent: 'center'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.background = theme.colors.successHover || `${theme.colors.success}dd`;
+                                    e.target.style.transform = 'translateY(-2px)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.background = theme.colors.success;
+                                    e.target.style.transform = 'translateY(0)';
+                                }}
+                            >
+                                <span style={{ fontSize: '18px' }}>⬇️</span>
+                                Withdraw to Frontend Wallet
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
             <div className="locks-section">
                 {/* Collapsible Locks Header */}
