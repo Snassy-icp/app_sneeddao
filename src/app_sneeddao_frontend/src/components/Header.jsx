@@ -236,7 +236,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Word Blacklist', path: '/admin/words' },
                 { name: 'Partners', path: '/admin/partners' },
                 { name: 'Names', path: '/admin/names' },
-                { name: 'Projects', path: '/admin/projects' }
+                { name: 'Projects', path: '/admin/projects' },
+                { name: 'SneedLock', path: '/admin/sneedlock' }
             ]
         };
     }

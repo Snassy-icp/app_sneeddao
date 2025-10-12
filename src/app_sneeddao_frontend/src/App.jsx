@@ -41,6 +41,7 @@ import AdminProjects from './pages/admin/Projects';
 import AdminNames from './pages/AdminNames';
 import AdminForum from './pages/admin/Forum';
 import SmsAdmin from './pages/SmsAdmin';
+import SneedLockAdmin from './pages/admin/SneedLock';
 import Projects from './pages/Projects';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
@@ -154,6 +155,7 @@ function App() {
                     <Route path="/admin/names" element={<AdminNames />} />
                     <Route path="/admin/forum" element={<AdminForum />} />
                     <Route path="/admin/sms" element={<SmsAdmin />} />
+                    <Route path="/admin/sneedlock" element={<SneedLockAdmin />} />
                   </Routes>
                   </Layout>
                 </NamingProvider>
