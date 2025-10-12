@@ -648,6 +648,10 @@ function Wallet() {
                     const token1Decimals = token_meta?.token1?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 0;
                     const token1Symbol = token_meta?.token1?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
 
+                    // Get token fees
+                    const token0Fee = await ledgerActor0.icrc1_fee();
+                    const token1Fee = await ledgerActor1.icrc1_fee();
+
                     // ICP does not produce a logo in metadata.
                     if (token0Symbol?.toLowerCase() === "icp" && token0Logo === "") { token0Logo = "icp_symbol.svg"; }
                     if (token1Symbol?.toLowerCase() === "icp" && token1Logo === "") { token1Logo = "icp_symbol.svg"; }
@@ -727,6 +731,8 @@ function Wallet() {
                         token1Logo: token1Logo,
                         token0Decimals : token0Decimals,
                         token1Decimals : token1Decimals,
+                        token0Fee: token0Fee,
+                        token1Fee: token1Fee,
                         token0_conversion_rate: token0_conversion_rate,
                         token1_conversion_rate: token1_conversion_rate,
                         swapCanisterBalance0: swapCanisterBalance0,
@@ -747,6 +753,8 @@ function Wallet() {
                         token1Logo: "",
                         token0Decimals : 0,
                         token1Decimals : 0,
+                        token0Fee: 0n,
+                        token1Fee: 0n,
                         token0_conversion_rate: 0,
                         token1_conversion_rate: 0,
                         swapCanisterBalance0: 0n,
@@ -2102,6 +2110,8 @@ function Wallet() {
                                 handleTransferPositionOwnership={handleSendLiquidityPosition}
                                 swapCanisterBalance0={position.swapCanisterBalance0}
                                 swapCanisterBalance1={position.swapCanisterBalance1}
+                                token0Fee={position.token0Fee}
+                                token1Fee={position.token1Fee}
                                 hideButtons={false}
                                 hideUnclaimedFees={false}
                             />

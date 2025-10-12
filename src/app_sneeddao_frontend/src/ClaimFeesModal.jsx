@@ -3,7 +3,7 @@ import { useTheme } from './contexts/ThemeContext';
 import { formatAmount } from './utils/StringUtils';
 import ConfirmationModal from './ConfirmationModal';
 
-function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
+function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees, token0Fee, token1Fee }) {
     const { theme } = useTheme();
     const [token0Amount, setToken0Amount] = useState('');
     const [token1Amount, setToken1Amount] = useState('');
@@ -13,11 +13,24 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
     const [errorText, setErrorText] = useState('');
     const [isInitialized, setIsInitialized] = useState(false);
 
+    // Calculate max withdrawable amounts (claimable - 1 tx fee)
+    const getMaxWithdrawable = (claimableAmount, fee, decimals) => {
+        // Ensure we have at least enough for the fee
+        if (claimableAmount <= fee) {
+            return 0n;
+        }
+        const maxAmount = claimableAmount - fee;
+        return maxAmount;
+    };
+
+    const max0 = unclaimedFees ? getMaxWithdrawable(unclaimedFees.token0Amount, token0Fee || 0n, position.token0Decimals) : 0n;
+    const max1 = unclaimedFees ? getMaxWithdrawable(unclaimedFees.token1Amount, token1Fee || 0n, position.token1Decimals) : 0n;
+
     // When modal opens, set defaults to max available (only once)
     useEffect(() => {
         if (show && unclaimedFees && !isInitialized) {
-            setToken0Amount(formatAmount(unclaimedFees.token0Amount, position.token0Decimals));
-            setToken1Amount(formatAmount(unclaimedFees.token1Amount, position.token1Decimals));
+            setToken0Amount(formatAmount(max0, position.token0Decimals));
+            setToken1Amount(formatAmount(max1, position.token1Decimals));
             setClaimAndWithdraw(true); // Default to Claim & Withdraw
             setErrorText('');
             setIsInitialized(true);
@@ -25,16 +38,16 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
             // Reset when modal closes
             setIsInitialized(false);
         }
-    }, [show, unclaimedFees, position, isInitialized]);
+    }, [show, unclaimedFees, position, isInitialized, max0, max1]);
 
     if (!show) return null;
 
     const handleSetMax0 = () => {
-        setToken0Amount(formatAmount(unclaimedFees.token0Amount, position.token0Decimals));
+        setToken0Amount(formatAmount(max0, position.token0Decimals));
     };
 
     const handleSetMax1 = () => {
-        setToken1Amount(formatAmount(unclaimedFees.token1Amount, position.token1Decimals));
+        setToken1Amount(formatAmount(max1, position.token1Decimals));
     };
 
     const handleClaim = async () => {
@@ -46,19 +59,40 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
             let token0AmountBigInt = 0n;
             let token1AmountBigInt = 0n;
 
-            // Only convert amounts if we're doing claim & withdraw
-            if (claimAndWithdraw) {
-                // Convert string amounts to BigInt (in base units)
-                // Ensure decimals is a regular number, not BigInt
-                const decimals0 = typeof position.token0Decimals === 'bigint' 
-                    ? Number(position.token0Decimals) 
-                    : position.token0Decimals;
-                const decimals1 = typeof position.token1Decimals === 'bigint' 
-                    ? Number(position.token1Decimals) 
-                    : position.token1Decimals;
+            // Convert string amounts to BigInt (in base units)
+            // Ensure decimals is a regular number, not BigInt
+            const decimals0 = typeof position.token0Decimals === 'bigint' 
+                ? Number(position.token0Decimals) 
+                : position.token0Decimals;
+            const decimals1 = typeof position.token1Decimals === 'bigint' 
+                ? Number(position.token1Decimals) 
+                : position.token1Decimals;
 
-                token0AmountBigInt = BigInt(Math.floor(parseFloat(token0Amount || '0') * Math.pow(10, decimals0)));
-                token1AmountBigInt = BigInt(Math.floor(parseFloat(token1Amount || '0') * Math.pow(10, decimals1)));
+            token0AmountBigInt = BigInt(Math.floor(parseFloat(token0Amount || '0') * Math.pow(10, decimals0)));
+            token1AmountBigInt = BigInt(Math.floor(parseFloat(token1Amount || '0') * Math.pow(10, decimals1)));
+
+            // Validate amounts if we're doing claim & withdraw
+            if (claimAndWithdraw) {
+                // Check if amounts are above minimum (1 tx fee)
+                const token0Valid = token0AmountBigInt >= (token0Fee || 0n);
+                const token1Valid = token1AmountBigInt >= (token1Fee || 0n);
+
+                // If both are too small, show error
+                if (!token0Valid && !token1Valid) {
+                    setErrorText(`Both amounts are below minimum. Minimum: ${formatAmount(token0Fee, position.token0Decimals)} ${position.token0Symbol}, ${formatAmount(token1Fee, position.token1Decimals)} ${position.token1Symbol}`);
+                    setIsClaiming(false);
+                    return;
+                }
+
+                // If one is too small, set it to 0 (skip it)
+                if (!token0Valid) {
+                    token0AmountBigInt = 0n;
+                    console.log(`Token0 amount below minimum fee, skipping withdrawal`);
+                }
+                if (!token1Valid) {
+                    token1AmountBigInt = 0n;
+                    console.log(`Token1 amount below minimum fee, skipping withdrawal`);
+                }
             }
 
             await onClaim({
@@ -241,6 +275,8 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
                             marginTop: '4px',
                         }}>
                             Available: {formatAmount(unclaimedFees.token0Amount, position.token0Decimals)} {position.token0Symbol}
+                            <br />
+                            Max withdrawable: {formatAmount(max0, position.token0Decimals)} {position.token0Symbol}
                         </div>
                     </div>
 
@@ -295,6 +331,8 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
                             marginTop: '4px',
                         }}>
                             Available: {formatAmount(unclaimedFees.token1Amount, position.token1Decimals)} {position.token1Symbol}
+                            <br />
+                            Max withdrawable: {formatAmount(max1, position.token1Decimals)} {position.token1Symbol}
                         </div>
                     </div>
                     </div>

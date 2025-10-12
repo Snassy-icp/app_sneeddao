@@ -9,7 +9,7 @@ import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
 import ClaimFeesModal from './ClaimFeesModal';
 
-const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, swapCanisterBalance0, swapCanisterBalance1, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
+const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
 
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -862,6 +862,8 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     token0Amount: positionDetails.tokensOwed0,
                     token1Amount: positionDetails.tokensOwed1
                 }}
+                token0Fee={token0Fee}
+                token1Fee={token1Fee}
             />
         </div>
     );
