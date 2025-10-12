@@ -5,7 +5,7 @@ import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createIcpSwapActor } from 'external/icp_swap';
 import { createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { formatAmount } from '../utils/StringUtils';
-import { getTokenLogo, getTokenMetaForSwap } from '../utils/TokenUtils';
+import { getTokenLogo, getTokenMetaForSwap, get_token_conversion_rate } from '../utils/TokenUtils';
 import Header from '../components/Header';
 import { Principal } from '@dfinity/principal';
 import { createActor as createNeutriniteDappActor, canisterId as neutriniteCanisterId } from 'external/neutrinite_dapp';
@@ -23,8 +23,7 @@ function SneedlockInfo() {
     const [metadataLoading, setMetadataLoading] = useState(true);
     const [tokenMetadata, setTokenMetadata] = useState({});
     const [expandedRows, setExpandedRows] = useState(new Set());  // Track expanded rows
-    const [usdValues, setUsdValues] = useState({});
-    const [conversionRates, setConversionRates] = useState({});
+    const [conversionRates, setConversionRates] = useState({});  // Cache for conversion rates
     const [ownerFilter, setOwnerFilter] = useState('');
     const [ledgerFilter, setLedgerFilter] = useState('');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
@@ -174,7 +173,11 @@ function SneedlockInfo() {
     };
 
     const getUSDValue = (amount, decimals, symbol) => {
-        if (!amount || !decimals || !symbol || !conversionRates[symbol]) return null;
+        if (!amount || !decimals || !symbol) return null;
+        
+        // Check cache first
+        if (!conversionRates[symbol]) return null;
+        
         const normalizedAmount = Number(amount) / Math.pow(10, decimals);
         return normalizedAmount * conversionRates[symbol];
     };
@@ -201,23 +204,38 @@ function SneedlockInfo() {
         };
     };
 
-    const fetchConversionRates = async () => {
+    // Fetch conversion rate for a specific token
+    const fetchTokenConversionRate = async (tokenKey, decimals, symbol) => {
         try {
-            // TODO: Migrate to use priceService for specific tokens as needed
-            // For now, disable Neutrinite dependency
-            console.warn('fetchConversionRates: Rate fetching disabled. Migrate to use priceService per-token.');
-            setConversionRates({});
+            const rate = await get_token_conversion_rate(tokenKey, decimals);
+            setConversionRates(prev => ({
+                ...prev,
+                [symbol]: rate
+            }));
         } catch (err) {
-            console.error('Error fetching conversion rates:', err);
+            console.error(`Error fetching conversion rate for ${tokenKey}:`, err);
         }
     };
 
+    // Fetch conversion rates for all tokens when metadata is loaded
     useEffect(() => {
-        fetchConversionRates();
-        // Refresh rates every 5 minutes
-        const interval = setInterval(fetchConversionRates, 5 * 60 * 1000);
-        return () => clearInterval(interval);
-    }, []);
+        const fetchAllRates = async () => {
+            const tokens = Object.keys(tokenMetadata);
+            await Promise.all(
+                tokens.map(tokenKey => {
+                    const token = tokenMetadata[tokenKey];
+                    if (token?.decimals && token?.symbol) {
+                        return fetchTokenConversionRate(tokenKey, token.decimals, token.symbol);
+                    }
+                    return Promise.resolve();
+                })
+            );
+        };
+        
+        if (Object.keys(tokenMetadata).length > 0) {
+            fetchAllRates();
+        }
+    }, [tokenMetadata]);
 
     async function fetchPositionDetails(swapCanisterId) {
         if (swapCanisterCache[swapCanisterId.toText()]) {
@@ -369,7 +387,6 @@ function SneedlockInfo() {
 
     const fetchData = async () => {
         setInitialLoading(true);
-        await fetchConversionRates(); // Fetch conversion rates first
         try {
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
             
