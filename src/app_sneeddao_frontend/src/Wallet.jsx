@@ -1612,18 +1612,13 @@ function Wallet() {
     };
     
     const handleWithdrawPositionRewards = async (liquidityPosition) => {
-        console.log('=== Claiming position rewards ===');
+        console.log('=== Claiming position fees ===');
         console.log('Position:', liquidityPosition.symbols, 'ID:', liquidityPosition.id);
-        console.log('Requested amounts:', {
-            token0: liquidityPosition.requestedToken0Amount?.toString(),
-            token1: liquidityPosition.requestedToken1Amount?.toString()
-        });
-        console.log('Claim and withdraw:', liquidityPosition.claimAndWithdraw !== false); // default true
         
         // Only available for frontend positions
         if (!liquidityPosition.frontendOwnership) {
-            console.error('Cannot claim rewards from backend position');
-            throw new Error('Reward claiming is only available for positions in your frontend wallet');
+            console.error('Cannot claim fees from backend position');
+            throw new Error('Fee claiming is only available for positions in your frontend wallet');
         }
 
         try {
@@ -1632,7 +1627,7 @@ function Wallet() {
                 agentOptions: { identity } 
             });
 
-            // Step 1: Claim the position fees (this moves fees from position to user balance in the swap canister)
+            // Claim the position fees (this moves ALL fees from position to user balance in the swap canister)
             console.log('Calling claim for position', liquidityPosition.id);
             const claimResult = await swapActor.claim({ 
                 positionId: Number(liquidityPosition.id) 
@@ -1652,98 +1647,13 @@ function Wallet() {
                 token1: claimedAmount1.toString()
             });
 
-            // If claimAndWithdraw is false, stop here (just claim, don't withdraw)
-            if (liquidityPosition.claimAndWithdraw === false) {
-                console.log('Claim only mode - skipping withdrawal');
-                await fetchLiquidityPositions();
-                console.log('=== Claim process completed ===');
-                return;
-            }
-
-            // Get token metadata
-            const swapMeta = await swapActor.metadata();
-            if (!swapMeta.ok) {
-                throw new Error('Failed to get swap metadata');
-            }
-
-            const token0Ledger = swapMeta.ok.token0.address;
-            const token1Ledger = swapMeta.ok.token1.address;
-
-            // Get fees for both tokens
-            const ledgerActor0 = createLedgerActor(token0Ledger);
-            const fee0 = await ledgerActor0.icrc1_fee();
-
-            const ledgerActor1 = createLedgerActor(token1Ledger);
-            const fee1 = await ledgerActor1.icrc1_fee();
-
-            console.log('Token fees:', {
-                token0Fee: fee0.toString(),
-                token1Fee: fee1.toString()
-            });
-
-            // Use requested amounts or default to claimed amounts
-            const requestedAmount0 = liquidityPosition.requestedToken0Amount || 0n;
-            const requestedAmount1 = liquidityPosition.requestedToken1Amount || 0n;
-
-            // Step 2: Withdraw token0 if requested amount is positive and exceeds fee
-            if (requestedAmount0 > 0n && requestedAmount0 > fee0) {
-                console.log('Withdrawing token0:', requestedAmount0.toString(), 'with fee:', fee0.toString(), 'from ledger:', token0Ledger);
-                
-                // Try withdrawing with the full requested amount (the swap canister should handle the fee)
-                const withdraw0Result = await swapActor.withdraw({
-                    fee: fee0,
-                    token: token0Ledger,
-                    amount: requestedAmount0
-                });
-                
-                console.log('Token0 withdraw result:', toJsonString(withdraw0Result));
-                
-                if (withdraw0Result.err) {
-                    console.error('Token0 withdraw failed:', toJsonString(withdraw0Result.err));
-                    // Don't throw - try to withdraw token1 anyway
-                    console.log('Continuing with token1 despite token0 failure');
-                } else {
-                    console.log('Token0 withdrawn successfully:', toJsonString(withdraw0Result.ok));
-                }
-            } else if (requestedAmount0 > 0n) {
-                console.log('Token0 amount too small to withdraw (less than fee):', requestedAmount0.toString(), 'fee:', fee0.toString());
-            }
-
-            // Step 3: Withdraw token1 if requested amount is positive and exceeds fee
-            if (requestedAmount1 > 0n && requestedAmount1 > fee1) {
-                console.log('Withdrawing token1:', requestedAmount1.toString(), 'with fee:', fee1.toString(), 'from ledger:', token1Ledger);
-                
-                // Try withdrawing with the full requested amount (the swap canister should handle the fee)
-                const withdraw1Result = await swapActor.withdraw({
-                    fee: fee1,
-                    token: token1Ledger,
-                    amount: requestedAmount1
-                });
-                
-                console.log('Token1 withdraw result:', toJsonString(withdraw1Result));
-                
-                if (withdraw1Result.err) {
-                    console.error('Token1 withdraw failed:', toJsonString(withdraw1Result.err));
-                    // Don't throw - withdrawal might have partially succeeded
-                    console.log('Token1 withdrawal failed but continuing');
-                } else {
-                    console.log('Token1 withdrawn successfully:', toJsonString(withdraw1Result.ok));
-                }
-            } else if (requestedAmount1 > 0n) {
-                console.log('Token1 amount too small to withdraw (less than fee):', requestedAmount1.toString(), 'fee:', fee1.toString());
-            }
-
             // Refresh liquidity positions to update the UI
             await fetchLiquidityPositions();
             
-            // Also refresh token balances for both tokens
-            await fetchBalancesAndLocks(Principal.fromText(token0Ledger));
-            await fetchBalancesAndLocks(Principal.fromText(token1Ledger));
-            
-            console.log('=== Claim & withdrawal process completed ===');
+            console.log('=== Claim process completed ===');
 
         } catch (error) {
-            console.error('=== Error claiming position rewards ===');
+            console.error('=== Error claiming position fees ===');
             console.error('Error:', error);
             throw error;
         }

@@ -7,7 +7,6 @@ import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
 import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
-import ClaimFeesModal from './ClaimFeesModal';
 
 const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
 
@@ -17,7 +16,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [locksExpanded, setLocksExpanded] = useState(defaultLocksExpanded);
     const [infoExpanded, setInfoExpanded] = useState(false);
-    const [showClaimModal, setShowClaimModal] = useState(false);
+    const [isClaiming, setIsClaiming] = useState(false);
 
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
@@ -286,9 +285,28 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                             <div className="withdraw-button-container">
                                 <button 
                                     className="withdraw-button" 
-                                    onClick={() => setShowClaimModal(true)}
+                                    onClick={async () => {
+                                        try {
+                                            setIsClaiming(true);
+                                            await handleWithdrawPositionRewards({
+                                                swapCanisterId: position.swapCanisterId,
+                                                id: positionDetails.positionId,
+                                                frontendOwnership: positionDetails.frontendOwnership,
+                                                symbols: position.token0Symbol + '/' + position.token1Symbol
+                                            });
+                                        } catch (error) {
+                                            alert(`Failed to claim fees: ${error.message || error.toString()}`);
+                                        } finally {
+                                            setIsClaiming(false);
+                                        }
+                                    }}
+                                    disabled={isClaiming}
+                                    style={{
+                                        opacity: isClaiming ? 0.6 : 1,
+                                        cursor: isClaiming ? 'not-allowed' : 'pointer'
+                                    }}
                                 >
-                                    Claim Fees
+                                    {isClaiming ? 'Claiming...' : 'Claim Fees'}
                                 </button>
                             </div>
                         )}
@@ -836,35 +854,6 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
             </div>
                 </>
             )}
-            
-            {/* Claim Fees Modal */}
-            <ClaimFeesModal
-                show={showClaimModal}
-                onClose={() => setShowClaimModal(false)}
-                onClaim={(amounts) => handleWithdrawPositionRewards({
-                    swapCanisterId: position.swapCanisterId,
-                    id: positionDetails.positionId,
-                    frontendOwnership: positionDetails.frontendOwnership,
-                    symbols: position.token0Symbol + '/' + position.token1Symbol,
-                    requestedToken0Amount: amounts.token0Amount,
-                    requestedToken1Amount: amounts.token1Amount,
-                    claimAndWithdraw: amounts.claimAndWithdraw
-                })}
-                position={{
-                    positionId: positionDetails.positionId,
-                    token0Symbol: position.token0Symbol,
-                    token1Symbol: position.token1Symbol,
-                    token0Decimals: position.token0Decimals,
-                    token1Decimals: position.token1Decimals,
-                    swapCanisterId: position.swapCanisterId
-                }}
-                unclaimedFees={{
-                    token0Amount: positionDetails.tokensOwed0,
-                    token1Amount: positionDetails.tokensOwed1
-                }}
-                token0Fee={token0Fee}
-                token1Fee={token1Fee}
-            />
         </div>
     );
 };
