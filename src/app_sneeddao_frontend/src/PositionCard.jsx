@@ -8,7 +8,7 @@ import { useNaming } from './NamingContext';
 import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
 
-const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
+const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleClaimLockedPositionFees, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
 
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -283,8 +283,8 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 <span className="amount-value">{formatAmount(positionDetails.tokensOwed1, position.token1Decimals)}{getUSD(positionDetails.tokensOwed1, position.token1Decimals, position.token1_conversion_rate)}</span>
                             </div>
                         </div>
-                        {/* Only show claim button for frontend positions */}
-                        {positionDetails.frontendOwnership && handleWithdrawPositionRewards && (
+                        {/* Claim button for frontend positions */}
+                        {positionDetails.frontendOwnership && handleWithdrawPositionRewards && !hideButtons && (
                             <div className="withdraw-button-container">
                                 <button 
                                     className="withdraw-button" 
@@ -311,6 +311,54 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 >
                                     {isClaiming ? 'Claiming...' : 'Claim Fees'}
                                 </button>
+                            </div>
+                        )}
+                        
+                        {/* Claim button for locked backend positions */}
+                        {!positionDetails.frontendOwnership && positionDetails.lockInfo && handleClaimLockedPositionFees && !hideButtons && (
+                            <div className="withdraw-button-container">
+                                <button 
+                                    className="withdraw-button" 
+                                    onClick={async () => {
+                                        try {
+                                            setIsClaimingLocked(true);
+                                            setClaimStatus('Submitting request...');
+                                            const result = await handleClaimLockedPositionFees({
+                                                swapCanisterId: position.swapCanisterId,
+                                                positionId: positionDetails.positionId,
+                                                symbols: position.token0Symbol + '/' + position.token1Symbol,
+                                                onStatusUpdate: (status, requestId) => {
+                                                    setClaimStatus(status);
+                                                    if (requestId) setClaimRequestId(requestId);
+                                                }
+                                            });
+                                            setClaimStatus(null);
+                                            setClaimRequestId(null);
+                                        } catch (error) {
+                                            alert(`Failed to claim fees: ${error.message || error.toString()}`);
+                                            setClaimStatus(null);
+                                        } finally {
+                                            setIsClaimingLocked(false);
+                                        }
+                                    }}
+                                    disabled={isClaimingLocked}
+                                    style={{
+                                        opacity: isClaimingLocked ? 0.6 : 1,
+                                        cursor: isClaimingLocked ? 'not-allowed' : 'pointer'
+                                    }}
+                                >
+                                    {isClaimingLocked ? (claimStatus || 'Claiming...') : 'Claim Fees'}
+                                </button>
+                                {claimRequestId && (
+                                    <div style={{
+                                        fontSize: '0.8rem',
+                                        color: theme.colors.secondaryText,
+                                        marginTop: '4px',
+                                        textAlign: 'center'
+                                    }}>
+                                        Request #{claimRequestId}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

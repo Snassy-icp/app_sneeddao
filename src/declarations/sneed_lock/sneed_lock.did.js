@@ -148,6 +148,11 @@ export const idlFactory = ({ IDL }) => {
         [TransferResult],
         [],
       ),
+    'admin_set_enforce_zero_balance_before_claim' : IDL.Func(
+        [IDL.Bool],
+        [],
+        [],
+      ),
     'claim_position' : IDL.Func([IDL.Principal, PositionId], [IDL.Bool], []),
     'clear_expired_locks' : IDL.Func([], [], []),
     'clear_expired_position_locks' : IDL.Func([], [], []),
@@ -189,6 +194,15 @@ export const idlFactory = ({ IDL }) => {
         ],
         ['query'],
       ),
+    'get_claim_request_status' : IDL.Func(
+        [ClaimRequestId],
+        [
+          IDL.Opt(
+            IDL.Variant({ 'Active' : ClaimRequest, 'Completed' : IDL.Text })
+          ),
+        ],
+        ['query'],
+      ),
     'get_claimed_positions_for_principal' : IDL.Func(
         [IDL.Principal],
         [IDL.Vec(ClaimedPosition)],
@@ -202,6 +216,11 @@ export const idlFactory = ({ IDL }) => {
     'get_completed_claim_requests_id_range' : IDL.Func(
         [],
         [IDL.Opt(IDL.Tuple(IDL.Nat, IDL.Nat))],
+        ['query'],
+      ),
+    'get_enforce_zero_balance_before_claim' : IDL.Func(
+        [],
+        [IDL.Bool],
         ['query'],
       ),
     'get_error_entries' : IDL.Func(

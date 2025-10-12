@@ -102,6 +102,10 @@ export interface SneedLock {
     [Principal, bigint, Principal],
     TransferResult
   >,
+  'admin_set_enforce_zero_balance_before_claim' : ActorMethod<
+    [boolean],
+    undefined
+  >,
   'claim_position' : ActorMethod<[Principal, PositionId], boolean>,
   'clear_expired_locks' : ActorMethod<[], undefined>,
   'clear_expired_position_locks' : ActorMethod<[], undefined>,
@@ -126,6 +130,10 @@ export interface SneedLock {
       'processing_state' : QueueProcessingState,
     }
   >,
+  'get_claim_request_status' : ActorMethod<
+    [ClaimRequestId],
+    [] | [{ 'Active' : ClaimRequest } | { 'Completed' : string }]
+  >,
   'get_claimed_positions_for_principal' : ActorMethod<
     [Principal],
     Array<ClaimedPosition>
@@ -138,6 +146,7 @@ export interface SneedLock {
     [],
     [] | [[bigint, bigint]]
   >,
+  'get_enforce_zero_balance_before_claim' : ActorMethod<[], boolean>,
   'get_error_entries' : ActorMethod<
     [bigint, bigint],
     Array<[] | [BufferEntry]>

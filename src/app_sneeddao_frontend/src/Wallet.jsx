@@ -1659,6 +1659,104 @@ function Wallet() {
         }
     };
 
+    const handleClaimLockedPositionFees = async ({ swapCanisterId, positionId, symbols, onStatusUpdate }) => {
+        console.log('=== Claiming locked position fees ===');
+        console.log('Position:', symbols, 'ID:', positionId);
+        console.log('Swap Canister:', swapCanisterId);
+
+        try {
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { 
+                agentOptions: { identity } 
+            });
+
+            // Submit claim request
+            console.log('Submitting claim request...');
+            const submitResult = await sneedLockActor.request_claim_and_withdraw(
+                Principal.fromText(swapCanisterId),
+                BigInt(positionId)
+            );
+
+            console.log('Submit result:', toJsonString(submitResult));
+
+            if (submitResult.Err) {
+                throw new Error(submitResult.Err);
+            }
+
+            const requestId = Number(submitResult.Ok);
+            console.log('Request submitted with ID:', requestId);
+            onStatusUpdate('⏳ Waiting in queue...', requestId);
+
+            // Poll for status updates
+            let isComplete = false;
+            let pollCount = 0;
+            const maxPolls = 120; // 10 minutes max (5 sec intervals)
+
+            while (!isComplete && pollCount < maxPolls) {
+                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+                pollCount++;
+
+                console.log(`Polling status (attempt ${pollCount})...`);
+                const statusResult = await sneedLockActor.get_claim_request_status(BigInt(requestId));
+
+                if (!statusResult || statusResult.length === 0) {
+                    console.log('Request not found');
+                    throw new Error('Request not found');
+                }
+
+                const status = statusResult[0];
+                
+                if ('Completed' in status) {
+                    console.log('Request completed:', status.Completed);
+                    onStatusUpdate('✅ Completed', requestId);
+                    isComplete = true;
+                    break;
+                }
+
+                if ('Active' in status) {
+                    const activeRequest = status.Active;
+                    const requestStatus = activeRequest.status;
+
+                    // Map status to user-friendly message
+                    let statusMessage = '⚙️ Processing...';
+                    if ('Pending' in requestStatus) {
+                        statusMessage = '⏳ Waiting in queue...';
+                    } else if ('Processing' in requestStatus) {
+                        statusMessage = '⚙️ Processing started';
+                    } else if ('BalanceRecorded' in requestStatus) {
+                        statusMessage = '📊 Recording balances...';
+                    } else if ('ClaimAttempted' in requestStatus) {
+                        statusMessage = '🎯 Claiming rewards...';
+                    } else if ('ClaimVerified' in requestStatus) {
+                        statusMessage = '✓ Verified, withdrawing...';
+                    } else if ('Withdrawn' in requestStatus) {
+                        statusMessage = '💰 Withdrawing...';
+                    } else if ('Failed' in requestStatus) {
+                        throw new Error(`Claim failed: ${requestStatus.Failed}`);
+                    } else if ('TimedOut' in requestStatus) {
+                        throw new Error('Request timed out');
+                    }
+
+                    console.log('Status:', statusMessage);
+                    onStatusUpdate(statusMessage, requestId);
+                }
+            }
+
+            if (!isComplete) {
+                throw new Error('Polling timeout - request may still be processing');
+            }
+
+            // Refresh liquidity positions to update the UI
+            await fetchLiquidityPositions();
+            
+            console.log('=== Locked position claim completed ===');
+
+        } catch (error) {
+            console.error('=== Error claiming locked position fees ===');
+            console.error('Error:', error);
+            throw error;
+        }
+    };
+
     const handleAddLedgerCanister = async (ledgerCanisterId) => {
         const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
         await backendActor.register_ledger_canister_id(Principal.fromText(ledgerCanisterId));
@@ -2015,6 +2113,7 @@ function Wallet() {
                                 openSendLiquidityPositionModal={openSendLiquidityPositionModal}
                                 openLockPositionModal={openLockPositionModal}
                                 handleWithdrawPositionRewards={handleWithdrawPositionRewards}
+                                handleClaimLockedPositionFees={handleClaimLockedPositionFees}
                                 handleWithdrawPosition={handleWithdrawPosition}
                                 handleWithdrawSwapBalance={handleWithdrawSwapBalance}
                                 handleTransferPositionOwnership={handleSendLiquidityPosition}
