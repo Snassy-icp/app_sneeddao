@@ -314,10 +314,10 @@ function HelpSneedlock() {
                         </li>
                     </ul>
                     
-                    <h3 style={styles.subsubheading}>Public Sneedlock Explorer</h3>
+                    <h3 style={styles.subsubheading}>Public Sneedlock Dashboard</h3>
                     <p style={styles.paragraph}>
-                        All locks are publicly visible on the blockchain for transparency. You can view aggregate lock 
-                        information and individual locks through the Sneedlock explorer interface. This allows anyone to 
+                        All locks are publicly visible for transparency. You can view aggregate lock 
+                        information and individual locks through the <Link to="/sneedlock_info" style={styles.link}>SneedLock Dashboard</Link>. This allows anyone to 
                         verify commitments and see total locked amounts.
                     </p>
                 </div>
@@ -352,10 +352,96 @@ function HelpSneedlock() {
                     </p>
                     <ol style={styles.list}>
                         <li style={styles.listItem}>Navigate to your locked position in the <Link to="/wallet" style={styles.link}>Wallet page</Link></li>
-                        <li style={styles.listItem}>If the lock has expired, you'll see an option to claim or unlock the position</li>
-                        <li style={styles.listItem}>Click the unlock button to transfer ownership back to your principal</li>
-                        <li style={styles.listItem}>The position will return to your regular liquidity positions</li>
+                        <li style={styles.listItem}>Once the lock has expired, the position remains in the backend but becomes unlocked</li>
+                        <li style={styles.listItem}>You can now <strong style={styles.strong}>Send</strong> the position to another address directly from the backend</li>
+                        <li style={styles.listItem}>Or click <strong style={styles.strong}>"Withdraw"</strong> to transfer the position back to your frontend wallet</li>
                     </ol>
+                    <p style={styles.paragraph}>
+                        The position stays on the backend after unlock, giving you the flexibility to either send it to someone else 
+                        or withdraw it back to your frontend wallet for management on ICPSwap.
+                    </p>
+                </div>
+
+                {/* Transferring Locked Assets */}
+                <div style={styles.section}>
+                    <h2 style={styles.subheading}>Transferring Locked Assets</h2>
+                    
+                    <p style={styles.paragraph}>
+                        A powerful feature of Sneedlock 2.0 is the ability to transfer ownership of locked assets <strong style={styles.strong}>
+                        while they remain locked</strong>. This allows you to give locked tokens or positions to another principal 
+                        without unlocking them early.
+                    </p>
+                    
+                    <h3 style={styles.subsubheading}>Transferring Locked Token Locks</h3>
+                    <p style={styles.paragraph}>
+                        For active token locks, you can transfer ownership to another principal:
+                    </p>
+                    <ol style={styles.list}>
+                        <li style={styles.listItem}>Go to your <Link to="/wallet" style={styles.link}>Wallet page</Link> and expand the token card</li>
+                        <li style={styles.listItem}>In the Locks section, find the lock you want to transfer</li>
+                        <li style={styles.listItem}>Click the <strong style={styles.strong}>"Transfer Ownership"</strong> button</li>
+                        <li style={styles.listItem}>Enter the recipient's principal ID</li>
+                        <li style={styles.listItem}>Confirm the transfer</li>
+                    </ol>
+                    <p style={styles.paragraph}>
+                        The tokens remain locked on the backend with the same expiration date, but ownership is transferred to the 
+                        recipient. The recipient will be able to withdraw the tokens once the lock expires.
+                    </p>
+                    
+                    <div style={styles.infoBox}>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>Note:</strong> The tokens stay locked and cannot be used before the 
+                            lock expires, regardless of who owns them. This ensures the commitment remains intact even when 
+                            ownership changes.
+                        </p>
+                    </div>
+                    
+                    <h3 style={styles.subsubheading}>Transferring Locked Liquidity Positions</h3>
+                    <p style={styles.paragraph}>
+                        Similarly, you can transfer ownership of locked liquidity positions:
+                    </p>
+                    <ol style={styles.list}>
+                        <li style={styles.listItem}>Navigate to the locked position in your <Link to="/wallet" style={styles.link}>Wallet page</Link></li>
+                        <li style={styles.listItem}>Expand the position card to see details</li>
+                        <li style={styles.listItem}>Click the <strong style={styles.strong}>"Transfer"</strong> button (available even when locked)</li>
+                        <li style={styles.listItem}>Enter the recipient's principal ID</li>
+                        <li style={styles.listItem}>Confirm the transfer</li>
+                    </ol>
+                    <p style={styles.paragraph}>
+                        The position remains locked and continues earning trading fees, but the recipient becomes the owner. 
+                        They cannot pull liquidity or modify the position until the lock expires, ensuring the commitment is preserved.
+                    </p>
+                    
+                    <h3 style={styles.subsubheading}>Use Cases for Lock Transfers</h3>
+                    <p style={styles.paragraph}>
+                        This feature enables several important use cases:
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Vesting transfers:</strong> Transfer vested tokens to employees or 
+                            contributors while maintaining the vesting schedule
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Token sales:</strong> Sell locked tokens at a discount, with the lock 
+                            providing security for both parties
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>DAO treasuries:</strong> Transfer locked liquidity positions to a DAO 
+                            while keeping the commitment guarantee
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Inheritance planning:</strong> Transfer locked assets to family members 
+                            or beneficiaries
+                        </li>
+                    </ul>
+                    
+                    <div style={styles.warningBox}>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>⚠️ Important:</strong> Lock transfers are permanent. Once you transfer 
+                            ownership of a locked asset, you cannot get it back unless the recipient transfers it back to you. 
+                            Double-check the recipient principal before confirming!
+                        </p>
+                    </div>
                 </div>
 
                 {/* Fees and Limits */}
@@ -494,8 +580,10 @@ function HelpSneedlock() {
                     
                     <h3 style={styles.subsubheading}>Can I transfer a lock to someone else?</h3>
                     <p style={styles.paragraph}>
-                        Currently, locks are tied to your principal ID and cannot be transferred. However, once a lock 
-                        expires and you withdraw the assets, you're free to send them to anyone.
+                        Yes! Sneedlock 2.0 supports transferring ownership of locked assets while they remain locked. 
+                        Both token locks and locked liquidity positions can be transferred to another principal. The lock 
+                        expiration and all other parameters remain unchanged—only the owner changes. See the 
+                        "Transferring Locked Assets" section above for details.
                     </p>
                     
                     <h3 style={styles.subsubheading}>Do locked tokens still earn rewards?</h3>
@@ -543,6 +631,9 @@ function HelpSneedlock() {
                         </li>
                         <li style={styles.listItem}>
                             <Link to="/wallet" style={styles.link}>Go to Wallet</Link> - Manage your assets and create locks
+                        </li>
+                        <li style={styles.listItem}>
+                            <Link to="/sneedlock_info" style={styles.link}>SneedLock Dashboard</Link> - View all locks and aggregate statistics
                         </li>
                         <li style={styles.listItem}>
                             <Link to="/help" style={styles.link}>Help Center</Link> - Browse all help topics

@@ -15,6 +15,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
     const { isAuthenticated } = useAuth();
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [locksExpanded, setLocksExpanded] = useState(defaultLocksExpanded);
+    const [infoExpanded, setInfoExpanded] = useState(false);
 
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
@@ -567,6 +568,229 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                             </div>
                         )}
                         </div>
+                )}
+            </div>
+
+            {/* Position Info Section */}
+            <div className="info-section">
+                {/* Collapsible Info Header */}
+                <div 
+                    className="info-header" 
+                    onClick={() => setInfoExpanded(!infoExpanded)}
+                    style={{
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '12px 0',
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        marginBottom: infoExpanded ? '15px' : '0'
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                            ℹ️ Position Info
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        {/* Expand/Collapse Indicator */}
+                        <span 
+                            style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '1.2rem',
+                                transform: infoExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                transition: 'transform 0.2s ease'
+                            }}
+                        >
+                            ▼
+                        </span>
+                    </div>
+                </div>
+
+                {/* Collapsible Info Content */}
+                {infoExpanded && (
+                    <div style={{ paddingBottom: '15px' }}>
+                        {/* Swap Canister ID */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 0',
+                            borderBottom: `1px solid ${theme.colors.border}`
+                        }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                Swap Canister:
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontSize: '0.9rem',
+                                    fontFamily: 'monospace'
+                                }}>
+                                    {position.swapCanisterId?.toString?.() || position.swapCanisterId || 'N/A'}
+                                </span>
+                                {position.swapCanisterId && (
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(
+                                                position.swapCanisterId?.toString?.() || position.swapCanisterId
+                                            );
+                                        }}
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            padding: '4px',
+                                            color: theme.colors.accent,
+                                            fontSize: '0.9rem'
+                                        }}
+                                        title="Copy to clipboard"
+                                    >
+                                        📋
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Position ID */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 0',
+                            borderBottom: `1px solid ${theme.colors.border}`
+                        }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                Position ID:
+                            </span>
+                            <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                #{positionDetails.positionId?.toString() || 'N/A'}
+                            </span>
+                        </div>
+
+                        {/* Token 0 Info */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 0',
+                            borderBottom: `1px solid ${theme.colors.border}`
+                        }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                Token 0:
+                            </span>
+                            <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                {position.token0Symbol || 'N/A'} ({position.token0Decimals || 'N/A'} decimals)
+                            </span>
+                        </div>
+
+                        {/* Token 0 Ledger */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 0',
+                            borderBottom: `1px solid ${theme.colors.border}`
+                        }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                Token 0 Ledger:
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontSize: '0.9rem',
+                                    fontFamily: 'monospace',
+                                    maxWidth: '250px',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                }}>
+                                    {position.token0?.toString?.() || position.token0 || 'N/A'}
+                                </span>
+                                {position.token0 && (
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(
+                                                position.token0?.toString?.() || position.token0
+                                            );
+                                        }}
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            padding: '4px',
+                                            color: theme.colors.accent,
+                                            fontSize: '0.9rem'
+                                        }}
+                                        title="Copy to clipboard"
+                                    >
+                                        📋
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Token 1 Info */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 0',
+                            borderBottom: `1px solid ${theme.colors.border}`
+                        }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                Token 1:
+                            </span>
+                            <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                {position.token1Symbol || 'N/A'} ({position.token1Decimals || 'N/A'} decimals)
+                            </span>
+                        </div>
+
+                        {/* Token 1 Ledger */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 0'
+                        }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                Token 1 Ledger:
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontSize: '0.9rem',
+                                    fontFamily: 'monospace',
+                                    maxWidth: '250px',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap'
+                                }}>
+                                    {position.token1?.toString?.() || position.token1 || 'N/A'}
+                                </span>
+                                {position.token1 && (
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(
+                                                position.token1?.toString?.() || position.token1
+                                            );
+                                        }}
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            padding: '4px',
+                                            color: theme.colors.accent,
+                                            fontSize: '0.9rem'
+                                        }}
+                                        title="Copy to clipboard"
+                                    >
+                                        📋
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 )}
             </div>
                 </>
