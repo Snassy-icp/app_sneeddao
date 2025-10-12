@@ -86,6 +86,16 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     <div className="header-row-2">
                         <div className="amount-symbol">
                             <span className="token-amount">#{positionDetails.positionId.toString()}</span>
+                            {isLockedPosition(positionDetails) && (
+                                <span style={{
+                                    marginLeft: '6px',
+                                    fontSize: '14px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center'
+                                }} title="Position is locked">
+                                    🔒
+                                </span>
+                            )}
                         </div>
                         <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
                     </div>
