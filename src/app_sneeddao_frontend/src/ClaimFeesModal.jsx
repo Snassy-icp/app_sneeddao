@@ -11,16 +11,21 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
     const [isClaiming, setIsClaiming] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
     const [errorText, setErrorText] = useState('');
+    const [isInitialized, setIsInitialized] = useState(false);
 
-    // When modal opens, set defaults to max available
+    // When modal opens, set defaults to max available (only once)
     useEffect(() => {
-        if (show && unclaimedFees) {
+        if (show && unclaimedFees && !isInitialized) {
             setToken0Amount(formatAmount(unclaimedFees.token0Amount, position.token0Decimals));
             setToken1Amount(formatAmount(unclaimedFees.token1Amount, position.token1Decimals));
             setClaimAndWithdraw(true); // Default to Claim & Withdraw
             setErrorText('');
+            setIsInitialized(true);
+        } else if (!show && isInitialized) {
+            // Reset when modal closes
+            setIsInitialized(false);
         }
-    }, [show, unclaimedFees, position]);
+    }, [show, unclaimedFees, position, isInitialized]);
 
     if (!show) return null;
 
