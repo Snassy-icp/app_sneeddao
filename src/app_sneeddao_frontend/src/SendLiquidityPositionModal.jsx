@@ -14,6 +14,8 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const [confirmMessage, setConfirmMessage] = useState('');
+  
+  const isBackendTransfer = liquidityPosition?.isBackendTransfer || false;
 
   useEffect(() => {
     if (show) {
@@ -49,7 +51,11 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
       }
     });
 
-    setConfirmMessage(`You are about to send position #${liquidityPosition.id.toString()} of ${liquidityPosition.symbols} to ${recipient}.`);
+    const action = isBackendTransfer ? 'transfer ownership of' : 'send';
+    const explanation = isBackendTransfer 
+      ? ' This will transfer backend ownership while keeping the position locked.' 
+      : '';
+    setConfirmMessage(`You are about to ${action} position #${liquidityPosition.id.toString()} of ${liquidityPosition.symbols} to ${recipient}.${explanation}`);
     setShowConfirmModal(true);
   };
 
@@ -88,7 +94,7 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
           fontSize: '1.5rem',
           fontWeight: '600'
         }}>
-          Send {liquidityPosition.symbols} Position #{liquidityPosition.id.toString()}
+          {isBackendTransfer ? 'Transfer' : 'Send'} {liquidityPosition.symbols} Position #{liquidityPosition.id.toString()}
         </h2>
         
         <div style={{ marginBottom: '20px' }}>
@@ -174,7 +180,7 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
                 e.target.style.background = theme.colors.accent;
               }}
             >
-              Send
+              {isBackendTransfer ? 'Transfer' : 'Send'}
             </button>
             <button 
               onClick={onClose} 

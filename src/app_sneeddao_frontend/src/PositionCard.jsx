@@ -8,7 +8,7 @@ import { useNaming } from './NamingContext';
 import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
 
-const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, withdraw_position_rewards, handleWithdrawPosition, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
+const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, withdraw_position_rewards, handleWithdrawPosition, handleTransferPositionOwnership, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
 
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -174,6 +174,46 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                     />
                                     Send
                                     </button>
+                            )}
+
+                            {isLockedPosition(positionDetails) && !positionDetails.frontendOwnership && handleTransferPositionOwnership && (
+                                <button
+                                    onClick={() =>
+                                        openSendLiquidityPositionModal({
+                                            swapCanisterId: position.swapCanisterId,
+                                            id: positionDetails.positionId,
+                                            frontendOwnership: positionDetails.frontendOwnership,
+                                            symbols: position.token0Symbol + '/' + position.token1Symbol,
+                                            isBackendTransfer: true
+                                        })}
+                                    style={{
+                                        background: theme.colors.accent,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '6px 12px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.background = theme.colors.accentHover;
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.background = theme.colors.accent;
+                                    }}
+                                >
+                                    <img 
+                                        src="send-inverted.png" 
+                                        alt="Transfer" 
+                                        style={{ width: '14px', height: '14px' }}
+                                    />
+                                    Transfer
+                                </button>
                             )}
 
                         </div>

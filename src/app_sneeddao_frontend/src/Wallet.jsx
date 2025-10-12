@@ -1236,6 +1236,7 @@ function Wallet() {
     };
 
     const handleSendLiquidityPosition = async (liquidityPosition, recipient) => {
+        const isBackendTransfer = liquidityPosition.isBackendTransfer || false;
 
         if(liquidityPosition.frontendOwnership) {
             const actor = createIcpSwapActor(liquidityPosition.swapCanisterId, {
@@ -1255,11 +1256,27 @@ function Wallet() {
             });
 
         } else {
-
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
-            const result = await sneedLockActor.transfer_position(Principal.fromText(recipient), liquidityPosition.swapCanisterId, liquidityPosition.id);
-            const resultJson = toJsonString(result);
             
+            if (isBackendTransfer) {
+                // Transfer backend ownership only (for locked positions)
+                console.log('=== Transferring backend ownership ===');
+                console.log('Position:', liquidityPosition.symbols, 'ID:', liquidityPosition.id, 'To:', recipient);
+                const result = await sneedLockActor.transfer_position_ownership(
+                    Principal.fromText(recipient), 
+                    liquidityPosition.swapCanisterId, 
+                    liquidityPosition.id
+                );
+                console.log('Backend ownership transfer result:', toJsonString(result));
+            } else {
+                // Full transfer (actual position transfer on ICPSwap)
+                const result = await sneedLockActor.transfer_position(
+                    Principal.fromText(recipient), 
+                    liquidityPosition.swapCanisterId, 
+                    liquidityPosition.id
+                );
+                const resultJson = toJsonString(result);
+            }
         }
 
         /*await*/ fetchLiquidityPositions();
@@ -1865,6 +1882,7 @@ function Wallet() {
                                 openLockPositionModal={openLockPositionModal}
                                 withdraw_position_rewards={withdraw_position_rewards}
                                 handleWithdrawPosition={handleWithdrawPosition}
+                                handleTransferPositionOwnership={handleSendLiquidityPosition}
                                 hideButtons={false}
                                 hideUnclaimedFees={false}
                             />
