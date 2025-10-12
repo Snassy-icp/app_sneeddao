@@ -44,8 +44,16 @@ function ClaimFeesModal({ show, onClose, onClaim, position, unclaimedFees }) {
             setErrorText('');
 
             // Convert string amounts to BigInt (in base units)
-            const token0AmountBigInt = BigInt(Math.floor(parseFloat(token0Amount || '0') * Math.pow(10, position.token0Decimals)));
-            const token1AmountBigInt = BigInt(Math.floor(parseFloat(token1Amount || '0') * Math.pow(10, position.token1Decimals)));
+            // Ensure decimals is a regular number, not BigInt
+            const decimals0 = typeof position.token0Decimals === 'bigint' 
+                ? Number(position.token0Decimals) 
+                : position.token0Decimals;
+            const decimals1 = typeof position.token1Decimals === 'bigint' 
+                ? Number(position.token1Decimals) 
+                : position.token1Decimals;
+
+            const token0AmountBigInt = BigInt(Math.floor(parseFloat(token0Amount || '0') * Math.pow(10, decimals0)));
+            const token1AmountBigInt = BigInt(Math.floor(parseFloat(token1Amount || '0') * Math.pow(10, decimals1)));
 
             await onClaim({
                 token0Amount: token0AmountBigInt,
