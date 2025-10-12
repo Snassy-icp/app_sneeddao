@@ -68,6 +68,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [showSendNeuronDialog, setShowSendNeuronDialog] = useState(false);
     const [sendNeuronRecipient, setSendNeuronRecipient] = useState('');
     const [sendNeuronProgress, setSendNeuronProgress] = useState('');
+    const [showSplitNeuronDialog, setShowSplitNeuronDialog] = useState(false);
+    const [splitNeuronAmount, setSplitNeuronAmount] = useState('');
 
     // Debug logging for wrap/unwrap buttons
     console.log('TokenCard Debug:', {
@@ -347,6 +349,39 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             await refetchNeurons();
         } else {
             alert(`Error changing auto-stake maturity setting: ${result.err}`);
+        }
+        setNeuronActionBusy(false);
+        setManagingNeuronId(null);
+    };
+
+    const splitNeuron = async (neuronIdHex) => {
+        if (!splitNeuronAmount || parseFloat(splitNeuronAmount) <= 0) {
+            alert('Please enter a valid amount to split');
+            return;
+        }
+        
+        const amountE8s = BigInt(Math.floor(parseFloat(splitNeuronAmount) * Math.pow(10, token.decimals)));
+        
+        setNeuronActionBusy(true);
+        setManagingNeuronId(neuronIdHex);
+        
+        // Generate a random memo for tracking
+        const memo = BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER));
+        
+        const result = await manageNeuron(neuronIdHex, { 
+            Split: { 
+                amount_e8s: Number(amountE8s),
+                memo: Number(memo)
+            } 
+        });
+        
+        if (result.ok) {
+            alert('Neuron split successfully! A new neuron has been created.');
+            await refetchNeurons();
+            setShowSplitNeuronDialog(false);
+            setSplitNeuronAmount('');
+        } else {
+            alert(`Error splitting neuron: ${result.err}`);
         }
         setNeuronActionBusy(false);
         setManagingNeuronId(null);
@@ -2169,6 +2204,30 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                                             ➕ Increase Stake
                                                                                         </button>
                                                                                     )}
+                                                                                    
+                                                                                    {/* Split button - requires MANAGE_PRINCIPALS permission and stake > minimum */}
+                                                                                    {stake > 0n && userHasPermission(neuron, PERM.MANAGE_PRINCIPALS) && (
+                                                                                        <button
+                                                                                            onClick={() => {
+                                                                                                setManagingNeuronId(neuronIdHex);
+                                                                                                setShowSplitNeuronDialog(true);
+                                                                                            }}
+                                                                                            disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                                            style={{
+                                                                                                background: theme.colors.accent,
+                                                                                                color: theme.colors.primaryBg,
+                                                                                                border: 'none',
+                                                                                                borderRadius: '6px',
+                                                                                                padding: '8px 12px',
+                                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                                                fontSize: '0.85rem',
+                                                                                                fontWeight: '500',
+                                                                                                opacity: neuronActionBusy && managingNeuronId === neuronIdHex ? 0.6 : 1
+                                                                                            }}
+                                                                                        >
+                                                                                            ✂️ Split Neuron
+                                                                                        </button>
+                                                                                    )}
                                                                                 </div>
                                                                             )}
                                                                         </div>
@@ -2590,6 +2649,225 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     }}
                                 >
                                     {neuronActionBusy ? 'Processing...' : 'Confirm'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* Split Neuron Dialog */}
+            {showSplitNeuronDialog && (() => {
+                // Get the neuron being managed
+                const neuron = neurons.find(n => {
+                    const neuronIdBytes = n.id?.[0]?.id;
+                    if (!neuronIdBytes) return false;
+                    const neuronIdHex = Array.from(new Uint8Array(neuronIdBytes))
+                        .map(b => b.toString(16).padStart(2, '0'))
+                        .join('');
+                    return neuronIdHex === managingNeuronId;
+                });
+
+                if (!neuron) return null;
+
+                const stake = BigInt(neuron.cached_neuron_stake_e8s || 0n);
+                const minStakeE8s = nervousSystemParameters?.neuron_minimum_stake_e8s?.[0] || 0n;
+                
+                // The new neuron needs minimum stake, and the original must retain at least minimum stake
+                const maxSplitAmount = stake > (minStakeE8s * 2n) ? stake - minStakeE8s : 0n;
+                
+                return (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0, 0, 0, 0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000
+                    }}
+                    onClick={() => {
+                        if (!neuronActionBusy) {
+                            setShowSplitNeuronDialog(false);
+                            setSplitNeuronAmount('');
+                            setManagingNeuronId(null);
+                        }
+                    }}
+                    >
+                        <div style={{
+                            background: theme.colors.primaryBg,
+                            borderRadius: '12px',
+                            padding: '24px',
+                            maxWidth: '500px',
+                            width: '90%',
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        >
+                            <h3 style={{ color: theme.colors.primaryText, marginTop: 0 }}>
+                                ✂️ Split Neuron
+                            </h3>
+                            
+                            <p style={{ color: theme.colors.secondaryText, marginBottom: '8px' }}>
+                                Enter the amount of {token.symbol} to split into a new neuron:
+                            </p>
+                            
+                            <div style={{ 
+                                background: theme.colors.secondaryBg,
+                                borderRadius: '6px',
+                                padding: '12px',
+                                marginBottom: '16px'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Current Stake:</span>
+                                    <span style={{ color: theme.colors.primaryText, fontSize: '0.85rem', fontWeight: '600' }}>
+                                        {formatAmount(stake, token.decimals)} {token.symbol}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Minimum Stake Required:</span>
+                                    <span style={{ color: theme.colors.primaryText, fontSize: '0.85rem' }}>
+                                        {formatAmount(minStakeE8s, token.decimals)} {token.symbol}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Maximum Split Amount:</span>
+                                    <span style={{ color: theme.colors.accent, fontSize: '0.85rem', fontWeight: '600' }}>
+                                        {formatAmount(maxSplitAmount, token.decimals)} {token.symbol}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '16px' }}>
+                                The split amount will be moved to a new neuron. Both the original and new neuron must retain at least the minimum stake.
+                            </p>
+                            
+                            <div style={{ position: 'relative', marginBottom: '20px', display: 'flex', alignItems: 'center' }}>
+                                <input
+                                    type="text"
+                                    value={splitNeuronAmount}
+                                    onChange={(e) => {
+                                        const value = e.target.value;
+                                        // Allow numbers and one decimal point
+                                        if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                                            setSplitNeuronAmount(value);
+                                        }
+                                    }}
+                                    placeholder={`Amount (e.g., ${formatAmount(maxSplitAmount / 2n, token.decimals)})`}
+                                    disabled={neuronActionBusy || maxSplitAmount === 0n}
+                                    style={{
+                                        flex: 1,
+                                        minWidth: 0,
+                                        padding: '12px',
+                                        borderRadius: '6px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        background: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        fontSize: '1rem',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
+                                <button
+                                    onClick={() => {
+                                        setSplitNeuronAmount(formatAmount(maxSplitAmount, token.decimals));
+                                    }}
+                                    disabled={neuronActionBusy || maxSplitAmount === 0n}
+                                    style={{
+                                        marginLeft: '8px',
+                                        background: theme.colors.accent,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '8px 16px',
+                                        cursor: (neuronActionBusy || maxSplitAmount === 0n) ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.8rem',
+                                        fontWeight: '600',
+                                        flexShrink: 0,
+                                        whiteSpace: 'nowrap',
+                                        opacity: maxSplitAmount === 0n ? 0.5 : 1
+                                    }}
+                                >
+                                    MAX
+                                </button>
+                            </div>
+                            
+                            {maxSplitAmount === 0n && (
+                                <p style={{ 
+                                    color: theme.colors.error, 
+                                    fontSize: '0.85rem', 
+                                    marginBottom: '16px',
+                                    padding: '8px',
+                                    background: theme.colors.errorBg || theme.colors.secondaryBg,
+                                    borderRadius: '6px'
+                                }}>
+                                    ⚠️ This neuron doesn't have enough stake to split. You need at least {formatAmount(minStakeE8s * 2n, token.decimals)} {token.symbol} to create two minimum-stake neurons.
+                                </p>
+                            )}
+                            
+                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                                <button
+                                    onClick={() => {
+                                        setShowSplitNeuronDialog(false);
+                                        setSplitNeuronAmount('');
+                                        setManagingNeuronId(null);
+                                    }}
+                                    disabled={neuronActionBusy}
+                                    style={{
+                                        background: theme.colors.secondaryBg,
+                                        color: theme.colors.primaryText,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '10px 20px',
+                                        cursor: neuronActionBusy ? 'wait' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500'
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        try {
+                                            const splitFloat = parseFloat(splitNeuronAmount);
+                                            if (isNaN(splitFloat) || splitFloat <= 0) {
+                                                alert('Please enter a valid amount');
+                                                return;
+                                            }
+                                            const splitE8s = BigInt(Math.floor(splitFloat * Math.pow(10, token.decimals)));
+                                            if (splitE8s < minStakeE8s) {
+                                                alert(`The split amount must be at least ${formatAmount(minStakeE8s, token.decimals)} ${token.symbol}`);
+                                                return;
+                                            }
+                                            if (splitE8s > maxSplitAmount) {
+                                                alert(`The split amount cannot exceed ${formatAmount(maxSplitAmount, token.decimals)} ${token.symbol}`);
+                                                return;
+                                            }
+                                            if (stake - splitE8s < minStakeE8s) {
+                                                alert(`The remaining stake must be at least ${formatAmount(minStakeE8s, token.decimals)} ${token.symbol}`);
+                                                return;
+                                            }
+                                            splitNeuron(managingNeuronId);
+                                        } catch (error) {
+                                            alert('Invalid amount entered');
+                                        }
+                                    }}
+                                    disabled={neuronActionBusy || !splitNeuronAmount || maxSplitAmount === 0n}
+                                    style={{
+                                        background: theme.colors.accent,
+                                        color: theme.colors.primaryBg,
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '10px 20px',
+                                        cursor: (neuronActionBusy || !splitNeuronAmount || maxSplitAmount === 0n) ? 'not-allowed' : 'pointer',
+                                        fontSize: '0.9rem',
+                                        fontWeight: '500',
+                                        opacity: (neuronActionBusy || !splitNeuronAmount || maxSplitAmount === 0n) ? 0.6 : 1
+                                    }}
+                                >
+                                    {neuronActionBusy ? 'Processing...' : 'Split Neuron'}
                                 </button>
                             </div>
                         </div>
