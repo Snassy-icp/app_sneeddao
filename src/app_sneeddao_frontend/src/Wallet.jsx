@@ -21,6 +21,7 @@ import AddSwapCanisterModal from './AddSwapCanisterModal';
 import AddLedgerCanisterModal from './AddLedgerCanisterModal';
 import SendLiquidityPositionModal from './SendLiquidityPositionModal';
 import ConfirmationModal from './ConfirmationModal';
+import TransferTokenLockModal from './TransferTokenLockModal';
 import { get_short_timezone, format_duration, bigDateToReadable, dateToReadable } from './utils/DateUtils';
 import { formatAmount, toJsonString } from './utils/StringUtils';
 import TokenCard from './TokenCard';
@@ -189,6 +190,8 @@ function Wallet() {
     const [showAddLedgerModal, setShowAddLedgerModal] = useState(false);
     const [showSendLiquidityPositionModal, setShowSendLiquidityPositionModal] = useState(false);
     const [selectedLiquidityPosition, setSelectedLiquidityPosition] = useState(null);
+    const [showTransferTokenLockModal, setShowTransferTokenLockModal] = useState(false);
+    const [selectedTokenLock, setSelectedTokenLock] = useState(null);
     const [locks, setLocks] = useState([]);
     const [liquidityPositions, setLiquidityPositions] = useState([]);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -1397,6 +1400,46 @@ function Wallet() {
         setShowLockModal(true);
     };
 
+    const openTransferTokenLockModal = (lock, token) => {
+        setSelectedTokenLock({ ...lock, token });
+        setShowTransferTokenLockModal(true);
+    };
+
+    const handleTransferTokenLock = async (tokenLock, recipient) => {
+        console.log('=== handleTransferTokenLock ===');
+        console.log('Lock ID:', tokenLock.lock_id);
+        console.log('Token:', tokenLock.token.symbol);
+        console.log('Recipient:', recipient);
+
+        try {
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { 
+                agentOptions: { identity } 
+            });
+
+            const result = await sneedLockActor.transfer_token_lock_ownership(
+                Principal.fromText(recipient),
+                tokenLock.token.ledger_canister_id,
+                tokenLock.lock_id
+            );
+
+            console.log('Transfer token lock result:', toJsonString(result));
+
+            // Check for error in result
+            if (result.Err) {
+                throw new Error(result.Err.message || 'Transfer failed');
+            }
+
+            // Refresh token balances and locks
+            await fetchBalancesAndLocks(tokenLock.token.ledger_canister_id);
+            console.log('=== Token lock transfer completed ===');
+
+        } catch (error) {
+            console.error('=== handleTransferTokenLock ERROR ===');
+            console.error('Error:', error);
+            throw error; // Re-throw so the modal can catch it
+        }
+    };
+
     const handleAddLockPosition = async (position, expiry) => {
         var result = { "Ok": true };
 
@@ -1864,6 +1907,7 @@ function Wallet() {
                                         [ledgerId]: usdValue
                                     }));
                                 }}
+                                openTransferTokenLockModal={openTransferTokenLockModal}
                             />
                         );
                     })}
@@ -2000,6 +2044,13 @@ function Wallet() {
                     onSubmit={confirmAction}
                     message={confirmMessage}
                     doAwait={true}
+                />
+                <TransferTokenLockModal
+                    show={showTransferTokenLockModal}
+                    onClose={() => setShowTransferTokenLockModal(false)}
+                    onTransfer={handleTransferTokenLock}
+                    tokenLock={selectedTokenLock}
+                    token={selectedTokenLock?.token}
                 />
                     </>
                 )}

@@ -20,7 +20,7 @@ const SGLDT_CANISTER_ID = 'i2s4q-syaaa-aaaan-qz4sq-cai';
 
 console.log('TokenCard constants:', { GLDT_CANISTER_ID, SGLDT_CANISTER_ID });
 
-const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleRefreshToken, isSnsToken = false, onNeuronTotalsChange }) => {
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleRefreshToken, isSnsToken = false, onNeuronTotalsChange, openTransferTokenLockModal }) => {
 
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
@@ -1443,6 +1443,46 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                             style={{ display: 'inline-flex' }}
                                                         />
                                                     </span>
+                                                </div>
+                                            )}
+                                            {!hideButtons && openTransferTokenLockModal && (
+                                                <div style={{
+                                                    marginTop: '12px',
+                                                    paddingTop: '12px',
+                                                    borderTop: `1px solid ${theme.colors.border}`,
+                                                    display: 'flex',
+                                                    justifyContent: 'center'
+                                                }}>
+                                                    <button
+                                                        onClick={() => openTransferTokenLockModal(lock, token)}
+                                                        style={{
+                                                            background: theme.colors.accent,
+                                                            color: theme.colors.primaryBg,
+                                                            border: 'none',
+                                                            borderRadius: '6px',
+                                                            padding: '8px 16px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.85rem',
+                                                            fontWeight: '500',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '6px',
+                                                            transition: 'all 0.2s ease'
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            e.target.style.background = theme.colors.accentHover;
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            e.target.style.background = theme.colors.accent;
+                                                        }}
+                                                    >
+                                                        <img 
+                                                            src="send-inverted.png" 
+                                                            alt="Transfer" 
+                                                            style={{ width: '14px', height: '14px' }}
+                                                        />
+                                                        Transfer Ownership
+                                                    </button>
                                                 </div>
                                             )}
                                         </div>
