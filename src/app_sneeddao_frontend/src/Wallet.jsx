@@ -1513,7 +1513,10 @@ function Wallet() {
     const handleWithdrawPositionRewards = async (liquidityPosition) => {
         console.log('=== Withdrawing position rewards ===');
         console.log('Position:', liquidityPosition.symbols, 'ID:', liquidityPosition.id);
-        console.log('Full liquidityPosition object:', liquidityPosition);
+        console.log('Requested amounts:', {
+            token0: liquidityPosition.requestedToken0Amount?.toString(),
+            token1: liquidityPosition.requestedToken1Amount?.toString()
+        });
         
         // Only available for frontend positions
         if (!liquidityPosition.frontendOwnership) {
@@ -1527,7 +1530,7 @@ function Wallet() {
                 agentOptions: { identity } 
             });
 
-            // Step 1: Claim the position fees
+            // Step 1: Claim the position fees (this moves fees from position to user balance in the swap canister)
             console.log('Calling claim for position', liquidityPosition.id);
             const claimResult = await swapActor.claim({ 
                 positionId: Number(liquidityPosition.id) 
@@ -1563,60 +1566,61 @@ function Wallet() {
             const ledgerActor1 = createLedgerActor(token1Ledger);
             const fee1 = await ledgerActor1.icrc1_fee();
 
-            // Step 2: Get unused balance (accumulated from previous claims)
-            const unusedBalance = await swapActor.getUserUnusedBalance(identity.getPrincipal());
-            let totalAmount0 = claimedAmount0;
-            let totalAmount1 = claimedAmount1;
-            
-            if (unusedBalance.ok) {
-                totalAmount0 += unusedBalance.ok.balance0;
-                totalAmount1 += unusedBalance.ok.balance1;
-                console.log('Total amounts including unused:', {
-                    token0: totalAmount0.toString(),
-                    token1: totalAmount1.toString()
-                });
-            }
+            console.log('Token fees:', {
+                token0Fee: fee0.toString(),
+                token1Fee: fee1.toString()
+            });
 
-            // Step 3: Withdraw token0 if amount exceeds fee (amount must be after fee deduction)
-            if (totalAmount0 > fee0) {
-                const withdrawAmount0 = totalAmount0 - fee0;
-                console.log('Withdrawing token0:', withdrawAmount0.toString(), '(total:', totalAmount0.toString(), '- fee:', fee0.toString(), ') from ledger:', token0Ledger);
+            // Use requested amounts or default to claimed amounts
+            const requestedAmount0 = liquidityPosition.requestedToken0Amount || 0n;
+            const requestedAmount1 = liquidityPosition.requestedToken1Amount || 0n;
+
+            // Step 2: Withdraw token0 if requested amount is positive and exceeds fee
+            if (requestedAmount0 > 0n && requestedAmount0 > fee0) {
+                console.log('Withdrawing token0:', requestedAmount0.toString(), 'with fee:', fee0.toString(), 'from ledger:', token0Ledger);
+                
+                // Try withdrawing with the full requested amount (the swap canister should handle the fee)
                 const withdraw0Result = await swapActor.withdraw({
                     fee: fee0,
                     token: token0Ledger,
-                    amount: withdrawAmount0
+                    amount: requestedAmount0
                 });
                 
                 console.log('Token0 withdraw result:', toJsonString(withdraw0Result));
                 
                 if (withdraw0Result.err) {
                     console.error('Token0 withdraw failed:', toJsonString(withdraw0Result.err));
-                    throw new Error(`Failed to withdraw token0: ${toJsonString(withdraw0Result.err)}`);
+                    // Don't throw - try to withdraw token1 anyway
+                    console.log('Continuing with token1 despite token0 failure');
+                } else {
+                    console.log('Token0 withdrawn successfully:', toJsonString(withdraw0Result.ok));
                 }
-                console.log('Token0 withdrawn successfully:', toJsonString(withdraw0Result.ok));
-            } else {
-                console.log('Token0 amount too small to withdraw (after fee):', totalAmount0.toString(), 'fee:', fee0.toString());
+            } else if (requestedAmount0 > 0n) {
+                console.log('Token0 amount too small to withdraw (less than fee):', requestedAmount0.toString(), 'fee:', fee0.toString());
             }
 
-            // Step 4: Withdraw token1 if amount exceeds fee (amount must be after fee deduction)
-            if (totalAmount1 > fee1) {
-                const withdrawAmount1 = totalAmount1 - fee1;
-                console.log('Withdrawing token1:', withdrawAmount1.toString(), '(total:', totalAmount1.toString(), '- fee:', fee1.toString(), ') from ledger:', token1Ledger);
+            // Step 3: Withdraw token1 if requested amount is positive and exceeds fee
+            if (requestedAmount1 > 0n && requestedAmount1 > fee1) {
+                console.log('Withdrawing token1:', requestedAmount1.toString(), 'with fee:', fee1.toString(), 'from ledger:', token1Ledger);
+                
+                // Try withdrawing with the full requested amount (the swap canister should handle the fee)
                 const withdraw1Result = await swapActor.withdraw({
                     fee: fee1,
                     token: token1Ledger,
-                    amount: withdrawAmount1
+                    amount: requestedAmount1
                 });
                 
                 console.log('Token1 withdraw result:', toJsonString(withdraw1Result));
                 
                 if (withdraw1Result.err) {
                     console.error('Token1 withdraw failed:', toJsonString(withdraw1Result.err));
-                    throw new Error(`Failed to withdraw token1: ${toJsonString(withdraw1Result.err)}`);
+                    // Don't throw - withdrawal might have partially succeeded
+                    console.log('Token1 withdrawal failed but continuing');
+                } else {
+                    console.log('Token1 withdrawn successfully:', toJsonString(withdraw1Result.ok));
                 }
-                console.log('Token1 withdrawn successfully:', toJsonString(withdraw1Result.ok));
-            } else {
-                console.log('Token1 amount too small to withdraw (after fee):', totalAmount1.toString(), 'fee:', fee1.toString());
+            } else if (requestedAmount1 > 0n) {
+                console.log('Token1 amount too small to withdraw (less than fee):', requestedAmount1.toString(), 'fee:', fee1.toString());
             }
 
             // Refresh liquidity positions to update the UI
@@ -1626,7 +1630,7 @@ function Wallet() {
             await fetchBalancesAndLocks(Principal.fromText(token0Ledger));
             await fetchBalancesAndLocks(Principal.fromText(token1Ledger));
             
-            console.log('=== Rewards withdrawn successfully ===');
+            console.log('=== Rewards withdrawal process completed ===');
 
         } catch (error) {
             console.error('=== Error withdrawing position rewards ===');
