@@ -328,6 +328,30 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         setManagingNeuronId(null);
     };
 
+    const toggleAutoStakeMaturity = async (neuronIdHex, currentSetting) => {
+        setNeuronActionBusy(true);
+        setManagingNeuronId(neuronIdHex);
+        
+        const newSetting = !currentSetting;
+        const result = await manageNeuron(neuronIdHex, { 
+            Configure: { 
+                operation: [{ 
+                    ChangeAutoStakeMaturity: { 
+                        requested_setting_for_auto_stake_maturity: newSetting 
+                    } 
+                }] 
+            } 
+        });
+        
+        if (result.ok) {
+            await refetchNeurons();
+        } else {
+            alert(`Error changing auto-stake maturity setting: ${result.err}`);
+        }
+        setNeuronActionBusy(false);
+        setManagingNeuronId(null);
+    };
+
     const refetchNeurons = async () => {
         if (!governanceCanisterId || !identity) return;
         
@@ -1957,6 +1981,43 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                         {formatAmount(neuron.maturity_e8s_equivalent || 0n, token.decimals)} {token.symbol}
                                                                     </span>
                                                                 </div>
+                                                                
+                                                                {/* Auto-stake Maturity Checkbox */}
+                                                                {userHasPermission(neuron, PERM.MANAGE_VOTING_PERMISSION) && (
+                                                                    <div style={{ 
+                                                                        display: 'flex', 
+                                                                        alignItems: 'center',
+                                                                        gap: '8px',
+                                                                        marginTop: '12px',
+                                                                        padding: '12px',
+                                                                        backgroundColor: theme.colors.tertiaryBg,
+                                                                        borderRadius: '6px'
+                                                                    }}>
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            id={`auto-stake-${neuronIdHex}`}
+                                                                            checked={neuron.auto_stake_maturity?.[0] || false}
+                                                                            onChange={() => toggleAutoStakeMaturity(neuronIdHex, neuron.auto_stake_maturity?.[0] || false)}
+                                                                            disabled={neuronActionBusy && managingNeuronId === neuronIdHex}
+                                                                            style={{
+                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                                width: '18px',
+                                                                                height: '18px'
+                                                                            }}
+                                                                        />
+                                                                        <label 
+                                                                            htmlFor={`auto-stake-${neuronIdHex}`}
+                                                                            style={{ 
+                                                                                color: theme.colors.primaryText,
+                                                                                cursor: neuronActionBusy && managingNeuronId === neuronIdHex ? 'wait' : 'pointer',
+                                                                                userSelect: 'none',
+                                                                                fontSize: '0.95rem'
+                                                                            }}
+                                                                        >
+                                                                            Automatically stake new maturity
+                                                                        </label>
+                                                                    </div>
+                                                                )}
                                                                             </div>
 
                                                                             {/* Action Buttons */}
