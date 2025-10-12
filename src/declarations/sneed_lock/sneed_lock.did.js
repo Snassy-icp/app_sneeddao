@@ -1,9 +1,6 @@
 export const idlFactory = ({ IDL }) => {
-  const PositionId = IDL.Nat;
-  const Expiry = IDL.Nat64;
-  const LockId = IDL.Nat;
-  const Balance = IDL.Nat;
   const TxIndex = IDL.Nat;
+  const Balance = IDL.Nat;
   const Timestamp = IDL.Nat64;
   const TransferError = IDL.Variant({
     'GenericError' : IDL.Record({
@@ -18,28 +15,27 @@ export const idlFactory = ({ IDL }) => {
     'TooOld' : IDL.Null,
     'InsufficientFunds' : IDL.Record({ 'balance' : Balance }),
   });
+  const TransferResult = IDL.Variant({ 'Ok' : TxIndex, 'Err' : TransferError });
+  const PositionId = IDL.Nat;
+  const Expiry = IDL.Nat64;
+  const LockId = IDL.Nat;
   const CreateLockError = IDL.Record({
     'transfer_error' : IDL.Opt(TransferError),
     'message' : IDL.Text,
   });
-  const CreateLockResult__1 = IDL.Variant({
+  const CreateLockResult = IDL.Variant({
     'Ok' : LockId,
     'Err' : CreateLockError,
   });
   const Dex = IDL.Nat;
   const TokenType = IDL.Principal;
-  const CreateLockResult = IDL.Variant({
-    'Ok' : LockId,
-    'Err' : CreateLockError,
-  });
   const SwapCanisterId = IDL.Principal;
-  const Expiry__1 = IDL.Nat64;
   const PositionLock = IDL.Record({
     'dex' : Dex,
     'lock_id' : LockId,
     'token0' : TokenType,
     'token1' : TokenType,
-    'expiry' : Expiry__1,
+    'expiry' : Expiry,
     'position_id' : PositionId,
   });
   const FullyQualifiedPositionLock = IDL.Tuple(
@@ -49,7 +45,7 @@ export const idlFactory = ({ IDL }) => {
   );
   const Lock = IDL.Record({
     'lock_id' : LockId,
-    'expiry' : Expiry__1,
+    'expiry' : Expiry,
     'amount' : Balance,
   });
   const FullyQualifiedLock = IDL.Tuple(IDL.Principal, TokenType, Lock);
@@ -66,8 +62,6 @@ export const idlFactory = ({ IDL }) => {
     'caller' : IDL.Principal,
     'correlation_id' : IDL.Nat,
   });
-  const TokenType__1 = IDL.Principal;
-  const Balance__1 = IDL.Nat;
   const SetLockFeeResult = IDL.Variant({ 'Ok' : IDL.Nat, 'Err' : IDL.Text });
   const TransferPositionError = IDL.Variant({
     'CommonError' : IDL.Null,
@@ -79,15 +73,32 @@ export const idlFactory = ({ IDL }) => {
     'ok' : IDL.Bool,
     'err' : TransferPositionError,
   });
+  const TransferPositionOwnershipError = IDL.Record({ 'message' : IDL.Text });
+  const TransferPositionOwnershipResult = IDL.Variant({
+    'Ok' : IDL.Null,
+    'Err' : TransferPositionOwnershipError,
+  });
+  const TransferTokenLockOwnershipError = IDL.Record({
+    'transfer_error' : IDL.Opt(TransferError),
+    'message' : IDL.Text,
+  });
+  const TransferTokenLockOwnershipResult = IDL.Variant({
+    'Ok' : IDL.Null,
+    'Err' : TransferTokenLockOwnershipError,
+  });
   const Subaccount = IDL.Vec(IDL.Nat8);
-  const TransferResult = IDL.Variant({ 'Ok' : TxIndex, 'Err' : TransferError });
   const SneedLock = IDL.Service({
+    'admin_return_token' : IDL.Func(
+        [IDL.Principal, IDL.Nat, IDL.Principal],
+        [TransferResult],
+        [],
+      ),
     'claim_position' : IDL.Func([IDL.Principal, PositionId], [IDL.Bool], []),
     'clear_expired_locks' : IDL.Func([], [], []),
     'clear_expired_position_locks' : IDL.Func([], [], []),
     'create_lock' : IDL.Func(
         [IDL.Nat, IDL.Principal, Expiry],
-        [CreateLockResult__1],
+        [CreateLockResult],
         [],
       ),
     'create_position_lock' : IDL.Func(
@@ -142,7 +153,7 @@ export const idlFactory = ({ IDL }) => {
       ),
     'get_summed_locks' : IDL.Func(
         [],
-        [IDL.Vec(IDL.Tuple(TokenType__1, Balance__1))],
+        [IDL.Vec(IDL.Tuple(TokenType, Balance))],
         ['query'],
       ),
     'get_swap_position_locks' : IDL.Func(
@@ -153,7 +164,7 @@ export const idlFactory = ({ IDL }) => {
     'get_token_lock_fee_sneed_e8s' : IDL.Func([], [IDL.Nat], ['query']),
     'get_token_locks' : IDL.Func(
         [],
-        [IDL.Vec(IDL.Tuple(LockId, TokenType__1, Balance__1, Expiry))],
+        [IDL.Vec(IDL.Tuple(LockId, TokenType, Balance, Expiry))],
         ['query'],
       ),
     'get_token_position_locks' : IDL.Func(
@@ -172,6 +183,16 @@ export const idlFactory = ({ IDL }) => {
     'transfer_position' : IDL.Func(
         [IDL.Principal, IDL.Principal, PositionId],
         [TransferPositionResult],
+        [],
+      ),
+    'transfer_position_ownership' : IDL.Func(
+        [IDL.Principal, SwapCanisterId, PositionId],
+        [TransferPositionOwnershipResult],
+        [],
+      ),
+    'transfer_token_lock_ownership' : IDL.Func(
+        [IDL.Principal, TokenType, LockId],
+        [TransferTokenLockOwnershipResult],
         [],
       ),
     'transfer_tokens' : IDL.Func(

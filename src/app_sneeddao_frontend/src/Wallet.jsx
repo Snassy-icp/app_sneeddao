@@ -1237,49 +1237,71 @@ function Wallet() {
 
     const handleSendLiquidityPosition = async (liquidityPosition, recipient) => {
         const isBackendTransfer = liquidityPosition.isBackendTransfer || false;
+        console.log('=== handleSendLiquidityPosition ===');
+        console.log('isBackendTransfer:', isBackendTransfer);
+        console.log('liquidityPosition:', liquidityPosition);
+        console.log('recipient:', recipient);
 
-        if(liquidityPosition.frontendOwnership) {
-            const actor = createIcpSwapActor(liquidityPosition.swapCanisterId, {
-                agentOptions: {
-                    identity,
-                },
-            });
+        try {
+            if(liquidityPosition.frontendOwnership) {
+                const actor = createIcpSwapActor(liquidityPosition.swapCanisterId, {
+                    agentOptions: {
+                        identity,
+                    },
+                });
 
-            const recipientPrincipal = Principal.fromText(recipient);
-            const result = await actor.transferPosition(identity.getPrincipal(), recipientPrincipal, liquidityPosition.id);
+                const recipientPrincipal = Principal.fromText(recipient);
+                const result = await actor.transferPosition(identity.getPrincipal(), recipientPrincipal, liquidityPosition.id);
 
-            const resultJson = JSON.stringify(result, (key, value) => {
-                if (typeof value === 'bigint') {
-                    return value.toString();
-                }
-                return value;
-            });
+                const resultJson = JSON.stringify(result, (key, value) => {
+                    if (typeof value === 'bigint') {
+                        return value.toString();
+                    }
+                    return value;
+                });
+                console.log('Frontend transfer result:', resultJson);
 
-        } else {
-            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
-            
-            if (isBackendTransfer) {
-                // Transfer backend ownership only (for locked positions)
-                console.log('=== Transferring backend ownership ===');
-                console.log('Position:', liquidityPosition.symbols, 'ID:', liquidityPosition.id, 'To:', recipient);
-                const result = await sneedLockActor.transfer_position_ownership(
-                    Principal.fromText(recipient), 
-                    liquidityPosition.swapCanisterId, 
-                    liquidityPosition.id
-                );
-                console.log('Backend ownership transfer result:', toJsonString(result));
             } else {
-                // Full transfer (actual position transfer on ICPSwap)
-                const result = await sneedLockActor.transfer_position(
-                    Principal.fromText(recipient), 
-                    liquidityPosition.swapCanisterId, 
-                    liquidityPosition.id
-                );
-                const resultJson = toJsonString(result);
+                const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+                
+                if (isBackendTransfer) {
+                    // Transfer backend ownership only (for locked positions)
+                    console.log('=== Transferring backend ownership ===');
+                    console.log('Position:', liquidityPosition.symbols, 'ID:', liquidityPosition.id, 'To:', recipient);
+                    const result = await sneedLockActor.transfer_position_ownership(
+                        Principal.fromText(recipient), 
+                        liquidityPosition.swapCanisterId, 
+                        liquidityPosition.id
+                    );
+                    console.log('Backend ownership transfer result:', toJsonString(result));
+                    
+                    // Check for error in result
+                    if (result.Err) {
+                        throw new Error(result.Err.message || 'Transfer failed');
+                    }
+                } else {
+                    // Full transfer (actual position transfer on ICPSwap)
+                    const result = await sneedLockActor.transfer_position(
+                        Principal.fromText(recipient), 
+                        liquidityPosition.swapCanisterId, 
+                        liquidityPosition.id
+                    );
+                    const resultJson = toJsonString(result);
+                    console.log('Backend full transfer result:', resultJson);
+                    
+                    // Check for error in result
+                    if (result.err) {
+                        throw new Error(result.err.message || result.err.InternalError || 'Transfer failed');
+                    }
+                }
             }
-        }
 
-        /*await*/ fetchLiquidityPositions();
+            /*await*/ fetchLiquidityPositions();
+        } catch (error) {
+            console.error('=== handleSendLiquidityPosition ERROR ===');
+            console.error('Error:', error);
+            throw error; // Re-throw so the modal can catch it
+        }
     };
 
     const handleWithdrawPosition = async (liquidityPosition) => {

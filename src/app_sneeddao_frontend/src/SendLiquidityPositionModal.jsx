@@ -43,11 +43,13 @@ function SendLiquidityPositionModal({ show, onClose, onSend, liquidityPosition }
         setIsLoading(true);
         setErrorText('');
         await onSend(liquidityPosition, recipient);
-      } catch (error) {
-        setErrorText('Error sending liquidity position:', error);
-      } finally {
+        // Only close on success
         setIsLoading(false);
         onClose();
+      } catch (error) {
+        console.error('Error transferring position:', error);
+        setErrorText(`Error: ${error.message || error.toString()}`);
+        setIsLoading(false);
       }
     });
 
