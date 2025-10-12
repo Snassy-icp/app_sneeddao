@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../AuthContext';
 
 // Theme-aware styles function
 const getStyles = (theme) => ({
@@ -112,6 +113,7 @@ const getStyles = (theme) => ({
 
 function HelpNeurons() {
     const { theme } = useTheme();
+    const { isAuthenticated, identity } = useAuth();
     const styles = getStyles(theme);
 
     return (
@@ -138,6 +140,71 @@ function HelpNeurons() {
                         what you can do with them, and how to manage them effectively using Sneed Hub and the NNS dApp.
                     </p>
                 </div>
+
+                {/* Your Sneed Hub Principal */}
+                {isAuthenticated && identity && (
+                    <div style={{
+                        ...styles.successBox,
+                        marginBottom: '2rem'
+                    }}>
+                        <h3 style={{...styles.subsubheading, marginTop: 0}}>
+                            Your Sneed Hub Principal
+                        </h3>
+                        <div style={{
+                            background: theme.colors.secondaryBg,
+                            padding: '12px',
+                            borderRadius: '8px',
+                            marginBottom: '12px',
+                            marginTop: '12px',
+                            fontFamily: 'monospace',
+                            fontSize: '14px',
+                            wordBreak: 'break-all',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '12px',
+                            flexWrap: 'wrap'
+                        }}>
+                            <span style={{ flex: 1, minWidth: '200px', color: theme.colors.primaryText }}>
+                                {identity.getPrincipal().toText()}
+                            </span>
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        await navigator.clipboard.writeText(identity.getPrincipal().toText());
+                                    } catch (err) {
+                                        console.error('Failed to copy:', err);
+                                    }
+                                }}
+                                style={{
+                                    background: theme.colors.accent,
+                                    color: theme.colors.primaryBg,
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '8px 16px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    transition: 'all 0.2s ease',
+                                    whiteSpace: 'nowrap'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.background = theme.colors.accentHover || `${theme.colors.accent}dd`;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.background = theme.colors.accent;
+                                }}
+                            >
+                                Copy
+                            </button>
+                        </div>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>This is your Sneed Hub principal ID.</strong> Use this when adding hotkeys 
+                            to your neurons on the NNS dApp (see instructions below). Copy this principal and paste it into the 
+                            "Add Hotkey" field on NNS to enable cross-platform neuron management.
+                        </p>
+                    </div>
+                )}
 
                 {/* What are SNS Neurons? */}
                 <div style={styles.section}>
