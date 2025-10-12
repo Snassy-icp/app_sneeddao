@@ -75,12 +75,32 @@ function Help() {
                     <ul style={styles.linkList}>
                         <li style={styles.linkItem}>
                             <Link 
+                                to="/help/wallet" 
+                                style={styles.link}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                Understanding Your Wallet
+                            </Link>
+                        </li>
+                        <li style={styles.linkItem}>
+                            <Link 
                                 to="/help/neurons" 
                                 style={styles.link}
                                 onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
                                 onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
                             >
                                 Understanding SNS Neurons
+                            </Link>
+                        </li>
+                        <li style={styles.linkItem}>
+                            <Link 
+                                to="/help/sneedlock" 
+                                style={styles.link}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                Understanding Sneedlock
                             </Link>
                         </li>
                     </ul>
