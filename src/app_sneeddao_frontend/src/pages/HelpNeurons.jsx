@@ -282,9 +282,71 @@ function HelpNeurons() {
 
                     <h3 style={styles.subsubheading}>8. Merge Neurons</h3>
                     <p style={styles.paragraph}>
-                        Combine multiple neurons into one to simplify management while maintaining the age and dissolve 
-                        characteristics of the neurons being merged.
+                        <em style={{ color: theme.colors.mutedText }}>Note: This feature is not currently supported by the SNS API. 
+                        The merge neurons permission has been deprecated.</em> Originally intended to combine multiple neurons into 
+                        one to simplify management while maintaining the age and dissolve characteristics of the neurons being merged.
                     </p>
+                </div>
+
+                {/* Voting on Proposals */}
+                <div style={styles.section}>
+                    <h2 style={styles.subheading}>Voting on SNS Proposals</h2>
+                    
+                    <p style={styles.paragraph}>
+                        Sneed Hub makes it easy to participate in governance by voting on proposals. You can review and vote on 
+                        proposals through two main pages:
+                    </p>
+
+                    <h3 style={styles.subsubheading}>Proposals Page</h3>
+                    <p style={styles.paragraph}>
+                        The <Link to="/proposals" style={styles.link}>Proposals page</Link> provides a comprehensive list of all 
+                        proposals for the currently selected SNS:
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Browse All Proposals:</strong> See all active, pending, and past proposals for the selected SNS
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Quick Overview:</strong> View proposal titles, status, voting deadlines, and basic details at a glance
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Filter & Sort:</strong> Find proposals by status, type, or voting deadline
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>SNS-Specific:</strong> Only shows proposals from the SNS selected in the dropdown
+                        </li>
+                    </ul>
+
+                    <h3 style={styles.subsubheading}>Proposal Detail Page</h3>
+                    <p style={styles.paragraph}>
+                        The <Link to="/proposal" style={styles.link}>Proposal page</Link> (accessible by clicking on any proposal) 
+                        shows detailed information about a specific proposal and allows you to vote:
+                    </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Full Proposal Details:</strong> Read the complete proposal text, rationale, and technical specifications
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Voting Statistics:</strong> See current vote counts, voting power distribution, and proposal status
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Vote With Your Neurons:</strong> Cast votes using any of your neurons that have voting permissions
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Select Multiple Neurons:</strong> Vote with multiple neurons at once if you have more than one
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Vote History:</strong> See how your neurons have voted on previous proposals
+                        </li>
+                    </ul>
+
+                    <div style={styles.infoBox}>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>Voting Power Matters:</strong> Each neuron's vote is weighted by its voting power, 
+                            which is calculated based on the amount staked, dissolve delay, and neuron age. Neurons with longer dissolve 
+                            delays and older ages have more influence on proposal outcomes.
+                        </p>
+                    </div>
                 </div>
 
                 {/* Understanding Hotkeys */}
