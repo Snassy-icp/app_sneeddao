@@ -95,9 +95,15 @@ export type SetLockFeeResult = { 'Ok' : bigint } |
   { 'Err' : string };
 export interface SneedLock {
   'admin_clear_completed_claim_requests_buffer' : ActorMethod<[], bigint>,
+  'admin_emergency_stop_timer' : ActorMethod<[], undefined>,
   'admin_pause_claim_queue' : ActorMethod<[string], undefined>,
   'admin_remove_active_claim_request' : ActorMethod<[ClaimRequestId], boolean>,
   'admin_resume_claim_queue' : ActorMethod<[], undefined>,
+  'admin_retry_claim_request' : ActorMethod<
+    [ClaimRequestId],
+    { 'Ok' : string } |
+      { 'Err' : string }
+  >,
   'admin_return_token' : ActorMethod<
     [Principal, bigint, Principal],
     TransferResult
@@ -106,6 +112,7 @@ export interface SneedLock {
     [boolean],
     undefined
   >,
+  'admin_trigger_claim_processing' : ActorMethod<[], string>,
   'claim_position' : ActorMethod<[Principal, PositionId], boolean>,
   'clear_expired_locks' : ActorMethod<[], undefined>,
   'clear_expired_position_locks' : ActorMethod<[], undefined>,
@@ -118,6 +125,8 @@ export interface SneedLock {
     [ClaimRequestId],
     [] | [ClaimRequest]
   >,
+  'get_all_active_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
+  'get_all_completed_claim_requests' : ActorMethod<[], Array<string>>,
   'get_all_position_locks' : ActorMethod<[], Array<FullyQualifiedPositionLock>>,
   'get_all_token_locks' : ActorMethod<[], Array<FullyQualifiedLock>>,
   'get_claim_queue_status' : ActorMethod<
@@ -167,6 +176,17 @@ export interface SneedLock {
   'get_swap_position_locks' : ActorMethod<
     [SwapCanisterId],
     Array<FullyQualifiedPositionLock>
+  >,
+  'get_timer_status' : ActorMethod<
+    [],
+    {
+      'timer_id' : [] | [bigint],
+      'next_scheduled_time' : [] | [Timestamp],
+      'time_since_last_execution_seconds' : [] | [bigint],
+      'last_execution_correlation_id' : [] | [bigint],
+      'last_execution_time' : [] | [Timestamp],
+      'is_active' : boolean,
+    }
   >,
   'get_token_lock_fee_sneed_e8s' : ActorMethod<[], bigint>,
   'get_token_locks' : ActorMethod<

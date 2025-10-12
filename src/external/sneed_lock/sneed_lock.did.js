@@ -136,6 +136,7 @@ export const idlFactory = ({ IDL }) => {
   const Subaccount = IDL.Vec(IDL.Nat8);
   const SneedLock = IDL.Service({
     'admin_clear_completed_claim_requests_buffer' : IDL.Func([], [IDL.Nat], []),
+    'admin_emergency_stop_timer' : IDL.Func([], [], []),
     'admin_pause_claim_queue' : IDL.Func([IDL.Text], [], []),
     'admin_remove_active_claim_request' : IDL.Func(
         [ClaimRequestId],
@@ -143,6 +144,11 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'admin_resume_claim_queue' : IDL.Func([], [], []),
+    'admin_retry_claim_request' : IDL.Func(
+        [ClaimRequestId],
+        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
+        [],
+      ),
     'admin_return_token' : IDL.Func(
         [IDL.Principal, IDL.Nat, IDL.Principal],
         [TransferResult],
@@ -153,6 +159,7 @@ export const idlFactory = ({ IDL }) => {
         [],
         [],
       ),
+    'admin_trigger_claim_processing' : IDL.Func([], [IDL.Text], []),
     'claim_position' : IDL.Func([IDL.Principal, PositionId], [IDL.Bool], []),
     'clear_expired_locks' : IDL.Func([], [], []),
     'clear_expired_position_locks' : IDL.Func([], [], []),
@@ -169,6 +176,16 @@ export const idlFactory = ({ IDL }) => {
     'get_active_claim_request' : IDL.Func(
         [ClaimRequestId],
         [IDL.Opt(ClaimRequest)],
+        ['query'],
+      ),
+    'get_all_active_claim_requests' : IDL.Func(
+        [],
+        [IDL.Vec(ClaimRequest)],
+        ['query'],
+      ),
+    'get_all_completed_claim_requests' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Text)],
         ['query'],
       ),
     'get_all_position_locks' : IDL.Func(
@@ -266,6 +283,20 @@ export const idlFactory = ({ IDL }) => {
     'get_swap_position_locks' : IDL.Func(
         [SwapCanisterId],
         [IDL.Vec(FullyQualifiedPositionLock)],
+        ['query'],
+      ),
+    'get_timer_status' : IDL.Func(
+        [],
+        [
+          IDL.Record({
+            'timer_id' : IDL.Opt(IDL.Nat),
+            'next_scheduled_time' : IDL.Opt(Timestamp),
+            'time_since_last_execution_seconds' : IDL.Opt(IDL.Nat64),
+            'last_execution_correlation_id' : IDL.Opt(IDL.Nat),
+            'last_execution_time' : IDL.Opt(Timestamp),
+            'is_active' : IDL.Bool,
+          }),
+        ],
         ['query'],
       ),
     'get_token_lock_fee_sneed_e8s' : IDL.Func([], [IDL.Nat], ['query']),

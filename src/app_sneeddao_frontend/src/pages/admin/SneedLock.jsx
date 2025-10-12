@@ -66,15 +66,31 @@ export default function SneedLockAdmin() {
         actor.get_token_lock_fee_sneed_e8s()
       ]);
 
-      setInfoRange(infoRangeResult.length > 0 ? infoRangeResult[0] : null);
-      setErrorRange(errorRangeResult.length > 0 ? errorRangeResult[0] : null);
+      const infoRangeData = infoRangeResult.length > 0 ? infoRangeResult[0] : null;
+      const errorRangeData = errorRangeResult.length > 0 ? errorRangeResult[0] : null;
+
+      setInfoRange(infoRangeData);
+      setErrorRange(errorRangeData);
       setClaimQueueStatus(queueStatus);
       setEnforceZeroBalance(enforceZero);
       setTokenLockFee(Number(lockFee).toString());
 
-      // Fetch first page of logs
-      await fetchInfoLogs(1);
-      await fetchErrorLogs(1);
+      // Fetch first page of logs with the range data directly
+      if (infoRangeData) {
+        const [start, end] = infoRangeData;
+        const startIdx = Math.max(Number(end) - pageSize, Number(start));
+        const logs = await actor.get_info_entries(BigInt(startIdx), BigInt(pageSize));
+        setInfoLogs(logs.filter(log => log.length > 0).map(log => log[0]));
+        setInfoPage(1);
+      }
+
+      if (errorRangeData) {
+        const [start, end] = errorRangeData;
+        const startIdx = Math.max(Number(end) - pageSize, Number(start));
+        const logs = await actor.get_error_entries(BigInt(startIdx), BigInt(pageSize));
+        setErrorLogs(logs.filter(log => log.length > 0).map(log => log[0]));
+        setErrorPage(1);
+      }
     } catch (err) {
       console.error('Error fetching initial data:', err);
       setError('Failed to load initial data: ' + err.message);
@@ -308,22 +324,6 @@ export default function SneedLockAdmin() {
       
       <div style={{ marginBottom: '20px' }}>
         <button
-          onClick={() => fetchInfoLogs(infoPage + 1)}
-          disabled={!infoRange || Number(infoRange[1]) - (infoPage * pageSize) <= Number(infoRange[0])}
-          style={{
-            backgroundColor: '#3498db',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '4px',
-            padding: '8px 16px',
-            marginRight: '10px',
-            cursor: 'pointer',
-            opacity: !infoRange || Number(infoRange[1]) - (infoPage * pageSize) <= Number(infoRange[0]) ? 0.5 : 1
-          }}
-        >
-          Previous {pageSize}
-        </button>
-        <button
           onClick={() => fetchInfoLogs(Math.max(1, infoPage - 1))}
           disabled={infoPage === 1}
           style={{
@@ -332,11 +332,27 @@ export default function SneedLockAdmin() {
             border: 'none',
             borderRadius: '4px',
             padding: '8px 16px',
+            marginRight: '10px',
             cursor: 'pointer',
             opacity: infoPage === 1 ? 0.5 : 1
           }}
         >
-          Next {pageSize}
+          ← Newer
+        </button>
+        <button
+          onClick={() => fetchInfoLogs(infoPage + 1)}
+          disabled={!infoRange || Number(infoRange[1]) - (infoPage * pageSize) <= Number(infoRange[0])}
+          style={{
+            backgroundColor: '#3498db',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '4px',
+            padding: '8px 16px',
+            cursor: 'pointer',
+            opacity: !infoRange || Number(infoRange[1]) - (infoPage * pageSize) <= Number(infoRange[0]) ? 0.5 : 1
+          }}
+        >
+          Older →
         </button>
         <span style={{ color: '#888', marginLeft: '20px' }}>Page {infoPage}</span>
       </div>
@@ -394,22 +410,6 @@ export default function SneedLockAdmin() {
       
       <div style={{ marginBottom: '20px' }}>
         <button
-          onClick={() => fetchErrorLogs(errorPage + 1)}
-          disabled={!errorRange || Number(errorRange[1]) - (errorPage * pageSize) <= Number(errorRange[0])}
-          style={{
-            backgroundColor: '#e74c3c',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '4px',
-            padding: '8px 16px',
-            marginRight: '10px',
-            cursor: 'pointer',
-            opacity: !errorRange || Number(errorRange[1]) - (errorPage * pageSize) <= Number(errorRange[0]) ? 0.5 : 1
-          }}
-        >
-          Previous {pageSize}
-        </button>
-        <button
           onClick={() => fetchErrorLogs(Math.max(1, errorPage - 1))}
           disabled={errorPage === 1}
           style={{
@@ -418,11 +418,27 @@ export default function SneedLockAdmin() {
             border: 'none',
             borderRadius: '4px',
             padding: '8px 16px',
+            marginRight: '10px',
             cursor: 'pointer',
             opacity: errorPage === 1 ? 0.5 : 1
           }}
         >
-          Next {pageSize}
+          ← Newer
+        </button>
+        <button
+          onClick={() => fetchErrorLogs(errorPage + 1)}
+          disabled={!errorRange || Number(errorRange[1]) - (errorPage * pageSize) <= Number(errorRange[0])}
+          style={{
+            backgroundColor: '#e74c3c',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '4px',
+            padding: '8px 16px',
+            cursor: 'pointer',
+            opacity: !errorRange || Number(errorRange[1]) - (errorPage * pageSize) <= Number(errorRange[0]) ? 0.5 : 1
+          }}
+        >
+          Older →
         </button>
         <span style={{ color: '#888', marginLeft: '20px' }}>Page {errorPage}</span>
       </div>
