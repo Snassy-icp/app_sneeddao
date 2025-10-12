@@ -22,8 +22,8 @@ function getPositionTVL(position, positionDetails, hideUnclaimedFees) {
     let total1 = positionDetails.token1Amount;
 
     if (!hideUnclaimedFees) {
-        total0 += positionDetails.tokensOwed0 + positionDetails.tokensUnused0;
-        total1 += positionDetails.tokensOwed1 + positionDetails.tokensUnused1;
+        total0 += positionDetails.tokensOwed0;
+        total1 += positionDetails.tokensOwed1;
     }
 
     let total0USD = parseFloat(formatAmountWithConversion(total0, position.token0Decimals, position.token0_conversion_rate));

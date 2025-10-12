@@ -749,6 +749,8 @@ function Wallet() {
                         token1Decimals : 0,
                         token0_conversion_rate: 0,
                         token1_conversion_rate: 0,
+                        swapCanisterBalance0: 0n,
+                        swapCanisterBalance1: 0n,
                         positions: []
                     };
 

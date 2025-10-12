@@ -296,7 +296,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                 }
                 
                 {/* Swap Canister Balance */}
-                {!hideUnclaimedFees && positionDetails.frontendOwnership && (swapCanisterBalance0 > 0n || swapCanisterBalance1 > 0n) && (
+                {!hideUnclaimedFees && positionDetails.frontendOwnership && ((swapCanisterBalance0 || 0n) > 0n || (swapCanisterBalance1 || 0n) > 0n) && (
                     <div className="balance-item" style={{ marginTop: '15px', paddingTop: '15px', borderTop: `1px solid ${theme.colors.border}` }}>
                         <div className="balance-label">Swap Canister Balance</div>
                         <div className="token-amounts">

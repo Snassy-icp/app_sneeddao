@@ -123,7 +123,10 @@ class PriceService {
      */
     saveTokenPriceCache() {
         try {
-            localStorage.setItem(TOKEN_PRICE_CACHE_KEY, JSON.stringify(this.tokenPriceCache));
+            // Use a custom replacer to handle BigInt values
+            localStorage.setItem(TOKEN_PRICE_CACHE_KEY, JSON.stringify(this.tokenPriceCache, (key, value) =>
+                typeof value === 'bigint' ? value.toString() : value
+            ));
         } catch (error) {
             console.warn('Failed to save token price cache to localStorage:', error);
         }
@@ -151,7 +154,10 @@ class PriceService {
     savePoolCache() {
         try {
             const poolData = Object.fromEntries(this.poolCache);
-            localStorage.setItem(POOL_CACHE_KEY, JSON.stringify(poolData));
+            // Use a custom replacer to handle BigInt values
+            localStorage.setItem(POOL_CACHE_KEY, JSON.stringify(poolData, (key, value) =>
+                typeof value === 'bigint' ? value.toString() : value
+            ));
         } catch (error) {
             console.warn('Failed to save pool cache to localStorage:', error);
         }
