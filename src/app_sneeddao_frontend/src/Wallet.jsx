@@ -1669,10 +1669,15 @@ function Wallet() {
                 agentOptions: { identity } 
             });
 
+            // Convert swapCanisterId to Principal if it's a string
+            const swapPrincipal = typeof swapCanisterId === 'string' 
+                ? Principal.fromText(swapCanisterId)
+                : swapCanisterId;
+
             // Submit claim request
             console.log('Submitting claim request...');
             const submitResult = await sneedLockActor.request_claim_and_withdraw(
-                Principal.fromText(swapCanisterId),
+                swapPrincipal,
                 BigInt(positionId)
             );
 
