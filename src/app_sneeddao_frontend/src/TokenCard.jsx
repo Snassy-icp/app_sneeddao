@@ -2672,9 +2672,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
                 const stake = BigInt(neuron.cached_neuron_stake_e8s || 0n);
                 const minStakeE8s = nervousSystemParameters?.neuron_minimum_stake_e8s?.[0] || 0n;
+                const transactionFeeE8s = nervousSystemParameters?.transaction_fee_e8s?.[0] || 0n;
                 
-                // The new neuron needs minimum stake, and the original must retain at least minimum stake
-                const maxSplitAmount = stake > (minStakeE8s * 2n) ? stake - minStakeE8s : 0n;
+                // Minimum split = minimum stake + transaction fee
+                const minSplitAmount = minStakeE8s + transactionFeeE8s;
+                
+                // The new neuron needs minimum stake + fee, and the original must retain at least minimum stake + fee
+                const maxSplitAmount = stake > (minStakeE8s + minSplitAmount) ? stake - minStakeE8s : 0n;
                 
                 return (
                     <div style={{
@@ -2733,6 +2737,18 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         {formatAmount(minStakeE8s, token.decimals)} {token.symbol}
                                     </span>
                                 </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Transaction Fee:</span>
+                                    <span style={{ color: theme.colors.primaryText, fontSize: '0.85rem' }}>
+                                        {formatAmount(transactionFeeE8s, token.decimals)} {token.symbol}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                    <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Minimum Split Amount:</span>
+                                    <span style={{ color: theme.colors.primaryText, fontSize: '0.85rem', fontWeight: '600' }}>
+                                        {formatAmount(minSplitAmount, token.decimals)} {token.symbol}
+                                    </span>
+                                </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                     <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Maximum Split Amount:</span>
                                     <span style={{ color: theme.colors.accent, fontSize: '0.85rem', fontWeight: '600' }}>
@@ -2742,7 +2758,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             </div>
                             
                             <p style={{ color: theme.colors.mutedText, fontSize: '0.85rem', marginBottom: '16px' }}>
-                                The split amount will be moved to a new neuron. Both the original and new neuron must retain at least the minimum stake.
+                                The split amount will be moved to a new neuron. The split amount must include the transaction fee. Both the original and new neuron must retain at least the minimum stake.
                             </p>
                             
                             <div style={{ position: 'relative', marginBottom: '20px', display: 'flex', alignItems: 'center' }}>
@@ -2803,7 +2819,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     background: theme.colors.errorBg || theme.colors.secondaryBg,
                                     borderRadius: '6px'
                                 }}>
-                                    ⚠️ This neuron doesn't have enough stake to split. You need at least {formatAmount(minStakeE8s * 2n, token.decimals)} {token.symbol} to create two minimum-stake neurons.
+                                    ⚠️ This neuron doesn't have enough stake to split. You need at least {formatAmount(minStakeE8s + minSplitAmount, token.decimals)} {token.symbol} total (minimum stake for original + minimum split amount for new neuron).
                                 </p>
                             )}
                             
@@ -2837,8 +2853,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                 return;
                                             }
                                             const splitE8s = BigInt(Math.floor(splitFloat * Math.pow(10, token.decimals)));
-                                            if (splitE8s < minStakeE8s) {
-                                                alert(`The split amount must be at least ${formatAmount(minStakeE8s, token.decimals)} ${token.symbol}`);
+                                            if (splitE8s < minSplitAmount) {
+                                                alert(`The split amount must be at least ${formatAmount(minSplitAmount, token.decimals)} ${token.symbol} (minimum stake + transaction fee)`);
                                                 return;
                                             }
                                             if (splitE8s > maxSplitAmount) {
