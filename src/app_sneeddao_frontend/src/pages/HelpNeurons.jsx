@@ -486,7 +486,7 @@ function HelpNeurons() {
 
                     <h3 style={styles.subsubheading}>4. Neuron Detail Page</h3>
                     <p style={styles.paragraph}>
-                        The <Link to="/neuron" style={styles.link}>Neuron page</Link> (accessible via <span style={styles.code}>/neuron?id=NEURON_ID</span>) 
+                        The <Link to="/neuron" style={styles.link}>Neuron page</Link> (accessible via <span style={styles.code}>/neuron?neuronid=NEURON_ID</span>) 
                         provides detailed inspection and management of individual neurons:
                     </p>
                     <ul style={styles.list}>
@@ -503,9 +503,18 @@ function HelpNeurons() {
                             <strong style={styles.strong}>Edit Following:</strong> Set up and modify which neurons to follow for each proposal type
                         </li>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>All Operations:</strong> Access to staking, dissolving, disbursing, and sending neurons
+                            <strong style={styles.strong}>Vote on Proposals:</strong> Cast votes with this neuron if you have voting permissions
                         </li>
                     </ul>
+                    
+                    <div style={styles.warningBox}>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>Note:</strong> Most neuron operations like staking, adding stake, setting dissolve 
+                            time, starting/stopping dissolving, disbursing, disbursing maturity, and sending neurons are available on the{' '}
+                            <Link to="/wallet" style={styles.link}>Wallet page</Link>. The Neuron detail page focuses on inspection, 
+                            permissions management, and following configuration.
+                        </p>
+                    </div>
 
                     <div style={styles.infoBox}>
                         <p style={{...styles.paragraph, marginBottom: 0}}>
