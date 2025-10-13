@@ -219,8 +219,9 @@ function HelpWallet() {
                         <li style={styles.listItem}>
                             <strong style={styles.strong}>Backend Wallet:</strong> Tokens held in the Sneed Hub backend canister. 
                             When you lock tokens with <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>, they're 
-                            first transferred to the backend wallet. After a lock expires, tokens remain in the backend wallet 
-                            until you withdraw them to the frontend (or send them directly from the backend).
+                            first transferred to the backend wallet. After a lock expires, it automatically disappears and your 
+                            tokens appear under "Liquid" in the backend wallet. You can send these tokens directly (the wallet 
+                            combines frontend and backend balances automatically) or withdraw them to the frontend first if preferred.
                         </li>
                     </ul>
                     

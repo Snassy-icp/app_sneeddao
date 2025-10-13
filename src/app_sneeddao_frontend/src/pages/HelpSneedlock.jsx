@@ -334,18 +334,20 @@ function HelpSneedlock() {
                     
                     <h3 style={styles.subsubheading}>Unlocking Tokens</h3>
                     <p style={styles.paragraph}>
-                        For token locks that have expired:
+                        When a token lock expires, it automatically disappears—no action needed! Your tokens are automatically 
+                        unlocked and will appear in your <strong style={styles.strong}>"Liquid"</strong> balance:
                     </p>
                     <ol style={styles.list}>
                         <li style={styles.listItem}>Go to your <Link to="/wallet" style={styles.link}>Wallet page</Link></li>
-                        <li style={styles.listItem}>Expand the token card to see your locks</li>
-                        <li style={styles.listItem}>Find expired locks (they'll be marked or highlighted)</li>
-                        <li style={styles.listItem}>Click the <strong style={styles.strong}>"Unlock"</strong> or <strong style={styles.strong}>"Withdraw"</strong> button</li>
-                        <li style={styles.listItem}>Confirm the transaction</li>
+                        <li style={styles.listItem}>Your unlocked tokens will now be included in the "Liquid" balance</li>
+                        <li style={styles.listItem}>Expand the "Liquid" section to see the breakdown—you'll notice tokens in your backend wallet</li>
+                        <li style={styles.listItem}>You can now use these tokens immediately!</li>
                     </ol>
                     <p style={styles.paragraph}>
-                        The tokens will be transferred from the Sneedlock canister back to your wallet and will appear 
-                        in your available balance.
+                        <strong style={styles.strong}>Note:</strong> You don't need to withdraw tokens from the backend wallet 
+                        to use them. When you send tokens, the wallet automatically combines balances from both your frontend 
+                        and backend wallets. However, if you prefer to have everything in your frontend wallet, you can click 
+                        the <strong style={styles.strong}>"Withdraw from Backend"</strong> button in the expanded Liquid section.
                     </p>
                     
                     <h3 style={styles.subsubheading}>Unlocking Liquidity Positions</h3>
@@ -472,11 +474,22 @@ function HelpSneedlock() {
                     </ul>
                     
                     <div style={styles.warningBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>⚠️ Important:</strong> Lock transfers are permanent. Once you transfer 
-                            ownership of a locked asset, you cannot get it back unless the recipient transfers it back to you. 
-                            Double-check the recipient principal before confirming!
+                        <p style={{...styles.paragraph, marginBottom: '0.5rem'}}>
+                            <strong style={styles.strong}>⚠️ Important Warnings:</strong>
                         </p>
+                        <ul style={{...styles.list, marginBottom: 0}}>
+                            <li style={styles.listItem}>
+                                <strong style={styles.strong}>Wallet Compatibility:</strong> Only transfer locked positions 
+                                to recipient wallets that support Sneed Lock! Currently, this means only Sneed Wallet principals. 
+                                Transferring locked assets to incompatible wallets (like exchanges or other wallet types) may 
+                                result in permanent loss of access.
+                            </li>
+                            <li style={styles.listItem}>
+                                <strong style={styles.strong}>Permanent Transfers:</strong> Lock transfers are permanent. Once you 
+                                transfer ownership of a locked asset, you cannot get it back unless the recipient transfers it back 
+                                to you. Double-check the recipient principal before confirming!
+                            </li>
+                        </ul>
                     </div>
                 </div>
 

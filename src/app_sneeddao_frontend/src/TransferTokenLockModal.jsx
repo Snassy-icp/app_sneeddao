@@ -123,6 +123,32 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
           </div>
         </div>
 
+        {/* Warning Box */}
+        <div style={{
+          background: `${theme.colors.warning || '#FF9800'}15`,
+          border: `1px solid ${theme.colors.warning || '#FF9800'}50`,
+          borderRadius: '8px',
+          padding: '14px',
+          marginBottom: '20px'
+        }}>
+          <div style={{
+            color: theme.colors.warning || '#FF9800',
+            fontWeight: '600',
+            fontSize: '0.95rem',
+            marginBottom: '6px'
+          }}>
+            ⚠️ Wallet Compatibility Warning
+          </div>
+          <div style={{
+            color: theme.colors.secondaryText,
+            fontSize: '0.85rem',
+            lineHeight: '1.5'
+          }}>
+            Only transfer locked tokens to Sneed Wallet principals that support Sneed Lock! 
+            Transferring to incompatible wallets (exchanges, other wallet types) may result in permanent loss of access.
+          </div>
+        </div>
+
         <div style={{ marginBottom: '20px' }}>
           <label style={{
             display: 'block',
