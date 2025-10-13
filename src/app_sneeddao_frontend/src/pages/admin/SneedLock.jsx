@@ -35,8 +35,15 @@ export default function SneedLockAdmin() {
   const [pauseReason, setPauseReason] = useState('');
   const [removeRequestId, setRemoveRequestId] = useState('');
   const [retryRequestId, setRetryRequestId] = useState('');
-  const [withdrawRequestId, setWithdrawRequestId] = useState('');
   const [enforceZeroBalance, setEnforceZeroBalance] = useState(false);
+  
+  // New admin function state
+  const [addAdminPrincipal, setAddAdminPrincipal] = useState('');
+  const [rescueTokenLedger, setRescueTokenLedger] = useState('');
+  const [rescueTokenRecipient, setRescueTokenRecipient] = useState('');
+  const [returnFailedRequestLedger, setReturnFailedRequestLedger] = useState('');
+  const [returnFailedRequestAmount, setReturnFailedRequestAmount] = useState('');
+  const [returnFailedRequestRecipient, setReturnFailedRequestRecipient] = useState('');
   
   // Return token state
   const [returnTokenLedger, setReturnTokenLedger] = useState('');
@@ -402,10 +409,10 @@ export default function SneedLockAdmin() {
     }
   };
 
-  const handleManualWithdraw = async (e) => {
+  const handleAddAdmin = async (e) => {
     e.preventDefault();
-    if (!withdrawRequestId) {
-      setError('Please provide a request ID');
+    if (!addAdminPrincipal) {
+      setError('Please provide an admin principal to add');
       return;
     }
     
@@ -416,25 +423,150 @@ export default function SneedLockAdmin() {
       const actor = getSneedLockActor();
       if (!actor) throw new Error('Failed to create actor');
 
-      const result = await actor.admin_manual_withdraw_for_request(BigInt(withdrawRequestId));
+      const adminPrincipal = Principal.fromText(addAdminPrincipal);
+      const result = await actor.admin_add_admin(adminPrincipal);
       
       if ('Ok' in result) {
-        setSuccess(`Manual withdraw completed: ${result.Ok}`);
-        setWithdrawRequestId('');
+        setSuccess(`Admin added: ${result.Ok}`);
+        setAddAdminPrincipal('');
+        
+        // Refresh admin list
+        const admins = await actor.get_admin_list();
+        setAdminList(admins);
       } else {
-        setError(`Failed to withdraw: ${result.Err}`);
+        setError(`Failed to add admin: ${result.Err}`);
       }
+    } catch (err) {
+      console.error('Error adding admin:', err);
+      setError('Failed to add admin: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClearCompletedRequests = async () => {
+    if (!window.confirm('Are you sure you want to clear all completed claim requests?')) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getSneedLockActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      const cleared = await actor.admin_clear_completed_claim_requests();
+      setSuccess(`Cleared ${cleared} completed claim requests`);
       
       // Refresh claim requests
-      const [activeReqs, completedReqs] = await Promise.all([
-        actor.get_all_active_claim_requests(),
-        actor.get_all_completed_claim_requests()
-      ]);
-      setActiveClaimRequests(activeReqs);
-      setCompletedClaimRequests(completedReqs);
+      await refreshClaimRequests();
     } catch (err) {
-      console.error('Error with manual withdraw:', err);
-      setError('Failed to manually withdraw: ' + err.message);
+      console.error('Error clearing completed requests:', err);
+      setError('Failed to clear completed requests: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClearFailedRequests = async () => {
+    if (!window.confirm('Are you sure you want to clear all failed claim requests?')) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getSneedLockActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      const cleared = await actor.admin_clear_failed_claim_requests();
+      setSuccess(`Cleared ${cleared} failed claim requests`);
+      
+      // Refresh claim requests
+      await refreshClaimRequests();
+    } catch (err) {
+      console.error('Error clearing failed requests:', err);
+      setError('Failed to clear failed requests: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRescueStuckTokens = async (e) => {
+    e.preventDefault();
+    if (!rescueTokenLedger || !rescueTokenRecipient) {
+      setError('Please fill in all rescue token fields');
+      return;
+    }
+    
+    if (!window.confirm(`Are you sure you want to rescue all stuck tokens from ledger ${rescueTokenLedger}?`)) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getSneedLockActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      const ledgerPrincipal = Principal.fromText(rescueTokenLedger);
+      const recipientPrincipal = Principal.fromText(rescueTokenRecipient);
+
+      const result = await actor.admin_rescue_stuck_tokens(ledgerPrincipal, recipientPrincipal);
+      
+      if ('Ok' in result) {
+        setSuccess(`Tokens rescued: ${result.Ok}`);
+        setRescueTokenLedger('');
+        setRescueTokenRecipient('');
+      } else {
+        setError(`Failed to rescue tokens: ${result.Err}`);
+      }
+    } catch (err) {
+      console.error('Error rescuing tokens:', err);
+      setError('Failed to rescue tokens: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReturnTokenFromFailedRequest = async (e) => {
+    e.preventDefault();
+    if (!returnFailedRequestLedger || !returnFailedRequestAmount || !returnFailedRequestRecipient) {
+      setError('Please fill in all fields');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getSneedLockActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      const ledgerPrincipal = Principal.fromText(returnFailedRequestLedger);
+      const recipientPrincipal = Principal.fromText(returnFailedRequestRecipient);
+      const amount = BigInt(returnFailedRequestAmount);
+
+      const result = await actor.admin_return_token_from_failed_request(
+        ledgerPrincipal, 
+        amount, 
+        recipientPrincipal
+      );
+      
+      if ('Ok' in result) {
+        setSuccess(`Token returned from failed request. Transfer index: ${result.Ok}`);
+        setReturnFailedRequestLedger('');
+        setReturnFailedRequestAmount('');
+        setReturnFailedRequestRecipient('');
+      } else {
+        setError(`Failed to return token: ${JSON.stringify(result.Err)}`);
+      }
+    } catch (err) {
+      console.error('Error returning token from failed request:', err);
+      setError('Failed to return token: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -533,10 +665,32 @@ export default function SneedLockAdmin() {
     if ('ClaimAttempted' in status) return `Claim Attempted (${status.ClaimAttempted.claim_attempt})`;
     if ('ClaimVerified' in status) return 'Claim Verified';
     if ('Withdrawn' in status) return 'Withdrawn';
-    if ('Completed' in status) return 'Completed';
+    if ('Completed' in status) {
+      const c = status.Completed;
+      return `Completed (Claimed: ${Number(c.amount0_claimed)}/${Number(c.amount1_claimed)}, Transferred: ${Number(c.amount0_transferred)}/${Number(c.amount1_transferred)})`;
+    }
     if ('Failed' in status) return `Failed: ${status.Failed}`;
     if ('TimedOut' in status) return 'Timed Out';
     return JSON.stringify(status);
+  };
+
+  const renderStatusDetails = (status) => {
+    if (!('Completed' in status)) return null;
+    
+    const c = status.Completed;
+    const hasTxId0 = c.transfer0_tx_id && c.transfer0_tx_id.length > 0;
+    const hasTxId1 = c.transfer1_tx_id && c.transfer1_tx_id.length > 0;
+    
+    return (
+      <div style={{ marginTop: '10px', fontSize: '11px', color: '#888', lineHeight: '1.6' }}>
+        <div><strong>Token 0:</strong> Claimed: {Number(c.amount0_claimed)}, Transferred: {Number(c.amount0_transferred)}
+          {hasTxId0 && <span style={{ color: '#3498db' }}> (TX: {Number(c.transfer0_tx_id[0])})</span>}
+        </div>
+        <div><strong>Token 1:</strong> Claimed: {Number(c.amount1_claimed)}, Transferred: {Number(c.amount1_transferred)}
+          {hasTxId1 && <span style={{ color: '#3498db' }}> (TX: {Number(c.transfer1_tx_id[0])})</span>}
+        </div>
+      </div>
+    );
   };
 
   const renderClaimRequestCard = (request) => (
@@ -619,23 +773,6 @@ export default function SneedLockAdmin() {
           </button>
           <button
             onClick={() => {
-              setWithdrawRequestId(request.request_id.toString());
-              handleManualWithdraw({ preventDefault: () => {} });
-            }}
-            style={{
-              backgroundColor: '#2ecc71',
-              color: '#ffffff',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '6px 12px',
-              fontSize: '12px',
-              cursor: 'pointer'
-            }}
-          >
-            Withdraw
-          </button>
-          <button
-            onClick={() => {
               setRemoveRequestId(request.request_id.toString());
               handleRemoveClaimRequest({ preventDefault: () => {} });
             }}
@@ -653,6 +790,7 @@ export default function SneedLockAdmin() {
           </button>
         </div>
       </div>
+      {renderStatusDetails(request.status)}
     </div>
   );
 
@@ -689,19 +827,34 @@ export default function SneedLockAdmin() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2 style={{ color: '#ffffff', fontSize: '24px' }}>Completed Claim Requests</h2>
-        <button
-          onClick={refreshClaimRequests}
-          style={{
-            backgroundColor: '#3498db',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '4px',
-            padding: '8px 16px',
-            cursor: 'pointer'
-          }}
-        >
-          Refresh
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button
+            onClick={handleClearCompletedRequests}
+            style={{
+              backgroundColor: '#e74c3c',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '8px 16px',
+              cursor: 'pointer'
+            }}
+          >
+            Clear All
+          </button>
+          <button
+            onClick={refreshClaimRequests}
+            style={{
+              backgroundColor: '#3498db',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '8px 16px',
+              cursor: 'pointer'
+            }}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
       
       <div style={{ backgroundColor: '#1a1a1a', borderRadius: '8px', padding: '20px', border: '1px solid #3a3a3a' }}>
@@ -769,6 +922,7 @@ export default function SneedLockAdmin() {
                     </div>
                   </div>
                 </div>
+                {renderStatusDetails(request.status)}
               </div>
             ))}
           </div>
@@ -781,19 +935,34 @@ export default function SneedLockAdmin() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2 style={{ color: '#ffffff', fontSize: '24px' }}>Failed Claim Requests</h2>
-        <button
-          onClick={refreshClaimRequests}
-          style={{
-            backgroundColor: '#3498db',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '4px',
-            padding: '8px 16px',
-            cursor: 'pointer'
-          }}
-        >
-          Refresh
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button
+            onClick={handleClearFailedRequests}
+            style={{
+              backgroundColor: '#e74c3c',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '8px 16px',
+              cursor: 'pointer'
+            }}
+          >
+            Clear All
+          </button>
+          <button
+            onClick={refreshClaimRequests}
+            style={{
+              backgroundColor: '#3498db',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '8px 16px',
+              cursor: 'pointer'
+            }}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
       
       <div style={{ backgroundColor: '#1a1a1a', borderRadius: '8px', padding: '20px', border: '1px solid #3a3a3a' }}>
@@ -877,23 +1046,6 @@ export default function SneedLockAdmin() {
                       }}
                     >
                       Retry
-                    </button>
-                    <button
-                      onClick={() => {
-                        setWithdrawRequestId(request.request_id.toString());
-                        handleManualWithdraw({ preventDefault: () => {} });
-                      }}
-                      style={{
-                        backgroundColor: '#2ecc71',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: '4px',
-                        padding: '6px 12px',
-                        fontSize: '12px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Withdraw
                     </button>
                   </div>
                 </div>
@@ -1405,7 +1557,7 @@ export default function SneedLockAdmin() {
         </form>
       </div>
 
-      {/* Manual Withdraw */}
+      {/* Rescue Stuck Tokens */}
       <div style={{
         backgroundColor: '#2a2a2a',
         borderRadius: '8px',
@@ -1413,42 +1565,153 @@ export default function SneedLockAdmin() {
         marginBottom: '20px',
         border: '1px solid #3a3a3a'
       }}>
-        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Manual Withdraw for Request</h3>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Rescue Stuck Tokens</h3>
         <p style={{ color: '#888', fontSize: '13px', marginBottom: '15px' }}>
-          Force a manual withdraw for a specific claim request. Use this when a request needs manual intervention.
+          Rescue all tokens of a specific type that are stuck in the canister's main account.
         </p>
-        <form onSubmit={handleManualWithdraw} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
-          <div style={{ flex: 1 }}>
-            <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
-              Request ID
-            </label>
-            <input
-              type="text"
-              placeholder="Enter request ID"
-              value={withdrawRequestId}
-              onChange={(e) => setWithdrawRequestId(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '4px',
-                border: '1px solid #3a3a3a',
-                backgroundColor: '#1a1a1a',
-                color: '#ffffff'
-              }}
-            />
+        <form onSubmit={handleRescueStuckTokens}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '15px' }}>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Token Ledger Canister ID
+              </label>
+              <input
+                type="text"
+                placeholder="Principal of ICRC-1 ledger"
+                value={rescueTokenLedger}
+                onChange={(e) => setRescueTokenLedger(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Recipient Principal
+              </label>
+              <input
+                type="text"
+                placeholder="Principal to receive tokens"
+                value={rescueTokenRecipient}
+                onChange={(e) => setRescueTokenRecipient(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+            </div>
           </div>
           <button
             type="submit"
             style={{
-              backgroundColor: '#2ecc71',
+              backgroundColor: '#e67e22',
               color: '#ffffff',
               border: 'none',
               borderRadius: '4px',
               padding: '10px 20px',
+              marginTop: '15px',
               cursor: 'pointer'
             }}
           >
-            Manual Withdraw
+            Rescue Tokens
+          </button>
+        </form>
+      </div>
+
+      {/* Return Token from Failed Request */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginBottom: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Return Token from Failed Request</h3>
+        <p style={{ color: '#888', fontSize: '13px', marginBottom: '15px' }}>
+          Return tokens from a failed claim request to a specific recipient.
+        </p>
+        <form onSubmit={handleReturnTokenFromFailedRequest}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '15px' }}>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Ledger Canister ID
+              </label>
+              <input
+                type="text"
+                placeholder="Principal of ICRC-1 ledger"
+                value={returnFailedRequestLedger}
+                onChange={(e) => setReturnFailedRequestLedger(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Amount (in smallest unit)
+              </label>
+              <input
+                type="text"
+                placeholder="Amount to return"
+                value={returnFailedRequestAmount}
+                onChange={(e) => setReturnFailedRequestAmount(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Recipient Principal
+              </label>
+              <input
+                type="text"
+                placeholder="Principal to return tokens to"
+                value={returnFailedRequestRecipient}
+                onChange={(e) => setReturnFailedRequestRecipient(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+            </div>
+          </div>
+          <button
+            type="submit"
+            style={{
+              backgroundColor: '#3498db',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '10px 20px',
+              marginTop: '15px',
+              cursor: 'pointer'
+            }}
+          >
+            Return Token
           </button>
         </form>
       </div>
@@ -1589,6 +1852,46 @@ export default function SneedLockAdmin() {
           )}
         </div>
         
+        {/* Add Admin Form */}
+        <form onSubmit={handleAddAdmin} style={{ marginTop: '15px' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Add Admin by Principal
+              </label>
+              <input
+                type="text"
+                placeholder="Enter principal to add"
+                value={addAdminPrincipal}
+                onChange={(e) => setAddAdminPrincipal(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff',
+                  fontFamily: 'monospace'
+                }}
+              />
+            </div>
+            <button
+              type="submit"
+              style={{
+                backgroundColor: '#2ecc71',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '10px 20px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Add Admin
+            </button>
+          </div>
+        </form>
+
         {/* Remove Admin Form */}
         <form onSubmit={handleRemoveAdmin} style={{ marginTop: '15px' }}>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
