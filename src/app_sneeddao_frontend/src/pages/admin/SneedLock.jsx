@@ -7,7 +7,7 @@ import { Principal } from '@dfinity/principal';
 
 export default function SneedLockAdmin() {
   const { isAuthenticated, identity } = useAuth();
-  const [activeTab, setActiveTab] = useState('info');
+  const [activeTab, setActiveTab] = useState('queue');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -21,10 +21,21 @@ export default function SneedLockAdmin() {
   const [errorPage, setErrorPage] = useState(1);
   const pageSize = 50;
   
+  // Claim request state
+  const [activeClaimRequests, setActiveClaimRequests] = useState([]);
+  const [completedClaimRequests, setCompletedClaimRequests] = useState([]);
+  const [failedClaimRequests, setFailedClaimRequests] = useState([]);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  
+  // Timer state
+  const [timerStatus, setTimerStatus] = useState(null);
+  
   // Admin functions state
   const [claimQueueStatus, setClaimQueueStatus] = useState(null);
   const [pauseReason, setPauseReason] = useState('');
   const [removeRequestId, setRemoveRequestId] = useState('');
+  const [retryRequestId, setRetryRequestId] = useState('');
+  const [withdrawRequestId, setWithdrawRequestId] = useState('');
   const [enforceZeroBalance, setEnforceZeroBalance] = useState(false);
   
   // Return token state
@@ -58,12 +69,16 @@ export default function SneedLockAdmin() {
       const actor = getSneedLockActor();
       if (!actor) return;
 
-      const [infoRangeResult, errorRangeResult, queueStatus, enforceZero, lockFee] = await Promise.all([
+      const [infoRangeResult, errorRangeResult, queueStatus, enforceZero, lockFee, timer, activeReqs, completedReqs, failedReqs] = await Promise.all([
         actor.get_info_id_range(),
         actor.get_error_id_range(),
         actor.get_claim_queue_status(),
         actor.get_enforce_zero_balance_before_claim(),
-        actor.get_token_lock_fee_sneed_e8s()
+        actor.get_token_lock_fee_sneed_e8s(),
+        actor.get_timer_status(),
+        actor.get_all_active_claim_requests(),
+        actor.get_all_completed_claim_requests(),
+        actor.get_all_failed_claim_requests()
       ]);
 
       const infoRangeData = infoRangeResult.length > 0 ? infoRangeResult[0] : null;
@@ -74,6 +89,10 @@ export default function SneedLockAdmin() {
       setClaimQueueStatus(queueStatus);
       setEnforceZeroBalance(enforceZero);
       setTokenLockFee(Number(lockFee).toString());
+      setTimerStatus(timer);
+      setActiveClaimRequests(activeReqs);
+      setCompletedClaimRequests(completedReqs);
+      setFailedClaimRequests(failedReqs);
 
       // Fetch first page of logs with the range data directly
       if (infoRangeData) {
@@ -296,6 +315,144 @@ export default function SneedLockAdmin() {
     }
   };
 
+  const handleTriggerProcessing = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getSneedLockActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      const result = await actor.admin_trigger_claim_processing();
+      setSuccess(`Processing triggered: ${result}`);
+      
+      // Refresh data
+      await fetchInitialData();
+    } catch (err) {
+      console.error('Error triggering processing:', err);
+      setError('Failed to trigger processing: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmergencyStopTimer = async () => {
+    if (!window.confirm('Are you sure you want to EMERGENCY STOP the timer? This will stop all automatic processing!')) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getSneedLockActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      await actor.admin_emergency_stop_timer();
+      setSuccess('Timer stopped successfully! Automatic processing is now disabled.');
+      
+      // Refresh timer status
+      const timer = await actor.get_timer_status();
+      setTimerStatus(timer);
+    } catch (err) {
+      console.error('Error stopping timer:', err);
+      setError('Failed to stop timer: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRetryRequest = async (e) => {
+    e.preventDefault();
+    if (!retryRequestId) {
+      setError('Please provide a request ID');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getSneedLockActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      const result = await actor.admin_retry_claim_request(BigInt(retryRequestId));
+      
+      if ('Ok' in result) {
+        setSuccess(`Request retry initiated: ${result.Ok}`);
+        setRetryRequestId('');
+      } else {
+        setError(`Failed to retry request: ${result.Err}`);
+      }
+      
+      // Refresh claim requests
+      const activeReqs = await actor.get_all_active_claim_requests();
+      setActiveClaimRequests(activeReqs);
+    } catch (err) {
+      console.error('Error retrying request:', err);
+      setError('Failed to retry request: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleManualWithdraw = async (e) => {
+    e.preventDefault();
+    if (!withdrawRequestId) {
+      setError('Please provide a request ID');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getSneedLockActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      const result = await actor.admin_manual_withdraw_for_request(BigInt(withdrawRequestId));
+      
+      if ('Ok' in result) {
+        setSuccess(`Manual withdraw completed: ${result.Ok}`);
+        setWithdrawRequestId('');
+      } else {
+        setError(`Failed to withdraw: ${result.Err}`);
+      }
+      
+      // Refresh claim requests
+      const [activeReqs, completedReqs] = await Promise.all([
+        actor.get_all_active_claim_requests(),
+        actor.get_all_completed_claim_requests()
+      ]);
+      setActiveClaimRequests(activeReqs);
+      setCompletedClaimRequests(completedReqs);
+    } catch (err) {
+      console.error('Error with manual withdraw:', err);
+      setError('Failed to manually withdraw: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshClaimRequests = async () => {
+    try {
+      const actor = getSneedLockActor();
+      if (!actor) return;
+      
+      const [activeReqs, completedReqs, failedReqs] = await Promise.all([
+        actor.get_all_active_claim_requests(),
+        actor.get_all_completed_claim_requests(),
+        actor.get_all_failed_claim_requests()
+      ]);
+      
+      setActiveClaimRequests(activeReqs);
+      setCompletedClaimRequests(completedReqs);
+      setFailedClaimRequests(failedReqs);
+    } catch (err) {
+      console.error('Error refreshing claim requests:', err);
+    }
+  };
+
   const formatTimestamp = (timestamp) => {
     try {
       const ms = Number(timestamp) / 1_000_000;
@@ -310,6 +467,375 @@ export default function SneedLockAdmin() {
     if (text.length <= 20) return text;
     return `${text.slice(0, 10)}...${text.slice(-6)}`;
   };
+
+  const getStatusColor = (status) => {
+    if ('Pending' in status) return '#3498db';
+    if ('Processing' in status) return '#f39c12';
+    if ('BalanceRecorded' in status) return '#9b59b6';
+    if ('ClaimAttempted' in status) return '#e67e22';
+    if ('ClaimVerified' in status) return '#1abc9c';
+    if ('Withdrawn' in status) return '#2ecc71';
+    if ('Completed' in status) return '#27ae60';
+    if ('Failed' in status) return '#e74c3c';
+    if ('TimedOut' in status) return '#c0392b';
+    return '#888';
+  };
+
+  const getStatusText = (status) => {
+    if ('Pending' in status) return 'Pending';
+    if ('Processing' in status) return 'Processing';
+    if ('BalanceRecorded' in status) return 'Balance Recorded';
+    if ('ClaimAttempted' in status) return `Claim Attempted (${status.ClaimAttempted.claim_attempt})`;
+    if ('ClaimVerified' in status) return 'Claim Verified';
+    if ('Withdrawn' in status) return 'Withdrawn';
+    if ('Completed' in status) return 'Completed';
+    if ('Failed' in status) return `Failed: ${status.Failed}`;
+    if ('TimedOut' in status) return 'Timed Out';
+    return JSON.stringify(status);
+  };
+
+  const renderClaimRequestCard = (request) => (
+    <div
+      key={request.request_id.toString()}
+      style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '4px',
+        padding: '15px',
+        border: `1px solid ${getStatusColor(request.status)}`,
+        marginBottom: '10px'
+      }}
+    >
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '15px', alignItems: 'start' }}>
+        <div>
+          <div style={{ color: '#888', fontSize: '12px', marginBottom: '4px' }}>Request ID</div>
+          <div style={{ color: '#3498db', fontSize: '18px', fontWeight: 'bold' }}>
+            {Number(request.request_id)}
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+          <div>
+            <div style={{ color: '#888', fontSize: '11px' }}>Status</div>
+            <div style={{ color: getStatusColor(request.status), fontSize: '13px', fontWeight: 'bold' }}>
+              {getStatusText(request.status)}
+            </div>
+          </div>
+          <div>
+            <div style={{ color: '#888', fontSize: '11px' }}>Caller</div>
+            <div style={{ color: '#ffffff', fontSize: '12px', fontFamily: 'monospace' }}>
+              {formatPrincipal(request.caller)}
+            </div>
+          </div>
+          <div>
+            <div style={{ color: '#888', fontSize: '11px' }}>Position ID</div>
+            <div style={{ color: '#ffffff', fontSize: '13px' }}>{Number(request.position_id)}</div>
+          </div>
+          <div>
+            <div style={{ color: '#888', fontSize: '11px' }}>Swap Canister</div>
+            <div style={{ color: '#ffffff', fontSize: '12px', fontFamily: 'monospace' }}>
+              {formatPrincipal(request.swap_canister_id)}
+            </div>
+          </div>
+          <div>
+            <div style={{ color: '#888', fontSize: '11px' }}>Created</div>
+            <div style={{ color: '#ffffff', fontSize: '12px' }}>
+              {formatTimestamp(request.created_at)}
+            </div>
+          </div>
+          {request.last_attempted_at.length > 0 && (
+            <div>
+              <div style={{ color: '#888', fontSize: '11px' }}>Last Attempted</div>
+              <div style={{ color: '#ffffff', fontSize: '12px' }}>
+                {formatTimestamp(request.last_attempted_at[0])}
+              </div>
+            </div>
+          )}
+          <div>
+            <div style={{ color: '#888', fontSize: '11px' }}>Retry Count</div>
+            <div style={{ color: '#ffffff', fontSize: '13px' }}>{Number(request.retry_count)}</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '5px', flexDirection: 'column' }}>
+          <button
+            onClick={() => {
+              setRetryRequestId(request.request_id.toString());
+              handleRetryRequest({ preventDefault: () => {} });
+            }}
+            style={{
+              backgroundColor: '#f39c12',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              cursor: 'pointer'
+            }}
+          >
+            Retry
+          </button>
+          <button
+            onClick={() => {
+              setWithdrawRequestId(request.request_id.toString());
+              handleManualWithdraw({ preventDefault: () => {} });
+            }}
+            style={{
+              backgroundColor: '#2ecc71',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              cursor: 'pointer'
+            }}
+          >
+            Withdraw
+          </button>
+          <button
+            onClick={() => {
+              setRemoveRequestId(request.request_id.toString());
+              handleRemoveClaimRequest({ preventDefault: () => {} });
+            }}
+            style={{
+              backgroundColor: '#e74c3c',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              cursor: 'pointer'
+            }}
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderActiveClaimRequests = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2 style={{ color: '#ffffff', fontSize: '24px' }}>Active Claim Requests</h2>
+        <button
+          onClick={refreshClaimRequests}
+          style={{
+            backgroundColor: '#3498db',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '4px',
+            padding: '8px 16px',
+            cursor: 'pointer'
+          }}
+        >
+          Refresh
+        </button>
+      </div>
+      
+      <div style={{ backgroundColor: '#1a1a1a', borderRadius: '8px', padding: '20px', border: '1px solid #3a3a3a' }}>
+        {activeClaimRequests.length === 0 ? (
+          <div style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No active claim requests</div>
+        ) : (
+          activeClaimRequests.map(request => renderClaimRequestCard(request))
+        )}
+      </div>
+    </div>
+  );
+
+  const renderCompletedClaimRequests = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2 style={{ color: '#ffffff', fontSize: '24px' }}>Completed Claim Requests</h2>
+        <button
+          onClick={refreshClaimRequests}
+          style={{
+            backgroundColor: '#3498db',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '4px',
+            padding: '8px 16px',
+            cursor: 'pointer'
+          }}
+        >
+          Refresh
+        </button>
+      </div>
+      
+      <div style={{ backgroundColor: '#1a1a1a', borderRadius: '8px', padding: '20px', border: '1px solid #3a3a3a' }}>
+        {completedClaimRequests.length === 0 ? (
+          <div style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No completed claim requests</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {completedClaimRequests.map((text, idx) => (
+              <div
+                key={idx}
+                style={{
+                  backgroundColor: 'rgba(46, 204, 113, 0.1)',
+                  borderRadius: '4px',
+                  padding: '12px',
+                  border: '1px solid #2ecc71',
+                  color: '#ffffff',
+                  wordBreak: 'break-word',
+                  fontSize: '13px'
+                }}
+              >
+                {text}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderFailedClaimRequests = () => (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2 style={{ color: '#ffffff', fontSize: '24px' }}>Failed Claim Requests</h2>
+        <button
+          onClick={refreshClaimRequests}
+          style={{
+            backgroundColor: '#3498db',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '4px',
+            padding: '8px 16px',
+            cursor: 'pointer'
+          }}
+        >
+          Refresh
+        </button>
+      </div>
+      
+      <div style={{ backgroundColor: '#1a1a1a', borderRadius: '8px', padding: '20px', border: '1px solid #3a3a3a' }}>
+        {failedClaimRequests.length === 0 ? (
+          <div style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No failed claim requests</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {failedClaimRequests.map((text, idx) => (
+              <div
+                key={idx}
+                style={{
+                  backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                  borderRadius: '4px',
+                  padding: '12px',
+                  border: '1px solid #e74c3c',
+                  color: '#ffffff',
+                  wordBreak: 'break-word',
+                  fontSize: '13px'
+                }}
+              >
+                {text}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderTimerStatus = () => (
+    <div>
+      <h2 style={{ color: '#ffffff', fontSize: '24px', marginBottom: '20px' }}>Timer Status</h2>
+      
+      {timerStatus && (
+        <div style={{
+          backgroundColor: '#2a2a2a',
+          borderRadius: '8px',
+          padding: '20px',
+          marginBottom: '20px',
+          border: '1px solid #3a3a3a'
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px' }}>
+            <div>
+              <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Timer Active</div>
+              <div style={{ 
+                color: timerStatus.is_active ? '#2ecc71' : '#e74c3c', 
+                fontSize: '20px',
+                fontWeight: 'bold'
+              }}>
+                {timerStatus.is_active ? 'ACTIVE' : 'STOPPED'}
+              </div>
+            </div>
+            
+            {timerStatus.timer_id.length > 0 && (
+              <div>
+                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Timer ID</div>
+                <div style={{ color: '#ffffff', fontSize: '16px' }}>{Number(timerStatus.timer_id[0])}</div>
+              </div>
+            )}
+            
+            {timerStatus.last_execution_time.length > 0 && (
+              <div>
+                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Last Execution</div>
+                <div style={{ color: '#ffffff', fontSize: '14px' }}>
+                  {formatTimestamp(timerStatus.last_execution_time[0])}
+                </div>
+              </div>
+            )}
+            
+            {timerStatus.time_since_last_execution_seconds.length > 0 && (
+              <div>
+                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Time Since Last</div>
+                <div style={{ color: '#ffffff', fontSize: '16px' }}>
+                  {Number(timerStatus.time_since_last_execution_seconds[0])} seconds
+                </div>
+              </div>
+            )}
+            
+            {timerStatus.next_scheduled_time.length > 0 && (
+              <div>
+                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Next Scheduled</div>
+                <div style={{ color: '#ffffff', fontSize: '14px' }}>
+                  {formatTimestamp(timerStatus.next_scheduled_time[0])}
+                </div>
+              </div>
+            )}
+            
+            {timerStatus.last_execution_correlation_id.length > 0 && (
+              <div>
+                <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Last Correlation ID</div>
+                <div style={{ color: '#ffffff', fontSize: '16px' }}>
+                  {Number(timerStatus.last_execution_correlation_id[0])}
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
+            <button
+              onClick={handleTriggerProcessing}
+              disabled={loading}
+              style={{
+                backgroundColor: '#3498db',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '10px 20px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              Trigger Processing Now
+            </button>
+            <button
+              onClick={handleEmergencyStopTimer}
+              disabled={loading || !timerStatus.is_active}
+              style={{
+                backgroundColor: '#e74c3c',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '10px 20px',
+                cursor: (loading || !timerStatus.is_active) ? 'not-allowed' : 'pointer',
+                opacity: (loading || !timerStatus.is_active) ? 0.6 : 1
+              }}
+            >
+              Emergency Stop Timer
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   const renderInfoLogs = () => (
     <div>
@@ -521,6 +1047,14 @@ export default function SneedLockAdmin() {
               <div style={{ color: '#888', fontSize: '12px' }}>Completed (Buffer)</div>
               <div style={{ color: '#ffffff', fontSize: '16px' }}>{Number(claimQueueStatus.completed_buffer_count)}</div>
             </div>
+            <div>
+              <div style={{ color: '#888', fontSize: '12px' }}>Failed (Buffer)</div>
+              <div style={{ color: '#ffffff', fontSize: '16px' }}>{Number(claimQueueStatus.failed_buffer_count)}</div>
+            </div>
+            <div>
+              <div style={{ color: '#888', fontSize: '12px' }}>Consecutive Empty Cycles</div>
+              <div style={{ color: '#ffffff', fontSize: '16px' }}>{Number(claimQueueStatus.consecutive_empty_cycles)}</div>
+            </div>
           </div>
           <div style={{ marginTop: '15px', display: 'flex', gap: '10px' }}>
             {'Active' in claimQueueStatus.processing_state ? (
@@ -646,6 +1180,102 @@ export default function SneedLockAdmin() {
             }}
           >
             Remove Request
+          </button>
+        </form>
+      </div>
+
+      {/* Retry Claim Request */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginBottom: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Retry Claim Request</h3>
+        <p style={{ color: '#888', fontSize: '13px', marginBottom: '15px' }}>
+          Retry a failed or stuck claim request. This will reset its state and attempt processing again.
+        </p>
+        <form onSubmit={handleRetryRequest} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+              Request ID
+            </label>
+            <input
+              type="text"
+              placeholder="Enter request ID"
+              value={retryRequestId}
+              onChange={(e) => setRetryRequestId(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '4px',
+                border: '1px solid #3a3a3a',
+                backgroundColor: '#1a1a1a',
+                color: '#ffffff'
+              }}
+            />
+          </div>
+          <button
+            type="submit"
+            style={{
+              backgroundColor: '#f39c12',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '10px 20px',
+              cursor: 'pointer'
+            }}
+          >
+            Retry Request
+          </button>
+        </form>
+      </div>
+
+      {/* Manual Withdraw */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginBottom: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Manual Withdraw for Request</h3>
+        <p style={{ color: '#888', fontSize: '13px', marginBottom: '15px' }}>
+          Force a manual withdraw for a specific claim request. Use this when a request needs manual intervention.
+        </p>
+        <form onSubmit={handleManualWithdraw} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+              Request ID
+            </label>
+            <input
+              type="text"
+              placeholder="Enter request ID"
+              value={withdrawRequestId}
+              onChange={(e) => setWithdrawRequestId(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '4px',
+                border: '1px solid #3a3a3a',
+                backgroundColor: '#1a1a1a',
+                color: '#ffffff'
+              }}
+            />
+          </div>
+          <button
+            type="submit"
+            style={{
+              backgroundColor: '#2ecc71',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '4px',
+              padding: '10px 20px',
+              cursor: 'pointer'
+            }}
+          >
+            Manual Withdraw
           </button>
         </form>
       </div>
@@ -860,9 +1490,10 @@ export default function SneedLockAdmin() {
           gap: '10px', 
           marginBottom: '30px',
           borderBottom: '1px solid #3a3a3a',
-          paddingBottom: '10px'
+          paddingBottom: '10px',
+          flexWrap: 'wrap'
         }}>
-          {['info', 'error', 'functions', 'settings'].map(tab => (
+          {['queue', 'completed', 'failed', 'timer', 'info', 'error', 'functions', 'settings'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -878,6 +1509,10 @@ export default function SneedLockAdmin() {
                 transition: 'all 0.2s ease'
               }}
             >
+              {tab === 'queue' && 'Active Queue'}
+              {tab === 'completed' && 'Completed'}
+              {tab === 'failed' && 'Failed'}
+              {tab === 'timer' && 'Timer Status'}
               {tab === 'info' && 'Info Logs'}
               {tab === 'error' && 'Error Logs'}
               {tab === 'functions' && 'Admin Functions'}
@@ -893,6 +1528,10 @@ export default function SneedLockAdmin() {
           </div>
         ) : (
           <>
+            {activeTab === 'queue' && renderActiveClaimRequests()}
+            {activeTab === 'completed' && renderCompletedClaimRequests()}
+            {activeTab === 'failed' && renderFailedClaimRequests()}
+            {activeTab === 'timer' && renderTimerStatus()}
             {activeTab === 'info' && renderInfoLogs()}
             {activeTab === 'error' && renderErrorLogs()}
             {activeTab === 'functions' && renderAdminFunctions()}

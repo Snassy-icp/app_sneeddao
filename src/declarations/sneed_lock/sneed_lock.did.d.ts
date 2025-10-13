@@ -15,12 +15,14 @@ export type ClaimAndWithdrawResult = { 'Ok' : ClaimRequestId } |
 export interface ClaimRequest {
   'request_id' : ClaimRequestId,
   'status' : ClaimRequestStatus,
+  'retry_count' : bigint,
   'started_processing_at' : [] | [Timestamp],
   'created_at' : Timestamp,
   'token0' : TokenType,
   'token1' : TokenType,
   'caller' : Principal,
   'swap_canister_id' : SwapCanisterId,
+  'last_attempted_at' : [] | [Timestamp],
   'completed_at' : [] | [Timestamp],
   'position_id' : PositionId,
 }
@@ -96,6 +98,11 @@ export type SetLockFeeResult = { 'Ok' : bigint } |
 export interface SneedLock {
   'admin_clear_completed_claim_requests_buffer' : ActorMethod<[], bigint>,
   'admin_emergency_stop_timer' : ActorMethod<[], undefined>,
+  'admin_manual_withdraw_for_request' : ActorMethod<
+    [ClaimRequestId],
+    { 'Ok' : string } |
+      { 'Err' : string }
+  >,
   'admin_pause_claim_queue' : ActorMethod<[string], undefined>,
   'admin_remove_active_claim_request' : ActorMethod<[ClaimRequestId], boolean>,
   'admin_resume_claim_queue' : ActorMethod<[], undefined>,
@@ -127,6 +134,7 @@ export interface SneedLock {
   >,
   'get_all_active_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
   'get_all_completed_claim_requests' : ActorMethod<[], Array<string>>,
+  'get_all_failed_claim_requests' : ActorMethod<[], Array<string>>,
   'get_all_position_locks' : ActorMethod<[], Array<FullyQualifiedPositionLock>>,
   'get_all_token_locks' : ActorMethod<[], Array<FullyQualifiedLock>>,
   'get_claim_queue_status' : ActorMethod<
@@ -137,11 +145,17 @@ export interface SneedLock {
       'active_total' : bigint,
       'completed_buffer_count' : bigint,
       'processing_state' : QueueProcessingState,
+      'consecutive_empty_cycles' : bigint,
+      'failed_buffer_count' : bigint,
     }
   >,
   'get_claim_request_status' : ActorMethod<
     [ClaimRequestId],
-    [] | [{ 'Active' : ClaimRequest } | { 'Completed' : string }]
+    [] | [
+      { 'Failed' : string } |
+        { 'Active' : ClaimRequest } |
+        { 'Completed' : string }
+    ]
   >,
   'get_claimed_positions_for_principal' : ActorMethod<
     [Principal],

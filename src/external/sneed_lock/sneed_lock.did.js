@@ -1,4 +1,6 @@
 export const idlFactory = ({ IDL }) => {
+  const SwapCanisterId = IDL.Principal;
+  const TokenType = IDL.Principal;
   const ClaimRequestId = IDL.Nat;
   const TxIndex = IDL.Nat;
   const Balance = IDL.Nat;
@@ -29,7 +31,6 @@ export const idlFactory = ({ IDL }) => {
     'Err' : CreateLockError,
   });
   const Dex = IDL.Nat;
-  const TokenType = IDL.Principal;
   const ClaimRequestStatus = IDL.Variant({
     'Failed' : IDL.Text,
     'ClaimVerified' : IDL.Record({
@@ -56,7 +57,6 @@ export const idlFactory = ({ IDL }) => {
       'balance0_before' : Balance,
     }),
   });
-  const SwapCanisterId = IDL.Principal;
   const ClaimRequest = IDL.Record({
     'request_id' : ClaimRequestId,
     'status' : ClaimRequestStatus,
@@ -137,8 +137,24 @@ export const idlFactory = ({ IDL }) => {
   });
   const Subaccount = IDL.Vec(IDL.Nat8);
   const SneedLock = IDL.Service({
-    'admin_clear_completed_claim_requests_buffer' : IDL.Func([], [IDL.Nat], []),
+    'admin_add_admin' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
+        [],
+      ),
+    'admin_clear_completed_claim_requests' : IDL.Func([], [IDL.Nat], []),
+    'admin_clear_failed_claim_requests' : IDL.Func([], [IDL.Nat], []),
     'admin_emergency_stop_timer' : IDL.Func([], [], []),
+    'admin_emergency_withdraw_from_swap' : IDL.Func(
+        [SwapCanisterId, TokenType, TokenType, IDL.Principal],
+        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
+        [],
+      ),
+    'admin_manual_withdraw' : IDL.Func(
+        [SwapCanisterId, TokenType, TokenType, IDL.Principal],
+        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
+        [],
+      ),
     'admin_manual_withdraw_for_request' : IDL.Func(
         [ClaimRequestId],
         [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
@@ -148,6 +164,11 @@ export const idlFactory = ({ IDL }) => {
     'admin_remove_active_claim_request' : IDL.Func(
         [ClaimRequestId],
         [IDL.Bool],
+        [],
+      ),
+    'admin_remove_admin' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
         [],
       ),
     'admin_resume_claim_queue' : IDL.Func([], [], []),
@@ -185,6 +206,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Opt(ClaimRequest)],
         ['query'],
       ),
+    'get_admin_list' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
     'get_all_active_claim_requests' : IDL.Func(
         [],
         [IDL.Vec(ClaimRequest)],
@@ -192,12 +214,12 @@ export const idlFactory = ({ IDL }) => {
       ),
     'get_all_completed_claim_requests' : IDL.Func(
         [],
-        [IDL.Vec(IDL.Text)],
+        [IDL.Vec(ClaimRequest)],
         ['query'],
       ),
     'get_all_failed_claim_requests' : IDL.Func(
         [],
-        [IDL.Vec(IDL.Text)],
+        [IDL.Vec(ClaimRequest)],
         ['query'],
       ),
     'get_all_position_locks' : IDL.Func(
@@ -217,10 +239,10 @@ export const idlFactory = ({ IDL }) => {
             'pending_count' : IDL.Nat,
             'processing_count' : IDL.Nat,
             'active_total' : IDL.Nat,
-            'completed_buffer_count' : IDL.Nat,
+            'completed_count' : IDL.Nat,
             'processing_state' : QueueProcessingState,
             'consecutive_empty_cycles' : IDL.Nat,
-            'failed_buffer_count' : IDL.Nat,
+            'failed_count' : IDL.Nat,
           }),
         ],
         ['query'],
@@ -230,9 +252,9 @@ export const idlFactory = ({ IDL }) => {
         [
           IDL.Opt(
             IDL.Variant({
-              'Failed' : IDL.Text,
+              'Failed' : ClaimRequest,
               'Active' : ClaimRequest,
-              'Completed' : IDL.Text,
+              'Completed' : ClaimRequest,
             })
           ),
         ],
@@ -243,14 +265,9 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(ClaimedPosition)],
         ['query'],
       ),
-    'get_completed_claim_requests' : IDL.Func(
-        [IDL.Nat, IDL.Nat],
-        [IDL.Vec(IDL.Opt(BufferEntry))],
-        ['query'],
-      ),
-    'get_completed_claim_requests_id_range' : IDL.Func(
-        [],
-        [IDL.Opt(IDL.Tuple(IDL.Nat, IDL.Nat))],
+    'get_completed_claim_request' : IDL.Func(
+        [ClaimRequestId],
+        [IDL.Opt(ClaimRequest)],
         ['query'],
       ),
     'get_enforce_zero_balance_before_claim' : IDL.Func(
@@ -267,6 +284,11 @@ export const idlFactory = ({ IDL }) => {
         [],
         [IDL.Opt(IDL.Tuple(IDL.Nat, IDL.Nat))],
         [],
+      ),
+    'get_failed_claim_request' : IDL.Func(
+        [ClaimRequestId],
+        [IDL.Opt(ClaimRequest)],
+        ['query'],
       ),
     'get_info_entries' : IDL.Func(
         [IDL.Nat, IDL.Nat],

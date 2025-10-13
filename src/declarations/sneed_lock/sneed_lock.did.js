@@ -60,12 +60,14 @@ export const idlFactory = ({ IDL }) => {
   const ClaimRequest = IDL.Record({
     'request_id' : ClaimRequestId,
     'status' : ClaimRequestStatus,
+    'retry_count' : IDL.Nat,
     'started_processing_at' : IDL.Opt(Timestamp),
     'created_at' : Timestamp,
     'token0' : TokenType,
     'token1' : TokenType,
     'caller' : IDL.Principal,
     'swap_canister_id' : SwapCanisterId,
+    'last_attempted_at' : IDL.Opt(Timestamp),
     'completed_at' : IDL.Opt(Timestamp),
     'position_id' : PositionId,
   });
@@ -137,6 +139,11 @@ export const idlFactory = ({ IDL }) => {
   const SneedLock = IDL.Service({
     'admin_clear_completed_claim_requests_buffer' : IDL.Func([], [IDL.Nat], []),
     'admin_emergency_stop_timer' : IDL.Func([], [], []),
+    'admin_manual_withdraw_for_request' : IDL.Func(
+        [ClaimRequestId],
+        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
+        [],
+      ),
     'admin_pause_claim_queue' : IDL.Func([IDL.Text], [], []),
     'admin_remove_active_claim_request' : IDL.Func(
         [ClaimRequestId],
@@ -188,6 +195,11 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(IDL.Text)],
         ['query'],
       ),
+    'get_all_failed_claim_requests' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Text)],
+        ['query'],
+      ),
     'get_all_position_locks' : IDL.Func(
         [],
         [IDL.Vec(FullyQualifiedPositionLock)],
@@ -207,6 +219,8 @@ export const idlFactory = ({ IDL }) => {
             'active_total' : IDL.Nat,
             'completed_buffer_count' : IDL.Nat,
             'processing_state' : QueueProcessingState,
+            'consecutive_empty_cycles' : IDL.Nat,
+            'failed_buffer_count' : IDL.Nat,
           }),
         ],
         ['query'],
@@ -215,7 +229,11 @@ export const idlFactory = ({ IDL }) => {
         [ClaimRequestId],
         [
           IDL.Opt(
-            IDL.Variant({ 'Active' : ClaimRequest, 'Completed' : IDL.Text })
+            IDL.Variant({
+              'Failed' : IDL.Text,
+              'Active' : ClaimRequest,
+              'Completed' : IDL.Text,
+            })
           ),
         ],
         ['query'],

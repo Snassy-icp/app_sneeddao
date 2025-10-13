@@ -54,6 +54,11 @@ type SneedLock =
  service {
    admin_clear_completed_claim_requests_buffer: () -> (nat);
    admin_emergency_stop_timer: () -> ();
+   admin_manual_withdraw_for_request: (request_id: ClaimRequestId) ->
+    (variant {
+       Err: text;
+       Ok: text;
+     });
    admin_pause_claim_queue: (reason: text) -> ();
    admin_remove_active_claim_request: (request_id: ClaimRequestId) -> (bool);
    admin_resume_claim_queue: () -> ();
@@ -79,12 +84,15 @@ type SneedLock =
     (opt ClaimRequest) query;
    get_all_active_claim_requests: () -> (vec ClaimRequest) query;
    get_all_completed_claim_requests: () -> (vec text) query;
+   get_all_failed_claim_requests: () -> (vec text) query;
    get_all_position_locks: () -> (vec FullyQualifiedPositionLock) query;
    get_all_token_locks: () -> (vec FullyQualifiedLock) query;
    get_claim_queue_status: () ->
     (record {
        active_total: nat;
        completed_buffer_count: nat;
+       consecutive_empty_cycles: nat;
+       failed_buffer_count: nat;
        pending_count: nat;
        processing_count: nat;
        processing_state: QueueProcessingState;
@@ -93,6 +101,7 @@ type SneedLock =
     (opt variant {
            Active: ClaimRequest;
            Completed: text;
+           Failed: text;
          }) query;
    get_claimed_positions_for_principal: (owner: principal) ->
     (vec ClaimedPosition) query;
@@ -259,8 +268,10 @@ type ClaimRequest =
    caller: principal;
    completed_at: opt Timestamp;
    created_at: Timestamp;
+   last_attempted_at: opt Timestamp;
    position_id: PositionId;
    request_id: ClaimRequestId;
+   retry_count: nat;
    started_processing_at: opt Timestamp;
    status: ClaimRequestStatus;
    swap_canister_id: SwapCanisterId;

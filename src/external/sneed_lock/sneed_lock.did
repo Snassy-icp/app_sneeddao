@@ -52,8 +52,25 @@ type SwapCanisterId = principal;
 type Subaccount = blob;
 type SneedLock = 
  service {
-   admin_clear_completed_claim_requests_buffer: () -> (nat);
+   admin_add_admin: (new_admin: principal) -> (variant {
+                                                 Err: text;
+                                                 Ok: text;
+                                               });
+   admin_clear_completed_claim_requests: () -> (nat);
+   admin_clear_failed_claim_requests: () -> (nat);
    admin_emergency_stop_timer: () -> ();
+   admin_emergency_withdraw_from_swap: (swap_canister_id: SwapCanisterId,
+    token0: TokenType, token1: TokenType, recipient: principal) ->
+    (variant {
+       Err: text;
+       Ok: text;
+     });
+   admin_manual_withdraw: (swap_canister_id: SwapCanisterId, token0:
+    TokenType, token1: TokenType, original_caller: principal) ->
+    (variant {
+       Err: text;
+       Ok: text;
+     });
    admin_manual_withdraw_for_request: (request_id: ClaimRequestId) ->
     (variant {
        Err: text;
@@ -61,6 +78,11 @@ type SneedLock =
      });
    admin_pause_claim_queue: (reason: text) -> ();
    admin_remove_active_claim_request: (request_id: ClaimRequestId) -> (bool);
+   admin_remove_admin: (admin_to_remove: principal) ->
+    (variant {
+       Err: text;
+       Ok: text;
+     });
    admin_resume_claim_queue: () -> ();
    admin_retry_claim_request: (request_id: ClaimRequestId) ->
     (variant {
@@ -82,41 +104,41 @@ type SneedLock =
     (CreateLockResult);
    get_active_claim_request: (request_id: ClaimRequestId) ->
     (opt ClaimRequest) query;
+   get_admin_list: () -> (vec principal) query;
    get_all_active_claim_requests: () -> (vec ClaimRequest) query;
-   get_all_completed_claim_requests: () -> (vec text) query;
-   get_all_failed_claim_requests: () -> (vec text) query;
+   get_all_completed_claim_requests: () -> (vec ClaimRequest) query;
+   get_all_failed_claim_requests: () -> (vec ClaimRequest) query;
    get_all_position_locks: () -> (vec FullyQualifiedPositionLock) query;
    get_all_token_locks: () -> (vec FullyQualifiedLock) query;
    get_claim_queue_status: () ->
     (record {
        active_total: nat;
-       completed_buffer_count: nat;
+       completed_count: nat;
        consecutive_empty_cycles: nat;
-       failed_buffer_count: nat;
+       failed_count: nat;
        pending_count: nat;
        processing_count: nat;
        processing_state: QueueProcessingState;
      }) query;
    get_claim_request_status: (request_id: ClaimRequestId) ->
-    (opt variant {
-           Active: ClaimRequest;
-           Completed: text;
-           Failed: text;
-         }) query;
+    (opt
+      variant {
+        Active: ClaimRequest;
+        Completed: ClaimRequest;
+        Failed: ClaimRequest;
+      }) query;
    get_claimed_positions_for_principal: (owner: principal) ->
     (vec ClaimedPosition) query;
-   get_completed_claim_requests: (start: nat, length: nat) ->
-    (vec opt BufferEntry) query;
-   get_completed_claim_requests_id_range: () -> (opt record {
-                                                       nat;
-                                                       nat;
-                                                     }) query;
+   get_completed_claim_request: (request_id: ClaimRequestId) ->
+    (opt ClaimRequest) query;
    get_enforce_zero_balance_before_claim: () -> (bool) query;
    get_error_entries: (start: nat, length: nat) -> (vec opt BufferEntry);
    get_error_id_range: () -> (opt record {
                                     nat;
                                     nat;
                                   });
+   get_failed_claim_request: (request_id: ClaimRequestId) ->
+    (opt ClaimRequest) query;
    get_info_entries: (start: nat, length: nat) -> (vec opt BufferEntry);
    get_info_id_range: () -> (opt record {
                                    nat;
