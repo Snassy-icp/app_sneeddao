@@ -119,6 +119,27 @@ const get_token_conversion_rate = async (tokenCanisterId, decimals = null) => {
 };
 
 /**
+ * Get ICP conversion rate for a token using the new PriceService
+ * @param {string} tokenCanisterId - Token canister ID  
+ * @param {number} decimals - Token decimals (optional)
+ * @returns {Promise<number>} ICP conversion rate, or 0 if unavailable
+ */
+const get_token_icp_rate = async (tokenCanisterId, decimals = null) => {
+    try {
+        // Set decimals in cache if provided
+        if (decimals !== null) {
+            priceService.setTokenDecimals(tokenCanisterId, decimals);
+        }
+        
+        const icpPrice = await priceService.getTokenICPPrice(tokenCanisterId, decimals);
+        return icpPrice;
+    } catch (error) {
+        console.warn(`Unable to fetch ICP price for token ${tokenCanisterId}:`, error);
+        return 0;
+    }
+};
+
+/**
  * Legacy function for backward compatibility
  * Returns an empty object - use get_token_conversion_rate instead
  * @deprecated Use get_token_conversion_rate(tokenCanisterId, decimals) instead
@@ -250,6 +271,7 @@ export {
     getTokenMetaData,
     get_token_conversion_rates, // deprecated - kept for compatibility
     get_token_conversion_rate,  // use this instead
+    get_token_icp_rate,  // get token price in ICP
     rewardAmountOrZero,
     availableOrZero,
     getTokenTVL,

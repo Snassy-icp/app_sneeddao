@@ -729,7 +729,33 @@ export default function Me() {
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <h1 style={{ color: theme.colors.primaryText, margin: 0 }}>My Neurons</h1>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <h1 style={{ color: theme.colors.primaryText, margin: 0 }}>My Neurons</h1>
+                        <Link 
+                            to="/help/neurons"
+                            style={{
+                                color: theme.colors.mutedText,
+                                textDecoration: 'none',
+                                fontSize: '1.2rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.color = theme.colors.accent;
+                                e.target.style.background = `${theme.colors.accent}15`;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.color = theme.colors.mutedText;
+                                e.target.style.background = 'transparent';
+                            }}
+                            title="Learn about SNS Neurons"
+                        >
+                            ❓
+                        </Link>
+                    </div>
                     
                     {neurons.length > 0 && (
                         <label style={{

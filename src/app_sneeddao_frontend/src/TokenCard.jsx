@@ -1625,20 +1625,22 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     <div style={{ paddingBottom: '15px' }}>
                         {/* Ledger Canister ID */}
                         <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
                             padding: '10px 0',
                             borderBottom: `1px solid ${theme.colors.border}`
                         }}>
-                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                            <div style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '0.9rem',
+                                marginBottom: '6px'
+                            }}>
                                 Ledger Canister:
-                            </span>
+                            </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span style={{ 
                                     color: theme.colors.primaryText, 
                                     fontSize: '0.9rem',
-                                    fontFamily: 'monospace'
+                                    fontFamily: 'monospace',
+                                    wordBreak: 'break-all'
                                 }}>
                                     {token.ledger_canister_id?.toString?.() || token.ledger_canister_id || 'N/A'}
                                 </span>
@@ -1655,7 +1657,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             cursor: 'pointer',
                                             padding: '4px',
                                             color: theme.colors.accent,
-                                            fontSize: '0.9rem'
+                                            fontSize: '0.9rem',
+                                            flexShrink: 0
                                         }}
                                         title="Copy to clipboard"
                                     >
@@ -1715,20 +1718,38 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
 
                         {/* Conversion Rate */}
                         {token.conversion_rate > 0 && (
-                            <div style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                padding: '10px 0',
-                                borderBottom: `1px solid ${theme.colors.border}`
-                            }}>
-                                <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                    USD Price:
-                                </span>
-                                <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
-                                    ${token.conversion_rate.toFixed(6)}
-                                </span>
-                            </div>
+                            <>
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '10px 0',
+                                    borderBottom: `1px solid ${theme.colors.border}`
+                                }}>
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                        USD Price:
+                                    </span>
+                                    <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                        ${token.conversion_rate.toFixed(6)}
+                                    </span>
+                                </div>
+                                {token.icp_rate > 0 && (
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        padding: '10px 0',
+                                        borderBottom: `1px solid ${theme.colors.border}`
+                                    }}>
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                            ICP Price:
+                                        </span>
+                                        <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                            {token.icp_rate.toFixed(6)} ICP
+                                        </span>
+                                    </div>
+                                )}
+                            </>
                         )}
 
                         {/* Standard */}

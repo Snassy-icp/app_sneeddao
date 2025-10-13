@@ -843,20 +843,22 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     <div style={{ paddingBottom: '15px' }}>
                         {/* Swap Canister ID */}
                         <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
                             padding: '10px 0',
                             borderBottom: `1px solid ${theme.colors.border}`
                         }}>
-                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                            <div style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '0.9rem',
+                                marginBottom: '6px'
+                            }}>
                                 Swap Canister:
-                            </span>
+                            </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span style={{ 
                                     color: theme.colors.primaryText, 
                                     fontSize: '0.9rem',
-                                    fontFamily: 'monospace'
+                                    fontFamily: 'monospace',
+                                    wordBreak: 'break-all'
                                 }}>
                                     {position.swapCanisterId?.toString?.() || position.swapCanisterId || 'N/A'}
                                 </span>
@@ -873,7 +875,8 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                             cursor: 'pointer',
                                             padding: '4px',
                                             color: theme.colors.accent,
-                                            fontSize: '0.9rem'
+                                            fontSize: '0.9rem',
+                                            flexShrink: 0
                                         }}
                                         title="Copy to clipboard"
                                     >
@@ -911,30 +914,28 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 Token 0:
                             </span>
                             <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
-                                {position.token0Symbol || 'N/A'} ({position.token0Decimals || 'N/A'} decimals)
+                                {position.token0Symbol || 'N/A'}
                             </span>
                         </div>
 
                         {/* Token 0 Ledger */}
                         <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
                             padding: '10px 0',
                             borderBottom: `1px solid ${theme.colors.border}`
                         }}>
-                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                            <div style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '0.9rem',
+                                marginBottom: '6px'
+                            }}>
                                 Token 0 Ledger:
-                            </span>
+                            </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span style={{ 
                                     color: theme.colors.primaryText, 
                                     fontSize: '0.9rem',
                                     fontFamily: 'monospace',
-                                    maxWidth: '250px',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap'
+                                    wordBreak: 'break-all'
                                 }}>
                                     {position.token0?.toString?.() || position.token0 || 'N/A'}
                                 </span>
@@ -951,7 +952,8 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                             cursor: 'pointer',
                                             padding: '4px',
                                             color: theme.colors.accent,
-                                            fontSize: '0.9rem'
+                                            fontSize: '0.9rem',
+                                            flexShrink: 0
                                         }}
                                         title="Copy to clipboard"
                                     >
@@ -973,29 +975,27 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 Token 1:
                             </span>
                             <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
-                                {position.token1Symbol || 'N/A'} ({position.token1Decimals || 'N/A'} decimals)
+                                {position.token1Symbol || 'N/A'}
                             </span>
                         </div>
 
                         {/* Token 1 Ledger */}
                         <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
                             padding: '10px 0'
                         }}>
-                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                            <div style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '0.9rem',
+                                marginBottom: '6px'
+                            }}>
                                 Token 1 Ledger:
-                            </span>
+                            </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span style={{ 
                                     color: theme.colors.primaryText, 
                                     fontSize: '0.9rem',
                                     fontFamily: 'monospace',
-                                    maxWidth: '250px',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap'
+                                    wordBreak: 'break-all'
                                 }}>
                                     {position.token1?.toString?.() || position.token1 || 'N/A'}
                                 </span>
@@ -1012,7 +1012,8 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                             cursor: 'pointer',
                                             padding: '4px',
                                             color: theme.colors.accent,
-                                            fontSize: '0.9rem'
+                                            fontSize: '0.9rem',
+                                            flexShrink: 0
                                         }}
                                         title="Copy to clipboard"
                                     >

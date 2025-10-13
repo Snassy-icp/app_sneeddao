@@ -26,7 +26,7 @@ import { get_short_timezone, format_duration, bigDateToReadable, dateToReadable 
 import { formatAmount, toJsonString } from './utils/StringUtils';
 import TokenCard from './TokenCard';
 import PositionCard from './PositionCard';
-import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, getTokenTVL, getTokenMetaForSwap } from './utils/TokenUtils';
+import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap } from './utils/TokenUtils';
 import { getPositionTVL } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
@@ -335,8 +335,12 @@ function Wallet() {
             }
             console.log('Locked amount (raw):', locked.toString());
 
-            // Fetch conversion rate using the new price service
+            // Fetch conversion rates using the new price service
             const conversion_rate = await get_token_conversion_rate(
+                icrc1_ledger.toText ? icrc1_ledger.toText() : icrc1_ledger.toString(),
+                decimals
+            );
+            const icp_rate = await get_token_icp_rate(
                 icrc1_ledger.toText ? icrc1_ledger.toText() : icrc1_ledger.toString(),
                 decimals
             );
@@ -350,7 +354,8 @@ function Wallet() {
                 balance: balance,
                 balance_backend: balance_backend,
                 locked: locked,
-                conversion_rate
+                conversion_rate,
+                icp_rate
             };
 
             const avail_backend = get_available_backend(token);
