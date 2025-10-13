@@ -58,13 +58,13 @@ const EmptyPositionCard = ({ position, onRemove, theme }) => {
                     </div>
                     <div className="header-row-2">
                         <div className="amount-symbol">
-                            <span className="token-amount">No Positions</span>
+                            <span className="token-amount">{position.loading ? 'Loading...' : 'No Positions'}</span>
                         </div>
                         <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
                     </div>
                 </div>
             </div>
-            {isExpanded && (
+            {isExpanded && !position.loading && (
                 <>
                     <div className="action-buttons">
                         <button 
@@ -614,9 +614,29 @@ function Wallet() {
                 claimed_positions_by_swap[claimed_position.swap_canister_id].push(claimed_position);
             }
 
-            setLiquidityPositions([]);
+            // Create placeholders immediately to preserve order
+            const placeholders = swap_canisters.map(swap_canister => ({
+                swapCanisterId: swap_canister,
+                token0: null,
+                token1: null,
+                token0Symbol: '...',
+                token1Symbol: '...',
+                token0Logo: '',
+                token1Logo: '',
+                token0Decimals: 0,
+                token1Decimals: 0,
+                token0Fee: 0n,
+                token1Fee: 0n,
+                token0_conversion_rate: 0,
+                token1_conversion_rate: 0,
+                swapCanisterBalance0: 0n,
+                swapCanisterBalance1: 0n,
+                positions: [],
+                loading: true
+            }));
+            setLiquidityPositions(placeholders);
 
-            await Promise.all(swap_canisters.map(async (swap_canister) => {
+            await Promise.all(swap_canisters.map(async (swap_canister, index) => {
                     
                 try {
 
@@ -737,10 +757,14 @@ function Wallet() {
                         token1_conversion_rate: token1_conversion_rate,
                         swapCanisterBalance0: swapCanisterBalance0,
                         swapCanisterBalance1: swapCanisterBalance1,
-                        positions: positionDetails
+                        positions: positionDetails,
+                        loading: false
                     };
 
-                    setLiquidityPositions(prevPositions => [...prevPositions, liquidityPosition]);
+                    // Update the specific LP by index to preserve order
+                    setLiquidityPositions(prevPositions => prevPositions.map((pos, i) => 
+                        i === index ? liquidityPosition : pos
+                    ));
 
                 } catch (err) {
                     const liquidityPosition = {
@@ -759,11 +783,15 @@ function Wallet() {
                         token1_conversion_rate: 0,
                         swapCanisterBalance0: 0n,
                         swapCanisterBalance1: 0n,
-                        positions: []
+                        positions: [],
+                        loading: false
                     };
 
                     console.error('Error fetching liquidity position: ', err);
-                    setLiquidityPositions(prevPositions => [...prevPositions, liquidityPosition]);
+                    // Update the specific LP by index to preserve order
+                    setLiquidityPositions(prevPositions => prevPositions.map((pos, i) => 
+                        i === index ? liquidityPosition : pos
+                    ));
                 }
             }));
         } catch (error) {
