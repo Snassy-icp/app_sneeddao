@@ -275,8 +275,8 @@ function HelpSneedlock() {
                     
                     <h3 style={styles.subsubheading}>Step 3: Select the Position</h3>
                     <p style={styles.paragraph}>
-                        Find the position you want to lock in the Liquidity Positions section of your wallet. Expand the card to see 
-                        all your positions for that pair.
+                        Find the position you want to lock in the Liquidity Positions section of your wallet. Expand the card for 
+                        your position.
                     </p>
                     
                     <h3 style={styles.subsubheading}>Step 4: Lock the Position</h3>

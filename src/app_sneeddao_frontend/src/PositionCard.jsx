@@ -7,6 +7,7 @@ import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
 import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
+import { Link } from 'react-router-dom';
 
 // Countdown timer component for position locks expiring within 1 hour
 const PositionLockCountdown = ({ expiryNanos }) => {
@@ -557,6 +558,31 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
                             ({isLockedPosition(positionDetails) ? '1 lock' : '0 locks'})
                         </span>
+                        <Link 
+                            to="/help/sneedlock"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                color: theme.colors.mutedText,
+                                textDecoration: 'none',
+                                fontSize: '0.85rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '2px 4px',
+                                borderRadius: '4px',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.color = theme.colors.accent;
+                                e.target.style.background = `${theme.colors.accent}15`;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.color = theme.colors.mutedText;
+                                e.target.style.background = 'transparent';
+                            }}
+                            title="Learn about Sneed Lock"
+                        >
+                            ❓
+                        </Link>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         {/* Expand/Collapse Indicator */}

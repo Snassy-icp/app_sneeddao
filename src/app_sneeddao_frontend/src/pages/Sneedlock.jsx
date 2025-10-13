@@ -86,28 +86,85 @@ function Sneedlock() {
                 <div style={styles.hero}>
                     <h1 style={styles.title}>SneedLock</h1>
                     <p style={styles.subtitle}>
-                        The next generation of secure token vesting and distribution on the Internet Computer
+                        Trustless time-locking for tokens and liquidity positions with Liquid Locking™ and fee claiming
                     </p>
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        gap: '16px',
+                        marginTop: '20px',
+                        flexWrap: 'wrap'
+                    }}>
+                        <Link
+                            to="/help/sneedlock"
+                            style={{
+                                background: `${theme.colors.accent}20`,
+                                color: theme.colors.accent,
+                                border: `2px solid ${theme.colors.accent}`,
+                                borderRadius: '8px',
+                                padding: '10px 20px',
+                                textDecoration: 'none',
+                                fontSize: '1rem',
+                                fontWeight: '600',
+                                transition: 'all 0.3s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.background = theme.colors.accent;
+                                e.target.style.color = theme.colors.primaryBg;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.background = `${theme.colors.accent}20`;
+                                e.target.style.color = theme.colors.accent;
+                            }}
+                        >
+                            📚 Full Documentation
+                        </Link>
+                        <Link
+                            to="/wallet"
+                            style={{
+                                background: `${theme.colors.success}20`,
+                                color: theme.colors.success,
+                                border: `2px solid ${theme.colors.success}`,
+                                borderRadius: '8px',
+                                padding: '10px 20px',
+                                textDecoration: 'none',
+                                fontSize: '1rem',
+                                fontWeight: '600',
+                                transition: 'all 0.3s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.background = theme.colors.success;
+                                e.target.style.color = theme.colors.primaryBg;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.background = `${theme.colors.success}20`;
+                                e.target.style.color = theme.colors.success;
+                            }}
+                        >
+                            💼 Open Wallet
+                        </Link>
+                    </div>
                 </div>
 
                 <section style={styles.section}>
                     <h2 style={styles.sectionTitle}>What is SneedLock?</h2>
                     <p style={styles.text}>
-                        SneedLock is a revolutionary token vesting and distribution system built on the Internet Computer, 
-                        designed to provide maximum security, transparency, and flexibility for token distribution programs. 
-                        Whether you're managing team tokens, investor allocations, or community rewards, SneedLock ensures 
-                        your tokens are distributed exactly according to plan, with zero possibility of manipulation or 
-                        unauthorized access.
+                        SneedLock is a trustless time-locking service for tokens and liquidity positions on the Internet Computer, 
+                        integrated directly into your Sneed Wallet. It allows you to lock assets for a specified period, proving 
+                        commitment and enabling various use cases like vesting schedules, governance participation, and trust-building 
+                        mechanisms—all while maintaining complete transparency and security.
+                    </p>
+                    <p style={styles.text}>
+                        Once locked, assets cannot be accessed by anyone—including you—until the lock expires. This creates a 
+                        verifiable, on-chain proof of long-term commitment that's perfect for token developers, team members, 
+                        and investors who want to demonstrate they won't "rug pull" the community.
                     </p>
                 </section>
 
                 <section style={styles.section}>
-                    <h2 style={styles.sectionTitle}>How It Works</h2>
+                    <h2 style={styles.sectionTitle}>Revolutionary Features</h2>
                     <p style={styles.text}>
-                        SneedLock operates through a system of smart contracts on the Internet Computer, utilizing 
-                        the platform's unique capabilities to provide secure and efficient token vesting. Each vesting 
-                        schedule is immutably recorded on-chain, with automatic distribution mechanisms that execute 
-                        precisely according to the predetermined schedule.
+                        SneedLock introduces groundbreaking capabilities that set it apart from traditional locking mechanisms:
                     </p>
                     <div style={styles.featureGrid}>
                         <div 
@@ -121,10 +178,11 @@ function Sneedlock() {
                                 e.currentTarget.style.boxShadow = theme.colors.cardShadow;
                             }}
                         >
-                            <h3 style={styles.featureTitle}>Secure Token Storage</h3>
+                            <h3 style={styles.featureTitle}>💰 Fee Claiming from Locked LPs</h3>
                             <p style={styles.featureText}>
-                                Tokens are held in secure canister-based wallets, protected by the Internet Computer's 
-                                robust security infrastructure. Each wallet is isolated and independently verifiable.
+                                Lock your liquidity positions to prove commitment while still earning! Claim trading fees 
+                                directly from your wallet even while the position remains locked. Your locked liquidity 
+                                keeps working for you.
                             </p>
                         </div>
                         <div 
@@ -138,10 +196,11 @@ function Sneedlock() {
                                 e.currentTarget.style.boxShadow = theme.colors.cardShadow;
                             }}
                         >
-                            <h3 style={styles.featureTitle}>Flexible Vesting Schedules</h3>
+                            <h3 style={styles.featureTitle}>✨ Liquid Locking™</h3>
                             <p style={styles.featureText}>
-                                Create custom vesting schedules with multiple parameters including cliff periods, 
-                                linear vesting, and milestone-based releases. Adapt to any token distribution strategy.
+                                Transfer locked tokens and LP positions to other users! The locks stay enforced (no rug pulls), 
+                                but ownership can change. This creates a secondary market for locked assets while maintaining 
+                                security—liquidity meets safety.
                             </p>
                         </div>
                         <div 
@@ -155,17 +214,17 @@ function Sneedlock() {
                                 e.currentTarget.style.boxShadow = theme.colors.cardShadow;
                             }}
                         >
-                            <h3 style={styles.featureTitle}>Automated Distribution</h3>
+                            <h3 style={styles.featureTitle}>🔒 Trustless & Immutable</h3>
                             <p style={styles.featureText}>
-                                Once configured, distributions happen automatically according to the schedule. No manual 
-                                intervention needed, eliminating human error and reducing operational overhead.
+                                Locks cannot be canceled, modified, or unlocked early by anyone—not even the Sneedlock 
+                                operators. This is enforced at the protocol level, ensuring complete security and transparency.
                             </p>
                         </div>
                     </div>
                 </section>
 
                 <section style={styles.section}>
-                    <h2 style={styles.sectionTitle}>Key Benefits</h2>
+                    <h2 style={styles.sectionTitle}>Use Cases</h2>
                     <div style={styles.featureGrid}>
                         <div 
                             style={styles.feature}
@@ -178,10 +237,11 @@ function Sneedlock() {
                                 e.currentTarget.style.boxShadow = theme.colors.cardShadow;
                             }}
                         >
-                            <h3 style={styles.featureTitle}>Trustless Operation</h3>
+                            <h3 style={styles.featureTitle}>Team Token Distribution</h3>
                             <p style={styles.featureText}>
-                                All rules are enforced by smart contracts. No need to trust intermediaries or 
-                                administrators - the code ensures everything happens as planned.
+                                Create locked token allocations and transfer them to team members using Liquid Locking. 
+                                Team receives tokens immediately but can't dump them until vesting completes—all without 
+                                complex smart contracts!
                             </p>
                         </div>
                         <div 
@@ -195,10 +255,10 @@ function Sneedlock() {
                                 e.currentTarget.style.boxShadow = theme.colors.cardShadow;
                             }}
                         >
-                            <h3 style={styles.featureTitle}>Full Transparency</h3>
+                            <h3 style={styles.featureTitle}>LP Commitment Proof</h3>
                             <p style={styles.featureText}>
-                                Every aspect of the vesting process is visible on-chain. Track vesting progress, 
-                                distribution events, and wallet balances in real-time.
+                                Lock liquidity positions to demonstrate you won't remove liquidity. Continue earning 
+                                and claiming trading fees while the position stays locked. Build trust with your community.
                             </p>
                         </div>
                         <div 
@@ -212,10 +272,10 @@ function Sneedlock() {
                                 e.currentTarget.style.boxShadow = theme.colors.cardShadow;
                             }}
                         >
-                            <h3 style={styles.featureTitle}>Gas-Free Operations</h3>
+                            <h3 style={styles.featureTitle}>Secondary Markets</h3>
                             <p style={styles.featureText}>
-                                Leveraging the Internet Computer's unique architecture, all operations are gas-free, 
-                                making token distribution cost-effective and predictable.
+                                Trade locked positions at a discount using Liquid Locking. Buyers get exposure at lower 
+                                prices, sellers get liquidity, and the lock provides security—no rugs possible.
                             </p>
                         </div>
                     </div>
@@ -224,22 +284,34 @@ function Sneedlock() {
                 <section style={styles.section}>
                     <h2 style={styles.sectionTitle}>Getting Started</h2>
                     <p style={styles.text}>
-                        Using SneedLock is straightforward. Connect your Internet Computer wallet, create your vesting 
-                        schedules, and deposit your tokens. The system takes care of the rest, ensuring your tokens 
-                        are distributed according to plan while providing you with real-time visibility into the 
-                        entire process.
+                        Getting started with SneedLock is simple and integrated into your Sneed Wallet:
                     </p>
+                    <ol style={{ 
+                        fontSize: '1.1rem', 
+                        lineHeight: '1.8', 
+                        color: theme.colors.secondaryText,
+                        marginLeft: '2rem',
+                        marginBottom: '2rem'
+                    }}>
+                        <li><strong style={{ color: theme.colors.primaryText }}>Open Your Wallet:</strong> Navigate to your <Link to="/wallet" style={{ color: theme.colors.accent, textDecoration: 'none' }}>Sneed Wallet</Link></li>
+                        <li><strong style={{ color: theme.colors.primaryText }}>Register Tokens or LP Positions:</strong> Add the tokens or swap pairs you want to lock</li>
+                        <li><strong style={{ color: theme.colors.primaryText }}>Create a Lock:</strong> Click the lock button, specify the amount and expiration date</li>
+                        <li><strong style={{ color: theme.colors.primaryText }}>Optional - Transfer:</strong> Use Liquid Locking to transfer locked assets to other users</li>
+                        <li><strong style={{ color: theme.colors.primaryText }}>Claim Fees:</strong> For locked LP positions, claim trading fees anytime directly from your wallet</li>
+                    </ol>
                     <p style={styles.text}>
-                        Whether you're a project founder, team member, or token recipient, SneedLock provides the 
-                        tools and transparency you need to manage token vesting with confidence.
+                        All locks are publicly verifiable on-chain. View all locks, track expiration dates, and demonstrate 
+                        your commitment with complete transparency.
                     </p>
                     <div style={{
                         display: 'flex',
                         justifyContent: 'center',
-                        marginTop: '2rem'
+                        gap: '16px',
+                        marginTop: '2rem',
+                        flexWrap: 'wrap'
                     }}>
                         <Link
-                            to={`/sneedlock_info${identity ? `?owner=${identity.getPrincipal().toString()}` : ''}`}
+                            to="/wallet"
                             style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
@@ -263,6 +335,33 @@ function Sneedlock() {
                                 e.target.style.boxShadow = theme.colors.accentShadow;
                             }}
                         >
+                            💼 Open Wallet
+                        </Link>
+                        <Link
+                            to={`/sneedlock_info${identity ? `?owner=${identity.getPrincipal().toString()}` : ''}`}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                background: theme.colors.secondaryBg,
+                                color: theme.colors.primaryText,
+                                padding: '14px 28px',
+                                borderRadius: '10px',
+                                textDecoration: 'none',
+                                fontSize: '1.1rem',
+                                fontWeight: '600',
+                                transition: 'all 0.3s ease',
+                                border: `2px solid ${theme.colors.border}`
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.transform = 'translateY(-2px)';
+                                e.target.style.borderColor = theme.colors.accent;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.transform = 'translateY(0)';
+                                e.target.style.borderColor = theme.colors.border;
+                            }}
+                        >
                             <img 
                                 src="/sneedlock-logo4.png" 
                                 alt="Sneedlock"
@@ -272,7 +371,7 @@ function Sneedlock() {
                                     objectFit: 'contain'
                                 }}
                             />
-                            View My Locks
+                            View All Locks
                         </Link>
                     </div>
                 </section>

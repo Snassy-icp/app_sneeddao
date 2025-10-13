@@ -2081,6 +2081,43 @@ function Wallet() {
                     backgroundColor: 'transparent'
                 }}
             >
+                {/* Help Link */}
+                <div style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    marginBottom: '12px',
+                    paddingRight: '8px'
+                }}>
+                    <Link 
+                        to="/help/wallet"
+                        style={{
+                            color: theme.colors.accent,
+                            textDecoration: 'none',
+                            fontSize: '0.95rem',
+                            fontWeight: '500',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '8px 12px',
+                            borderRadius: '6px',
+                            transition: 'all 0.2s ease',
+                            background: `${theme.colors.accent}15`,
+                            border: `1px solid ${theme.colors.accent}30`
+                        }}
+                        onMouseEnter={(e) => {
+                            e.target.style.background = `${theme.colors.accent}25`;
+                            e.target.style.borderColor = theme.colors.accent;
+                        }}
+                        onMouseLeave={(e) => {
+                            e.target.style.background = `${theme.colors.accent}15`;
+                            e.target.style.borderColor = `${theme.colors.accent}30`;
+                        }}
+                    >
+                        <span style={{ fontSize: '1rem' }}>❓</span>
+                        Wallet Help
+                    </Link>
+                </div>
+                
                 {/* Your Sneed Wallet Principal */}
                 {isAuthenticated && identity && (
                     <div style={{
@@ -2378,7 +2415,7 @@ function Wallet() {
                 </div>
                 )}
                 <SectionHeader 
-                    title="Sneed Lock 2.0"
+                    title="What is Sneed Lock?"
                     isExpanded={isSneedLockExpanded}
                     onToggle={() => {
                         const newState = !isSneedLockExpanded;
@@ -2399,13 +2436,34 @@ function Wallet() {
                             padding: '20px',
                             color: theme.colors.primaryText
                         }}>
-                            <p>Sneed Lock 2.0 is a new version of Sneed Lock that is permissionless, offers timed locks, and is integrated directly into the Sneed Wallet.</p>
-                            <p>After registering a token or liquidity position, you can lock it for a specified time period by clicking the lock icon in the token or position card. You can also transfer tokens and positions to a different address (unless locked).</p>
-                            <p>Locking tokens or positions means you will not be able to transfer them until the lock time expires.</p>
-                            <p><b>Do NOT lock tokens or positions that you might need access to during the lock period!</b></p>
-                            <p>NB: Sneed Locked funds do not give rewards! <br />Sneed Lock 2.0 is intended for token developers, team members and whales who wish to make trading their token safer for users, preventing "rug pulls" by locking large token and liquidity positions.</p>
-                            <p><b>All use is at the user's own risk. Sneed DAO, its members, developers and contributors bear no responsibility for any funds lost or stolen.</b></p>
-                            <p>Maximum lock time is 10 years.</p>
+                            <p><strong>Sneed Lock</strong> is a trustless time-locking service for tokens and liquidity positions, integrated directly into your Sneed Wallet. It allows you to lock assets for a specified period, proving commitment and enabling vesting schedules while building trust in the ICP ecosystem.</p>
+                            
+                            <p><strong>Key Features:</strong></p>
+                            <ul style={{ marginLeft: '20px', marginBottom: '12px' }}>
+                                <li><strong>Fee Claiming from Locked LPs:</strong> When you lock a liquidity position, you can still claim trading fees directly from your wallet—even while the position remains locked!</li>
+                                <li><strong>Liquid Locking:</strong> Transfer locked tokens and LP positions to other Sneed Wallet users! The locks remain enforced (preventing rugs), but ownership can change. This creates liquidity while maintaining security.</li>
+                                <li><strong>Trustless & Immutable:</strong> Locks cannot be canceled or modified by anyone—including you. This ensures genuine commitment.</li>
+                            </ul>
+                            
+                            <p>After registering a token or liquidity position, you can lock it by clicking the lock button in the token or position card. Locked assets cannot be withdrawn until the expiration date.</p>
+                            
+                            <p><b>⚠️ Important: Do NOT lock tokens or positions you might need access to during the lock period!</b></p>
+                            
+                            <p>Sneed Lock is ideal for token developers, team members, and investors who want to demonstrate long-term commitment and prevent "rug pulls" by locking large token and liquidity positions. Maximum lock time is 10 years.</p>
+                            
+                            <p style={{ marginTop: '12px' }}>
+                                <Link to="/help/sneedlock" style={{ 
+                                    color: theme.colors.accent, 
+                                    textDecoration: 'none',
+                                    fontWeight: '600'
+                                }}>
+                                    📚 Learn More About Sneed Lock →
+                                </Link>
+                            </p>
+                            
+                            <p style={{ marginTop: '8px', fontSize: '0.9rem', color: theme.colors.mutedText }}>
+                                <b>Disclaimer:</b> All use is at the user's own risk. Sneed DAO, its members, developers and contributors bear no responsibility for any funds lost or stolen.
+                            </p>
                         </div>
                     </div>
                 )}

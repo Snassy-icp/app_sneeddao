@@ -13,6 +13,7 @@ import { NeuronDisplay } from './components/NeuronDisplay';
 import { useNaming } from './NamingContext';
 import { VotingPowerCalculator } from './utils/VotingPowerUtils';
 import { getUserPermissionIcons, getStateIcon, PERM } from './utils/NeuronPermissionUtils';
+import { Link } from 'react-router-dom';
 
 // Constants for GLDT and sGLDT canister IDs
 const GLDT_CANISTER_ID = '6c7su-kiaaa-aaaar-qaira-cai';
@@ -1368,6 +1369,31 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 ({locks[token.ledger_canister_id]?.length || 0} {locks[token.ledger_canister_id]?.length === 1 ? 'lock' : 'locks'})
                             </span>
                         )}
+                        <Link 
+                            to="/help/sneedlock"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                color: theme.colors.mutedText,
+                                textDecoration: 'none',
+                                fontSize: '0.85rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '2px 4px',
+                                borderRadius: '4px',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.color = theme.colors.accent;
+                                e.target.style.background = `${theme.colors.accent}15`;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.color = theme.colors.mutedText;
+                                e.target.style.background = 'transparent';
+                            }}
+                            title="Learn about Sneed Lock"
+                        >
+                            ❓
+                        </Link>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         {/* Expand/Collapse Indicator */}
@@ -1763,6 +1789,31 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     )}
                                 </>
                             )}
+                            <Link 
+                                to="/help/neurons"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                    color: theme.colors.mutedText,
+                                    textDecoration: 'none',
+                                    fontSize: '0.85rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    padding: '2px 4px',
+                                    borderRadius: '4px',
+                                    transition: 'all 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.color = theme.colors.accent;
+                                    e.target.style.background = `${theme.colors.accent}15`;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.color = theme.colors.mutedText;
+                                    e.target.style.background = 'transparent';
+                                }}
+                                title="Learn about SNS Neurons"
+                            >
+                                ❓
+                            </Link>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                             {/* Expand/Collapse Indicator */}
