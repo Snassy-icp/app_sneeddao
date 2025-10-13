@@ -107,6 +107,7 @@ type SneedLock =
        completed_count: nat;
        consecutive_empty_cycles: nat;
        failed_count: nat;
+       is_currently_processing: bool;
        pending_count: nat;
        processing_count: nat;
        processing_state: QueueProcessingState;

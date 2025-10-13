@@ -166,6 +166,7 @@ export interface SneedLock {
     [],
     {
       'pending_count' : bigint,
+      'is_currently_processing' : boolean,
       'processing_count' : bigint,
       'active_total' : bigint,
       'completed_count' : bigint,

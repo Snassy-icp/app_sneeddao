@@ -1357,6 +1357,12 @@ export default function SneedLockAdmin() {
               </div>
             </div>
             <div>
+              <div style={{ color: '#888', fontSize: '12px' }}>Currently Processing</div>
+              <div style={{ color: claimQueueStatus.is_currently_processing ? '#f39c12' : '#888', fontSize: '16px', fontWeight: claimQueueStatus.is_currently_processing ? 'bold' : 'normal' }}>
+                {claimQueueStatus.is_currently_processing ? 'YES' : 'NO'}
+              </div>
+            </div>
+            <div>
               <div style={{ color: '#888', fontSize: '12px' }}>Pending</div>
               <div style={{ color: '#ffffff', fontSize: '16px' }}>{Number(claimQueueStatus.pending_count)}</div>
             </div>

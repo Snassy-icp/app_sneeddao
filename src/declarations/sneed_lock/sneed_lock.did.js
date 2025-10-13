@@ -239,6 +239,7 @@ export const idlFactory = ({ IDL }) => {
         [
           IDL.Record({
             'pending_count' : IDL.Nat,
+            'is_currently_processing' : IDL.Bool,
             'processing_count' : IDL.Nat,
             'active_total' : IDL.Nat,
             'completed_count' : IDL.Nat,
