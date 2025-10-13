@@ -285,12 +285,14 @@ function HelpSneedlock() {
                         The entire position (both tokens and any unclaimed fees) will be locked.
                     </p>
                     
-                    <div style={styles.infoBox}>
+                    <div style={styles.successBox}>
                         <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>Note:</strong> When you lock a liquidity position, you're locking 
-                            the position itself, not just the underlying tokens. This means the position continues to earn 
-                            trading fees while locked, but you cannot withdraw, modify, or transfer the position until the 
-                            lock expires.
+                            <strong style={styles.strong}>💰 Claim Fees from Locked Positions:</strong> When you lock a liquidity 
+                            position, you're locking the position itself, not just the underlying tokens. The position continues 
+                            to earn trading fees while locked, and you can <strong style={styles.strong}>claim those fees directly 
+                            from your wallet even while the position remains locked!</strong> You cannot withdraw, modify the liquidity 
+                            amounts, or pull the position until the lock expires, but you retain full access to the trading fees 
+                            it generates.
                         </p>
                     </div>
                 </div>
@@ -362,15 +364,41 @@ function HelpSneedlock() {
                     </p>
                 </div>
 
-                {/* Transferring Locked Assets */}
+                {/* Liquid Locking - Transferring Locked Assets */}
                 <div style={styles.section}>
-                    <h2 style={styles.subheading}>Transferring Locked Assets</h2>
+                    <h2 style={styles.subheading}>Liquid Locking: Transferring Locked Assets</h2>
                     
                     <p style={styles.paragraph}>
-                        A powerful feature of Sneedlock 2.0 is the ability to transfer ownership of locked assets <strong style={styles.strong}>
-                        while they remain locked</strong>. This allows you to give locked tokens or positions to another principal 
-                        without unlocking them early.
+                        One of Sneedlock's most powerful features is <strong style={styles.strong}>"Liquid Locking"</strong>—the 
+                        ability to transfer ownership of locked assets <strong style={styles.strong}>while they remain locked</strong>. 
+                        This creates a revolutionary combination: <strong style={styles.strong}>liquidity without compromising security</strong>.
                     </p>
+                    
+                    <div style={styles.successBox}>
+                        <h3 style={{...styles.subsubheading, marginTop: 0}}>
+                            🚀 Why Liquid Locking Changes Everything
+                        </h3>
+                        <p style={styles.paragraph}>
+                            <strong style={styles.strong}>Isn't transferring locked assets exactly what locks prevent?</strong> 
+                            No! The locks remain fully enforced:
+                        </p>
+                        <ul style={{...styles.list, marginBottom: '0.5rem'}}>
+                            <li style={styles.listItem}>
+                                <strong style={styles.strong}>Locked LP Positions:</strong> The recipient still cannot pull 
+                                liquidity until the lock expires, but they CAN claim the trading fees the position generates
+                            </li>
+                            <li style={styles.listItem}>
+                                <strong style={styles.strong}>Locked Tokens:</strong> The recipient cannot sell them or use 
+                                them normally—they can only hold them or transfer the entire lock to someone else
+                            </li>
+                        </ul>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            This means locked positions and tokens can be <strong style={styles.strong}>liquid</strong> (tradeable/transferable) 
+                            without making rugs possible. Liquidity in pools stays locked. Big token positions can change ownership but 
+                            cannot be dumped into pools. This creates <strong style={styles.strong}>greater liquidity AND greater safety</strong> for 
+                            ICP token traders.
+                        </p>
+                    </div>
                     
                     <h3 style={styles.subsubheading}>Transferring Locked Token Locks</h3>
                     <p style={styles.paragraph}>
@@ -408,26 +436,34 @@ function HelpSneedlock() {
                         <li style={styles.listItem}>Confirm the transfer</li>
                     </ol>
                     <p style={styles.paragraph}>
-                        The position remains locked and continues earning trading fees, but the recipient becomes the owner. 
-                        They cannot pull liquidity or modify the position until the lock expires, ensuring the commitment is preserved.
+                        The position remains locked and continues earning trading fees. The recipient becomes the owner and can 
+                        <strong style={styles.strong}> claim the trading fees</strong> the position generates, but they cannot 
+                        pull liquidity or modify the position until the lock expires, ensuring the commitment is preserved.
                     </p>
                     
-                    <h3 style={styles.subsubheading}>Use Cases for Lock Transfers</h3>
+                    <h3 style={styles.subsubheading}>Use Cases for Lock Transfers (Liquid Locking)</h3>
                     <p style={styles.paragraph}>
-                        This feature enables several important use cases:
+                        Liquid Locking enables several powerful use cases:
                     </p>
                     <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Easy team token distribution:</strong> Token creators can create 
+                            multiple locked token allocations and then simply transfer the token locks to team members. The 
+                            team receives their tokens immediately but cannot dump them until the vesting period expires—all 
+                            without complex smart contracts!
+                        </li>
                         <li style={styles.listItem}>
                             <strong style={styles.strong}>Vesting transfers:</strong> Transfer vested tokens to employees or 
                             contributors while maintaining the vesting schedule
                         </li>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>Token sales:</strong> Sell locked tokens at a discount, with the lock 
-                            providing security for both parties
+                            <strong style={styles.strong}>Secondary market for locked positions:</strong> Sell locked tokens or 
+                            LP positions at a discount. Buyers get exposure to assets at lower prices, sellers get liquidity, 
+                            and the lock provides security for both parties by preventing rugs
                         </li>
                         <li style={styles.listItem}>
                             <strong style={styles.strong}>DAO treasuries:</strong> Transfer locked liquidity positions to a DAO 
-                            while keeping the commitment guarantee
+                            while keeping the commitment guarantee. The DAO can even claim trading fees from locked LP positions!
                         </li>
                         <li style={styles.listItem}>
                             <strong style={styles.strong}>Inheritance planning:</strong> Transfer locked assets to family members 
@@ -586,13 +622,21 @@ function HelpSneedlock() {
                         "Transferring Locked Assets" section above for details.
                     </p>
                     
-                    <h3 style={styles.subsubheading}>Do locked tokens still earn rewards?</h3>
+                    <h3 style={styles.subsubheading}>Do locked assets still earn rewards?</h3>
                     <p style={styles.paragraph}>
-                        It depends on the token. For regular token locks, locked tokens typically don't earn staking or 
-                        governance rewards because they're held in the Sneedlock canister, not staked in governance. 
-                        However, locked <strong style={styles.strong}>liquidity positions</strong> continue to earn trading 
-                        fees while locked.
+                        It depends on the type of lock:
                     </p>
+                    <ul style={styles.list}>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Locked Tokens:</strong> Regular token locks typically don't earn 
+                            staking or governance rewards because they're held in the Sneedlock canister, not staked in governance.
+                        </li>
+                        <li style={styles.listItem}>
+                            <strong style={styles.strong}>Locked LP Positions:</strong> These continue to earn trading fees 
+                            while locked, and you can <strong style={styles.strong}>claim those fees directly from your wallet 
+                            even while the position remains locked!</strong> This means your locked liquidity keeps working for you.
+                        </li>
+                    </ul>
                     
                     <h3 style={styles.subsubheading}>Why can't I lock SNEED tokens?</h3>
                     <p style={styles.paragraph}>

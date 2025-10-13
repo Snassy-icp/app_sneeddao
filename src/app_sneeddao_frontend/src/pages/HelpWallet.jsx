@@ -262,9 +262,15 @@ function HelpWallet() {
                         <strong style={styles.strong}>"Lock"</strong> button to specify the amount and expiration date.
                     </p>
                     <div style={styles.infoBox}>
-                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                        <p style={{...styles.paragraph, marginBottom: '0.5rem'}}>
                             <strong style={styles.strong}>Note:</strong> SNEED tokens cannot be locked. Locked tokens 
                             are transferred to the Sneedlock canister and can be withdrawn after the expiration date.
+                        </p>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>✨ Liquid Locking:</strong> You can transfer ownership of locked 
+                            token locks to other Sneed Wallet users! The recipient can't use the tokens until the lock expires, 
+                            but this feature makes it incredibly easy for token creators to distribute vested tokens to team members. 
+                            See <Link to="/help/sneedlock" style={styles.link}>Sneedlock Liquid Locking</Link> for details.
                         </p>
                     </div>
                     
@@ -330,17 +336,34 @@ function HelpWallet() {
                     
                     <h3 style={styles.subsubheading}>Position Operations</h3>
                     
-                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>📤 Send Positions</h4>
+                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>📤 Send Positions (Including Locked Ones!)</h4>
                     <p style={styles.paragraph}>
                         Transfer liquidity positions to another principal. This allows you to move entire LP positions 
                         without closing them, preserving the position's state and accumulated fees. You can send positions 
                         to other users' Sneed Wallet principals or back to ICPSwap wallets.
                     </p>
+                    <div style={styles.tipBox}>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>✨ Liquid Locking:</strong> You can even transfer{' '}
+                            <strong style={styles.strong}>locked</strong> LP positions! The position stays locked for the 
+                            recipient (they can't pull liquidity until it expires), but they CAN claim the trading fees it generates. 
+                            This creates a secondary market for locked positions while maintaining security against rugs. Learn more 
+                            about <Link to="/help/sneedlock" style={styles.link}>Liquid Locking</Link>.
+                        </p>
+                    </div>
+                    
+                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>💰 Claim Fees (Even from Locked Positions!)</h4>
+                    <p style={styles.paragraph}>
+                        Your liquidity positions continuously earn trading fees from the pool. You can claim these fees at any time 
+                        directly from your wallet—<strong style={styles.strong}>even if the position is locked!</strong> Locked positions 
+                        continue earning fees, and you retain full access to claim them while the position itself remains locked and secure.
+                    </p>
                     
                     <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>🔒 Lock Positions</h4>
                     <p style={styles.paragraph}>
                         Lock entire liquidity positions using <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>. 
-                        This locks both tokens in the position until the expiration date. Note that you can only lock positions 
+                        This locks both tokens in the position until the expiration date, demonstrating commitment and preventing 
+                        liquidity removal. You can still claim trading fees from locked positions! Note that you can only lock positions 
                         that are owned by your Sneed Wallet principal—positions still on ICPSwap must be transferred to your 
                         Sneed Wallet first. See the <Link to="/help/sneedlock" style={styles.link}>Sneedlock help page</Link> for 
                         detailed instructions.
