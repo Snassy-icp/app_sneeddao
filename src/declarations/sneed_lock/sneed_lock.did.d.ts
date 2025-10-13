@@ -96,8 +96,24 @@ export type QueueProcessingState = { 'Paused' : string } |
 export type SetLockFeeResult = { 'Ok' : bigint } |
   { 'Err' : string };
 export interface SneedLock {
-  'admin_clear_completed_claim_requests_buffer' : ActorMethod<[], bigint>,
+  'admin_add_admin' : ActorMethod<
+    [Principal],
+    { 'Ok' : string } |
+      { 'Err' : string }
+  >,
+  'admin_clear_completed_claim_requests' : ActorMethod<[], bigint>,
+  'admin_clear_failed_claim_requests' : ActorMethod<[], bigint>,
   'admin_emergency_stop_timer' : ActorMethod<[], undefined>,
+  'admin_emergency_withdraw_from_swap' : ActorMethod<
+    [SwapCanisterId, TokenType, TokenType, Principal],
+    { 'Ok' : string } |
+      { 'Err' : string }
+  >,
+  'admin_manual_withdraw' : ActorMethod<
+    [SwapCanisterId, TokenType, TokenType, Principal],
+    { 'Ok' : string } |
+      { 'Err' : string }
+  >,
   'admin_manual_withdraw_for_request' : ActorMethod<
     [ClaimRequestId],
     { 'Ok' : string } |
@@ -105,6 +121,11 @@ export interface SneedLock {
   >,
   'admin_pause_claim_queue' : ActorMethod<[string], undefined>,
   'admin_remove_active_claim_request' : ActorMethod<[ClaimRequestId], boolean>,
+  'admin_remove_admin' : ActorMethod<
+    [Principal],
+    { 'Ok' : string } |
+      { 'Err' : string }
+  >,
   'admin_resume_claim_queue' : ActorMethod<[], undefined>,
   'admin_retry_claim_request' : ActorMethod<
     [ClaimRequestId],
@@ -132,9 +153,10 @@ export interface SneedLock {
     [ClaimRequestId],
     [] | [ClaimRequest]
   >,
+  'get_admin_list' : ActorMethod<[], Array<Principal>>,
   'get_all_active_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
-  'get_all_completed_claim_requests' : ActorMethod<[], Array<string>>,
-  'get_all_failed_claim_requests' : ActorMethod<[], Array<string>>,
+  'get_all_completed_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
+  'get_all_failed_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
   'get_all_position_locks' : ActorMethod<[], Array<FullyQualifiedPositionLock>>,
   'get_all_token_locks' : ActorMethod<[], Array<FullyQualifiedLock>>,
   'get_claim_queue_status' : ActorMethod<
@@ -143,31 +165,27 @@ export interface SneedLock {
       'pending_count' : bigint,
       'processing_count' : bigint,
       'active_total' : bigint,
-      'completed_buffer_count' : bigint,
+      'completed_count' : bigint,
       'processing_state' : QueueProcessingState,
       'consecutive_empty_cycles' : bigint,
-      'failed_buffer_count' : bigint,
+      'failed_count' : bigint,
     }
   >,
   'get_claim_request_status' : ActorMethod<
     [ClaimRequestId],
     [] | [
-      { 'Failed' : string } |
+      { 'Failed' : ClaimRequest } |
         { 'Active' : ClaimRequest } |
-        { 'Completed' : string }
+        { 'Completed' : ClaimRequest }
     ]
   >,
   'get_claimed_positions_for_principal' : ActorMethod<
     [Principal],
     Array<ClaimedPosition>
   >,
-  'get_completed_claim_requests' : ActorMethod<
-    [bigint, bigint],
-    Array<[] | [BufferEntry]>
-  >,
-  'get_completed_claim_requests_id_range' : ActorMethod<
-    [],
-    [] | [[bigint, bigint]]
+  'get_completed_claim_request' : ActorMethod<
+    [ClaimRequestId],
+    [] | [ClaimRequest]
   >,
   'get_enforce_zero_balance_before_claim' : ActorMethod<[], boolean>,
   'get_error_entries' : ActorMethod<
@@ -175,6 +193,10 @@ export interface SneedLock {
     Array<[] | [BufferEntry]>
   >,
   'get_error_id_range' : ActorMethod<[], [] | [[bigint, bigint]]>,
+  'get_failed_claim_request' : ActorMethod<
+    [ClaimRequestId],
+    [] | [ClaimRequest]
+  >,
   'get_info_entries' : ActorMethod<[bigint, bigint], Array<[] | [BufferEntry]>>,
   'get_info_id_range' : ActorMethod<[], [] | [[bigint, bigint]]>,
   'get_ledger_token_locks' : ActorMethod<

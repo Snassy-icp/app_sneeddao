@@ -46,6 +46,10 @@ export default function SneedLockAdmin() {
   // Settings state
   const [tokenLockFee, setTokenLockFee] = useState('');
   const [maxLockLengthDays, setMaxLockLengthDays] = useState('');
+  
+  // Admin list state
+  const [adminList, setAdminList] = useState([]);
+  const [removeAdminPrincipal, setRemoveAdminPrincipal] = useState('');
 
   // Use admin check hook
   useAdminCheck({ identity, isAuthenticated });
@@ -69,7 +73,7 @@ export default function SneedLockAdmin() {
       const actor = getSneedLockActor();
       if (!actor) return;
 
-      const [infoRangeResult, errorRangeResult, queueStatus, enforceZero, lockFee, timer, activeReqs, completedReqs, failedReqs] = await Promise.all([
+      const [infoRangeResult, errorRangeResult, queueStatus, enforceZero, lockFee, timer, activeReqs, completedReqs, failedReqs, admins] = await Promise.all([
         actor.get_info_id_range(),
         actor.get_error_id_range(),
         actor.get_claim_queue_status(),
@@ -78,7 +82,8 @@ export default function SneedLockAdmin() {
         actor.get_timer_status(),
         actor.get_all_active_claim_requests(),
         actor.get_all_completed_claim_requests(),
-        actor.get_all_failed_claim_requests()
+        actor.get_all_failed_claim_requests(),
+        actor.get_admin_list()
       ]);
 
       const infoRangeData = infoRangeResult.length > 0 ? infoRangeResult[0] : null;
@@ -93,6 +98,7 @@ export default function SneedLockAdmin() {
       setActiveClaimRequests(activeReqs);
       setCompletedClaimRequests(completedReqs);
       setFailedClaimRequests(failedReqs);
+      setAdminList(admins);
 
       // Fetch first page of logs with the range data directly
       if (infoRangeData) {
@@ -453,6 +459,45 @@ export default function SneedLockAdmin() {
     }
   };
 
+  const handleRemoveAdmin = async (e) => {
+    e.preventDefault();
+    if (!removeAdminPrincipal) {
+      setError('Please provide an admin principal to remove');
+      return;
+    }
+    
+    if (!window.confirm(`Are you sure you want to remove admin: ${removeAdminPrincipal}?`)) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getSneedLockActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      const adminPrincipal = Principal.fromText(removeAdminPrincipal);
+      const result = await actor.admin_remove_admin(adminPrincipal);
+      
+      if ('Ok' in result) {
+        setSuccess(`Admin removed: ${result.Ok}`);
+        setRemoveAdminPrincipal('');
+        
+        // Refresh admin list
+        const admins = await actor.get_admin_list();
+        setAdminList(admins);
+      } else {
+        setError(`Failed to remove admin: ${result.Err}`);
+      }
+    } catch (err) {
+      console.error('Error removing admin:', err);
+      setError('Failed to remove admin: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatTimestamp = (timestamp) => {
     try {
       const ms = Number(timestamp) / 1_000_000;
@@ -664,20 +709,66 @@ export default function SneedLockAdmin() {
           <div style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No completed claim requests</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {completedClaimRequests.map((text, idx) => (
+            {completedClaimRequests.map((request) => (
               <div
-                key={idx}
+                key={request.request_id.toString()}
                 style={{
                   backgroundColor: 'rgba(46, 204, 113, 0.1)',
                   borderRadius: '4px',
-                  padding: '12px',
-                  border: '1px solid #2ecc71',
-                  color: '#ffffff',
-                  wordBreak: 'break-word',
-                  fontSize: '13px'
+                  padding: '15px',
+                  border: '1px solid #2ecc71'
                 }}
               >
-                {text}
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '15px', alignItems: 'start' }}>
+                  <div>
+                    <div style={{ color: '#888', fontSize: '12px', marginBottom: '4px' }}>Request ID</div>
+                    <div style={{ color: '#2ecc71', fontSize: '18px', fontWeight: 'bold' }}>
+                      {Number(request.request_id)}
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '11px' }}>Status</div>
+                      <div style={{ color: '#2ecc71', fontSize: '13px', fontWeight: 'bold' }}>
+                        {getStatusText(request.status)}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '11px' }}>Caller</div>
+                      <div style={{ color: '#ffffff', fontSize: '12px', fontFamily: 'monospace' }}>
+                        {formatPrincipal(request.caller)}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '11px' }}>Position ID</div>
+                      <div style={{ color: '#ffffff', fontSize: '13px' }}>{Number(request.position_id)}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '11px' }}>Swap Canister</div>
+                      <div style={{ color: '#ffffff', fontSize: '12px', fontFamily: 'monospace' }}>
+                        {formatPrincipal(request.swap_canister_id)}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '11px' }}>Created</div>
+                      <div style={{ color: '#ffffff', fontSize: '12px' }}>
+                        {formatTimestamp(request.created_at)}
+                      </div>
+                    </div>
+                    {request.completed_at.length > 0 && (
+                      <div>
+                        <div style={{ color: '#888', fontSize: '11px' }}>Completed</div>
+                        <div style={{ color: '#ffffff', fontSize: '12px' }}>
+                          {formatTimestamp(request.completed_at[0])}
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ color: '#888', fontSize: '11px' }}>Retry Count</div>
+                      <div style={{ color: '#ffffff', fontSize: '13px' }}>{Number(request.retry_count)}</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -710,20 +801,102 @@ export default function SneedLockAdmin() {
           <div style={{ color: '#888', textAlign: 'center', padding: '20px' }}>No failed claim requests</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {failedClaimRequests.map((text, idx) => (
+            {failedClaimRequests.map((request) => (
               <div
-                key={idx}
+                key={request.request_id.toString()}
                 style={{
                   backgroundColor: 'rgba(231, 76, 60, 0.1)',
                   borderRadius: '4px',
-                  padding: '12px',
-                  border: '1px solid #e74c3c',
-                  color: '#ffffff',
-                  wordBreak: 'break-word',
-                  fontSize: '13px'
+                  padding: '15px',
+                  border: '1px solid #e74c3c'
                 }}
               >
-                {text}
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: '15px', alignItems: 'start' }}>
+                  <div>
+                    <div style={{ color: '#888', fontSize: '12px', marginBottom: '4px' }}>Request ID</div>
+                    <div style={{ color: '#e74c3c', fontSize: '18px', fontWeight: 'bold' }}>
+                      {Number(request.request_id)}
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '11px' }}>Status</div>
+                      <div style={{ color: '#e74c3c', fontSize: '13px', fontWeight: 'bold' }}>
+                        {getStatusText(request.status)}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '11px' }}>Caller</div>
+                      <div style={{ color: '#ffffff', fontSize: '12px', fontFamily: 'monospace' }}>
+                        {formatPrincipal(request.caller)}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '11px' }}>Position ID</div>
+                      <div style={{ color: '#ffffff', fontSize: '13px' }}>{Number(request.position_id)}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '11px' }}>Swap Canister</div>
+                      <div style={{ color: '#ffffff', fontSize: '12px', fontFamily: 'monospace' }}>
+                        {formatPrincipal(request.swap_canister_id)}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ color: '#888', fontSize: '11px' }}>Created</div>
+                      <div style={{ color: '#ffffff', fontSize: '12px' }}>
+                        {formatTimestamp(request.created_at)}
+                      </div>
+                    </div>
+                    {request.last_attempted_at.length > 0 && (
+                      <div>
+                        <div style={{ color: '#888', fontSize: '11px' }}>Last Attempted</div>
+                        <div style={{ color: '#ffffff', fontSize: '12px' }}>
+                          {formatTimestamp(request.last_attempted_at[0])}
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ color: '#888', fontSize: '11px' }}>Retry Count</div>
+                      <div style={{ color: '#ffffff', fontSize: '13px' }}>{Number(request.retry_count)}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '5px', flexDirection: 'column' }}>
+                    <button
+                      onClick={() => {
+                        setRetryRequestId(request.request_id.toString());
+                        handleRetryRequest({ preventDefault: () => {} });
+                      }}
+                      style={{
+                        backgroundColor: '#f39c12',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '6px 12px',
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Retry
+                    </button>
+                    <button
+                      onClick={() => {
+                        setWithdrawRequestId(request.request_id.toString());
+                        handleManualWithdraw({ preventDefault: () => {} });
+                      }}
+                      style={{
+                        backgroundColor: '#2ecc71',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '6px 12px',
+                        fontSize: '12px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Withdraw
+                    </button>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -1044,12 +1217,12 @@ export default function SneedLockAdmin() {
               <div style={{ color: '#ffffff', fontSize: '16px' }}>{Number(claimQueueStatus.active_total)}</div>
             </div>
             <div>
-              <div style={{ color: '#888', fontSize: '12px' }}>Completed (Buffer)</div>
-              <div style={{ color: '#ffffff', fontSize: '16px' }}>{Number(claimQueueStatus.completed_buffer_count)}</div>
+              <div style={{ color: '#888', fontSize: '12px' }}>Completed</div>
+              <div style={{ color: '#2ecc71', fontSize: '16px', fontWeight: 'bold' }}>{Number(claimQueueStatus.completed_count)}</div>
             </div>
             <div>
-              <div style={{ color: '#888', fontSize: '12px' }}>Failed (Buffer)</div>
-              <div style={{ color: '#ffffff', fontSize: '16px' }}>{Number(claimQueueStatus.failed_buffer_count)}</div>
+              <div style={{ color: '#888', fontSize: '12px' }}>Failed</div>
+              <div style={{ color: '#e74c3c', fontSize: '16px', fontWeight: 'bold' }}>{Number(claimQueueStatus.failed_count)}</div>
             </div>
             <div>
               <div style={{ color: '#888', fontSize: '12px' }}>Consecutive Empty Cycles</div>
@@ -1371,6 +1544,94 @@ export default function SneedLockAdmin() {
   const renderSettings = () => (
     <div>
       <h2 style={{ color: '#ffffff', fontSize: '24px', marginBottom: '20px' }}>Settings</h2>
+      
+      {/* Admin List */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginBottom: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>SneedLock Admins</h3>
+        <p style={{ color: '#888', fontSize: '14px', marginBottom: '15px' }}>
+          Current admins with access to SneedLock admin functions ({adminList.length} total):
+        </p>
+        <div style={{ 
+          backgroundColor: '#1a1a1a', 
+          borderRadius: '4px', 
+          padding: '15px',
+          marginBottom: '15px',
+          maxHeight: '300px',
+          overflowY: 'auto'
+        }}>
+          {adminList.length === 0 ? (
+            <div style={{ color: '#888', textAlign: 'center' }}>No admins found</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {adminList.map((admin, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    backgroundColor: '#2a2a2a',
+                    padding: '10px',
+                    borderRadius: '4px',
+                    fontFamily: 'monospace',
+                    fontSize: '13px',
+                    color: '#3498db',
+                    wordBreak: 'break-all'
+                  }}
+                >
+                  {admin.toString()}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        {/* Remove Admin Form */}
+        <form onSubmit={handleRemoveAdmin} style={{ marginTop: '15px' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Remove Admin by Principal
+              </label>
+              <input
+                type="text"
+                placeholder="Enter principal to remove"
+                value={removeAdminPrincipal}
+                onChange={(e) => setRemoveAdminPrincipal(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff',
+                  fontFamily: 'monospace'
+                }}
+              />
+            </div>
+            <button
+              type="submit"
+              style={{
+                backgroundColor: '#e74c3c',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '10px 20px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Remove Admin
+            </button>
+          </div>
+          <p style={{ color: '#888', fontSize: '11px', marginTop: '8px' }}>
+            ⚠️ Warning: Removing an admin cannot be undone from this interface
+          </p>
+        </form>
+      </div>
       
       {/* Enforce Zero Balance */}
       <div style={{
