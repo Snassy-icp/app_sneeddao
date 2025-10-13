@@ -1,7 +1,6 @@
 export const idlFactory = ({ IDL }) => {
-  const SwapCanisterId = IDL.Principal;
-  const TokenType = IDL.Principal;
   const ClaimRequestId = IDL.Nat;
+  const TokenType = IDL.Principal;
   const TxIndex = IDL.Nat;
   const Balance = IDL.Nat;
   const Timestamp = IDL.Nat64;
@@ -50,13 +49,21 @@ export const idlFactory = ({ IDL }) => {
     }),
     'Processing' : IDL.Null,
     'TimedOut' : IDL.Null,
-    'Completed' : IDL.Null,
+    'Completed' : IDL.Record({
+      'amount1_claimed' : Balance,
+      'transfer1_tx_id' : IDL.Opt(IDL.Nat),
+      'amount0_claimed' : Balance,
+      'amount0_transferred' : Balance,
+      'transfer0_tx_id' : IDL.Opt(IDL.Nat),
+      'amount1_transferred' : Balance,
+    }),
     'Pending' : IDL.Null,
     'BalanceRecorded' : IDL.Record({
       'balance1_before' : Balance,
       'balance0_before' : Balance,
     }),
   });
+  const SwapCanisterId = IDL.Principal;
   const ClaimRequest = IDL.Record({
     'request_id' : ClaimRequestId,
     'status' : ClaimRequestStatus,
@@ -145,21 +152,6 @@ export const idlFactory = ({ IDL }) => {
     'admin_clear_completed_claim_requests' : IDL.Func([], [IDL.Nat], []),
     'admin_clear_failed_claim_requests' : IDL.Func([], [IDL.Nat], []),
     'admin_emergency_stop_timer' : IDL.Func([], [], []),
-    'admin_emergency_withdraw_from_swap' : IDL.Func(
-        [SwapCanisterId, TokenType, TokenType, IDL.Principal],
-        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
-        [],
-      ),
-    'admin_manual_withdraw' : IDL.Func(
-        [SwapCanisterId, TokenType, TokenType, IDL.Principal],
-        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
-        [],
-      ),
-    'admin_manual_withdraw_for_request' : IDL.Func(
-        [ClaimRequestId],
-        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
-        [],
-      ),
     'admin_pause_claim_queue' : IDL.Func([IDL.Text], [], []),
     'admin_remove_active_claim_request' : IDL.Func(
         [ClaimRequestId],
@@ -171,6 +163,11 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
         [],
       ),
+    'admin_rescue_stuck_tokens' : IDL.Func(
+        [TokenType, IDL.Principal],
+        [IDL.Variant({ 'Ok' : IDL.Text, 'Err' : IDL.Text })],
+        [],
+      ),
     'admin_resume_claim_queue' : IDL.Func([], [], []),
     'admin_retry_claim_request' : IDL.Func(
         [ClaimRequestId],
@@ -178,6 +175,11 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'admin_return_token' : IDL.Func(
+        [IDL.Principal, IDL.Nat, IDL.Principal],
+        [TransferResult],
+        [],
+      ),
+    'admin_return_token_from_failed_request' : IDL.Func(
         [IDL.Principal, IDL.Nat, IDL.Principal],
         [TransferResult],
         [],

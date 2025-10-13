@@ -48,7 +48,16 @@ export type ClaimRequestStatus = { 'Failed' : string } |
   } |
   { 'Processing' : null } |
   { 'TimedOut' : null } |
-  { 'Completed' : null } |
+  {
+    'Completed' : {
+      'amount1_claimed' : Balance,
+      'transfer1_tx_id' : [] | [bigint],
+      'amount0_claimed' : Balance,
+      'amount0_transferred' : Balance,
+      'transfer0_tx_id' : [] | [bigint],
+      'amount1_transferred' : Balance,
+    }
+  } |
   { 'Pending' : null } |
   {
     'BalanceRecorded' : {
@@ -104,25 +113,15 @@ export interface SneedLock {
   'admin_clear_completed_claim_requests' : ActorMethod<[], bigint>,
   'admin_clear_failed_claim_requests' : ActorMethod<[], bigint>,
   'admin_emergency_stop_timer' : ActorMethod<[], undefined>,
-  'admin_emergency_withdraw_from_swap' : ActorMethod<
-    [SwapCanisterId, TokenType, TokenType, Principal],
-    { 'Ok' : string } |
-      { 'Err' : string }
-  >,
-  'admin_manual_withdraw' : ActorMethod<
-    [SwapCanisterId, TokenType, TokenType, Principal],
-    { 'Ok' : string } |
-      { 'Err' : string }
-  >,
-  'admin_manual_withdraw_for_request' : ActorMethod<
-    [ClaimRequestId],
-    { 'Ok' : string } |
-      { 'Err' : string }
-  >,
   'admin_pause_claim_queue' : ActorMethod<[string], undefined>,
   'admin_remove_active_claim_request' : ActorMethod<[ClaimRequestId], boolean>,
   'admin_remove_admin' : ActorMethod<
     [Principal],
+    { 'Ok' : string } |
+      { 'Err' : string }
+  >,
+  'admin_rescue_stuck_tokens' : ActorMethod<
+    [TokenType, Principal],
     { 'Ok' : string } |
       { 'Err' : string }
   >,
@@ -133,6 +132,10 @@ export interface SneedLock {
       { 'Err' : string }
   >,
   'admin_return_token' : ActorMethod<
+    [Principal, bigint, Principal],
+    TransferResult
+  >,
+  'admin_return_token_from_failed_request' : ActorMethod<
     [Principal, bigint, Principal],
     TransferResult
   >,
