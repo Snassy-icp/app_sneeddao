@@ -1710,13 +1710,46 @@ function Wallet() {
 
                 const status = statusResult[0];
                 
+                // Check for Completed status (now returns full ClaimRequest)
                 if ('Completed' in status) {
-                    console.log('Request completed:', status.Completed);
+                    const completedRequest = status.Completed;
+                    console.log('Request completed:', toJsonString(completedRequest));
+                    
+                    // Check if the status has transaction details
+                    if ('Completed' in completedRequest.status) {
+                        const details = completedRequest.status.Completed;
+                        console.log('Transfer details:', {
+                            amount0_claimed: details.amount0_claimed.toString(),
+                            amount0_transferred: details.amount0_transferred.toString(),
+                            amount1_claimed: details.amount1_claimed.toString(),
+                            amount1_transferred: details.amount1_transferred.toString(),
+                            transfer0_tx_id: details.transfer0_tx_id,
+                            transfer1_tx_id: details.transfer1_tx_id
+                        });
+                    }
+                    
                     onStatusUpdate('✅ Completed', requestId);
                     isComplete = true;
                     break;
                 }
 
+                // Check for Failed status (now returns full ClaimRequest)
+                if ('Failed' in status) {
+                    const failedRequest = status.Failed;
+                    console.log('Request failed:', toJsonString(failedRequest));
+                    
+                    // Extract failure message from the status
+                    let failureMessage = 'Unknown failure';
+                    if ('Failed' in failedRequest.status) {
+                        failureMessage = failedRequest.status.Failed;
+                    } else if ('TimedOut' in failedRequest.status) {
+                        failureMessage = 'Request timed out';
+                    }
+                    
+                    throw new Error(`Claim failed: ${failureMessage}`);
+                }
+
+                // Check for Active status
                 if ('Active' in status) {
                     const activeRequest = status.Active;
                     const requestStatus = activeRequest.status;

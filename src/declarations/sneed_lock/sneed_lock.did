@@ -59,23 +59,6 @@ type SneedLock =
    admin_clear_completed_claim_requests: () -> (nat);
    admin_clear_failed_claim_requests: () -> (nat);
    admin_emergency_stop_timer: () -> ();
-   admin_emergency_withdraw_from_swap: (swap_canister_id: SwapCanisterId,
-    token0: TokenType, token1: TokenType, recipient: principal) ->
-    (variant {
-       Err: text;
-       Ok: text;
-     });
-   admin_manual_withdraw: (swap_canister_id: SwapCanisterId, token0:
-    TokenType, token1: TokenType, original_caller: principal) ->
-    (variant {
-       Err: text;
-       Ok: text;
-     });
-   admin_manual_withdraw_for_request: (request_id: ClaimRequestId) ->
-    (variant {
-       Err: text;
-       Ok: text;
-     });
    admin_pause_claim_queue: (reason: text) -> ();
    admin_remove_active_claim_request: (request_id: ClaimRequestId) -> (bool);
    admin_remove_admin: (admin_to_remove: principal) ->
@@ -83,6 +66,11 @@ type SneedLock =
        Err: text;
        Ok: text;
      });
+   admin_rescue_stuck_tokens: (token_ledger: TokenType, recipient:
+    principal) -> (variant {
+                     Err: text;
+                     Ok: text;
+                   });
    admin_resume_claim_queue: () -> ();
    admin_retry_claim_request: (request_id: ClaimRequestId) ->
     (variant {
@@ -91,6 +79,9 @@ type SneedLock =
      });
    admin_return_token: (icrc1_ledger_canister_id: principal, amount: 
     nat, user_principal: principal) -> (TransferResult);
+   admin_return_token_from_failed_request: (icrc1_ledger_canister_id:
+    principal, amount: nat, recipient_principal: principal) ->
+    (TransferResult);
    admin_set_enforce_zero_balance_before_claim: (enforce: bool) -> ();
    admin_trigger_claim_processing: () -> (text);
    claim_position: (swap_canister_id: principal, position_id: PositionId) ->
@@ -274,7 +265,15 @@ type ClaimRequestStatus =
       balance0_before: Balance;
       balance1_before: Balance;
     };
-   Completed;
+   Completed:
+    record {
+      amount0_claimed: Balance;
+      amount0_transferred: Balance;
+      amount1_claimed: Balance;
+      amount1_transferred: Balance;
+      transfer0_tx_id: opt nat;
+      transfer1_tx_id: opt nat;
+    };
    Failed: text;
    Pending;
    Processing;
