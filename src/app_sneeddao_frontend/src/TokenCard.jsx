@@ -76,7 +76,7 @@ const LockCountdown = ({ expiry }) => {
     );
 };
 
-const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleRefreshToken, isSnsToken = false, onNeuronTotalsChange, openTransferTokenLockModal }) => {
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleRefreshToken, isRefreshing = false, isSnsToken = false, onNeuronTotalsChange, openTransferTokenLockModal }) => {
 
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
@@ -1081,22 +1081,24 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             await refetchNeurons();
                                         }
                                     }}
+                                    disabled={isRefreshing}
                                     style={{
                                         background: 'none',
                                         border: 'none',
-                                        cursor: 'pointer',
+                                        cursor: isRefreshing ? 'default' : 'pointer',
                                         padding: '4px',
                                         display: 'flex',
                                         alignItems: 'center',
                                         color: theme.colors.mutedText,
                                         fontSize: '1.2rem',
-                                        transition: 'color 0.2s ease'
+                                        transition: 'color 0.2s ease',
+                                        opacity: isRefreshing ? 0.6 : 1
                                     }}
-                                    onMouseEnter={(e) => e.target.style.color = theme.colors.primaryText}
-                                    onMouseLeave={(e) => e.target.style.color = theme.colors.mutedText}
+                                    onMouseEnter={(e) => !isRefreshing && (e.target.style.color = theme.colors.primaryText)}
+                                    onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
                                     title="Refresh token data"
                                 >
-                                    🔄
+                                    {isRefreshing ? '⏳' : '🔄'}
                                 </button>
                             )}
                             <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>

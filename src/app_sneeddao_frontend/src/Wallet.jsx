@@ -37,7 +37,7 @@ import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from './utils/BackendUtils';
 
 // Component for empty position cards (when no positions exist for a swap pair)
-const EmptyPositionCard = ({ position, onRemove, theme }) => {
+const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefreshing, theme }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
     const handleHeaderClick = () => {
@@ -60,7 +60,35 @@ const EmptyPositionCard = ({ position, onRemove, theme }) => {
                         <div className="amount-symbol">
                             <span className="token-amount">{position.loading ? 'Loading...' : 'No Positions'}</span>
                         </div>
-                        <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            {handleRefreshPosition && !position.loading && (
+                                <button
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await handleRefreshPosition(position);
+                                    }}
+                                    disabled={isRefreshing}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: isRefreshing ? 'default' : 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        color: theme.colors.mutedText,
+                                        fontSize: '1.2rem',
+                                        transition: 'color 0.2s ease',
+                                        opacity: isRefreshing ? 0.6 : 1
+                                    }}
+                                    onMouseEnter={(e) => !isRefreshing && (e.target.style.color = theme.colors.primaryText)}
+                                    onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
+                                    title="Refresh position data"
+                                >
+                                    {isRefreshing ? '⏳' : '🔄'}
+                                </button>
+                            )}
+                            <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -198,6 +226,8 @@ function Wallet() {
     const [showPositionsSpinner, setShowPositionsSpinner] = useState(true);
     const [showTokensSpinner, setShowTokensSpinner] = useState(true);
     const [lockDetailsLoading, setLockDetailsLoading] = useState({});
+    const [refreshingTokens, setRefreshingTokens] = useState(new Set());
+    const [refreshingPositions, setRefreshingPositions] = useState(new Set());
     const [tokensExpanded, setTokensExpanded] = useState(true);
     const [positionsExpanded, setPositionsExpanded] = useState(true);
     const [principalExpanded, setPrincipalExpanded] = useState(true);
@@ -1878,10 +1908,151 @@ function Wallet() {
     };
 
     const handleRefreshToken = async (token) => {
-        // Refresh token balance, locks, and rewards
-        await fetchBalancesAndLocks(token.ledger_canister_id);
-        await fetchRewardDetails(token.ledger_canister_id);
-        // Note: Neurons are refreshed within TokenCard itself
+        const ledgerId = token.ledger_canister_id;
+        // Mark as refreshing
+        setRefreshingTokens(prev => new Set(prev).add(ledgerId));
+        try {
+            // Refresh token balance, locks, and rewards
+            await fetchBalancesAndLocks(ledgerId);
+            await fetchRewardDetails(ledgerId);
+            // Note: Neurons are refreshed within TokenCard itself
+        } finally {
+            // Clear refreshing state
+            setRefreshingTokens(prev => {
+                const next = new Set(prev);
+                next.delete(ledgerId);
+                return next;
+            });
+        }
+    };
+
+    const handleRefreshPosition = async (position) => {
+        // Refresh just this specific liquidity position
+        const swap_canister = position.swapCanisterId;
+        
+        // Mark as refreshing
+        setRefreshingPositions(prev => new Set(prev).add(swap_canister));
+        
+        try {
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+
+            // Get claimed positions for this swap
+            const claimed_positions = await sneedLockActor.get_claimed_positions_for_principal(identity.getPrincipal());
+            const claimed_positions_for_swap = claimed_positions.filter(cp => cp.swap_canister_id === swap_canister);
+            const claimed_position_ids_for_swap = claimed_positions_for_swap.map(claimed_position => claimed_position.position_id);
+            const claimed_positions_for_swap_by_id = {};
+            for (const claimed_position of claimed_positions_for_swap) {
+                claimed_positions_for_swap_by_id[claimed_position.position_id] = claimed_position;
+            }
+
+            // Fetch updated data for this swap canister
+            const swapActor = createIcpSwapActor(swap_canister);
+            const token_meta = await getTokenMetaForSwap(swapActor, backendActor, swap_canister);
+            const swap_meta = await swapActor.metadata();
+
+            const icrc1_ledger0 = swap_meta.ok.token0.address;
+            const ledgerActor0 = createLedgerActor(icrc1_ledger0);
+            const metadata0 = await ledgerActor0.icrc1_metadata();
+            let token0Logo = getTokenLogo(metadata0);
+
+            const icrc1_ledger1 = swap_meta.ok.token1.address;
+            const ledgerActor1 = createLedgerActor(icrc1_ledger1);
+            const metadata1 = await ledgerActor1.icrc1_metadata();
+            let token1Logo = getTokenLogo(metadata1);
+
+            const token0Decimals = token_meta?.token0?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 0;
+            const token0Symbol = token_meta?.token0?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
+            const token1Decimals = token_meta?.token1?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 0;
+            const token1Symbol = token_meta?.token1?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
+
+            const token0Fee = await ledgerActor0.icrc1_fee();
+            const token1Fee = await ledgerActor1.icrc1_fee();
+
+            if (token0Symbol?.toLowerCase() === "icp" && token0Logo === "") { token0Logo = "icp_symbol.svg"; }
+            if (token1Symbol?.toLowerCase() === "icp" && token1Logo === "") { token1Logo = "icp_symbol.svg"; }
+
+            const token0_conversion_rate = await get_token_conversion_rate(icrc1_ledger0, token0Decimals);
+            const token1_conversion_rate = await get_token_conversion_rate(icrc1_ledger1, token1Decimals);
+
+            const userPositionIds = (await swapActor.getUserPositionIdsByPrincipal(identity.getPrincipal())).ok;
+
+            let offset = 0;
+            const limit = 10;
+            let userPositions = [];
+            let hasMorePositions = true;
+            while (hasMorePositions) {
+                const allPositions = (await swapActor.getUserPositionWithTokenAmount(offset, limit)).ok.content;
+                for (const pos of allPositions) {
+                    if (userPositionIds.includes(pos.id) || claimed_position_ids_for_swap.includes(pos.id)) {
+                        userPositions.push({
+                            position: pos,
+                            claimInfo: claimed_positions_for_swap_by_id[pos.id],
+                            frontendOwnership: userPositionIds.includes(pos.id)
+                        });
+                    }
+                }
+                offset += limit;
+                hasMorePositions = allPositions.length === limit;
+            }
+
+            let swapCanisterBalance0 = 0n;
+            let swapCanisterBalance1 = 0n;
+            const unused = await swapActor.getUserUnusedBalance(identity.getPrincipal());
+            if (unused.ok) {
+                swapCanisterBalance0 = unused.ok.balance0;
+                swapCanisterBalance1 = unused.ok.balance1;
+            }
+
+            const positionDetails = await Promise.all(userPositions.map(async (compoundPosition) => {
+                const pos = compoundPosition.position;
+                return {
+                    positionId: pos.id,
+                    tokensOwed0: pos.tokensOwed0,
+                    tokensOwed1: pos.tokensOwed1,
+                    token0Amount: pos.token0Amount,
+                    token1Amount: pos.token1Amount,
+                    frontendOwnership: compoundPosition.frontendOwnership,
+                    lockInfo: (!compoundPosition.frontendOwnership && compoundPosition.claimInfo.position_lock && toJsonString(compoundPosition.claimInfo.position_lock) !== '[]')
+                        ? compoundPosition.claimInfo.position_lock[0]
+                        : null
+                };
+            }));
+
+            const updatedPosition = {
+                swapCanisterId: swap_canister,
+                token0: Principal.fromText(icrc1_ledger0),
+                token1: Principal.fromText(icrc1_ledger1),
+                token0Symbol: token0Symbol,
+                token1Symbol: token1Symbol,
+                token0Logo: token0Logo,
+                token1Logo: token1Logo,
+                token0Decimals: token0Decimals,
+                token1Decimals: token1Decimals,
+                token0Fee: token0Fee,
+                token1Fee: token1Fee,
+                token0_conversion_rate: token0_conversion_rate,
+                token1_conversion_rate: token1_conversion_rate,
+                swapCanisterBalance0: swapCanisterBalance0,
+                swapCanisterBalance1: swapCanisterBalance1,
+                positions: positionDetails,
+                loading: false
+            };
+
+            // Update the specific position in state
+            setLiquidityPositions(prevPositions => prevPositions.map(p => 
+                p.swapCanisterId === swap_canister ? updatedPosition : p
+            ));
+        } catch (error) {
+            console.error('Error refreshing position:', error);
+        } finally {
+            // Clear refreshing state
+            setRefreshingPositions(prev => {
+                const next = new Set(prev);
+                next.delete(swap_canister);
+                return next;
+            });
+        }
     };
 
     const [isSneedLockExpanded, setIsSneedLockExpanded] = useState(() => {
@@ -2131,6 +2302,7 @@ function Wallet() {
                                 handleClaimRewards={handleClaimRewards}
                                 handleWithdrawFromBackend={handleWithdrawFromBackend}
                                 handleRefreshToken={handleRefreshToken}
+                                isRefreshing={refreshingTokens.has(token.ledger_canister_id)}
                                 isSnsToken={isSns}
                                 onNeuronTotalsChange={(usdValue) => {
                                     const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
@@ -2168,6 +2340,8 @@ function Wallet() {
                             key={index} 
                             position={position} 
                             onRemove={() => handleUnregisterSwapCanister(position.swapCanisterId)}
+                            handleRefreshPosition={handleRefreshPosition}
+                            isRefreshing={refreshingPositions.has(position.swapCanisterId)}
                             theme={theme}
                           />
 
@@ -2183,6 +2357,8 @@ function Wallet() {
                                 handleWithdrawPosition={handleWithdrawPosition}
                                 handleWithdrawSwapBalance={handleWithdrawSwapBalance}
                                 handleTransferPositionOwnership={handleSendLiquidityPosition}
+                                handleRefreshPosition={handleRefreshPosition}
+                                isRefreshing={refreshingPositions.has(position.swapCanisterId)}
                                 swapCanisterBalance0={position.swapCanisterBalance0}
                                 swapCanisterBalance1={position.swapCanisterBalance1}
                                 token0Fee={position.token0Fee}
