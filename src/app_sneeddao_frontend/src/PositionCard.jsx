@@ -1,12 +1,71 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { formatAmount, getUSD } from './utils/StringUtils';
-import { bigDateToReadable } from './utils/DateUtils';
+import { bigDateToReadable, format_duration } from './utils/DateUtils';
 import { getIcpSwapLink, isLockedPosition, getPositionTVL } from './utils/PositionUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from './utils/PrincipalUtils';
 import { useTheme } from './contexts/ThemeContext';
 import { useNaming } from './NamingContext';
 import { useAuth } from './AuthContext';
 import { Principal } from '@dfinity/principal';
+
+// Countdown timer component for position locks expiring within 1 hour
+const PositionLockCountdown = ({ expiryNanos }) => {
+    const [timeLeft, setTimeLeft] = useState(null);
+    const [isCountdown, setIsCountdown] = useState(false);
+
+    useEffect(() => {
+        const updateTimer = () => {
+            const now = new Date();
+            // Convert nanoseconds to milliseconds
+            const expiryDate = new Date(Number(expiryNanos / 1000000n));
+            const diff = expiryDate - now;
+            
+            // If expired
+            if (diff <= 0) {
+                setTimeLeft('Expired');
+                setIsCountdown(false);
+                return;
+            }
+            
+            // If within 1 hour (3600000 ms), show countdown
+            if (diff <= 3600000) {
+                const minutes = Math.floor(diff / 60000);
+                const seconds = Math.floor((diff % 60000) / 1000);
+                setTimeLeft(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+                setIsCountdown(true);
+            } else {
+                // Otherwise show regular duration
+                setTimeLeft(format_duration(diff));
+                setIsCountdown(false);
+            }
+        };
+
+        // Update immediately
+        updateTimer();
+
+        // Set up interval to update every second
+        const interval = setInterval(updateTimer, 1000);
+
+        // Cleanup on unmount
+        return () => clearInterval(interval);
+    }, [expiryNanos]);
+
+    if (timeLeft === null) {
+        const expiryDate = new Date(Number(expiryNanos / 1000000n));
+        const diff = expiryDate - new Date();
+        return format_duration(diff);
+    }
+
+    return (
+        <span style={{ 
+            color: isCountdown ? '#e74c3c' : 'inherit',
+            fontWeight: isCountdown ? 'bold' : 'inherit',
+            fontFamily: isCountdown ? 'monospace' : 'inherit'
+        }}>
+            {timeLeft}
+        </span>
+    );
+};
 
 const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleClaimLockedPositionFees, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
 
@@ -585,6 +644,14 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         : 'No lock'}
                                 </span>
                             </div>
+                            {isLockedPosition(positionDetails) && (
+                                <div className="lock-details">
+                                    <span className="lock-label">Duration:</span>
+                                    <span className="lock-value">
+                                        <PositionLockCountdown expiryNanos={positionDetails.lockInfo.expiry} />
+                                    </span>
+                                </div>
+                            )}
                 </div>
                 {positionDetails.owner && (
                             <div className="lock-item" style={{ marginTop: '10px' }}>
