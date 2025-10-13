@@ -603,9 +603,8 @@ function HelpSneedlock() {
                     
                     <div style={styles.successBox}>
                         <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>✓ Safe and Secure:</strong> Sneedlock has been audited and 
-                            battle-tested. The canister code is open-source and can be reviewed by anyone. Your locked 
-                            assets are protected by the Internet Computer's security guarantees.
+                            <strong style={styles.strong}>✓ Safe and Secure:</strong>The Sneed Lock canister code is open-source and can be reviewed by anyone. Your locked 
+                            assets are protected by the Internet Computer's SNS DAO security guarantees.
                         </p>
                     </div>
                 </div>
