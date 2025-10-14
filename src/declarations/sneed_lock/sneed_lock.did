@@ -139,8 +139,6 @@ type SneedLock =
    get_ledger_token_locks: (ledger_canister_id: TokenType) ->
     (vec FullyQualifiedLock) query;
    get_my_active_claim_requests: () -> (vec ClaimRequest) query;
-   get_position_lock_by_id: (lock_id: LockId) ->
-    (opt FullyQualifiedPositionLock) query;
    get_position_ownerships: () ->
     (vec record {
            SwapCanisterId;
@@ -161,7 +159,6 @@ type SneedLock =
        time_since_last_execution_seconds: opt nat64;
        timer_id: opt nat;
      }) query;
-   get_token_lock_by_id: (lock_id: LockId) -> (opt FullyQualifiedLock) query;
    get_token_lock_fee_sneed_e8s: () -> (nat) query;
    get_token_locks: () ->
     (vec record {

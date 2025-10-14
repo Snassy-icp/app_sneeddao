@@ -195,17 +195,25 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         if (onNeuronTotalsChange && isSnsToken && token.conversion_rate) {
             const totalStake = getTotalNeuronStake();
             const totalMaturity = getTotalNeuronMaturity();
-            const totalNeuronTokens = totalStake + totalMaturity;
             
             // Convert to USD (do raw calculation without formatting)
             const divisor = 10n ** BigInt(token.decimals);
-            const tokenValue = Number(totalNeuronTokens) / Number(divisor);
-            const usdValue = tokenValue * token.conversion_rate;
+            const stakedValue = Number(totalStake) / Number(divisor) * token.conversion_rate;
+            const maturityValue = Number(totalMaturity) / Number(divisor) * token.conversion_rate;
+            const totalUsdValue = stakedValue + maturityValue;
             
-            onNeuronTotalsChange(usdValue);
+            onNeuronTotalsChange({
+                total: totalUsdValue,
+                staked: stakedValue,
+                maturity: maturityValue
+            });
         } else if (onNeuronTotalsChange && !isSnsToken) {
             // If not an SNS token, report 0
-            onNeuronTotalsChange(0);
+            onNeuronTotalsChange({
+                total: 0,
+                staked: 0,
+                maturity: 0
+            });
         }
     }, [neurons, token.conversion_rate, token.decimals, isSnsToken, onNeuronTotalsChange]);
 

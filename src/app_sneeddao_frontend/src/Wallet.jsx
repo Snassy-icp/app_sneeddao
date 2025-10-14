@@ -238,6 +238,13 @@ function Wallet() {
     const [totalDollarValue, setTotalDollarValue] = useState(0.0);
     const [snsTokens, setSnsTokens] = useState(new Set()); // Set of ledger canister IDs that are SNS tokens
     const [neuronTotals, setNeuronTotals] = useState({}); // Track neuron USD values by token ledger ID
+    const [totalBreakdown, setTotalBreakdown] = useState({
+        liquid: 0.0,
+        maturity: 0.0,
+        rewards: 0.0,
+        staked: 0.0,
+        locked: 0.0
+    });
 
     const dex_icpswap = 1;
  
@@ -895,16 +902,55 @@ function Wallet() {
 
     useEffect(() => {
         var total = 0.0;
+        var liquidTotal = 0.0;
+        var lockedTotal = 0.0;
+        var rewardsTotal = 0.0;
+        var stakedTotal = 0.0;
+        var maturityTotal = 0.0;
         
         for (const token of tokens) {
+            const divisor = 10 ** token.decimals;
+            const rate = token.conversion_rate || 0;
+            
+            // Calculate liquid (available = frontend + backend balances)
+            const liquidAmount = Number(token.available || 0n) / divisor * rate;
+            liquidTotal += liquidAmount;
+            
+            // Calculate locked
+            const lockedAmount = Number(token.locked || 0n) / divisor * rate;
+            lockedTotal += lockedAmount;
+            
+            // Calculate rewards
+            const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+            if (rewardDetailsLoading && rewardDetailsLoading[token.ledger_canister_id] != null && BigInt(rewardDetailsLoading[token.ledger_canister_id]) > 0) {
+                const rewardAmount = Number(BigInt(rewardDetailsLoading[token.ledger_canister_id])) / divisor * rate;
+                rewardsTotal += rewardAmount;
+            }
+            
+            // Add neuron breakdown (staked + maturity) if available
+            if (neuronTotals[ledgerId]) {
+                const neuronData = neuronTotals[ledgerId];
+                if (typeof neuronData === 'object') {
+                    stakedTotal += neuronData.staked || 0;
+                    maturityTotal += neuronData.maturity || 0;
+                } else {
+                    // Legacy support: if it's just a number, add to staked
+                    stakedTotal += neuronData || 0;
+                }
+            }
+            
             // Get base token TVL (liquid + locked + rewards)
             const baseTVL = getTokenTVL(token, rewardDetailsLoading, false);
             total += baseTVL;
             
-            // Add neuron totals (staked + maturity) if available
-            const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
+            // Add neuron totals
             if (neuronTotals[ledgerId]) {
-                total += neuronTotals[ledgerId];
+                const neuronData = neuronTotals[ledgerId];
+                if (typeof neuronData === 'object') {
+                    total += neuronData.total || 0;
+                } else {
+                    total += neuronData || 0;
+                }
             }
         }
 
@@ -921,6 +967,13 @@ function Wallet() {
         });
 
         setTotalDollarValue(formattedTotal);
+        setTotalBreakdown({
+            liquid: liquidTotal,
+            maturity: maturityTotal,
+            rewards: rewardsTotal,
+            staked: stakedTotal,
+            locked: lockedTotal
+        });
     }, [tokens, liquidityPositions, rewardDetailsLoading, neuronTotals]);
 
     const calc_send_amounts = (token, amount) => {
@@ -2253,9 +2306,79 @@ function Wallet() {
                             color: theme.colors.primaryText,
                             fontSize: '36px',
                             fontWeight: '600',
-                            letterSpacing: '0.5px'
+                            letterSpacing: '0.5px',
+                            marginBottom: '12px'
                         }}>
                             ${totalDollarValue}
+                        </div>
+                        
+                        {/* Breakdown fields */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '16px',
+                            flexWrap: 'wrap',
+                            fontSize: '13px',
+                            color: theme.colors.secondaryText
+                        }}>
+                            {/* Left aligned fields */}
+                            <div style={{
+                                display: 'flex',
+                                gap: '12px',
+                                flexWrap: 'wrap',
+                                alignItems: 'center'
+                            }}>
+                                {totalBreakdown.liquid > 0 && (
+                                    <span>
+                                        Liquid: ${totalBreakdown.liquid.toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </span>
+                                )}
+                                {totalBreakdown.maturity > 0 && (
+                                    <span>
+                                        Maturity: ${totalBreakdown.maturity.toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </span>
+                                )}
+                                {totalBreakdown.rewards > 0 && (
+                                    <span>
+                                        Rewards: ${totalBreakdown.rewards.toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </span>
+                                )}
+                            </div>
+                            
+                            {/* Right aligned fields */}
+                            <div style={{
+                                display: 'flex',
+                                gap: '12px',
+                                flexWrap: 'wrap',
+                                alignItems: 'center'
+                            }}>
+                                {totalBreakdown.staked > 0 && (
+                                    <span>
+                                        Staked: ${totalBreakdown.staked.toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </span>
+                                )}
+                                {totalBreakdown.locked > 0 && (
+                                    <span>
+                                        Locked: ${totalBreakdown.locked.toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     </div>
                 )}
@@ -2346,11 +2469,11 @@ function Wallet() {
                                 handleRefreshToken={handleRefreshToken}
                                 isRefreshing={refreshingTokens.has(token.ledger_canister_id)}
                                 isSnsToken={isSns}
-                                onNeuronTotalsChange={(usdValue) => {
+                                onNeuronTotalsChange={(breakdown) => {
                                     const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
                                     setNeuronTotals(prev => ({
                                         ...prev,
-                                        [ledgerId]: usdValue
+                                        [ledgerId]: breakdown
                                     }));
                                 }}
                                 openTransferTokenLockModal={openTransferTokenLockModal}
