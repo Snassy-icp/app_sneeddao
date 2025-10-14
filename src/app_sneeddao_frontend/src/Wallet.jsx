@@ -2132,6 +2132,16 @@ function Wallet() {
                 minHeight: '100vh'
             }}
         >
+            <style>{`
+                @media (max-width: 768px) {
+                    .principal-full-text {
+                        display: none !important;
+                    }
+                    .principal-short-text {
+                        display: inline !important;
+                    }
+                }
+            `}</style>
             <Header />
             <div 
                 className="wallet-container"
@@ -2182,7 +2192,8 @@ function Wallet() {
                                 }}
                                 onClick={() => setPrincipalExpanded(!principalExpanded)}
                             >
-                                Your Sneed Wallet Principal
+                                <span className="principal-full-text">Your Sneed Wallet Principal</span>
+                                <span className="principal-short-text" style={{ display: 'none' }}>Your Principal</span>
                             </div>
                             <Link 
                                 to="/help/wallet"
