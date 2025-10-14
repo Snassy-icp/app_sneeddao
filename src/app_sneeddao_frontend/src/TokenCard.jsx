@@ -1397,7 +1397,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         ) : (
                             <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
                                 {locks[token.ledger_canister_id]?.length || 0} {locks[token.ledger_canister_id]?.length === 1 ? 'Lock' : 'Locks'} {getTotalLockedAmount() > 0n && (
-                                    <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>
+                                    <span style={{ fontSize: '0.9rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
                                         ({formatAmount(getTotalLockedAmount(), token.decimals)} {token.symbol})
                                     </span>
                                 )}
@@ -1644,7 +1644,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             ) : (
                                 <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
                                     {neurons.length} {neurons.length === 1 ? 'Neuron' : 'Neurons'} {getTotalNeuronStake() > 0n && (
-                                        <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>
+                                        <span style={{ fontSize: '0.9rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
                                             ({formatAmount(getTotalNeuronStake(), token.decimals)} {token.symbol})
                                         </span>
                                     )}
