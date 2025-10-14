@@ -2139,43 +2139,6 @@ function Wallet() {
                     backgroundColor: 'transparent'
                 }}
             >
-                {/* Help Link */}
-                <div style={{
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                    marginBottom: '12px',
-                    paddingRight: '8px'
-                }}>
-                    <Link 
-                        to="/help/wallet"
-                        style={{
-                            color: theme.colors.accent,
-                            textDecoration: 'none',
-                            fontSize: '0.95rem',
-                            fontWeight: '500',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '8px 12px',
-                            borderRadius: '6px',
-                            transition: 'all 0.2s ease',
-                            background: `${theme.colors.accent}15`,
-                            border: `1px solid ${theme.colors.accent}30`
-                        }}
-                        onMouseEnter={(e) => {
-                            e.target.style.background = `${theme.colors.accent}25`;
-                            e.target.style.borderColor = theme.colors.accent;
-                        }}
-                        onMouseLeave={(e) => {
-                            e.target.style.background = `${theme.colors.accent}15`;
-                            e.target.style.borderColor = `${theme.colors.accent}30`;
-                        }}
-                    >
-                        <span style={{ fontSize: '1rem' }}>❓</span>
-                        Wallet Help
-                    </Link>
-                </div>
-                
                 {/* Your Sneed Wallet Principal */}
                 {isAuthenticated && identity && (
                     <div style={{
@@ -2193,27 +2156,62 @@ function Wallet() {
                                 alignItems: 'center',
                                 gap: '12px',
                                 padding: '16px 20px',
-                                cursor: 'pointer',
                                 borderBottom: principalExpanded ? `1px solid ${theme.colors.border}` : 'none'
                             }}
-                            onClick={() => setPrincipalExpanded(!principalExpanded)}
                         >
-                            <span style={{
-                                fontSize: '1.2rem',
-                                color: theme.colors.secondaryText,
-                                transition: 'transform 0.2s ease'
-                            }}>
+                            <span 
+                                style={{
+                                    fontSize: '1.2rem',
+                                    color: theme.colors.secondaryText,
+                                    transition: 'transform 0.2s ease',
+                                    cursor: 'pointer'
+                                }}
+                                onClick={() => setPrincipalExpanded(!principalExpanded)}
+                            >
                                 {principalExpanded ? '▼' : '▶'}
                             </span>
-                            <div style={{
-                                color: theme.colors.mutedText,
-                                fontSize: '14px',
-                                letterSpacing: '1px',
-                                textTransform: 'uppercase',
-                                fontWeight: '600'
-                            }}>
+                            <div 
+                                style={{
+                                    color: theme.colors.mutedText,
+                                    fontSize: '14px',
+                                    letterSpacing: '1px',
+                                    textTransform: 'uppercase',
+                                    fontWeight: '600',
+                                    flex: 1,
+                                    cursor: 'pointer'
+                                }}
+                                onClick={() => setPrincipalExpanded(!principalExpanded)}
+                            >
                                 Your Sneed Wallet Principal
                             </div>
+                            <Link 
+                                to="/help/wallet"
+                                style={{
+                                    color: theme.colors.accent,
+                                    textDecoration: 'none',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '6px 10px',
+                                    borderRadius: '6px',
+                                    transition: 'all 0.2s ease',
+                                    background: `${theme.colors.accent}15`,
+                                    border: `1px solid ${theme.colors.accent}30`
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.background = `${theme.colors.accent}25`;
+                                    e.target.style.borderColor = theme.colors.accent;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.background = `${theme.colors.accent}15`;
+                                    e.target.style.borderColor = `${theme.colors.accent}30`;
+                                }}
+                            >
+                                <span style={{ fontSize: '0.95rem' }}>❓</span>
+                                <span style={{ whiteSpace: 'nowrap' }}>Wallet Help</span>
+                            </Link>
                         </div>
 
                         {/* Collapsible Content */}
@@ -2290,96 +2288,147 @@ function Wallet() {
                         borderRadius: '12px',
                         padding: '20px',
                         marginBottom: '20px',
-                        textAlign: 'center',
-                        boxShadow: theme.colors.cardShadow
+                        boxShadow: theme.colors.cardShadow,
+                        position: 'relative',
+                        minHeight: '160px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        alignItems: 'center'
                     }}>
+                        {/* Left side breakdown - top left corner */}
                         <div style={{
-                            color: theme.colors.mutedText,
-                            fontSize: '14px',
-                            letterSpacing: '1px',
-                            textTransform: 'uppercase',
-                            marginBottom: '8px'
-                        }}>
-                            Total Portfolio Value
-                        </div>
-                        <div style={{
-                            color: theme.colors.primaryText,
-                            fontSize: '36px',
-                            fontWeight: '600',
-                            letterSpacing: '0.5px',
-                            marginBottom: '12px'
-                        }}>
-                            ${totalDollarValue}
-                        </div>
-                        
-                        {/* Breakdown fields */}
-                        <div style={{
+                            position: 'absolute',
+                            top: '16px',
+                            left: '16px',
                             display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            gap: '16px',
-                            flexWrap: 'wrap',
-                            fontSize: '13px',
+                            flexDirection: 'column',
+                            gap: '8px',
+                            fontSize: '12px',
                             color: theme.colors.secondaryText
                         }}>
-                            {/* Left aligned fields */}
-                            <div style={{
-                                display: 'flex',
-                                gap: '12px',
-                                flexWrap: 'wrap',
-                                alignItems: 'center'
-                            }}>
-                                {totalBreakdown.liquid > 0 && (
-                                    <span>
+                            {totalBreakdown.liquid > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}>
+                                    <span style={{ fontSize: '14px' }}>💧</span>
+                                    <span className="breakdown-label">
                                         Liquid: ${totalBreakdown.liquid.toLocaleString(undefined, { 
                                             minimumFractionDigits: 2, 
                                             maximumFractionDigits: 2 
                                         })}
                                     </span>
-                                )}
-                                {totalBreakdown.maturity > 0 && (
-                                    <span>
+                                </div>
+                            )}
+                            {totalBreakdown.maturity > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}>
+                                    <span style={{ fontSize: '14px' }}>🌱</span>
+                                    <span className="breakdown-label">
                                         Maturity: ${totalBreakdown.maturity.toLocaleString(undefined, { 
                                             minimumFractionDigits: 2, 
                                             maximumFractionDigits: 2 
                                         })}
                                     </span>
-                                )}
-                                {totalBreakdown.rewards > 0 && (
-                                    <span>
+                                </div>
+                            )}
+                            {totalBreakdown.rewards > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}>
+                                    <span style={{ fontSize: '14px' }}>🎁</span>
+                                    <span className="breakdown-label">
                                         Rewards: ${totalBreakdown.rewards.toLocaleString(undefined, { 
                                             minimumFractionDigits: 2, 
                                             maximumFractionDigits: 2 
                                         })}
                                     </span>
-                                )}
-                            </div>
-                            
-                            {/* Right aligned fields */}
-                            <div style={{
-                                display: 'flex',
-                                gap: '12px',
-                                flexWrap: 'wrap',
-                                alignItems: 'center'
-                            }}>
-                                {totalBreakdown.staked > 0 && (
-                                    <span>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Right side breakdown - top right corner */}
+                        <div style={{
+                            position: 'absolute',
+                            top: '16px',
+                            right: '16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                            fontSize: '12px',
+                            color: theme.colors.secondaryText,
+                            alignItems: 'flex-end'
+                        }}>
+                            {totalBreakdown.staked > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}>
+                                    <span className="breakdown-label">
                                         Staked: ${totalBreakdown.staked.toLocaleString(undefined, { 
                                             minimumFractionDigits: 2, 
                                             maximumFractionDigits: 2 
                                         })}
                                     </span>
-                                )}
-                                {totalBreakdown.locked > 0 && (
-                                    <span>
+                                    <span style={{ fontSize: '14px' }}>🔒</span>
+                                </div>
+                            )}
+                            {totalBreakdown.locked > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}>
+                                    <span className="breakdown-label">
                                         Locked: ${totalBreakdown.locked.toLocaleString(undefined, { 
                                             minimumFractionDigits: 2, 
                                             maximumFractionDigits: 2 
                                         })}
                                     </span>
-                                )}
+                                    <span style={{ fontSize: '14px' }}>🔐</span>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Center - Total Value */}
+                        <div style={{
+                            textAlign: 'center',
+                            zIndex: 1
+                        }}>
+                            <div style={{
+                                color: theme.colors.mutedText,
+                                fontSize: '14px',
+                                letterSpacing: '1px',
+                                textTransform: 'uppercase',
+                                marginBottom: '8px'
+                            }}>
+                                Total Portfolio Value
+                            </div>
+                            <div style={{
+                                color: theme.colors.primaryText,
+                                fontSize: '36px',
+                                fontWeight: '600',
+                                letterSpacing: '0.5px'
+                            }}>
+                                ${totalDollarValue}
                             </div>
                         </div>
+                        
+                        <style>{`
+                            @media (max-width: 768px) {
+                                .breakdown-label {
+                                    display: none;
+                                }
+                            }
+                        `}</style>
                     </div>
                 )}
                 {!isAuthenticated ? (
