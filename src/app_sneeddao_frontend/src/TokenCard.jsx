@@ -191,6 +191,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         }, 0n);
     };
 
+    const getTotalLockedAmount = () => {
+        const tokenLocks = locks[token.ledger_canister_id] || [];
+        return tokenLocks.reduce((total, lock) => {
+            return total + BigInt(lock.amount || 0n);
+        }, 0n);
+    };
+
     // Report neuron totals (stake + maturity) in USD to parent component
     useEffect(() => {
         if (onNeuronTotalsChange && isSnsToken && token.conversion_rate) {
@@ -1390,9 +1397,18 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 (Loading...)
                             </span>
                         ) : (
-                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                ({locks[token.ledger_canister_id]?.length || 0} {locks[token.ledger_canister_id]?.length === 1 ? 'lock' : 'locks'})
-                            </span>
+                            <>
+                                {locks[token.ledger_canister_id]?.length > 0 && (
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                        {locks[token.ledger_canister_id].length}
+                                    </span>
+                                )}
+                                {getTotalLockedAmount() > 0n && (
+                                    <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem', fontWeight: '600' }}>
+                                        {formatAmount(getTotalLockedAmount(), token.decimals)}
+                                    </span>
+                                )}
+                            </>
                         )}
                         <Link 
                             to="/help/sneedlock"
@@ -1636,12 +1652,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </span>
                             ) : (
                                 <>
-                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                        ({neurons.length} {neurons.length === 1 ? 'neuron' : 'neurons'})
-                                    </span>
                                     {neurons.length > 0 && (
-                                        <span style={{ color: theme.colors.accent, fontSize: '0.9rem', fontWeight: '600' }}>
-                                            {formatAmount(getTotalNeuronStake(), token.decimals)} {token.symbol}
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                            {neurons.length}
+                                        </span>
+                                    )}
+                                    {getTotalNeuronStake() > 0n && (
+                                        <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem', fontWeight: '600' }}>
+                                            {formatAmount(getTotalNeuronStake(), token.decimals)}
                                         </span>
                                     )}
                                 </>
