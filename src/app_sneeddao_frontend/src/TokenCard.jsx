@@ -1609,195 +1609,6 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 )}
             </div>
 
-            {/* Token Info Section */}
-            <div className="info-section">
-                {/* Collapsible Info Header */}
-                <div 
-                    className="info-header" 
-                    onClick={() => setInfoExpanded(!infoExpanded)}
-                    style={{
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '12px 0',
-                        borderBottom: `1px solid ${theme.colors.border}`,
-                        marginBottom: infoExpanded ? '15px' : '0'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                            ℹ️ Token Info
-                        </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {/* Expand/Collapse Indicator */}
-                        <span 
-                            style={{ 
-                                color: theme.colors.mutedText, 
-                                fontSize: '1.2rem',
-                                transform: infoExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                                transition: 'transform 0.2s ease'
-                            }}
-                        >
-                            ▼
-                        </span>
-                    </div>
-                </div>
-
-                {/* Collapsible Info Content */}
-                {infoExpanded && (
-                    <div style={{ paddingBottom: '15px' }}>
-                        {/* Ledger Canister ID */}
-                        <div style={{
-                            padding: '10px 0',
-                            borderBottom: `1px solid ${theme.colors.border}`
-                        }}>
-                            <div style={{ 
-                                color: theme.colors.mutedText, 
-                                fontSize: '0.9rem',
-                                marginBottom: '6px'
-                            }}>
-                                Ledger Canister:
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ 
-                                    color: theme.colors.primaryText, 
-                                    fontSize: '0.9rem',
-                                    fontFamily: 'monospace',
-                                    wordBreak: 'break-all'
-                                }}>
-                                    {token.ledger_canister_id?.toString?.() || token.ledger_canister_id || 'N/A'}
-                                </span>
-                                {token.ledger_canister_id && (
-                                    <button
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(
-                                                token.ledger_canister_id?.toString?.() || token.ledger_canister_id
-                                            );
-                                        }}
-                                        style={{
-                                            background: 'transparent',
-                                            border: 'none',
-                                            cursor: 'pointer',
-                                            padding: '4px',
-                                            color: theme.colors.accent,
-                                            fontSize: '0.9rem',
-                                            flexShrink: 0
-                                        }}
-                                        title="Copy to clipboard"
-                                    >
-                                        📋
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Decimals */}
-                        <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: '10px 0',
-                            borderBottom: `1px solid ${theme.colors.border}`
-                        }}>
-                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                Decimals:
-                            </span>
-                            <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
-                                {token.decimals ?? 'N/A'}
-                            </span>
-                        </div>
-
-                        {/* Fee */}
-                        <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: '10px 0',
-                            borderBottom: `1px solid ${theme.colors.border}`
-                        }}>
-                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                Transfer Fee:
-                            </span>
-                            <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
-                                {token.fee !== undefined ? formatAmount(token.fee, token.decimals) + ' ' + token.symbol : 'N/A'}
-                            </span>
-                        </div>
-
-                        {/* Symbol */}
-                        <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            padding: '10px 0',
-                            borderBottom: `1px solid ${theme.colors.border}`
-                        }}>
-                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                Symbol:
-                            </span>
-                            <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
-                                {token.symbol || 'N/A'}
-                            </span>
-                        </div>
-
-                        {/* Conversion Rate */}
-                        {token.conversion_rate > 0 && (
-                            <>
-                                <div style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    padding: '10px 0',
-                                    borderBottom: `1px solid ${theme.colors.border}`
-                                }}>
-                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                        USD Price:
-                                    </span>
-                                    <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
-                                        ${token.conversion_rate.toFixed(6)}
-                                    </span>
-                                </div>
-                                {token.icp_rate > 0 && (
-                                    <div style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        padding: '10px 0',
-                                        borderBottom: `1px solid ${theme.colors.border}`
-                                    }}>
-                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                            ICP Price:
-                                        </span>
-                                        <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
-                                            {token.icp_rate.toFixed(6)} ICP
-                                        </span>
-                                    </div>
-                                )}
-                            </>
-                        )}
-
-                        {/* Standard */}
-                        {token.standard && (
-                            <div style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                padding: '10px 0',
-                                borderBottom: `1px solid ${theme.colors.border}`
-                            }}>
-                                <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                    Standard:
-                                </span>
-                                <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
-                                    {token.standard}
-                                </span>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-
             {/* Neurons Section - Only for SNS tokens */}
             {isSnsToken && (
                 <div className="neurons-section">
@@ -2443,6 +2254,195 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     )}
                 </div>
             )}
+
+            {/* Token Info Section */}
+            <div className="info-section">
+                {/* Collapsible Info Header */}
+                <div 
+                    className="info-header" 
+                    onClick={() => setInfoExpanded(!infoExpanded)}
+                    style={{
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '12px 0',
+                        borderBottom: `1px solid ${theme.colors.border}`,
+                        marginBottom: infoExpanded ? '15px' : '0'
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                            ℹ️ Token Info
+                        </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        {/* Expand/Collapse Indicator */}
+                        <span 
+                            style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '1.2rem',
+                                transform: infoExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                transition: 'transform 0.2s ease'
+                            }}
+                        >
+                            ▼
+                        </span>
+                    </div>
+                </div>
+
+                {/* Collapsible Info Content */}
+                {infoExpanded && (
+                    <div style={{ paddingBottom: '15px' }}>
+                        {/* Ledger Canister ID */}
+                        <div style={{
+                            padding: '10px 0',
+                            borderBottom: `1px solid ${theme.colors.border}`
+                        }}>
+                            <div style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '0.9rem',
+                                marginBottom: '6px'
+                            }}>
+                                Ledger Canister:
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontSize: '0.9rem',
+                                    fontFamily: 'monospace',
+                                    wordBreak: 'break-all'
+                                }}>
+                                    {token.ledger_canister_id?.toString?.() || token.ledger_canister_id || 'N/A'}
+                                </span>
+                                {token.ledger_canister_id && (
+                                    <button
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(
+                                                token.ledger_canister_id?.toString?.() || token.ledger_canister_id
+                                            );
+                                        }}
+                                        style={{
+                                            background: 'transparent',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            padding: '4px',
+                                            color: theme.colors.accent,
+                                            fontSize: '0.9rem',
+                                            flexShrink: 0
+                                        }}
+                                        title="Copy to clipboard"
+                                    >
+                                        📋
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Decimals */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 0',
+                            borderBottom: `1px solid ${theme.colors.border}`
+                        }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                Decimals:
+                            </span>
+                            <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                {token.decimals ?? 'N/A'}
+                            </span>
+                        </div>
+
+                        {/* Fee */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 0',
+                            borderBottom: `1px solid ${theme.colors.border}`
+                        }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                Transfer Fee:
+                            </span>
+                            <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                {token.fee !== undefined ? formatAmount(token.fee, token.decimals) + ' ' + token.symbol : 'N/A'}
+                            </span>
+                        </div>
+
+                        {/* Symbol */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 0',
+                            borderBottom: `1px solid ${theme.colors.border}`
+                        }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                Symbol:
+                            </span>
+                            <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                {token.symbol || 'N/A'}
+                            </span>
+                        </div>
+
+                        {/* Conversion Rate */}
+                        {token.conversion_rate > 0 && (
+                            <>
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '10px 0',
+                                    borderBottom: `1px solid ${theme.colors.border}`
+                                }}>
+                                    <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                        USD Price:
+                                    </span>
+                                    <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                        ${token.conversion_rate.toFixed(6)}
+                                    </span>
+                                </div>
+                                {token.icp_rate > 0 && (
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        padding: '10px 0',
+                                        borderBottom: `1px solid ${theme.colors.border}`
+                                    }}>
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                            ICP Price:
+                                        </span>
+                                        <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                            {token.icp_rate.toFixed(6)} ICP
+                                        </span>
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                        {/* Standard */}
+                        {token.standard && (
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '10px 0',
+                                borderBottom: `1px solid ${theme.colors.border}`
+                            }}>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                    Standard:
+                                </span>
+                                <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                    {token.standard}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
             
             {/* Wrap/Unwrap buttons at bottom of card */}
             {(() => {
