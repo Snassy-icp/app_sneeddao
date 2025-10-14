@@ -86,6 +86,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [locksExpanded, setLocksExpanded] = useState(defaultLocksExpanded);
     const [infoExpanded, setInfoExpanded] = useState(false);
+    const [balanceSectionExpanded, setBalanceSectionExpanded] = useState(true);
     
     // Neuron state
     const [neurons, setNeurons] = useState([]);
@@ -1192,10 +1193,26 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             <div className="balance-section">
                 {!hideAvailable && (
                     <>
-                        <div className="balance-item">
+                        <div className="balance-item" style={{ position: 'relative' }}>
                             <div className="balance-label">Total</div>
-                            <div className="balance-value">${formatAmountWithConversion(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate, 2)}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <div className="balance-value">${formatAmountWithConversion(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate, 2)}</div>
+                                <span 
+                                    onClick={() => setBalanceSectionExpanded(!balanceSectionExpanded)}
+                                    style={{ 
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                        color: theme.colors.secondaryText,
+                                        transition: 'transform 0.2s ease',
+                                        userSelect: 'none'
+                                    }}
+                                >
+                                    {balanceSectionExpanded ? '▼' : '▶'}
+                                </span>
+                            </div>
                         </div>
+                        {balanceSectionExpanded && (
+                            <>
                         <div className="balance-item" style={{ cursor: 'pointer' }} onClick={() => setShowBalanceBreakdown(!showBalanceBreakdown)}>
                             <div className="balance-label">
                                 Liquid {showBalanceBreakdown ? '▼' : '▶'}
@@ -1276,8 +1293,6 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </div>
                             </div>
                         )}
-                    </>
-                )}
                 <div className="balance-item">
                     <div className="balance-label">Locked</div>
                     <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate)}</div>
@@ -1296,52 +1311,54 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         )}
                     </>
                 )}
-                {(!hideAvailable && (
-                    (rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0) ? (
-                        <div className="balance-item">
-                            <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                Rewards:
-                                <button 
-                                    onClick={() => handleClaimRewards(token)}
-                                    style={{
-                                        background: theme.colors.success || theme.colors.accent,
-                                        color: theme.colors.primaryBg,
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '4px 8px',
-                                        cursor: 'pointer',
-                                        fontSize: '0.75rem',
-                                        fontWeight: '500',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                        transition: 'all 0.2s ease'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                        e.target.style.background = theme.colors.successHover || theme.colors.accentHover;
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        e.target.style.background = theme.colors.success || theme.colors.accent;
-                                    }}
-                                >
-                                    <img 
-                                        src="grasp-white.png" 
-                                        alt="Claim" 
-                                        style={{ width: '12px', height: '12px' }}
-                                    />
-                                    Claim
-                                </button>
-                            </div>
-                            <div className="balance-value">{formatAmount(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}</div>
+                {(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0) ? (
+                    <div className="balance-item">
+                        <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            Rewards:
+                            <button 
+                                onClick={() => handleClaimRewards(token)}
+                                style={{
+                                    background: theme.colors.success || theme.colors.accent,
+                                    color: theme.colors.primaryBg,
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '4px 8px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    transition: 'all 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.background = theme.colors.successHover || theme.colors.accentHover;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.background = theme.colors.success || theme.colors.accent;
+                                }}
+                            >
+                                <img 
+                                    src="grasp-white.png" 
+                                    alt="Claim" 
+                                    style={{ width: '12px', height: '12px' }}
+                                />
+                                Claim
+                            </button>
                         </div>
-                    ) : (
-                        ((Object.keys(rewardDetailsLoading).length === 0 || (rewardDetailsLoading[token.ledger_canister_id] != null && rewardDetailsLoading[token.ledger_canister_id] < 0))) && (
-                            <div className="spinner-container">
-                                <div className="spinner"></div>
-                            </div>
-                        )
+                        <div className="balance-value">{formatAmount(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}</div>
+                    </div>
+                ) : (
+                    ((Object.keys(rewardDetailsLoading).length === 0 || (rewardDetailsLoading[token.ledger_canister_id] != null && rewardDetailsLoading[token.ledger_canister_id] < 0))) && (
+                        <div className="spinner-container">
+                            <div className="spinner"></div>
+                        </div>
                     )
-                ))}
+                )}
+                            </>
+                        )}
+                    </>
+                )}
             </div>
             {showDebug && (
                 <div className="debug-section">
