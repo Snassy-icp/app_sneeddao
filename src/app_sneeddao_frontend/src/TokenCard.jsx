@@ -1395,21 +1395,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 (Loading...)
                             </span>
                         ) : (
-                            <>
-                                {locks[token.ledger_canister_id]?.length > 0 ? (
-                                    <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                        {locks[token.ledger_canister_id].length} Locks {getTotalLockedAmount() > 0n && (
-                                            <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>
-                                                ({formatAmount(getTotalLockedAmount(), token.decimals)} {token.symbol})
-                                            </span>
-                                        )}
-                                    </span>
-                                ) : (
-                                    <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                        Locks
+                            <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                {locks[token.ledger_canister_id]?.length || 0} {locks[token.ledger_canister_id]?.length === 1 ? 'Lock' : 'Locks'} {getTotalLockedAmount() > 0n && (
+                                    <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>
+                                        ({formatAmount(getTotalLockedAmount(), token.decimals)} {token.symbol})
                                     </span>
                                 )}
-                            </>
+                            </span>
                         )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1650,21 +1642,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     (Loading...)
                                 </span>
                             ) : (
-                                <>
-                                    {neurons.length > 0 ? (
-                                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                            {neurons.length} Neurons {getTotalNeuronStake() > 0n && (
-                                                <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>
-                                                    ({formatAmount(getTotalNeuronStake(), token.decimals)} {token.symbol})
-                                                </span>
-                                            )}
-                                        </span>
-                                    ) : (
-                                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                            Neurons
+                                <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                    {neurons.length} {neurons.length === 1 ? 'Neuron' : 'Neurons'} {getTotalNeuronStake() > 0n && (
+                                        <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>
+                                            ({formatAmount(getTotalNeuronStake(), token.decimals)} {token.symbol})
                                         </span>
                                     )}
-                                </>
+                                </span>
                             )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
