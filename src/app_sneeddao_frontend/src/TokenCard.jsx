@@ -1643,9 +1643,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         }}
                     >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                                🧠 Neurons
-                            </span>
+                            <span style={{ fontSize: '1rem' }}>🧠</span>
                             {neuronsLoading ? (
                                 <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
                                     (Loading...)
@@ -1653,8 +1651,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             ) : (
                                 <>
                                     {neurons.length > 0 && (
-                                        <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                                            {neurons.length}
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                            {neurons.length} Neurons
+                                        </span>
+                                    )}
+                                    {neurons.length === 0 && (
+                                        <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
+                                            Neurons
                                         </span>
                                     )}
                                     {getTotalNeuronStake() > 0n && (

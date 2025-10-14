@@ -230,7 +230,15 @@ function Wallet() {
     const [refreshingPositions, setRefreshingPositions] = useState(new Set());
     const [tokensExpanded, setTokensExpanded] = useState(true);
     const [positionsExpanded, setPositionsExpanded] = useState(true);
-    const [principalExpanded, setPrincipalExpanded] = useState(true);
+    const [principalExpanded, setPrincipalExpanded] = useState(() => {
+        try {
+            const saved = localStorage.getItem('principalExpanded_Wallet');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch (error) {
+            console.warn('Could not read principalExpanded state from localStorage:', error);
+            return true; // Default to expanded
+        }
+    });
     const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [confirmAction, setConfirmAction] = useState(null);
     const [confirmMessage, setConfirmMessage] = useState('');
@@ -248,6 +256,15 @@ function Wallet() {
 
     const dex_icpswap = 1;
  
+    // Save principalExpanded state to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('principalExpanded_Wallet', JSON.stringify(principalExpanded));
+        } catch (error) {
+            console.warn('Could not save principalExpanded state to localStorage:', error);
+        }
+    }, [principalExpanded]);
+
     // Load SNS data progressively (non-blocking)
     useEffect(() => {
         async function loadSnsData() {
