@@ -313,6 +313,11 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(ClaimRequest)],
         ['query'],
       ),
+    'get_position_lock_by_id' : IDL.Func(
+        [LockId],
+        [IDL.Opt(FullyQualifiedPositionLock)],
+        ['query'],
+      ),
     'get_position_ownerships' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(SwapCanisterId, PositionId))],
@@ -340,6 +345,11 @@ export const idlFactory = ({ IDL }) => {
             'is_active' : IDL.Bool,
           }),
         ],
+        ['query'],
+      ),
+    'get_token_lock_by_id' : IDL.Func(
+        [LockId],
+        [IDL.Opt(FullyQualifiedLock)],
         ['query'],
       ),
     'get_token_lock_fee_sneed_e8s' : IDL.Func([], [IDL.Nat], ['query']),

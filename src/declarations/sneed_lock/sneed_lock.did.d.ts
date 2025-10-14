@@ -208,6 +208,10 @@ export interface SneedLock {
     Array<FullyQualifiedLock>
   >,
   'get_my_active_claim_requests' : ActorMethod<[], Array<ClaimRequest>>,
+  'get_position_lock_by_id' : ActorMethod<
+    [LockId],
+    [] | [FullyQualifiedPositionLock]
+  >,
   'get_position_ownerships' : ActorMethod<
     [],
     Array<[SwapCanisterId, PositionId]>
@@ -228,6 +232,7 @@ export interface SneedLock {
       'is_active' : boolean,
     }
   >,
+  'get_token_lock_by_id' : ActorMethod<[LockId], [] | [FullyQualifiedLock]>,
   'get_token_lock_fee_sneed_e8s' : ActorMethod<[], bigint>,
   'get_token_locks' : ActorMethod<
     [],
