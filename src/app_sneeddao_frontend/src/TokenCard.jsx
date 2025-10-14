@@ -1383,7 +1383,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                            Locks
+                            🔐 Locks
                         </span>
                         {lockDetailsLoading[token.ledger_canister_id] ? (
                             <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>

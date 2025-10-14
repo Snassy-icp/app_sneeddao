@@ -391,18 +391,11 @@ body {
 
 
 .locks-section {
-    background: var(--color-tertiaryBg);
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    padding: 10px;
-    margin-top: 15px;
-    box-shadow: var(--color-cardShadow);
+    /* Styling removed to match neurons-section and info-section */
 }
 
 .locks-header {
-    font-size: 0.9rem;
-    color: var(--color-secondaryText);
-    margin-bottom: 10px;
+    /* Header styling is now inline to match other sections */
 }
 
 .lock-item {
