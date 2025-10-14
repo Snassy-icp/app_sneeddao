@@ -2298,121 +2298,16 @@ function Wallet() {
                         border: `1px solid ${theme.colors.border}`,
                         borderRadius: '12px',
                         padding: '20px',
+                        paddingBottom: '16px',
                         marginBottom: '20px',
                         boxShadow: theme.colors.cardShadow,
-                        position: 'relative',
-                        minHeight: '160px',
                         display: 'flex',
                         flexDirection: 'column',
-                        justifyContent: 'center',
-                        alignItems: 'center'
+                        gap: '16px'
                     }}>
-                        {/* Left side breakdown - top left corner */}
-                        <div style={{
-                            position: 'absolute',
-                            top: '16px',
-                            left: '16px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '8px',
-                            fontSize: '12px',
-                            color: theme.colors.secondaryText
-                        }}>
-                            {totalBreakdown.liquid > 0 && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                }}>
-                                    <span style={{ fontSize: '14px' }}>💧</span>
-                                    <span className="breakdown-label">
-                                        Liquid: ${totalBreakdown.liquid.toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </span>
-                                </div>
-                            )}
-                            {totalBreakdown.maturity > 0 && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                }}>
-                                    <span style={{ fontSize: '14px' }}>🌱</span>
-                                    <span className="breakdown-label">
-                                        Maturity: ${totalBreakdown.maturity.toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </span>
-                                </div>
-                            )}
-                            {totalBreakdown.rewards > 0 && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                }}>
-                                    <span style={{ fontSize: '14px' }}>🎁</span>
-                                    <span className="breakdown-label">
-                                        Rewards: ${totalBreakdown.rewards.toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </span>
-                                </div>
-                            )}
-                        </div>
-                        
-                        {/* Right side breakdown - top right corner */}
-                        <div style={{
-                            position: 'absolute',
-                            top: '16px',
-                            right: '16px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '8px',
-                            fontSize: '12px',
-                            color: theme.colors.secondaryText,
-                            alignItems: 'flex-end'
-                        }}>
-                            {totalBreakdown.staked > 0 && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                }}>
-                                    <span className="breakdown-label">
-                                        Staked: ${totalBreakdown.staked.toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </span>
-                                    <span style={{ fontSize: '14px' }}>🧠</span>
-                                </div>
-                            )}
-                            {totalBreakdown.locked > 0 && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                }}>
-                                    <span className="breakdown-label">
-                                        Locked: ${totalBreakdown.locked.toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </span>
-                                    <span style={{ fontSize: '14px' }}>🔐</span>
-                                </div>
-                            )}
-                        </div>
-                        
                         {/* Center - Total Value */}
                         <div style={{
-                            textAlign: 'center',
-                            zIndex: 1
+                            textAlign: 'center'
                         }}>
                             <div style={{
                                 color: theme.colors.mutedText,
@@ -2433,6 +2328,91 @@ function Wallet() {
                             </div>
                         </div>
                         
+                        {/* Breakdown fields - single row at bottom */}
+                        <div style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                            fontSize: '12px',
+                            color: theme.colors.secondaryText,
+                            alignItems: 'center'
+                        }}>
+                            {totalBreakdown.liquid > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}>
+                                    <span style={{ fontSize: '14px' }}>💧</span>
+                                    <span>
+                                        ${totalBreakdown.liquid.toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </span>
+                                </div>
+                            )}
+                            {totalBreakdown.maturity > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}>
+                                    <span style={{ fontSize: '14px' }}>🌱</span>
+                                    <span>
+                                        ${totalBreakdown.maturity.toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </span>
+                                </div>
+                            )}
+                            {totalBreakdown.rewards > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}>
+                                    <span style={{ fontSize: '14px' }}>🎁</span>
+                                    <span>
+                                        ${totalBreakdown.rewards.toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </span>
+                                </div>
+                            )}
+                            {totalBreakdown.staked > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}>
+                                    <span style={{ fontSize: '14px' }}>🧠</span>
+                                    <span>
+                                        ${totalBreakdown.staked.toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </span>
+                                </div>
+                            )}
+                            {totalBreakdown.locked > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}>
+                                    <span style={{ fontSize: '14px' }}>🔐</span>
+                                    <span>
+                                        ${totalBreakdown.locked.toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
                 {!isAuthenticated ? (
