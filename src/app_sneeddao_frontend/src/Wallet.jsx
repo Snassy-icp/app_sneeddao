@@ -2140,6 +2140,9 @@ function Wallet() {
                     .principal-short-text {
                         display: inline !important;
                     }
+                    .breakdown-text-label {
+                        display: none !important;
+                    }
                 }
             `}</style>
             <Header />
@@ -2343,7 +2346,8 @@ function Wallet() {
                                     alignItems: 'center',
                                     gap: '4px'
                                 }}>
-                                    <span style={{ fontSize: '14px' }}>💧</span>
+                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Liquid">💧</span>
+                                    <span className="breakdown-text-label">Liquid: </span>
                                     <span>
                                         ${totalBreakdown.liquid.toLocaleString(undefined, { 
                                             minimumFractionDigits: 2, 
@@ -2358,7 +2362,8 @@ function Wallet() {
                                     alignItems: 'center',
                                     gap: '4px'
                                 }}>
-                                    <span style={{ fontSize: '14px' }}>🌱</span>
+                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Maturity">🌱</span>
+                                    <span className="breakdown-text-label">Maturity: </span>
                                     <span>
                                         ${totalBreakdown.maturity.toLocaleString(undefined, { 
                                             minimumFractionDigits: 2, 
@@ -2373,7 +2378,8 @@ function Wallet() {
                                     alignItems: 'center',
                                     gap: '4px'
                                 }}>
-                                    <span style={{ fontSize: '14px' }}>🎁</span>
+                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Rewards">🎁</span>
+                                    <span className="breakdown-text-label">Rewards: </span>
                                     <span>
                                         ${totalBreakdown.rewards.toLocaleString(undefined, { 
                                             minimumFractionDigits: 2, 
@@ -2388,7 +2394,8 @@ function Wallet() {
                                     alignItems: 'center',
                                     gap: '4px'
                                 }}>
-                                    <span style={{ fontSize: '14px' }}>🧠</span>
+                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Staked">🧠</span>
+                                    <span className="breakdown-text-label">Staked: </span>
                                     <span>
                                         ${totalBreakdown.staked.toLocaleString(undefined, { 
                                             minimumFractionDigits: 2, 
@@ -2403,7 +2410,8 @@ function Wallet() {
                                     alignItems: 'center',
                                     gap: '4px'
                                 }}>
-                                    <span style={{ fontSize: '14px' }}>🔐</span>
+                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Locked">🔐</span>
+                                    <span className="breakdown-text-label">Locked: </span>
                                     <span>
                                         ${totalBreakdown.locked.toLocaleString(undefined, { 
                                             minimumFractionDigits: 2, 
