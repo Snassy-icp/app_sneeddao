@@ -2378,7 +2378,7 @@ function Wallet() {
                                             maximumFractionDigits: 2 
                                         })}
                                     </span>
-                                    <span style={{ fontSize: '14px' }}>🔒</span>
+                                    <span style={{ fontSize: '14px' }}>🧠</span>
                                 </div>
                             )}
                             {totalBreakdown.locked > 0 && (
@@ -2422,13 +2422,6 @@ function Wallet() {
                             </div>
                         </div>
                         
-                        <style>{`
-                            @media (max-width: 768px) {
-                                .breakdown-label {
-                                    display: none;
-                                }
-                            }
-                        `}</style>
                     </div>
                 )}
                 {!isAuthenticated ? (
