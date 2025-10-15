@@ -503,35 +503,35 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             const subaccount = await computeNeuronSubaccount(principal, nonce);
             const neuronId = { id: Array.from(subaccount) };
             
-            console.log(`[TokenCard] Checking nonce ${nonce}, neuronId:`, neuronId);
+            //console.log(`[TokenCard] Checking nonce ${nonce}, neuronId:`, neuronId);
             
             const result = await governanceActor.get_neuron({
                 neuron_id: [neuronId]
             });
-            console.log(`[TokenCard] get_neuron result for nonce ${nonce}:`, result);
+            //console.log(`[TokenCard] get_neuron result for nonce ${nonce}:`, result);
             
             // get_neuron returns { result: [{ Neuron: ... }] } if found, { result: [{ Error: ... }] } if not found, or { result: [] } if not found
             if (result && result.result) {
                 // Empty result array means neuron doesn't exist - nonce is free
                 if (result.result.length === 0) {
-                    console.log(`[TokenCard] Nonce ${nonce} is free (empty result)`);
+                    //console.log(`[TokenCard] Nonce ${nonce} is free (empty result)`);
                     return true;
                 }
                 
                 const innerResult = result.result[0];
                 if ('Neuron' in innerResult) {
                     // Neuron exists - nonce is taken
-                    console.log(`[TokenCard] Nonce ${nonce} is taken (found neuron)`);
+                    //console.log(`[TokenCard] Nonce ${nonce} is taken (found neuron)`);
                     return false;
                 } else if ('Error' in innerResult) {
                     // Neuron not found - nonce is free
-                    console.log(`[TokenCard] Nonce ${nonce} is free (Error result):`, innerResult.Error);
+                    //console.log(`[TokenCard] Nonce ${nonce} is free (Error result):`, innerResult.Error);
                     return true;
                 }
             }
             
             // Fallback: if result structure is unexpected, assume taken to be safe
-            console.log(`[TokenCard] Nonce ${nonce} - unexpected result structure, assuming taken`);
+            //console.log(`[TokenCard] Nonce ${nonce} - unexpected result structure, assuming taken`);
             return false;
         } catch (error) {
             console.error('[TokenCard] Error checking nonce:', error);
@@ -564,14 +564,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 if (result && result.result) {
                     // Empty result array means neuron doesn't exist - nonce is free
                     if (result.result.length === 0) {
-                        console.log(`[TokenCard] Found unused nonce: ${nonce}`);
+                        //console.log(`[TokenCard] Found unused nonce: ${nonce}`);
                         return { nonce, subaccount };
                     }
                     
                     const innerResult = result.result[0];
                     if ('Error' in innerResult) {
                         // Neuron not found - nonce is free
-                        console.log(`[TokenCard] Found unused nonce: ${nonce}`);
+                        //console.log(`[TokenCard] Found unused nonce: ${nonce}`);
                         return { nonce, subaccount };
                     }
                     // If 'Neuron' in innerResult, neuron exists, continue to next nonce
@@ -695,10 +695,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             const claimSubaccount = new Uint8Array(32);
             claimSubaccount.set(subaccount, 0);
             
-            console.log(`[TokenCard] ClaimOrRefresh details:`);
-            console.log(`- Subaccount (hex):`, Array.from(claimSubaccount).map(b => b.toString(16).padStart(2, '0')).join(''));
-            console.log(`- Memo:`, nonce);
-            console.log(`- Controller:`, userPrincipal.toString());
+            //console.log(`[TokenCard] ClaimOrRefresh details:`);
+            //console.log(`- Subaccount (hex):`, Array.from(claimSubaccount).map(b => b.toString(16).padStart(2, '0')).join(''));
+            //console.log(`- Memo:`, nonce);
+            //console.log(`- Controller:`, userPrincipal.toString());
             
             const claimResult = await governanceActor.manage_neuron({
                 subaccount: Array.from(claimSubaccount),
@@ -924,7 +924,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     return;
                 }
             } else {
-                console.log('[TokenCard] Recipient already has full permissions, skipping add step');
+                //console.log('[TokenCard] Recipient already has full permissions, skipping add step');
             }
             
             // Step 3: Remove all other principals
@@ -953,7 +953,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     const theirPermissions = permEntry.permission_type || [];
                     
                     if (theirPermissions.length === 0) {
-                        console.log(`[TokenCard] Skipping principal ${principal.toString()} - no permissions to remove`);
+                        //console.log(`[TokenCard] Skipping principal ${principal.toString()} - no permissions to remove`);
                         continue;
                     }
                     
@@ -1010,7 +1010,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 const snsData = allSnses.find(sns => sns.canisters?.ledger === ledgerIdString);
                 
                 if (!snsData || !snsData.canisters?.governance) {
-                    console.log(`[TokenCard] No SNS governance found for ${token.symbol}`);
+                    //console.log(`[TokenCard] No SNS governance found for ${token.symbol}`);
                     setNeuronsLoading(false);
                     return;
                 }
@@ -1019,7 +1019,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 const rootId = snsData.rootCanisterId;
                 setSnsRootCanisterId(rootId);
                 setGovernanceCanisterId(govCanisterId);
-                console.log(`[TokenCard] Fetching neurons for ${token.symbol} from governance:`, govCanisterId);
+                //console.log(`[TokenCard] Fetching neurons for ${token.symbol} from governance:`, govCanisterId);
 
                 const governanceActor = createSnsGovernanceActor(govCanisterId, { agentOptions: { identity } });
                 
@@ -1033,15 +1033,6 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     }),
                     governanceActor.get_nervous_system_parameters(null)
                 ]);
-
-                console.log(`[TokenCard] Found ${neuronsResponse.neurons.length} neurons for ${token.symbol}`);
-                console.log(`[TokenCard] SNS Parameters for ${token.symbol}:`, paramsResponse);
-                console.log(`[TokenCard] Min dissolve delay raw:`, paramsResponse?.neuron_minimum_dissolve_delay_to_vote_seconds);
-                console.log(`[TokenCard] Max dissolve delay raw:`, paramsResponse?.max_dissolve_delay_seconds);
-                console.log(`[TokenCard] Min dissolve delay [0]:`, paramsResponse?.neuron_minimum_dissolve_delay_to_vote_seconds?.[0]);
-                console.log(`[TokenCard] Max dissolve delay [0]:`, paramsResponse?.max_dissolve_delay_seconds?.[0]);
-                console.log(`[TokenCard] Min as Number:`, paramsResponse?.neuron_minimum_dissolve_delay_to_vote_seconds?.[0] ? Number(paramsResponse.neuron_minimum_dissolve_delay_to_vote_seconds[0]) : 'N/A');
-                console.log(`[TokenCard] Max as Number:`, paramsResponse?.max_dissolve_delay_seconds?.[0] ? Number(paramsResponse.max_dissolve_delay_seconds[0]) : 'N/A');
                 setNeurons(neuronsResponse.neurons || []);
                 setNervousSystemParameters(paramsResponse);
                 
@@ -1388,7 +1379,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             </div>
                         )}
                         <div className="balance-item">
-                            <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
                                 <span style={{ fontSize: '14px' }}>🔐</span>
                                 Locked
                             </div>

@@ -74,6 +74,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
     const { principalNames, principalNicknames } = useNaming();
     const { isAuthenticated } = useAuth();
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+    const [balanceSectionExpanded, setBalanceSectionExpanded] = useState(true);
     const [locksExpanded, setLocksExpanded] = useState(defaultLocksExpanded);
     const [infoExpanded, setInfoExpanded] = useState(false);
     const [isClaiming, setIsClaiming] = useState(false);
@@ -345,12 +346,23 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     </div>
 
                     <div className="balance-section">
-                <div className="balance-item">
-                    <div className="token-amount">
-                        <span className="token-symbol">Total:</span>
-                        <span className="amount-value">${getPositionTVL(position, positionDetails, hideUnclaimedFees).toFixed(2)}</span>
+                <div className="balance-item" style={{ cursor: 'pointer' }} onClick={() => setBalanceSectionExpanded(!balanceSectionExpanded)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span className="token-symbol">Total</span>
+                        <span style={{ 
+                            fontSize: '0.9rem',
+                            color: theme.colors.secondaryText,
+                            userSelect: 'none'
+                        }}>
+                            {balanceSectionExpanded ? '▼' : '▶'}
+                        </span>
+                    </div>
+                    <div className="amount-value" style={{ marginTop: '4px' }}>
+                        ${getPositionTVL(position, positionDetails, hideUnclaimedFees).toFixed(2)}
                     </div>
                 </div>
+                {balanceSectionExpanded && (
+                <>
                 <div className="balance-item">
                     <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '14px' }}>🌊</span>
@@ -463,6 +475,8 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         )}
                     </div>
                 }
+                </>
+                )}
                 
                 {/* Swap Canister Balance */}
                 {!hideUnclaimedFees && positionDetails.frontendOwnership && ((swapCanisterBalance0 || 0n) > 0n || (swapCanisterBalance1 || 0n) > 0n) && (
@@ -564,11 +578,9 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     }}
                 >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '14px' }}>🔒</span>
                         <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
-                            Locks
-                        </span>
-                        <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
-                            ({isLockedPosition(positionDetails) ? '1 lock' : '0 locks'})
+                            {isLockedPosition(positionDetails) ? '1 Lock' : '0 Locks'}
                         </span>
                         <Link 
                             to="/help/sneedlock"
