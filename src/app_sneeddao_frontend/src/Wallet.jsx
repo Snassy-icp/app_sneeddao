@@ -2171,6 +2171,92 @@ function Wallet() {
         }
     };
 
+    const handleClaimUnlockedDepositedPositionFees = async (liquidityPosition) => {
+        console.log('=== Claiming fees from unlocked deposited position ===');
+        console.log('Position:', liquidityPosition.symbols, 'ID:', liquidityPosition.id);
+        
+        try {
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { 
+                agentOptions: { identity } 
+            });
+
+            // Step 1: Withdraw position to frontend
+            console.log('Step 1: Withdrawing position to frontend wallet...');
+            const withdrawResult = await sneedLockActor.transfer_position(
+                identity.getPrincipal(),
+                liquidityPosition.swapCanisterId,
+                liquidityPosition.id
+            );
+
+            console.log('Position withdrawal result:', toJsonString(withdrawResult));
+
+            if (withdrawResult.err) {
+                throw new Error(`Failed to withdraw position: ${withdrawResult.err.message || withdrawResult.err.InternalError || 'Transfer failed'}`);
+            }
+
+            // Step 2: Claim fees from the now-frontend position
+            console.log('Step 2: Claiming fees from frontend position...');
+            const swapActor = createIcpSwapActor(liquidityPosition.swapCanisterId, { 
+                agentOptions: { identity } 
+            });
+
+            const claimResult = await swapActor.claim({ 
+                positionId: Number(liquidityPosition.id) 
+            });
+
+            console.log('Claim result:', toJsonString(claimResult));
+
+            if (!claimResult.ok) {
+                console.error('Claim failed:', toJsonString(claimResult.err || claimResult));
+                throw new Error(`Failed to claim fees: ${toJsonString(claimResult.err || claimResult)}`);
+            }
+
+            const claimedAmount0 = claimResult.ok.amount0;
+            const claimedAmount1 = claimResult.ok.amount1;
+            console.log('Claimed amounts:', {
+                token0: claimedAmount0.toString(),
+                token1: claimedAmount1.toString()
+            });
+
+            // Refresh only this position
+            const { token0Ledger, token1Ledger } = await refreshSinglePosition(liquidityPosition.swapCanisterId);
+            
+            // Ensure both tokens are in wallet and refresh them
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            
+            // Check if tokens exist in wallet, if not add them
+            const token0Exists = tokens.some(t => 
+                t.ledger_canister_id?.toText?.() === token0Ledger.toText() || 
+                t.ledger_canister_id?.toString?.() === token0Ledger.toString()
+            );
+            const token1Exists = tokens.some(t => 
+                t.ledger_canister_id?.toText?.() === token1Ledger.toText() || 
+                t.ledger_canister_id?.toString?.() === token1Ledger.toString()
+            );
+            
+            // Auto-add tokens if not in wallet
+            if (!token0Exists) {
+                console.log('Auto-adding token0 to wallet:', token0Ledger.toText());
+                await backendActor.register_ledger_canister_id(token0Ledger);
+            }
+            if (!token1Exists) {
+                console.log('Auto-adding token1 to wallet:', token1Ledger.toText());
+                await backendActor.register_ledger_canister_id(token1Ledger);
+            }
+            
+            // Refresh both tokens (whether newly added or existing)
+            await fetchBalancesAndLocks(token0Ledger);
+            await fetchBalancesAndLocks(token1Ledger);
+            
+            console.log('=== Unlocked deposited position fees claim completed ===');
+
+        } catch (error) {
+            console.error('=== Error claiming unlocked deposited position fees ===');
+            console.error('Error:', error);
+            throw error;
+        }
+    };
+
     const handleClaimLockedPositionFees = async ({ swapCanisterId, positionId, symbols, onStatusUpdate }) => {
         console.log('=== Claiming locked position fees ===');
         console.log('Position:', symbols, 'ID:', positionId);
@@ -3018,6 +3104,7 @@ function Wallet() {
                                 openLockPositionModal={openLockPositionModal}
                                 handleWithdrawPositionRewards={handleWithdrawPositionRewards}
                                 handleClaimLockedPositionFees={handleClaimLockedPositionFees}
+                                handleClaimUnlockedDepositedPositionFees={handleClaimUnlockedDepositedPositionFees}
                                 handleWithdrawPosition={handleWithdrawPosition}
                                 handleWithdrawSwapBalance={handleWithdrawSwapBalance}
                                 handleTransferPositionOwnership={handleSendLiquidityPosition}

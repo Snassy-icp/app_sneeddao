@@ -68,7 +68,7 @@ const PositionLockCountdown = ({ expiryNanos }) => {
     );
 };
 
-const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleClaimLockedPositionFees, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, handleRefreshPosition, isRefreshing = false, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
+const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModal, openLockPositionModal, handleWithdrawPositionRewards, handleClaimLockedPositionFees, handleClaimUnlockedDepositedPositionFees, handleWithdrawPosition, handleWithdrawSwapBalance, handleTransferPositionOwnership, handleRefreshPosition, isRefreshing = false, swapCanisterBalance0, swapCanisterBalance1, token0Fee, token1Fee, hideButtons, hideUnclaimedFees, defaultExpanded = false, defaultLocksExpanded = false }) => {
 
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming();
@@ -537,6 +537,38 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                         Request #{claimRequestId}
                                     </div>
                                 )}
+                            </div>
+                        )}
+                        
+                        {/* Claim button for unlocked deposited positions */}
+                        {!positionDetails.frontendOwnership && !positionDetails.lockInfo && handleClaimUnlockedDepositedPositionFees && !hideButtons && (
+                            <div className="withdraw-button-container">
+                                <button 
+                                    className="withdraw-button" 
+                                    onClick={async () => {
+                                        if (window.confirm('This will withdraw the position to your wallet and claim the fees. Continue?')) {
+                                            try {
+                                                setIsClaiming(true);
+                                                await handleClaimUnlockedDepositedPositionFees({
+                                                    swapCanisterId: position.swapCanisterId,
+                                                    id: positionDetails.positionId,
+                                                    symbols: position.token0Symbol + '/' + position.token1Symbol
+                                                });
+                                            } catch (error) {
+                                                alert(`Failed to claim fees: ${error.message || error.toString()}`);
+                                            } finally {
+                                                setIsClaiming(false);
+                                            }
+                                        }
+                                    }}
+                                    disabled={isClaiming}
+                                    style={{
+                                        opacity: isClaiming ? 0.6 : 1,
+                                        cursor: isClaiming ? 'not-allowed' : 'pointer'
+                                    }}
+                                >
+                                    {isClaiming ? 'Claiming...' : 'Claim Fees'}
+                                </button>
                             </div>
                         )}
                     </div>
