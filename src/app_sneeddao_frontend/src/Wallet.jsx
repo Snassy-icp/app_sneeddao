@@ -41,6 +41,24 @@ import { getTipTokensReceivedByUser } from './utils/BackendUtils';
 // Component for empty position cards (when no positions exist for a swap pair)
 const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefreshing, theme }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+    const [logo0Loaded, setLogo0Loaded] = useState(false);
+    const [logo1Loaded, setLogo1Loaded] = useState(false);
+    
+    // Preload logos
+    useEffect(() => {
+        if (position.token0Logo) {
+            const img = new Image();
+            img.onload = () => setLogo0Loaded(true);
+            img.onerror = () => setLogo0Loaded(true);
+            img.src = position.token0Logo;
+        }
+        if (position.token1Logo) {
+            const img = new Image();
+            img.onload = () => setLogo1Loaded(true);
+            img.onerror = () => setLogo1Loaded(true);
+            img.src = position.token1Logo;
+        }
+    }, [position.token0Logo, position.token1Logo]);
 
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
@@ -49,9 +67,15 @@ const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefres
     return (
         <div className="card">
             <div className="card-header" onClick={handleHeaderClick}>
-                <div className="header-logo-column">
-                    <img src={position.token0Logo} alt={position.token0Symbol} className="swap-token-logo1" />
-                    <img src={position.token1Logo} alt={position.token1Symbol} className="swap-token-logo2" />
+                <div className="header-logo-column" style={{ minWidth: '64px', minHeight: '36px', display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
+                    {(!logo0Loaded || !logo1Loaded) ? (
+                        <div className="spinner" style={{ width: '24px', height: '24px' }}></div>
+                    ) : (
+                        <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                            <img src={position.token0Logo} alt={position.token0Symbol} className="swap-token-logo1" />
+                            <img src={position.token1Logo} alt={position.token1Symbol} className="swap-token-logo2" />
+                        </div>
+                    )}
                 </div>
                 <div className="header-content-column">
                     <div className="header-row-1">
