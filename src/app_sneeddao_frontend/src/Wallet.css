@@ -117,7 +117,7 @@ body {
 
 .header-logo-column {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
 }
 
@@ -193,20 +193,20 @@ body {
 
 .token-logo {
     width: auto;
-    height: 36px;
+    height: 48px;
     border-radius: 50%;
 }
 
 .swap-token-logo1 {
     width: auto;
-    height: 36px;
-    margin-right: -8px;
+    height: 48px;
+    margin-right: -12px;
     border-radius: 50%;
     z-index: 2;
 }
 .swap-token-logo2 {
     width: auto;
-    height: 36px;
+    height: 48px;
     border-radius: 50%;
     z-index: 1;
 }
