@@ -360,6 +360,22 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     <div className="amount-value" style={{ marginTop: '4px' }}>
                         ${getPositionTVL(position, positionDetails, hideUnclaimedFees).toFixed(2)}
                     </div>
+                    <div className="token-amounts" style={{ marginTop: '8px' }}>
+                        <div className="token-amount">
+                            <span className="token-symbol">{position.token0Symbol}:</span>
+                            <span className="amount-value">
+                                {formatAmount(positionDetails.token0Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed0), position.token0Decimals)}
+                                {getUSD(positionDetails.token0Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed0), position.token0Decimals, position.token0_conversion_rate)}
+                            </span>
+                        </div>
+                        <div className="token-amount">
+                            <span className="token-symbol">{position.token1Symbol}:</span>
+                            <span className="amount-value">
+                                {formatAmount(positionDetails.token1Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed1), position.token1Decimals)}
+                                {getUSD(positionDetails.token1Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed1), position.token1Decimals, position.token1_conversion_rate)}
+                            </span>
+                        </div>
+                    </div>
                 </div>
                 {balanceSectionExpanded && (
                 <>
