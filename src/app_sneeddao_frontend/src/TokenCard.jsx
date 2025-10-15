@@ -1119,25 +1119,22 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             </button>
                         )}
                     </div>
-                    {/* Row 3: SNS pill (left) and divot (right) */}
-                    <div className="header-row-3" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {isSnsToken && (
-                                <span style={{
-                                    background: theme.colors.accent,
-                                    color: theme.colors.primaryBg,
-                                    padding: '2px 8px',
-                                    borderRadius: '12px',
-                                    fontSize: '0.7rem',
-                                    fontWeight: '600',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.5px'
-                                }}>
-                                    SNS
-                                </span>
-                            )}
-                        </div>
-                        <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
+                    {/* Row 3: SNS pill (left) */}
+                    <div className="header-row-3" style={{ display: 'flex', alignItems: 'center' }}>
+                        {isSnsToken && (
+                            <span style={{
+                                background: theme.colors.accent,
+                                color: theme.colors.primaryBg,
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                fontSize: '0.7rem',
+                                fontWeight: '600',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px'
+                            }}>
+                                SNS
+                            </span>
+                        )}
                     </div>
                 </div>
             </div>
