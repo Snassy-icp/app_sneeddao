@@ -162,35 +162,32 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 </span>
                             )}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            {handleRefreshPosition && (
-                                <button
-                                    onClick={async (e) => {
-                                        e.stopPropagation();
-                                        await handleRefreshPosition(position);
-                                    }}
-                                    disabled={isRefreshing}
-                                    style={{
-                                        background: 'none',
-                                        border: 'none',
-                                        cursor: isRefreshing ? 'default' : 'pointer',
-                                        padding: '4px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        color: theme.colors.mutedText,
-                                        fontSize: '1.2rem',
-                                        transition: 'color 0.2s ease',
-                                        opacity: isRefreshing ? 0.6 : 1
-                                    }}
-                                    onMouseEnter={(e) => !isRefreshing && (e.target.style.color = theme.colors.primaryText)}
-                                    onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
-                                    title="Refresh position data"
-                                >
-                                    {isRefreshing ? '⏳' : '🔄'}
-                                </button>
-                            )}
-                            <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
-                        </div>
+                        {handleRefreshPosition && (
+                            <button
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+                                    await handleRefreshPosition(position);
+                                }}
+                                disabled={isRefreshing}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: isRefreshing ? 'default' : 'pointer',
+                                    padding: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    color: theme.colors.mutedText,
+                                    fontSize: '1.2rem',
+                                    transition: 'color 0.2s ease',
+                                    opacity: isRefreshing ? 0.6 : 1
+                                }}
+                                onMouseEnter={(e) => !isRefreshing && (e.target.style.color = theme.colors.primaryText)}
+                                onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
+                                title="Refresh position data"
+                            >
+                                {isRefreshing ? '⏳' : '🔄'}
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
