@@ -1209,13 +1209,15 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
             <div className="balance-section">
                 {!hideAvailable && (
                     <>
-                        <div className="balance-item" style={{ position: 'relative' }}>
+                        <div 
+                            className="balance-item" 
+                            style={{ position: 'relative', cursor: 'pointer' }}
+                            onClick={() => setBalanceSectionExpanded(!balanceSectionExpanded)}
+                        >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div className="balance-label">Total</div>
                                 <span 
-                                    onClick={() => setBalanceSectionExpanded(!balanceSectionExpanded)}
                                     style={{ 
-                                        cursor: 'pointer',
                                         fontSize: '0.9rem',
                                         color: theme.colors.secondaryText,
                                         transition: 'transform 0.2s ease',
