@@ -310,11 +310,11 @@ function HelpWallet() {
                             Sneed Hub backend canister.
                         </p>
                         <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>💡 Pro Tip:</strong> Deposit tokens before locking them with{' '}
-                            <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>! Locking already-deposited tokens is{' '}
-                            <strong style={styles.strong}>FREE</strong> (no transaction fee), so you can lock your entire deposited 
-                            amount. If you lock directly from your wallet, the system will deposit them automatically but you'll 
-                            pay a deposit fee.
+                            <strong style={styles.strong}>💡 Pro Tip:</strong> If you plan to create <strong style={styles.strong}>multiple 
+                            locks</strong> for a token, deposit all the tokens you want to lock in one batch deposit first! Locking 
+                            already-deposited tokens is <strong style={styles.strong}>FREE</strong> (no transaction fee), so you'll only 
+                            pay one deposit fee instead of paying a deposit fee for each lock. For example: deposit 1000 tokens once (1 tx fee), 
+                            then create 5 different locks from that deposited balance (0 tx fees) = 1 tx fee total instead of 5!
                         </p>
                     </div>
                     

@@ -245,9 +245,10 @@ function HelpSneedlock() {
                             </li>
                         </ul>
                         <p style={{...styles.paragraph, marginBottom: 0}}>
-                            <strong style={styles.strong}>Tip:</strong> To avoid fees, manually deposit tokens first using the Deposit 
-                            button in the Liquid section, then lock them. This way you only pay the deposit fee once and can lock/unlock 
-                            multiple times without additional deposit costs!
+                            <strong style={styles.strong}>Tip:</strong> If you're creating <strong style={styles.strong}>multiple locks</strong>, 
+                            batch deposit all the tokens first using the Deposit button in the Liquid section! This way you only pay one 
+                            deposit fee, then can create multiple locks for free (0 tx fees per lock) from your deposited balance. For a 
+                            single lock, there's no fee difference between depositing first or locking directly from your wallet.
                         </p>
                     </div>
                     
