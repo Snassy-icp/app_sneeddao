@@ -1201,9 +1201,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 {!hideAvailable && (
                     <>
                         <div className="balance-item" style={{ position: 'relative' }}>
-                            <div className="balance-label">Total</div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <div className="balance-value">${formatAmountWithConversion(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate, 2)}</div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div className="balance-label">Total</div>
                                 <span 
                                     onClick={() => setBalanceSectionExpanded(!balanceSectionExpanded)}
                                     style={{ 
@@ -1217,6 +1216,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     {balanceSectionExpanded ? '▼' : '▶'}
                                 </span>
                             </div>
+                            <div className="balance-value">${formatAmountWithConversion(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate, 2)}</div>
                         </div>
                         {balanceSectionExpanded && (
                             <>
