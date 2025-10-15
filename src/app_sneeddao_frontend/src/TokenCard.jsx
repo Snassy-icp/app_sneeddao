@@ -1062,7 +1062,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     return (
         <div className="card">
             <div className="card-header" onClick={handleHeaderClick}>
-                <div className="header-logo-column">
+                <div className="header-logo-column" style={{ alignSelf: 'flex-start' }}>
                     <img src={token.logo} alt={token.symbol} className="token-logo" />
                 </div>
                 <div className="header-content-column">
@@ -1072,7 +1072,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             whiteSpace: 'nowrap', 
                             overflow: 'hidden', 
                             textOverflow: 'ellipsis',
-                            marginRight: '12px'
+                            marginRight: '12px',
+                            maxWidth: '200px'
                         }}>{token.name || token.symbol}</span>
                         <span className="token-usd-value">
                             {((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 

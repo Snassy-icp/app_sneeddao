@@ -114,6 +114,14 @@ export const idlFactory = ({ IDL }) => {
     'caller' : IDL.Principal,
     'correlation_id' : IDL.Nat,
   });
+  const LockInfo = IDL.Variant({
+    'PositionLock' : FullyQualifiedPositionLock,
+    'TokenLock' : FullyQualifiedLock,
+  });
+  const LockType = IDL.Variant({
+    'PositionLock' : IDL.Null,
+    'TokenLock' : IDL.Null,
+  });
   const ClaimAndWithdrawResult = IDL.Variant({
     'Ok' : ClaimRequestId,
     'Err' : IDL.Text,
@@ -308,9 +316,16 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(FullyQualifiedLock)],
         ['query'],
       ),
+    'get_lock_by_id' : IDL.Func([LockId], [IDL.Opt(LockInfo)], ['query']),
+    'get_lock_type' : IDL.Func([LockId], [IDL.Opt(LockType)], ['query']),
     'get_my_active_claim_requests' : IDL.Func(
         [],
         [IDL.Vec(ClaimRequest)],
+        ['query'],
+      ),
+    'get_position_lock_by_id' : IDL.Func(
+        [LockId],
+        [IDL.Opt(FullyQualifiedPositionLock)],
         ['query'],
       ),
     'get_position_ownerships' : IDL.Func(
@@ -340,6 +355,11 @@ export const idlFactory = ({ IDL }) => {
             'is_active' : IDL.Bool,
           }),
         ],
+        ['query'],
+      ),
+    'get_token_lock_by_id' : IDL.Func(
+        [LockId],
+        [IDL.Opt(FullyQualifiedLock)],
         ['query'],
       ),
     'get_token_lock_fee_sneed_e8s' : IDL.Func([], [IDL.Nat], ['query']),
