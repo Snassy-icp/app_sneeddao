@@ -106,12 +106,12 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
             // Convert BigInt nanoseconds to milliseconds for Date
             const lockExpiry = new Date(Number(positionDetails.lockInfo.expiry / 1000000n));
             if (lockExpiry > now) {
-                return { text: 'Backend (Locked)', color: theme.colors.warning, icon: '🔒' };
+                return { text: 'Deposited (Locked)', color: theme.colors.warning, icon: '🔒' };
             } else {
-                return { text: 'Backend (Unlocked)', color: theme.colors.accent, icon: '🔓' };
+                return { text: 'Deposited (Unlocked)', color: theme.colors.accent, icon: '🔓' };
             }
         } else {
-            return { text: 'Backend (Unlocked)', color: theme.colors.accent, icon: '🔓' };
+            return { text: 'Deposited (Unlocked)', color: theme.colors.accent, icon: '🔓' };
         }
     };
 
