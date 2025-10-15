@@ -29,7 +29,7 @@ import { formatAmount, toJsonString, formatAmountWithConversion } from './utils/
 import TokenCard from './TokenCard';
 import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap } from './utils/TokenUtils';
-import { getPositionTVL } from "./utils/PositionUtils";
+import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
 import { fetchAndCacheSnsData, getAllSnses } from './utils/SnsUtils';
@@ -249,11 +249,12 @@ function Wallet() {
     const [neuronTotals, setNeuronTotals] = useState({}); // Track neuron USD values by token ledger ID
     const [totalBreakdown, setTotalBreakdown] = useState({
         liquid: 0.0,
+        liquidity: 0.0,
         maturity: 0.0,
         rewards: 0.0,
+        fees: 0.0,
         staked: 0.0,
-        locked: 0.0,
-        fees: 0.0
+        locked: 0.0
     });
 
     const dex_icpswap = 1;
@@ -976,16 +977,30 @@ function Wallet() {
             }
         }
 
-        // Calculate fees from LP positions
+        // Calculate liquidity and fees from LP positions
         let feesTotal = 0.0;
+        let liquidityTotal = 0.0;
         for (const lp of liquidityPositions) {
             for (const positionDetails of lp.positions) {
-                total += getPositionTVL(lp, positionDetails, false);
+                const positionTVL = getPositionTVL(lp, positionDetails, false);
+                total += positionTVL;
                 
                 // Calculate unclaimed fees (tokensOwed)
                 const fees0USD = parseFloat(formatAmountWithConversion(positionDetails.tokensOwed0, lp.token0Decimals, lp.token0_conversion_rate));
                 const fees1USD = parseFloat(formatAmountWithConversion(positionDetails.tokensOwed1, lp.token1Decimals, lp.token1_conversion_rate));
                 feesTotal += fees0USD + fees1USD;
+                
+                // Calculate position liquidity (excluding fees)
+                const position0USD = parseFloat(formatAmountWithConversion(positionDetails.token0Amount, lp.token0Decimals, lp.token0_conversion_rate));
+                const position1USD = parseFloat(formatAmountWithConversion(positionDetails.token1Amount, lp.token1Decimals, lp.token1_conversion_rate));
+                const positionLiquidityValue = position0USD + position1USD;
+                
+                // If position is locked, add to locked total, otherwise to liquidity total
+                if (isLockedPosition(positionDetails)) {
+                    lockedTotal += positionLiquidityValue;
+                } else {
+                    liquidityTotal += positionLiquidityValue;
+                }
             }
         }
 
@@ -996,13 +1011,30 @@ function Wallet() {
         });
 
         setTotalDollarValue(formattedTotal);
-        setTotalBreakdown({
+        
+        // Console log subtotals to verify they add up
+        const subtotalsSum = liquidTotal + liquidityTotal + maturityTotal + rewardsTotal + feesTotal + stakedTotal + lockedTotal;
+        console.log('SUBTOTALS ADDED UP:', {
             liquid: liquidTotal,
+            liquidity: liquidityTotal,
             maturity: maturityTotal,
             rewards: rewardsTotal,
+            fees: feesTotal,
             staked: stakedTotal,
             locked: lockedTotal,
-            fees: feesTotal
+            subtotalsSum: subtotalsSum,
+            portfolioTotal: total,
+            difference: Math.abs(total - subtotalsSum)
+        });
+        
+        setTotalBreakdown({
+            liquid: liquidTotal,
+            liquidity: liquidityTotal,
+            maturity: maturityTotal,
+            rewards: rewardsTotal,
+            fees: feesTotal,
+            staked: stakedTotal,
+            locked: lockedTotal
         });
     }, [tokens, liquidityPositions, rewardDetailsLoading, neuronTotals]);
 
@@ -2533,6 +2565,22 @@ function Wallet() {
                                     </span>
                                 </div>
                             )}
+                            {totalBreakdown.liquidity > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}>
+                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Liquidity Positions">🌊</span>
+                                    <span className="breakdown-text-label">Liquidity: </span>
+                                    <span>
+                                        ${totalBreakdown.liquidity.toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </span>
+                                </div>
+                            )}
                             {totalBreakdown.maturity > 0 && (
                                 <div style={{
                                     display: 'flex',
@@ -2565,6 +2613,22 @@ function Wallet() {
                                     </span>
                                 </div>
                             )}
+                            {totalBreakdown.fees > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}>
+                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Unclaimed LP Fees">💸</span>
+                                    <span className="breakdown-text-label">Fees: </span>
+                                    <span>
+                                        ${totalBreakdown.fees.toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </span>
+                                </div>
+                            )}
                             {totalBreakdown.staked > 0 && (
                                 <div style={{
                                     display: 'flex',
@@ -2591,22 +2655,6 @@ function Wallet() {
                                     <span className="breakdown-text-label">Locked: </span>
                                     <span>
                                         ${totalBreakdown.locked.toLocaleString(undefined, { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
-                                        })}
-                                    </span>
-                                </div>
-                            )}
-                            {totalBreakdown.fees > 0 && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}>
-                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Unclaimed LP Fees">💸</span>
-                                    <span className="breakdown-text-label">Fees: </span>
-                                    <span>
-                                        ${totalBreakdown.fees.toLocaleString(undefined, { 
                                             minimumFractionDigits: 2, 
                                             maximumFractionDigits: 2 
                                         })}

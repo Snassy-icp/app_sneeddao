@@ -143,27 +143,25 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                 </div>
                 <div className="header-content-column">
                     <div className="header-row-1">
-                        <span className="token-name">{position.token0Symbol}/{position.token1Symbol}</span>
+                        <span className="token-name">{position.token0Symbol}/{position.token1Symbol} #{positionDetails.positionId.toString()}</span>
                         <span className="token-usd-value">
                             ${getPositionTVL(position, positionDetails, hideUnclaimedFees).toFixed(2)}
                         </span>
                     </div>
                     <div className="header-row-2">
-                        <div className="amount-symbol">
-                            <span className="token-amount">#{positionDetails.positionId.toString()}</span>
+                        <div className="amount-symbol" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             {isLockedPosition(positionDetails) && (
                                 <span style={{
-                                    marginLeft: '6px',
                                     fontSize: '14px',
                                     display: 'inline-flex',
-                                    alignItems: 'center'
+                                    alignItems: 'center',
+                                    cursor: 'help'
                                 }} title="Position is locked">
                                     🔒
                                 </span>
                             )}
                             {(positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n) && (
                                 <span style={{
-                                    marginLeft: '6px',
                                     fontSize: '14px',
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -354,7 +352,10 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     </div>
                 </div>
                 <div className="balance-item">
-                    <div className="balance-label">Liquidity</div>
+                    <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '14px' }}>🌊</span>
+                        Liquidity
+                    </div>
                     <div className="token-amounts">
                         <div className="token-amount">
                             <span className="token-symbol">{position.token0Symbol}:</span>
@@ -368,7 +369,10 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                 </div>
                 {!hideUnclaimedFees &&
                     <div className="balance-item">
-                        <div className="balance-label">Unclaimed Fees</div>
+                        <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '14px' }}>💸</span>
+                            Unclaimed Fees
+                        </div>
                         <div className="token-amounts">
                             <div className="token-amount">
                                 <span className="token-symbol">{position.token0Symbol}:</span>

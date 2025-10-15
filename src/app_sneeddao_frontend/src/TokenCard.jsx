@@ -1275,7 +1275,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             <>
                         <div className="balance-item" style={{ cursor: 'pointer' }} onClick={() => setShowBalanceBreakdown(!showBalanceBreakdown)}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div className="balance-label">Liquid</div>
+                                <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '14px' }}>💧</span>
+                                    Liquid
+                                </div>
                                 <span style={{ 
                                     fontSize: '0.9rem',
                                     color: theme.colors.secondaryText,
@@ -1394,18 +1397,27 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             </div>
                         )}
                 <div className="balance-item">
-                    <div className="balance-label">Locked</div>
+                    <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '14px' }}>🔐</span>
+                        Locked
+                    </div>
                     <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate)}</div>
                 </div>
                 {isSnsToken && neurons.length > 0 && (
                     <>
                         <div className="balance-item">
-                            <div className="balance-label">Staked</div>
+                            <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '14px' }}>🧠</span>
+                                Staked
+                            </div>
                             <div className="balance-value">{formatAmount(getTotalNeuronStake(), token.decimals)}{getUSD(getTotalNeuronStake(), token.decimals, token.conversion_rate)}</div>
                         </div>
                         {getTotalNeuronMaturity() > 0n && (
                             <div className="balance-item">
-                                <div className="balance-label">Maturity</div>
+                                <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '14px' }}>🌱</span>
+                                    Maturity
+                                </div>
                                 <div className="balance-value">{formatAmount(getTotalNeuronMaturity(), token.decimals)}{getUSD(getTotalNeuronMaturity(), token.decimals, token.conversion_rate)}</div>
                             </div>
                         )}
@@ -1414,6 +1426,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 {(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0) ? (
                     <div className="balance-item">
                         <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '14px' }}>🎁</span>
                             Rewards:
                             <button 
                                 onClick={() => handleClaimRewards(token)}
