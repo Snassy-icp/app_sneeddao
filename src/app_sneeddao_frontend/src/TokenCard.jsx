@@ -1066,10 +1066,56 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     <img src={token.logo} alt={token.symbol} className="token-logo" />
                 </div>
                 <div className="header-content-column">
-                    {/* Row 1: Name (right aligned in content area) and USD total (right aligned) */}
+                    {/* Row 1: Token name (left) and USD total (right) */}
                     <div className="header-row-1">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
-                            <span className="token-name">{token.name || token.symbol}</span>
+                        <span className="token-name">{token.name || token.symbol}</span>
+                        <span className="token-usd-value">
+                            {((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
+                                `$${formatAmountWithConversion((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}`
+                            }
+                        </span>
+                    </div>
+                    {/* Row 2: Amount and symbol (left) */}
+                    <div className="header-row-2">
+                        <div className="amount-symbol">
+                            {!hideAvailable && (
+                                <span className="token-amount">{formatAmount((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} {token.symbol}</span>
+                            )}
+                        </div>
+                    </div>
+                    {/* Row 3: Refresh button + SNS pill (left) and divot (right) */}
+                    <div className="header-row-3" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {handleRefreshToken && (
+                                <button
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await handleRefreshToken(token);
+                                        // Also refresh neurons if it's an SNS token
+                                        if (isSnsToken && refetchNeurons) {
+                                            await refetchNeurons();
+                                        }
+                                    }}
+                                    disabled={isRefreshing}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: isRefreshing ? 'default' : 'pointer',
+                                        padding: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        color: theme.colors.mutedText,
+                                        fontSize: '1.2rem',
+                                        transition: 'color 0.2s ease',
+                                        opacity: isRefreshing ? 0.6 : 1
+                                    }}
+                                    onMouseEnter={(e) => !isRefreshing && (e.target.style.color = theme.colors.primaryText)}
+                                    onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
+                                    title="Refresh token data"
+                                >
+                                    {isRefreshing ? '⏳' : '🔄'}
+                                </button>
+                            )}
                             {isSnsToken && (
                                 <span style={{
                                     background: theme.colors.accent,
@@ -1085,52 +1131,6 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </span>
                             )}
                         </div>
-                        <span className="token-usd-value">
-                            {((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
-                                `$${formatAmountWithConversion((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}`
-                            }
-                        </span>
-                    </div>
-                    {/* Row 2: Amount and symbol (left aligned) */}
-                    <div className="header-row-2">
-                        <div className="amount-symbol">
-                            {!hideAvailable && (
-                                <span className="token-amount">{formatAmount((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} {token.symbol}</span>
-                            )}
-                        </div>
-                    </div>
-                    {/* Row 3: Refresh button and divot (right aligned) */}
-                    <div className="header-row-3" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px' }}>
-                        {handleRefreshToken && (
-                            <button
-                                onClick={async (e) => {
-                                    e.stopPropagation();
-                                    await handleRefreshToken(token);
-                                    // Also refresh neurons if it's an SNS token
-                                    if (isSnsToken && refetchNeurons) {
-                                        await refetchNeurons();
-                                    }
-                                }}
-                                disabled={isRefreshing}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    cursor: isRefreshing ? 'default' : 'pointer',
-                                    padding: '4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    color: theme.colors.mutedText,
-                                    fontSize: '1.2rem',
-                                    transition: 'color 0.2s ease',
-                                    opacity: isRefreshing ? 0.6 : 1
-                                }}
-                                onMouseEnter={(e) => !isRefreshing && (e.target.style.color = theme.colors.primaryText)}
-                                onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
-                                title="Refresh token data"
-                            >
-                                {isRefreshing ? '⏳' : '🔄'}
-                            </button>
-                        )}
                         <span className="expand-indicator">{isExpanded ? '▼' : '▶'}</span>
                     </div>
                 </div>
