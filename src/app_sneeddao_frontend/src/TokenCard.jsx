@@ -2425,6 +2425,22 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             </span>
                         </div>
 
+                        {/* Name */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '10px 0',
+                            borderBottom: `1px solid ${theme.colors.border}`
+                        }}>
+                            <span style={{ color: theme.colors.mutedText, fontSize: '0.9rem' }}>
+                                Name:
+                            </span>
+                            <span style={{ color: theme.colors.primaryText, fontSize: '0.9rem' }}>
+                                {token.name || token.symbol || 'N/A'}
+                            </span>
+                        </div>
+
                         {/* Symbol */}
                         <div style={{
                             display: 'flex',
