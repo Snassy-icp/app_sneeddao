@@ -1067,6 +1067,18 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 </div>
                 <div className="header-content-column">
                     <div className="header-row-1">
+                        <div className="amount-symbol">
+                            {!hideAvailable && (
+                                <span className="token-amount">{formatAmount((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} {token.symbol}</span>
+                            )}
+                        </div>
+                        <span className="token-usd-value">
+                            {((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
+                                `$${formatAmountWithConversion((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}`
+                            }
+                        </span>
+                    </div>
+                    <div className="header-row-2">
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span className="token-name">{token.name || token.symbol}</span>
                             {isSnsToken && (
@@ -1082,18 +1094,6 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 }}>
                                     SNS
                                 </span>
-                            )}
-                        </div>
-                        <span className="token-usd-value">
-                            {((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
-                                `$${formatAmountWithConversion((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}`
-                            }
-                        </span>
-                    </div>
-                    <div className="header-row-2">
-                        <div className="amount-symbol">
-                            {!hideAvailable && (
-                                <span className="token-amount">{formatAmount((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} {token.symbol}</span>
                             )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
