@@ -199,14 +199,14 @@ body {
 
 .swap-token-logo1 {
     width: auto;
-    height: 48px;
-    margin-right: -12px;
+    height: 36px;
+    margin-right: -8px;
     border-radius: 50%;
     z-index: 2;
 }
 .swap-token-logo2 {
     width: auto;
-    height: 48px;
+    height: 36px;
     border-radius: 50%;
     z-index: 1;
 }

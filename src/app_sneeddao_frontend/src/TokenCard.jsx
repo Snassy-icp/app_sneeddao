@@ -91,6 +91,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const [infoExpanded, setInfoExpanded] = useState(false);
     const [balanceSectionExpanded, setBalanceSectionExpanded] = useState(true);
     
+    // Image loading state
+    const [logoLoaded, setLogoLoaded] = useState(false);
+    
     // Neuron state
     const [neurons, setNeurons] = useState([]);
     const [neuronsLoading, setNeuronsLoading] = useState(false);
@@ -1053,8 +1056,17 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     return (
         <div className="card">
             <div className="card-header" onClick={handleHeaderClick}>
-                <div className="header-logo-column" style={{ alignSelf: 'flex-start' }}>
-                    <img src={token.logo} alt={token.symbol} className="token-logo" />
+                <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {!logoLoaded && (
+                        <div className="spinner" style={{ width: '24px', height: '24px' }}></div>
+                    )}
+                    <img 
+                        src={token.logo} 
+                        alt={token.symbol} 
+                        className="token-logo" 
+                        onLoad={() => setLogoLoaded(true)}
+                        style={{ display: logoLoaded ? 'block' : 'none' }}
+                    />
                 </div>
                 <div className="header-content-column">
                     {/* Row 1: Token name (left) and USD total (right) */}
