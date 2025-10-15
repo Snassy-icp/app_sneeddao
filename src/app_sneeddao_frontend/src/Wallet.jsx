@@ -1013,20 +1013,6 @@ function Wallet() {
         setTotalDollarValue(formattedTotal);
         
         // Console log subtotals to verify they add up
-        const subtotalsSum = liquidTotal + liquidityTotal + maturityTotal + rewardsTotal + feesTotal + stakedTotal + lockedTotal;
-        console.log('SUBTOTALS ADDED UP:', {
-            liquid: liquidTotal,
-            liquidity: liquidityTotal,
-            maturity: maturityTotal,
-            rewards: rewardsTotal,
-            fees: feesTotal,
-            staked: stakedTotal,
-            locked: lockedTotal,
-            subtotalsSum: subtotalsSum,
-            portfolioTotal: total,
-            difference: Math.abs(total - subtotalsSum)
-        });
-        
         setTotalBreakdown({
             liquid: liquidTotal,
             liquidity: liquidityTotal,
