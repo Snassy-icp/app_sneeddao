@@ -23,6 +23,7 @@ import SendLiquidityPositionModal from './SendLiquidityPositionModal';
 import ConfirmationModal from './ConfirmationModal';
 import TransferTokenLockModal from './TransferTokenLockModal';
 import WithdrawTokenModal from './WithdrawTokenModal';
+import DepositTokenModal from './DepositTokenModal';
 import { get_short_timezone, format_duration, bigDateToReadable, dateToReadable } from './utils/DateUtils';
 import { formatAmount, toJsonString } from './utils/StringUtils';
 import TokenCard from './TokenCard';
@@ -213,6 +214,7 @@ function Wallet() {
     const [showSendModal, setShowSendModal] = useState(false);
     const [showWrapUnwrapModal, setShowWrapUnwrapModal] = useState(false);
     const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+    const [showDepositModal, setShowDepositModal] = useState(false);
     const [selectedToken, setSelectedToken] = useState(null);
     const [showLockModal, setShowLockModal] = useState(false);
     const [showLockPositionModal, setShowLockPositionModal] = useState(false);
@@ -1385,6 +1387,80 @@ function Wallet() {
             
         } catch (error) {
             console.error('=== Backend withdrawal error ===');
+            console.error('Error details:', error);
+            throw error;
+        }
+    };
+
+    const handleDepositToBackend = async (token) => {
+        console.log('=== Backend deposit button clicked ===');
+        console.log('Token:', token.symbol, 'Frontend balance:', token.balance.toString());
+        
+        if (token.balance <= 0n) {
+            console.log('No frontend balance to deposit');
+            return;
+        }
+
+        if (token.balance <= BigInt(token.fee)) {
+            console.log('Frontend balance too small to cover transaction fee');
+            return;
+        }
+
+        // Open the deposit modal
+        setSelectedToken(token);
+        setShowDepositModal(true);
+    };
+
+    const handleDepositTokenToBackend = async (token, amount) => {
+        console.log('=== handleDepositTokenToBackend ===');
+        console.log('Token:', token.symbol);
+        console.log('Amount:', amount);
+
+        try {
+            const decimals = await token.decimals;
+            console.log('Token decimals:', decimals);
+            
+            // Convert to BigInt safely - handle decimal inputs
+            const amountFloat = parseFloat(amount);
+            const scaledAmount = amountFloat * (10 ** decimals);
+            const depositAmount = BigInt(Math.floor(scaledAmount));
+            
+            console.log('Deposit calculation:', {
+                frontendBalance: token.balance.toString(),
+                txFee: token.fee.toString(),
+                depositAmount: depositAmount.toString()
+            });
+
+            const ledgerActor = createLedgerActor(token.ledger_canister_id, {
+                agentOptions: { identity }
+            });
+
+            const principal_subaccount = principalToSubAccount(identity.getPrincipal());
+            const recipientPrincipal = Principal.fromText(sneedLockCanisterId);
+            
+            // Transfer to the user's subaccount on the backend
+            const result = await ledgerActor.icrc1_transfer({
+                to: { owner: recipientPrincipal, subaccount: [principal_subaccount] },
+                fee: [],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+                amount: depositAmount
+            });
+
+            console.log('Backend deposit result:', JSON.stringify(result, (key, value) => {
+                if (typeof value === 'bigint') {
+                    return value.toString();
+                }
+                return value;
+            }));
+
+            // Refresh the token balance
+            await fetchBalancesAndLocks(token.ledger_canister_id);
+            console.log('=== Backend deposit completed ===');
+            
+        } catch (error) {
+            console.error('=== Backend deposit error ===');
             console.error('Error details:', error);
             throw error;
         }
@@ -2599,6 +2675,7 @@ function Wallet() {
                                 rewardDetailsLoading={rewardDetailsLoading}
                                 handleClaimRewards={handleClaimRewards}
                                 handleWithdrawFromBackend={handleWithdrawFromBackend}
+                                handleDepositToBackend={handleDepositToBackend}
                                 handleRefreshToken={handleRefreshToken}
                                 isRefreshing={refreshingTokens.has(token.ledger_canister_id)}
                                 isSnsToken={isSns}
@@ -2748,6 +2825,12 @@ function Wallet() {
                     show={showWithdrawModal}
                     onClose={() => setShowWithdrawModal(false)}
                     onWithdraw={handleWithdrawTokenFromBackend}
+                    token={selectedToken}
+                />
+                <DepositTokenModal
+                    show={showDepositModal}
+                    onClose={() => setShowDepositModal(false)}
+                    onDeposit={handleDepositTokenToBackend}
                     token={selectedToken}
                 />
                 <WrapUnwrapModal

@@ -77,7 +77,7 @@ const LockCountdown = ({ expiry }) => {
     );
 };
 
-const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleRefreshToken, isRefreshing = false, isSnsToken = false, onNeuronTotalsChange, openTransferTokenLockModal }) => {
+const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, showDebug, hideAvailable = false, hideButtons = false, defaultExpanded = false, defaultLocksExpanded = false, openSendModal, openLockModal, openWrapModal, openUnwrapModal, handleUnregisterToken, rewardDetailsLoading, handleClaimRewards, handleWithdrawFromBackend, handleDepositToBackend, handleRefreshToken, isRefreshing = false, isSnsToken = false, onNeuronTotalsChange, openTransferTokenLockModal }) => {
 
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
@@ -1246,6 +1246,40 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'white' }}>
                                             {formatAmount(token.balance || 0n, token.decimals)} {token.symbol}
                                         </div>
+                                        {(() => {
+                                            const shouldShowButton = token.balance > BigInt(token.fee) && !hideButtons;
+                                            
+                                            return shouldShowButton ? (
+                                                <div
+                                                    onClick={(e) => {
+                                                        console.log('Deposit button clicked!');
+                                                        e.stopPropagation();
+                                                        handleDepositToBackend(token);
+                                                    }}
+                                                    style={{
+                                                        padding: '6px 10px',
+                                                        fontSize: '12px',
+                                                        background: theme.colors.success || theme.colors.accent,
+                                                        color: theme.colors.primaryBg,
+                                                        border: `1px solid ${theme.colors.success || theme.colors.accentHover}`,
+                                                        borderRadius: '3px',
+                                                        cursor: 'pointer',
+                                                        marginTop: '4px',
+                                                        display: 'inline-block',
+                                                        textAlign: 'center',
+                                                        userSelect: 'none'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.target.style.opacity = '0.8';
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.target.style.opacity = '1';
+                                                    }}
+                                                >
+                                                    Deposit
+                                                </div>
+                                            ) : null;
+                                        })()}
                                     </div>
                                 </div>
                                 
