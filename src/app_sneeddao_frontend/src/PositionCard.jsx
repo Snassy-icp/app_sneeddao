@@ -364,7 +364,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                 {balanceSectionExpanded && (
                 <>
                 <div className="balance-item">
-                    <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
                         <span style={{ fontSize: '14px' }}>🌊</span>
                         Liquidity
                     </div>
@@ -381,7 +381,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                 </div>
                 {!hideUnclaimedFees &&
                     <div className="balance-item">
-                        <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
                             <span style={{ fontSize: '14px' }}>💸</span>
                             Unclaimed Fees
                         </div>
