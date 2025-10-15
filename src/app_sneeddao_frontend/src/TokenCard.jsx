@@ -1626,6 +1626,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     locks[token.ledger_canister_id].map((lock, lockIndex) => (
                                         <div key={lockIndex} className="lock-item">
                                             <div className="lock-details">
+                                                <span className="lock-label">Lock ID:</span>
+                                                <span className="lock-value">{lock.lock_id?.toString()}</span>
+                                            </div>
+                                            <div className="lock-details">
                                                 <span className="lock-label">Amount:</span>
                                                 <span className="lock-value">{formatAmount(lock.amount || 0n, token.decimals)}{getUSD(lock.amount || 0n, token.decimals, token.conversion_rate)}</span>
                                             </div>

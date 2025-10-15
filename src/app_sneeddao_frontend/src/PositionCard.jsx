@@ -598,6 +598,8 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         <span style={{ color: theme.colors.primaryText, fontWeight: '500' }}>
                             {isLockedPosition(positionDetails) ? '1 Lock' : '0 Locks'}
                         </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <Link 
                             to="/help/sneedlock"
                             onClick={(e) => e.stopPropagation()}
@@ -623,8 +625,6 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                         >
                             ❓
                         </Link>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         {/* Expand/Collapse Indicator */}
                         <span 
                             style={{ 
@@ -730,6 +730,12 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                             </div>
                         )}
                 <div className="lock-item">
+                            {isLockedPosition(positionDetails) && (
+                                <div className="lock-details">
+                                    <span className="lock-label">Lock ID:</span>
+                                    <span className="lock-value">{positionDetails.lockInfo.lock_id?.toString()}</span>
+                                </div>
+                            )}
                             <div className="lock-details">
                                 <span className="lock-label">Lock Expires:</span>
                                 <span className="lock-value">
