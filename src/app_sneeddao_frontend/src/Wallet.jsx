@@ -25,7 +25,7 @@ import TransferTokenLockModal from './TransferTokenLockModal';
 import WithdrawTokenModal from './WithdrawTokenModal';
 import DepositTokenModal from './DepositTokenModal';
 import { get_short_timezone, format_duration, bigDateToReadable, dateToReadable } from './utils/DateUtils';
-import { formatAmount, toJsonString } from './utils/StringUtils';
+import { formatAmount, toJsonString, formatAmountWithConversion } from './utils/StringUtils';
 import TokenCard from './TokenCard';
 import PositionCard from './PositionCard';
 import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap } from './utils/TokenUtils';
@@ -252,7 +252,8 @@ function Wallet() {
         maturity: 0.0,
         rewards: 0.0,
         staked: 0.0,
-        locked: 0.0
+        locked: 0.0,
+        fees: 0.0
     });
 
     const dex_icpswap = 1;
@@ -975,9 +976,16 @@ function Wallet() {
             }
         }
 
+        // Calculate fees from LP positions
+        let feesTotal = 0.0;
         for (const lp of liquidityPositions) {
             for (const positionDetails of lp.positions) {
                 total += getPositionTVL(lp, positionDetails, false);
+                
+                // Calculate unclaimed fees (tokensOwed)
+                const fees0USD = parseFloat(formatAmountWithConversion(positionDetails.tokensOwed0, lp.token0Decimals, lp.token0_conversion_rate));
+                const fees1USD = parseFloat(formatAmountWithConversion(positionDetails.tokensOwed1, lp.token1Decimals, lp.token1_conversion_rate));
+                feesTotal += fees0USD + fees1USD;
             }
         }
 
@@ -993,7 +1001,8 @@ function Wallet() {
             maturity: maturityTotal,
             rewards: rewardsTotal,
             staked: stakedTotal,
-            locked: lockedTotal
+            locked: lockedTotal,
+            fees: feesTotal
         });
     }, [tokens, liquidityPositions, rewardDetailsLoading, neuronTotals]);
 
@@ -2582,6 +2591,22 @@ function Wallet() {
                                     <span className="breakdown-text-label">Locked: </span>
                                     <span>
                                         ${totalBreakdown.locked.toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </span>
+                                </div>
+                            )}
+                            {totalBreakdown.fees > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                }}>
+                                    <span style={{ fontSize: '14px', cursor: 'help' }} title="Unclaimed LP Fees">💸</span>
+                                    <span className="breakdown-text-label">Fees: </span>
+                                    <span>
+                                        ${totalBreakdown.fees.toLocaleString(undefined, { 
                                             minimumFractionDigits: 2, 
                                             maximumFractionDigits: 2 
                                         })}
