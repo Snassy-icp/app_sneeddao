@@ -783,7 +783,24 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                             {isLockedPosition(positionDetails) && (
                                 <div className="lock-details">
                                     <span className="lock-label">Lock ID:</span>
-                                    <span className="lock-value">{positionDetails.lockInfo.lock_id?.toString()}</span>
+                                    <span className="lock-value">
+                                        {positionDetails.lockInfo.lock_id?.toString()}
+                                        {positionDetails.lockInfo.lock_id && (
+                                            <a 
+                                                href={`/lock/${positionDetails.lockInfo.lock_id.toString()}`}
+                                                style={{
+                                                    marginLeft: '8px',
+                                                    color: theme.colors.accent,
+                                                    textDecoration: 'none',
+                                                    fontSize: '12px'
+                                                }}
+                                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                            >
+                                                🔗 View
+                                            </a>
+                                        )}
+                                    </span>
                                 </div>
                             )}
                             <div className="lock-details">

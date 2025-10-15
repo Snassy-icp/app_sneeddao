@@ -1400,13 +1400,15 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </div>
                             </div>
                         )}
-                        <div className="balance-item">
-                            <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
-                                <span style={{ fontSize: '14px' }}>🔐</span>
-                                Locked
+                        {(token.locked || 0n) > 0n && (
+                            <div className="balance-item">
+                                <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
+                                    <span style={{ fontSize: '14px' }}>🔐</span>
+                                    Locked
+                                </div>
+                                <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate)}</div>
                             </div>
-                            <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate)}</div>
-                        </div>
+                        )}
                         {isSnsToken && neurons.length > 0 && (
                             <>
                                 <div className="balance-item">
@@ -1649,7 +1651,24 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                         <div key={lockIndex} className="lock-item">
                                             <div className="lock-details">
                                                 <span className="lock-label">Lock ID:</span>
-                                                <span className="lock-value">{lock.lock_id?.toString()}</span>
+                                                <span className="lock-value">
+                                                    {lock.lock_id?.toString()}
+                                                    {lock.lock_id && (
+                                                        <a 
+                                                            href={`/lock/${lock.lock_id.toString()}`}
+                                                            style={{
+                                                                marginLeft: '8px',
+                                                                color: theme.colors.accent,
+                                                                textDecoration: 'none',
+                                                                fontSize: '12px'
+                                                            }}
+                                                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                                        >
+                                                            🔗 View
+                                                        </a>
+                                                    )}
+                                                </span>
                                             </div>
                                             <div className="lock-details">
                                                 <span className="lock-label">Amount:</span>
