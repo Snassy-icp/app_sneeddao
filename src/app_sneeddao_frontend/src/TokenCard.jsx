@@ -82,7 +82,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     const { theme } = useTheme();
     const { isAuthenticated, identity } = useAuth();
     const { getNeuronDisplayName } = useNaming();
-    const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(false);
+    const [showBalanceBreakdown, setShowBalanceBreakdown] = useState(() => {
+        // Auto-expand if there's a backend balance
+        return (token.available_backend || 0n) > 0n;
+    });
     const [isExpanded, setIsExpanded] = useState(defaultExpanded);
     const [locksExpanded, setLocksExpanded] = useState(defaultLocksExpanded);
     const [infoExpanded, setInfoExpanded] = useState(false);
@@ -1221,15 +1224,21 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         {balanceSectionExpanded && (
                             <>
                         <div className="balance-item" style={{ cursor: 'pointer' }} onClick={() => setShowBalanceBreakdown(!showBalanceBreakdown)}>
-                            <div className="balance-label">
-                                Liquid {showBalanceBreakdown ? '▼' : '▶'}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div className="balance-label">Liquid</div>
+                                <span style={{ 
+                                    fontSize: '0.9rem',
+                                    color: theme.colors.secondaryText,
+                                    userSelect: 'none'
+                                }}>
+                                    {showBalanceBreakdown ? '▼' : '▶'}
+                                </span>
                             </div>
                             <div className="balance-value">{formatAmount(token.available || 0n, token.decimals)}{getUSD(token.available || 0n, token.decimals, token.conversion_rate)}</div>
                         </div>
                         
                         {showBalanceBreakdown && (
                             <div className="balance-breakdown" style={{ 
-                                marginLeft: '20px', 
                                 padding: '10px', 
                                 background: theme.colors.tertiaryBg, 
                                 borderRadius: '4px',
@@ -1242,7 +1251,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     marginBottom: '8px'
                                 }}>
                                     <div>
-                                        <div style={{ fontSize: '12px', color: '#bdc3c7' }}>Frontend Wallet</div>
+                                        <div style={{ fontSize: '12px', color: '#bdc3c7' }}>Wallet</div>
                                         <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'white' }}>
                                             {formatAmount(token.balance || 0n, token.decimals)} {token.symbol}
                                         </div>
@@ -1284,7 +1293,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </div>
                                 
                                 <div className="balance-breakdown-item">
-                                    <div style={{ fontSize: '12px', color: '#bdc3c7' }}>Backend Wallet</div>
+                                    <div style={{ fontSize: '12px', color: '#bdc3c7' }}>Deposited</div>
                                     <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'white' }}>
                                         {formatAmount(token.available_backend || 0n, token.decimals)} {token.symbol}
                                     </div>

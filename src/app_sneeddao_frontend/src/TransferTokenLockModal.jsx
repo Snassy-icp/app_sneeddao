@@ -185,7 +185,7 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
               lineHeight: '1.4'
             }}>
               Your backend subaccount needs at least 1 tx fee of liquid tokens. 
-              1 tx fee will be sent from your frontend wallet first.
+              1 tx fee will be sent from your wallet first.
             </div>
           )}
         </div>

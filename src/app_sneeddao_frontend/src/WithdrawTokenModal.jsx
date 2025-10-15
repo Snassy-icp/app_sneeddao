@@ -111,7 +111,7 @@ function WithdrawTokenModal({ show, onClose, onWithdraw, token }) {
       }
     });
 
-    setConfirmMessage(`You are about to withdraw ${amount} ${token.symbol} from your backend wallet to your frontend wallet. This will cost ${formatAmount(token.fee, token.decimals)} ${token.symbol} in transaction fees.`);
+    setConfirmMessage(`You are about to withdraw ${amount} ${token.symbol} from your deposited balance. This will cost ${formatAmount(token.fee, token.decimals)} ${token.symbol} in transaction fees.`);
     setShowConfirmModal(true);
     console.log('=== WithdrawTokenModal.handleWithdraw END ===');
   };

@@ -99,7 +99,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
     // Helper function to get location status
     const getLocationStatus = () => {
         if (positionDetails.frontendOwnership) {
-            return { text: 'Frontend Wallet', color: theme.colors.success, icon: '💼' };
+            return { text: 'In Your Wallet', color: theme.colors.success, icon: '💼' };
         } else if (isLockedPosition(positionDetails)) {
             const now = new Date();
             // Convert BigInt nanoseconds to milliseconds for Date
@@ -530,7 +530,7 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                 }}
                             >
                                 <span style={{ fontSize: '18px' }}>⬇️</span>
-                                Withdraw to Frontend Wallet
+                                Withdraw to Wallet
                             </button>
                         </div>
                     </div>

@@ -111,7 +111,7 @@ function DepositTokenModal({ show, onClose, onDeposit, token }) {
       }
     });
 
-    setConfirmMessage(`You are about to deposit ${amount} ${token.symbol} from your frontend wallet to your backend wallet. This will cost ${formatAmount(token.fee, token.decimals)} ${token.symbol} in transaction fees.`);
+    setConfirmMessage(`You are about to deposit ${amount} ${token.symbol} from your wallet. This will cost ${formatAmount(token.fee, token.decimals)} ${token.symbol} in transaction fees.`);
     setShowConfirmModal(true);
     console.log('=== DepositTokenModal.handleDeposit END ===');
   };

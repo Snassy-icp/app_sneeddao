@@ -1568,7 +1568,7 @@ function Wallet() {
             }
         });
 
-        setConfirmMessage(`You are about to withdraw position #${liquidityPosition.id} (${liquidityPosition.symbols}) from the backend to your frontend wallet. Continue?`);
+        setConfirmMessage(`You are about to withdraw position #${liquidityPosition.id} (${liquidityPosition.symbols}) to your wallet. Continue?`);
         setShowConfirmModal(true);
     };
 
@@ -1902,7 +1902,7 @@ function Wallet() {
         // Only available for frontend positions
         if (!liquidityPosition.frontendOwnership) {
             console.error('Cannot claim fees from backend position');
-            throw new Error('Fee claiming is only available for positions in your frontend wallet');
+            throw new Error('Fee claiming is only available for positions in your wallet');
         }
 
         try {

@@ -214,14 +214,14 @@ function HelpWallet() {
                     </p>
                     <ul style={styles.list}>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>Frontend Wallet:</strong> Tokens directly available in your browser session
+                            <strong style={styles.strong}>Wallet:</strong> Tokens directly controlled by your principal
                         </li>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>Backend Wallet:</strong> Tokens held in the Sneed Hub backend canister. 
+                            <strong style={styles.strong}>Deposited:</strong> Tokens deposited to the Sneed Hub backend canister. 
                             When you lock tokens with <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>, they're 
-                            first transferred to the backend wallet. After a lock expires, it automatically disappears and your 
-                            tokens appear under "Liquid" in the backend wallet. You can send these tokens directly (the wallet 
-                            combines frontend and backend balances automatically) or withdraw them to the frontend first if preferred.
+                            first deposited. After a lock expires, it automatically disappears and your 
+                            tokens appear under "Liquid" as deposited tokens. You can send these tokens directly (the wallet 
+                            combines both balances automatically) or withdraw them to your wallet first if preferred.
                         </li>
                     </ul>
                     
@@ -237,7 +237,7 @@ function HelpWallet() {
                             rewards + staked (in neurons) + maturity
                         </li>
                         <li style={styles.listItem}>
-                            <strong style={styles.strong}>Liquid:</strong> Tokens in your frontend and backend wallets 
+                            <strong style={styles.strong}>Liquid:</strong> Tokens in your wallet and deposited balance 
                             that are immediately available to send or lock
                         </li>
                         <li style={styles.listItem}>
@@ -494,9 +494,9 @@ function HelpWallet() {
                                 dates for your tokens and positions
                             </li>
                             <li style={styles.listItem}>
-                                <strong style={styles.strong}>Understand Frontend vs Backend:</strong> Remember that tokens 
-                                in your backend wallet (especially after lock expiration) need to be withdrawn to the frontend 
-                                or can be sent directly from the backend
+                                <strong style={styles.strong}>Understand Wallet vs Deposited:</strong> Remember that deposited tokens 
+                                (especially after lock expiration) can be withdrawn to your wallet 
+                                or sent directly from your deposited balance
                             </li>
                             <li style={styles.listItem}>
                                 <strong style={styles.strong}>Organize Your Tokens:</strong> Remove tokens you no longer 
@@ -521,7 +521,7 @@ function HelpWallet() {
                     <ul style={styles.list}>
                         <li style={styles.listItem}>Some tokens are locked in Sneedlock</li>
                         <li style={styles.listItem}>Tokens are staked in neurons</li>
-                        <li style={styles.listItem}>Tokens are in your backend wallet (after lock expiration or rewards)</li>
+                        <li style={styles.listItem}>Tokens are in your deposited balance (after lock expiration or rewards)</li>
                         <li style={styles.listItem}>You have pending transactions</li>
                         <li style={styles.listItem}>The wallet is showing "Liquid" balance instead of "Totals"</li>
                         <li style={styles.listItem}>You have maturity or unclaimed rewards that haven't been disbursed yet</li>

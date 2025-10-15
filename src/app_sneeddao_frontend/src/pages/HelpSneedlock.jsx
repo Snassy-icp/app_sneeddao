@@ -340,14 +340,14 @@ function HelpSneedlock() {
                     <ol style={styles.list}>
                         <li style={styles.listItem}>Go to your <Link to="/wallet" style={styles.link}>Wallet page</Link></li>
                         <li style={styles.listItem}>Your unlocked tokens will now be included in the "Liquid" balance</li>
-                        <li style={styles.listItem}>Expand the "Liquid" section to see the breakdown—you'll notice tokens in your backend wallet</li>
+                        <li style={styles.listItem}>Expand the "Liquid" section to see the breakdown—you'll notice tokens in your deposited balance</li>
                         <li style={styles.listItem}>You can now use these tokens immediately!</li>
                     </ol>
                     <p style={styles.paragraph}>
-                        <strong style={styles.strong}>Note:</strong> You don't need to withdraw tokens from the backend wallet 
-                        to use them. When you send tokens, the wallet automatically combines balances from both your frontend 
-                        and backend wallets. However, if you prefer to have everything in your frontend wallet, you can click 
-                        the <strong style={styles.strong}>"Withdraw from Backend"</strong> button in the expanded Liquid section.
+                        <strong style={styles.strong}>Note:</strong> You don't need to withdraw tokens from your deposited balance 
+                        to use them. When you send tokens, the wallet automatically combines balances from both your wallet 
+                        and deposited balance. However, if you prefer to have everything in your wallet, you can click 
+                        the <strong style={styles.strong}>"Withdraw"</strong> button in the expanded Liquid section.
                     </p>
                     
                     <h3 style={styles.subsubheading}>Unlocking Liquidity Positions</h3>
@@ -356,13 +356,13 @@ function HelpSneedlock() {
                     </p>
                     <ol style={styles.list}>
                         <li style={styles.listItem}>Navigate to your locked position in the <Link to="/wallet" style={styles.link}>Wallet page</Link></li>
-                        <li style={styles.listItem}>Once the lock has expired, the position remains in the backend but becomes unlocked</li>
-                        <li style={styles.listItem}>You can now <strong style={styles.strong}>Send</strong> the position to another address directly from the backend</li>
-                        <li style={styles.listItem}>Or click <strong style={styles.strong}>"Withdraw"</strong> to transfer the position back to your frontend wallet</li>
+                        <li style={styles.listItem}>Once the lock has expired, the position remains deposited but becomes unlocked</li>
+                        <li style={styles.listItem}>You can now <strong style={styles.strong}>Send</strong> the position to another address directly from your deposited balance</li>
+                        <li style={styles.listItem}>Or click <strong style={styles.strong}>"Withdraw"</strong> to transfer the position back to your wallet</li>
                     </ol>
                     <p style={styles.paragraph}>
-                        The position stays on the backend after unlock, giving you the flexibility to either send it to someone else 
-                        or withdraw it back to your frontend wallet for management on ICPSwap.
+                        The position stays deposited after unlock, giving you the flexibility to either send it to someone else 
+                        or withdraw it back to your wallet for management on ICPSwap.
                     </p>
                 </div>
 
