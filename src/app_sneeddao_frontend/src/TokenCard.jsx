@@ -1119,8 +1119,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             </button>
                         )}
                     </div>
-                    {/* Row 3: SNS pill (left) */}
-                    <div className="header-row-3" style={{ display: 'flex', alignItems: 'center' }}>
+                    {/* Row 3: SNS pill and status icons (left) */}
+                    <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {isSnsToken && (
                             <span style={{
                                 background: theme.colors.accent,
@@ -1133,6 +1133,42 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 letterSpacing: '0.5px'
                             }}>
                                 SNS
+                            </span>
+                        )}
+                        {/* Locks icon */}
+                        {token.locked > 0n && (
+                            <span 
+                                style={{ fontSize: '14px', cursor: 'help' }} 
+                                title={`${formatAmount(token.locked, token.decimals)} ${token.symbol} locked`}
+                            >
+                                🔒
+                            </span>
+                        )}
+                        {/* Neurons icon */}
+                        {neurons.length > 0 && (
+                            <span 
+                                style={{ fontSize: '14px', cursor: 'help' }} 
+                                title={`${neurons.length} neuron${neurons.length > 1 ? 's' : ''}`}
+                            >
+                                🧠
+                            </span>
+                        )}
+                        {/* Maturity icon */}
+                        {getTotalNeuronMaturity() > 0n && (
+                            <span 
+                                style={{ fontSize: '14px', cursor: 'help' }} 
+                                title={`${formatAmount(getTotalNeuronMaturity(), token.decimals)} ${token.symbol} maturity`}
+                            >
+                                🌱
+                            </span>
+                        )}
+                        {/* Rewards icon */}
+                        {rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0n && (
+                            <span 
+                                style={{ fontSize: '14px', cursor: 'help' }} 
+                                title={`${formatAmount(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} ${token.symbol} rewards`}
+                            >
+                                🎁
                             </span>
                         )}
                     </div>

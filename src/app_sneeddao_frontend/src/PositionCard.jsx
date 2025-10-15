@@ -161,6 +161,17 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                     🔒
                                 </span>
                             )}
+                            {(positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n) && (
+                                <span style={{
+                                    marginLeft: '6px',
+                                    fontSize: '14px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    cursor: 'help'
+                                }} title={`Unclaimed fees: ${formatAmount(positionDetails.tokensOwed0, position.token0Decimals)} ${position.token0Symbol} + ${formatAmount(positionDetails.tokensOwed1, position.token1Decimals)} ${position.token1Symbol}`}>
+                                    💸
+                                </span>
+                            )}
                         </div>
                         {handleRefreshPosition && (
                             <button
