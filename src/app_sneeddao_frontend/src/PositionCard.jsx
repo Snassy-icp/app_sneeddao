@@ -143,34 +143,19 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                     <img src={position.token1Logo} alt={position.token1Symbol} className="swap-token-logo2" />
                 </div>
                 <div className="header-content-column">
+                    {/* Row 1: Token pair name + position ID, USD total */}
                     <div className="header-row-1">
                         <span className="token-name">{position.token0Symbol}/{position.token1Symbol} #{positionDetails.positionId.toString()}</span>
                         <span className="token-usd-value">
                             ${getPositionTVL(position, positionDetails, hideUnclaimedFees).toFixed(2)}
                         </span>
                     </div>
+                    {/* Row 2: First token balance, refresh button */}
                     <div className="header-row-2">
-                        <div className="amount-symbol" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            {isLockedPosition(positionDetails) && (
-                                <span style={{
-                                    fontSize: '14px',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    cursor: 'help'
-                                }} title="Position is locked">
-                                    🔒
-                                </span>
-                            )}
-                            {(positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n) && (
-                                <span style={{
-                                    fontSize: '14px',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    cursor: 'help'
-                                }} title={`Unclaimed fees: ${formatAmount(positionDetails.tokensOwed0, position.token0Decimals)} ${position.token0Symbol} + ${formatAmount(positionDetails.tokensOwed1, position.token1Decimals)} ${position.token1Symbol}`}>
-                                    💸
-                                </span>
-                            )}
+                        <div className="amount-symbol">
+                            <span className="token-amount">
+                                {formatAmount(positionDetails.token0Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed0), position.token0Decimals)} {position.token0Symbol}
+                            </span>
                         </div>
                         {handleRefreshPosition && (
                             <button
@@ -199,6 +184,37 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                             </button>
                         )}
                     </div>
+                    {/* Row 3: Second token balance */}
+                    <div className="header-row-3" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+                        <span className="token-amount">
+                            {formatAmount(positionDetails.token1Amount + (hideUnclaimedFees ? 0n : positionDetails.tokensOwed1), position.token1Decimals)} {position.token1Symbol}
+                        </span>
+                    </div>
+                    {/* Row 4: Status icons (if any) */}
+                    {(isLockedPosition(positionDetails) || (positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n)) && (
+                        <div className="header-row-4" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                            {isLockedPosition(positionDetails) && (
+                                <span style={{
+                                    fontSize: '14px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    cursor: 'help'
+                                }} title="Position is locked">
+                                    🔒
+                                </span>
+                            )}
+                            {(positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n) && (
+                                <span style={{
+                                    fontSize: '14px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    cursor: 'help'
+                                }} title={`Unclaimed fees: ${formatAmount(positionDetails.tokensOwed0, position.token0Decimals)} ${position.token0Symbol} + ${formatAmount(positionDetails.tokensOwed1, position.token1Decimals)} ${position.token1Symbol}`}>
+                                    💸
+                                </span>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
             {isExpanded && (
