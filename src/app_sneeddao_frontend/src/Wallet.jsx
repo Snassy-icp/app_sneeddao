@@ -336,6 +336,7 @@ function Wallet() {
             const ledgerActor = createLedgerActor(icrc1_ledger);
             const metadata = await ledgerActor.icrc1_metadata();
             var logo = getTokenLogo(metadata);
+            const name = metadata.find(([key]) => key === 'icrc1:name')?.[1]?.Text || null;
             const symbol = await ledgerActor.icrc1_symbol();
             const decimals = await ledgerActor.icrc1_decimals();
             const fee = await ledgerActor.icrc1_fee();
@@ -375,6 +376,7 @@ function Wallet() {
 
             var token = {
                 ledger_canister_id: icrc1_ledger,
+                name: name,
                 symbol: symbol,
                 decimals: decimals,
                 fee: fee,
@@ -399,6 +401,7 @@ function Wallet() {
         } catch (e) {
             var token = {
                 ledger_canister_id: icrc1_ledger,
+                name: "ERROR",
                 symbol: "ERROR",
                 decimals: 8,
                 fee: 0,
