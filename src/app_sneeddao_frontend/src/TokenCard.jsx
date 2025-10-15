@@ -397,6 +397,10 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         if (result.ok) {
             alert('Neuron disbursed successfully! The tokens will appear in your wallet shortly.');
             await refetchNeurons();
+            // Refresh token balance to show the disbursed tokens
+            if (handleRefreshToken) {
+                await handleRefreshToken(token);
+            }
         } else {
             alert(`Error disbursing neuron: ${result.err}`);
         }
