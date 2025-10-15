@@ -1,11 +1,12 @@
 // TransferTokenLockModal.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Principal } from "@dfinity/principal";
 import ConfirmationModal from './ConfirmationModal';
 import { useTheme } from './contexts/ThemeContext';
 import PrincipalInput from './components/PrincipalInput';
 import { formatAmount } from './utils/StringUtils';
 import { dateToReadable } from './utils/DateUtils';
+import { get_available_backend } from './utils/TokenUtils';
 
 function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token }) {
   const { theme } = useTheme();
@@ -15,6 +16,21 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const [confirmMessage, setConfirmMessage] = useState('');
+
+  // Calculate if we need to send 1 or 2 tx fees
+  const feeInfo = useMemo(() => {
+    if (!token) return { feesRequired: 1, needsPreSend: false };
+    
+    const liquidBackend = get_available_backend(token);
+    const needsPreSend = liquidBackend < BigInt(token.fee);
+    
+    return {
+      feesRequired: needsPreSend ? 2 : 1,
+      needsPreSend,
+      liquidBackend,
+      hasEnoughFrontend: BigInt(token.balance) >= BigInt(token.fee) * 2n
+    };
+  }, [token]);
 
   useEffect(() => {
     if (show) {
@@ -38,6 +54,12 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
       return;
     }
 
+    // Check if user has enough liquid balance on frontend if pre-send is needed
+    if (feeInfo.needsPreSend && !feeInfo.hasEnoughFrontend) {
+      setErrorText(`Insufficient liquid balance on frontend! You need at least ${formatAmount(BigInt(token.fee) * 2n, token.decimals)} ${token.symbol} available (not locked) to complete this transfer (1 tx fee to send to backend, plus 1 tx fee to pay for that transaction).`);
+      return;
+    }
+
     setConfirmAction(() => async () => {   
       try {
         setIsLoading(true);
@@ -54,7 +76,12 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
     });
 
     const lockAmount = formatAmount(tokenLock.amount, token.decimals);
-    setConfirmMessage(`You are about to transfer ownership of lock #${tokenLock.lock_id} (${lockAmount} ${token.symbol}, expires ${dateToReadable(tokenLock.expiry)}) to ${recipient}. This will transfer backend ownership while keeping the lock active.`);
+    const feeAmount = formatAmount(BigInt(token.fee) * BigInt(feeInfo.feesRequired), token.decimals);
+    const feeExplanation = feeInfo.needsPreSend 
+      ? ` (including 1 tx fee to prepare your backend subaccount for the transfer)`
+      : ` (drawn from your backend liquid balance)`;
+    
+    setConfirmMessage(`You are about to transfer ownership of lock #${tokenLock.lock_id} (${lockAmount} ${token.symbol}, expires ${dateToReadable(tokenLock.expiry)}) to ${recipient}. This will cost ${feeAmount} ${token.symbol} in transaction fees${feeExplanation}. The lock will remain active and ownership will be transferred to the recipient.`);
     setShowConfirmModal(true);
   };
 
@@ -121,6 +148,46 @@ function TransferTokenLockModal({ show, onClose, onTransfer, tokenLock, token })
             <span style={{ color: theme.colors.mutedText }}>Expires:</span>
             <span style={{ fontWeight: '500' }}>{dateToReadable(tokenLock.expiry)}</span>
           </div>
+        </div>
+
+        {/* Fee Info Box */}
+        <div style={{
+          background: theme.colors.secondaryBg,
+          borderRadius: '8px',
+          padding: '16px',
+          marginBottom: '16px',
+          border: `1px solid ${theme.colors.border}`
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            color: theme.colors.primaryText
+          }}>
+            <span style={{ color: theme.colors.mutedText }}>Transaction Fee:</span>
+            <span style={{ fontWeight: '500' }}>
+              {formatAmount(BigInt(token.fee) * BigInt(feeInfo.feesRequired), token.decimals)} {token.symbol}
+              {feeInfo.needsPreSend && (
+                <span style={{ 
+                  fontSize: '0.85rem', 
+                  color: theme.colors.mutedText, 
+                  marginLeft: '4px' 
+                }}>
+                  (2 tx fees)
+                </span>
+              )}
+            </span>
+          </div>
+          {feeInfo.needsPreSend && (
+            <div style={{
+              marginTop: '8px',
+              fontSize: '0.85rem',
+              color: theme.colors.secondaryText,
+              lineHeight: '1.4'
+            }}>
+              Your backend subaccount needs at least 1 tx fee of liquid tokens. 
+              1 tx fee will be sent from your frontend wallet first.
+            </div>
+          )}
         </div>
 
         {/* Warning Box */}

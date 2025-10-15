@@ -1556,6 +1556,73 @@ function Wallet() {
         console.log('Recipient:', recipient);
 
         try {
+            const token = tokenLock.token;
+            const liquidBackend = get_available_backend(token);
+            const needsPreSend = liquidBackend < BigInt(token.fee);
+
+            console.log('Liquid backend balance:', liquidBackend.toString());
+            console.log('Token fee:', token.fee.toString());
+            console.log('Needs pre-send:', needsPreSend);
+
+            // If we don't have enough liquid balance on backend, send 1 tx fee first
+            if (needsPreSend) {
+                console.log('=== Sending 1 tx fee to backend subaccount ===');
+                
+                const ledgerActor = createLedgerActor(token.ledger_canister_id, {
+                    agentOptions: { identity }
+                });
+
+                const principal_subaccount = principalToSubAccount(identity.getPrincipal());
+                const recipientPrincipal = Principal.fromText(sneedLockCanisterId);
+                
+                const sendResult = await ledgerActor.icrc1_transfer({
+                    to: { owner: recipientPrincipal, subaccount: [principal_subaccount] },
+                    fee: [],
+                    memo: [],
+                    from_subaccount: [],
+                    created_at_time: [],
+                    amount: BigInt(token.fee)
+                });
+
+                console.log('Pre-send result:', toJsonString(sendResult));
+
+                if (sendResult.Err) {
+                    throw new Error(`Failed to send fee to backend: ${sendResult.Err}`);
+                }
+
+                // Wait and verify the tokens arrived by checking backend balance
+                console.log('=== Verifying tokens arrived at backend ===');
+                let attempts = 0;
+                const maxAttempts = 10;
+                let verified = false;
+
+                while (attempts < maxAttempts && !verified) {
+                    // Wait a bit before checking
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    attempts++;
+
+                    // Fetch the updated backend balance
+                    const updatedBackendBalance = await ledgerActor.icrc1_balance_of({ 
+                        owner: Principal.fromText(sneedLockCanisterId), 
+                        subaccount: [principal_subaccount] 
+                    });
+
+                    const updatedLiquidBackend = BigInt(updatedBackendBalance) - BigInt(token.locked);
+                    console.log(`Verification attempt ${attempts}: Backend balance = ${updatedBackendBalance.toString()}, Liquid = ${updatedLiquidBackend.toString()}`);
+
+                    if (updatedLiquidBackend >= BigInt(token.fee)) {
+                        console.log('✓ Verified: Backend now has sufficient liquid balance');
+                        verified = true;
+                    }
+                }
+
+                if (!verified) {
+                    throw new Error('Timeout waiting for tokens to arrive at backend subaccount');
+                }
+            }
+
+            // Now proceed with the actual transfer
+            console.log('=== Proceeding with transfer_token_lock_ownership ===');
             const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { 
                 agentOptions: { identity } 
             });
