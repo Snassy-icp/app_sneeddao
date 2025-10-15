@@ -132,7 +132,7 @@ const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefres
 };
 
 // Collapsible section header component
-const SectionHeader = ({ title, isExpanded, onToggle, onAdd, addButtonText, theme }) => {
+const SectionHeader = ({ title, subtitle, isExpanded, onToggle, onAdd, addButtonText, theme }) => {
     return (
         <div style={{
             display: 'flex',
@@ -159,6 +159,16 @@ const SectionHeader = ({ title, isExpanded, onToggle, onAdd, addButtonText, them
                     {isExpanded ? '▼' : '▶'}
                 </span>
                 {title}
+                {subtitle && (
+                    <span style={{
+                        fontSize: '1.2rem',
+                        fontWeight: '400',
+                        color: theme.colors.secondaryText,
+                        marginLeft: '8px'
+                    }}>
+                        {subtitle}
+                    </span>
+                )}
             </div>
             {addButtonText && (
                 <button
@@ -256,6 +266,8 @@ function Wallet() {
         staked: 0.0,
         locked: 0.0
     });
+    const [tokensTotal, setTokensTotal] = useState(0.0);
+    const [lpPositionsTotal, setLpPositionsTotal] = useState(0.0);
 
     const dex_icpswap = 1;
  
@@ -1022,6 +1034,14 @@ function Wallet() {
             staked: stakedTotal,
             locked: lockedTotal
         });
+        
+        // Calculate tokens total (liquid + locked + staked + maturity + rewards)
+        const tokensUsdTotal = liquidTotal + lockedTotal + stakedTotal + maturityTotal + rewardsTotal;
+        setTokensTotal(tokensUsdTotal);
+        
+        // Calculate LP positions total (liquidity + fees)
+        const lpUsdTotal = liquidityTotal + feesTotal;
+        setLpPositionsTotal(lpUsdTotal);
     }, [tokens, liquidityPositions, rewardDetailsLoading, neuronTotals]);
 
     const calc_send_amounts = (token, amount) => {
@@ -2697,6 +2717,7 @@ function Wallet() {
                     <>
                 <SectionHeader 
                     title="Tokens"
+                    subtitle={tokensTotal > 0 ? `$${tokensTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null}
                     isExpanded={tokensExpanded}
                     onToggle={() => setTokensExpanded(!tokensExpanded)}
                     onAdd={() => setShowAddLedgerModal(true)}
@@ -2760,6 +2781,7 @@ function Wallet() {
                 )}
                 <SectionHeader 
                     title="Liquidity Positions"
+                    subtitle={lpPositionsTotal > 0 ? `$${lpPositionsTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null}
                     isExpanded={positionsExpanded}
                     onToggle={() => setPositionsExpanded(!positionsExpanded)}
                     onAdd={() => setShowAddSwapModal(true)}
