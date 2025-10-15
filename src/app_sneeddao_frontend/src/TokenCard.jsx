@@ -228,6 +228,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         }
     }, [neurons, token.conversion_rate, token.decimals, isSnsToken, onNeuronTotalsChange]);
 
+    // Auto-expand Liquid section when deposited balance comes in (if currently collapsed)
+    useEffect(() => {
+        if ((token.available_backend || 0n) > 0n && !showBalanceBreakdown) {
+            setShowBalanceBreakdown(true);
+        }
+    }, [token.available_backend]);
+
     const getDissolveDelaySeconds = (neuron) => {
         const dissolveState = neuron.dissolve_state?.[0];
         if (!dissolveState) return 0;
