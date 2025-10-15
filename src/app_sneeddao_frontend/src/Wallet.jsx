@@ -22,6 +22,7 @@ import AddLedgerCanisterModal from './AddLedgerCanisterModal';
 import SendLiquidityPositionModal from './SendLiquidityPositionModal';
 import ConfirmationModal from './ConfirmationModal';
 import TransferTokenLockModal from './TransferTokenLockModal';
+import WithdrawTokenModal from './WithdrawTokenModal';
 import { get_short_timezone, format_duration, bigDateToReadable, dateToReadable } from './utils/DateUtils';
 import { formatAmount, toJsonString } from './utils/StringUtils';
 import TokenCard from './TokenCard';
@@ -211,6 +212,7 @@ function Wallet() {
     const [tokens, setTokens] = useState([]);
     const [showSendModal, setShowSendModal] = useState(false);
     const [showWrapUnwrapModal, setShowWrapUnwrapModal] = useState(false);
+    const [showWithdrawModal, setShowWithdrawModal] = useState(false);
     const [selectedToken, setSelectedToken] = useState(null);
     const [showLockModal, setShowLockModal] = useState(false);
     const [showLockPositionModal, setShowLockPositionModal] = useState(false);
@@ -1328,58 +1330,64 @@ function Wallet() {
             return;
         }
 
-        // Calculate amount to withdraw (backend balance minus 1 tx fee)
-        const withdrawAmount = token.available_backend - BigInt(token.fee);
-        
-        if (withdrawAmount <= 0n) {
+        if (token.available_backend <= BigInt(token.fee)) {
             console.log('Backend balance too small to cover transaction fee');
             return;
         }
 
-        console.log('Withdrawal calculation:', {
-            backendBalance: token.available_backend.toString(),
-            txFee: token.fee.toString(),
-            withdrawAmount: withdrawAmount.toString()
-        });
+        // Open the withdraw modal
+        setSelectedToken(token);
+        setShowWithdrawModal(true);
+    };
 
-        // Show confirmation dialog
-        setConfirmAction(() => async () => {
-            try {
-                console.log('=== Starting confirmed backend withdrawal ===');
-                
-                const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { 
-                    agentOptions: { identity } 
-                });
+    const handleWithdrawTokenFromBackend = async (token, amount) => {
+        console.log('=== handleWithdrawTokenFromBackend ===');
+        console.log('Token:', token.symbol);
+        console.log('Amount:', amount);
 
-                // Transfer (backend_balance - 1_tx_fee) to user's frontend wallet
-                const result = await sneedLockActor.transfer_tokens(
-                    identity.getPrincipal(),
-                    [],
-                    token.ledger_canister_id,
-                    withdrawAmount
-                );
+        try {
+            const decimals = await token.decimals;
+            console.log('Token decimals:', decimals);
+            
+            // Convert to BigInt safely - handle decimal inputs
+            const amountFloat = parseFloat(amount);
+            const scaledAmount = amountFloat * (10 ** decimals);
+            const withdrawAmount = BigInt(Math.floor(scaledAmount));
+            
+            console.log('Withdrawal calculation:', {
+                backendBalance: token.available_backend.toString(),
+                txFee: token.fee.toString(),
+                withdrawAmount: withdrawAmount.toString()
+            });
 
-                console.log('Backend withdrawal result:', JSON.stringify(result, (key, value) => {
-                    if (typeof value === 'bigint') {
-                        return value.toString();
-                    }
-                    return value;
-                }));
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { 
+                agentOptions: { identity } 
+            });
 
-                // Refresh the token balance
-                await fetchBalancesAndLocks(token.ledger_canister_id);
-                console.log('=== Backend withdrawal completed ===');
-                
-            } catch (error) {
-                console.error('=== Backend withdrawal error ===');
-                console.error('Error details:', error);
-                throw error;
-            }
-        });
+            // Transfer the specified amount to user's frontend wallet
+            const result = await sneedLockActor.transfer_tokens(
+                identity.getPrincipal(),
+                [],
+                token.ledger_canister_id,
+                withdrawAmount
+            );
 
-        const amountFormatted = formatAmount(withdrawAmount, token.decimals);
-        setConfirmMessage(`You are about to withdraw ${amountFormatted} ${token.symbol} from your backend wallet to your frontend wallet. This will cost ${formatAmount(token.fee, token.decimals)} ${token.symbol} in transaction fees.`);
-        setShowConfirmModal(true);
+            console.log('Backend withdrawal result:', JSON.stringify(result, (key, value) => {
+                if (typeof value === 'bigint') {
+                    return value.toString();
+                }
+                return value;
+            }));
+
+            // Refresh the token balance
+            await fetchBalancesAndLocks(token.ledger_canister_id);
+            console.log('=== Backend withdrawal completed ===');
+            
+        } catch (error) {
+            console.error('=== Backend withdrawal error ===');
+            console.error('Error details:', error);
+            throw error;
+        }
     };
 
     const handleSendLiquidityPosition = async (liquidityPosition, recipient) => {
@@ -2734,6 +2742,12 @@ function Wallet() {
                     show={showSendModal}
                     onClose={() => setShowSendModal(false)}
                     onSend={handleSendToken}
+                    token={selectedToken}
+                />
+                <WithdrawTokenModal
+                    show={showWithdrawModal}
+                    onClose={() => setShowWithdrawModal(false)}
+                    onWithdraw={handleWithdrawTokenFromBackend}
                     token={selectedToken}
                 />
                 <WrapUnwrapModal
