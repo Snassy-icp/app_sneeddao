@@ -156,7 +156,7 @@ const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefres
 };
 
 // Collapsible section header component
-const SectionHeader = ({ title, subtitle, isExpanded, onToggle, onAdd, addButtonText, theme }) => {
+const SectionHeader = ({ title, subtitle, isExpanded, onToggle, onAdd, addButtonText, onRefresh, isRefreshing, theme }) => {
     return (
         <div style={{
             display: 'flex',
@@ -194,33 +194,61 @@ const SectionHeader = ({ title, subtitle, isExpanded, onToggle, onAdd, addButton
                     </span>
                 )}
             </div>
-            {addButtonText && (
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onAdd();
-                    }}
-                    style={{
-                        background: theme.colors.accent,
-                        color: theme.colors.primaryBg,
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '8px 16px',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                        fontWeight: '600',
-                        transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.target.style.background = theme.colors.accentHover;
-                    }}
-                    onMouseLeave={(e) => {
-                        e.target.style.background = theme.colors.accent;
-                    }}
-                >
-                    {addButtonText}
-                </button>
-            )}
+            <div style={{ display: 'flex', gap: '8px' }}>
+                {onRefresh && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onRefresh();
+                        }}
+                        disabled={isRefreshing}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: isRefreshing ? 'default' : 'pointer',
+                            padding: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            color: theme.colors.mutedText,
+                            fontSize: '1.2rem',
+                            transition: 'color 0.2s ease',
+                            opacity: isRefreshing ? 0.6 : 1
+                        }}
+                        onMouseEnter={(e) => !isRefreshing && (e.target.style.color = theme.colors.primaryText)}
+                        onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
+                        title="Refresh section"
+                    >
+                        {isRefreshing ? '⏳' : '🔄'}
+                    </button>
+                )}
+                {addButtonText && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onAdd();
+                        }}
+                        style={{
+                            background: theme.colors.accent,
+                            color: theme.colors.primaryBg,
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '8px 16px',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            fontWeight: '600',
+                            transition: 'all 0.2s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.target.style.background = theme.colors.accentHover;
+                        }}
+                        onMouseLeave={(e) => {
+                            e.target.style.background = theme.colors.accent;
+                        }}
+                    >
+                        {addButtonText}
+                    </button>
+                )}
+            </div>
         </div>
     );
 };
@@ -263,6 +291,9 @@ function Wallet() {
     const [lockDetailsLoading, setLockDetailsLoading] = useState({});
     const [refreshingTokens, setRefreshingTokens] = useState(new Set());
     const [refreshingPositions, setRefreshingPositions] = useState(new Set());
+    const [refreshingAllWallet, setRefreshingAllWallet] = useState(false);
+    const [refreshingTokensSection, setRefreshingTokensSection] = useState(false);
+    const [refreshingPositionsSection, setRefreshingPositionsSection] = useState(false);
     const [tokensExpanded, setTokensExpanded] = useState(true);
     const [positionsExpanded, setPositionsExpanded] = useState(true);
     const [principalExpanded, setPrincipalExpanded] = useState(() => {
@@ -2622,6 +2653,43 @@ function Wallet() {
         }
     };
 
+    // Refresh functions for different sections
+    const handleRefreshAllWallet = async () => {
+        setRefreshingAllWallet(true);
+        try {
+            await Promise.all([
+                fetchBalancesAndLocks(),
+                fetchLiquidityPositions()
+            ]);
+        } catch (error) {
+            console.error('Error refreshing all wallet:', error);
+        } finally {
+            setRefreshingAllWallet(false);
+        }
+    };
+
+    const handleRefreshTokensSection = async () => {
+        setRefreshingTokensSection(true);
+        try {
+            await fetchBalancesAndLocks();
+        } catch (error) {
+            console.error('Error refreshing tokens section:', error);
+        } finally {
+            setRefreshingTokensSection(false);
+        }
+    };
+
+    const handleRefreshPositionsSection = async () => {
+        setRefreshingPositionsSection(true);
+        try {
+            await fetchLiquidityPositions();
+        } catch (error) {
+            console.error('Error refreshing positions section:', error);
+        } finally {
+            setRefreshingPositionsSection(false);
+        }
+    };
+
     const [isSneedLockExpanded, setIsSneedLockExpanded] = useState(() => {
         try {
             const saved = localStorage.getItem('sneedLockDisclaimerExpanded');
@@ -2707,6 +2775,31 @@ function Wallet() {
                                 <span className="principal-full-text">Your Sneed Wallet Principal</span>
                                 <span className="principal-short-text" style={{ display: 'none' }}>Your Principal</span>
                             </div>
+                            <button
+                                onClick={handleRefreshAllWallet}
+                                disabled={refreshingAllWallet}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: refreshingAllWallet ? 'default' : 'pointer',
+                                    padding: '6px 10px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    color: theme.colors.mutedText,
+                                    fontSize: '0.9rem',
+                                    fontWeight: '500',
+                                    borderRadius: '6px',
+                                    transition: 'all 0.2s ease',
+                                    opacity: refreshingAllWallet ? 0.6 : 1
+                                }}
+                                onMouseEnter={(e) => !refreshingAllWallet && (e.target.style.color = theme.colors.primaryText)}
+                                onMouseLeave={(e) => !refreshingAllWallet && (e.target.style.color = theme.colors.mutedText)}
+                                title="Refresh entire wallet"
+                            >
+                                <span style={{ fontSize: '1rem' }}>{refreshingAllWallet ? '⏳' : '🔄'}</span>
+                                <span style={{ whiteSpace: 'nowrap' }}>Refresh Wallet</span>
+                            </button>
                             <Link 
                                 to="/help/wallet"
                                 style={{
@@ -3016,6 +3109,8 @@ function Wallet() {
                     onToggle={() => setTokensExpanded(!tokensExpanded)}
                     onAdd={() => setShowAddLedgerModal(true)}
                     addButtonText="Add Token"
+                    onRefresh={handleRefreshTokensSection}
+                    isRefreshing={refreshingTokensSection}
                     theme={theme}
                 />
                 {tokensExpanded && (
@@ -3080,6 +3175,8 @@ function Wallet() {
                     onToggle={() => setPositionsExpanded(!positionsExpanded)}
                     onAdd={() => setShowAddSwapModal(true)}
                     addButtonText="Add Swap Pair"
+                    onRefresh={handleRefreshPositionsSection}
+                    isRefreshing={refreshingPositionsSection}
                     theme={theme}
                 />
                 {positionsExpanded && (
