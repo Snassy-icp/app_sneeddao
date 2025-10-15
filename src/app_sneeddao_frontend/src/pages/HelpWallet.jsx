@@ -255,6 +255,14 @@ function HelpWallet() {
                         enter the recipient's principal, the amount, and an optional memo. The wallet will automatically calculate 
                         the transfer fee.
                     </p>
+                    <div style={styles.infoBox}>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>Smart Balance Combining:</strong> The Send button automatically combines your{' '}
+                            <strong style={styles.strong}>Wallet balance</strong> and your <strong style={styles.strong}>Deposited 
+                            (unlocked) balance</strong>. This means you can send tokens from either location without needing to withdraw 
+                            deposited tokens first. The system intelligently draws from both balances to complete your transfer!
+                        </p>
+                    </div>
                     
                     <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>🔒 Lock Tokens</h4>
                     <p style={styles.paragraph}>
@@ -287,6 +295,44 @@ function HelpWallet() {
                         Some tokens accumulate rewards in the backend. If rewards are available, you'll see a{' '}
                         <strong style={styles.strong}>"Claim Rewards"</strong> button to transfer them to your wallet.
                     </p>
+                    
+                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>📥 Deposit Tokens</h4>
+                    <p style={styles.paragraph}>
+                        Move tokens from your wallet to your deposited balance in the Sneed Hub backend. Expand the{' '}
+                        <strong style={styles.strong}>"Liquid"</strong> section of a token card, and click the{' '}
+                        <strong style={styles.strong}>"Deposit"</strong> button next to your wallet balance. You can specify 
+                        the exact amount to deposit.
+                    </p>
+                    <div style={styles.infoBox}>
+                        <p style={{...styles.paragraph, marginBottom: '0.5rem'}}>
+                            <strong style={styles.strong}>Note:</strong> Depositing incurs <strong style={styles.strong}>one 
+                            transaction fee</strong>. Tokens remain under your control but are held in your subaccount in the 
+                            Sneed Hub backend canister.
+                        </p>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>💡 Pro Tip:</strong> Deposit tokens before locking them with{' '}
+                            <Link to="/help/sneedlock" style={styles.link}>Sneedlock</Link>! Locking already-deposited tokens is{' '}
+                            <strong style={styles.strong}>FREE</strong> (no transaction fee), so you can lock your entire deposited 
+                            amount. If you lock directly from your wallet, the system will deposit them automatically but you'll 
+                            pay a deposit fee.
+                        </p>
+                    </div>
+                    
+                    <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>📤 Withdraw Tokens</h4>
+                    <p style={styles.paragraph}>
+                        Move tokens from your deposited balance back to your wallet. Expand the{' '}
+                        <strong style={styles.strong}>"Liquid"</strong> section and click the{' '}
+                        <strong style={styles.strong}>"Withdraw"</strong> button next to your deposited balance. You can 
+                        specify the exact amount to withdraw. When token locks expire, they automatically appear in your 
+                        deposited balance—you can withdraw them or use them directly from there.
+                    </p>
+                    <div style={styles.infoBox}>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>Tip:</strong> You don't need to withdraw deposited tokens to use them. 
+                            When sending tokens, the wallet automatically combines both balances. However, withdrawing gives you 
+                            direct control in your wallet.
+                        </p>
+                    </div>
                     
                     <h4 style={{...styles.subsubheading, fontSize: '1.1rem'}}>🗑️ Remove Token</h4>
                     <p style={styles.paragraph}>

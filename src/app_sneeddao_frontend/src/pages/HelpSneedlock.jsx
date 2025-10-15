@@ -223,10 +223,33 @@ function HelpSneedlock() {
                         Review the lock details carefully. Once confirmed, your tokens will be:
                     </p>
                     <ol style={styles.list}>
-                        <li style={styles.listItem}>Transferred from your wallet to the Sneedlock canister</li>
-                        <li style={styles.listItem}>Recorded as locked with your specified expiration date</li>
+                        <li style={styles.listItem}>Deposited from your wallet to your Sneed Hub subaccount (if not already deposited)</li>
+                        <li style={styles.listItem}>Locked with your specified expiration date</li>
                         <li style={styles.listItem}>Displayed in the "Locked" section of your token card</li>
                     </ol>
+                    
+                    <div style={styles.infoBox}>
+                        <p style={{...styles.paragraph, marginBottom: '0.5rem'}}>
+                            <strong style={styles.strong}>💡 Transaction Fees for Locking:</strong>
+                        </p>
+                        <ul style={{...styles.list, marginBottom: '0.5rem'}}>
+                            <li style={styles.listItem}>
+                                <strong style={styles.strong}>If locking already-deposited tokens:</strong> FREE! Locking tokens that are 
+                                already in your deposited balance incurs <strong style={styles.strong}>no transaction fee</strong>. This means 
+                                you can lock your entire deposited (unlocked) amount without losing any tokens to fees.
+                            </li>
+                            <li style={styles.listItem}>
+                                <strong style={styles.strong}>If locking tokens from your wallet:</strong> The system will automatically 
+                                deposit them first, which costs <strong style={styles.strong}>1 transaction fee</strong>. Any funds not yet 
+                                deposited will be transferred to your deposited balance automatically as part of the lock process.
+                            </li>
+                        </ul>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>Tip:</strong> To avoid fees, manually deposit tokens first using the Deposit 
+                            button in the Liquid section, then lock them. This way you only pay the deposit fee once and can lock/unlock 
+                            multiple times without additional deposit costs!
+                        </p>
+                    </div>
                     
                     <div style={styles.warningBox}>
                         <p style={{...styles.paragraph, marginBottom: 0}}>
@@ -417,6 +440,27 @@ function HelpSneedlock() {
                         The tokens remain locked on the backend with the same expiration date, but ownership is transferred to the 
                         recipient. The recipient will be able to withdraw the tokens once the lock expires.
                     </p>
+                    
+                    <div style={styles.infoBox}>
+                        <p style={{...styles.paragraph, marginBottom: '0.5rem'}}>
+                            <strong style={styles.strong}>Transaction Fees:</strong> Transferring a token lock costs either{' '}
+                            <strong style={styles.strong}>1 or 2 transaction fees</strong> depending on your deposited balance:
+                        </p>
+                        <ul style={{...styles.list, marginBottom: '0.5rem'}}>
+                            <li style={styles.listItem}>
+                                <strong style={styles.strong}>If you have at least 1 tx fee in your deposited balance:</strong> Only 1 tx fee is required 
+                                (the fee is paid from your deposited balance)
+                            </li>
+                            <li style={styles.listItem}>
+                                <strong style={styles.strong}>If you have less than 1 tx fee deposited:</strong> 2 tx fees total—the system will 
+                                automatically transfer 1 tx fee from your wallet to your deposited balance first, then use it for the transfer
+                            </li>
+                        </ul>
+                        <p style={{...styles.paragraph, marginBottom: 0}}>
+                            <strong style={styles.strong}>Tip:</strong> Keep at least 1 tx fee in your deposited balance for each token type 
+                            you plan to transfer locks for—this saves you fees in the long run!
+                        </p>
+                    </div>
                     
                     <div style={styles.infoBox}>
                         <p style={{...styles.paragraph, marginBottom: 0}}>
