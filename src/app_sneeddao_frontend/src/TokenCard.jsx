@@ -94,6 +94,16 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
     // Image loading state
     const [logoLoaded, setLogoLoaded] = useState(false);
     
+    // Preload logo
+    useEffect(() => {
+        if (token.logo) {
+            const img = new Image();
+            img.onload = () => setLogoLoaded(true);
+            img.onerror = () => setLogoLoaded(true);
+            img.src = token.logo;
+        }
+    }, [token.logo]);
+    
     // Neuron state
     const [neurons, setNeurons] = useState([]);
     const [neuronsLoading, setNeuronsLoading] = useState(false);
@@ -1057,16 +1067,15 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         <div className="card">
             <div className="card-header" onClick={handleHeaderClick}>
                 <div className="header-logo-column" style={{ alignSelf: 'flex-start', minWidth: '48px', minHeight: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {!logoLoaded && (
+                    {!logoLoaded ? (
                         <div className="spinner" style={{ width: '24px', height: '24px' }}></div>
+                    ) : (
+                        <img 
+                            src={token.logo} 
+                            alt={token.symbol} 
+                            className="token-logo"
+                        />
                     )}
-                    <img 
-                        src={token.logo} 
-                        alt={token.symbol} 
-                        className="token-logo" 
-                        onLoad={() => setLogoLoaded(true)}
-                        style={{ display: logoLoaded ? 'block' : 'none' }}
-                    />
                 </div>
                 <div className="header-content-column">
                     {/* Row 1: Token name (left) and USD total (right) */}

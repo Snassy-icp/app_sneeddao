@@ -85,6 +85,22 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
     // Image loading state
     const [logo0Loaded, setLogo0Loaded] = useState(false);
     const [logo1Loaded, setLogo1Loaded] = useState(false);
+    
+    // Preload logos
+    useEffect(() => {
+        if (position.token0Logo) {
+            const img = new Image();
+            img.onload = () => setLogo0Loaded(true);
+            img.onerror = () => setLogo0Loaded(true);
+            img.src = position.token0Logo;
+        }
+        if (position.token1Logo) {
+            const img = new Image();
+            img.onload = () => setLogo1Loaded(true);
+            img.onerror = () => setLogo1Loaded(true);
+            img.src = position.token1Logo;
+        }
+    }, [position.token0Logo, position.token1Logo]);
 
     const handleHeaderClick = () => {
         setIsExpanded(!isExpanded);
@@ -143,23 +159,22 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
         <div className="card">
             <div className="card-header" onClick={handleHeaderClick}>
                 <div className="header-logo-column" style={{ minWidth: '64px', minHeight: '36px', display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
-                    {(!logo0Loaded || !logo1Loaded) && (
+                    {(!logo0Loaded || !logo1Loaded) ? (
                         <div className="spinner" style={{ width: '24px', height: '24px' }}></div>
+                    ) : (
+                        <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                            <img 
+                                src={position.token0Logo} 
+                                alt={position.token0Symbol} 
+                                className="swap-token-logo1"
+                            />
+                            <img 
+                                src={position.token1Logo} 
+                                alt={position.token1Symbol} 
+                                className="swap-token-logo2"
+                            />
+                        </div>
                     )}
-                    <div style={{ display: (logo0Loaded && logo1Loaded) ? 'flex' : 'none', alignItems: 'flex-start' }}>
-                        <img 
-                            src={position.token0Logo} 
-                            alt={position.token0Symbol} 
-                            className="swap-token-logo1" 
-                            onLoad={() => setLogo0Loaded(true)}
-                        />
-                        <img 
-                            src={position.token1Logo} 
-                            alt={position.token1Symbol} 
-                            className="swap-token-logo2" 
-                            onLoad={() => setLogo1Loaded(true)}
-                        />
-                    </div>
                 </div>
                 <div className="header-content-column">
                     {/* Row 1: Token pair name + position ID, USD total */}
