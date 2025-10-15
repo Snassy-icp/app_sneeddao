@@ -1073,7 +1073,8 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         <img 
                             src={token.logo} 
                             alt={token.symbol} 
-                            className="token-logo"
+                            className="token-logo-card"
+                            style={{ height: '48px', width: 'auto' }}
                         />
                     )}
                 </div>

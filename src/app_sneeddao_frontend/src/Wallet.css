@@ -197,6 +197,12 @@ body {
     border-radius: 50%;
 }
 
+img.token-logo-card {
+    width: auto;
+    height: 48px;
+    border-radius: 50%;
+}
+
 .swap-token-logo1 {
     width: auto;
     height: 36px;
