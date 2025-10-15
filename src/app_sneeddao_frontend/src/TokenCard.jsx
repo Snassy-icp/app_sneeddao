@@ -1081,47 +1081,47 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             }
                         </span>
                     </div>
-                    {/* Row 2: Amount and symbol (left) */}
+                    {/* Row 2: Amount and symbol (left) and Refresh button (right) */}
                     <div className="header-row-2">
                         <div className="amount-symbol">
                             {!hideAvailable && (
                                 <span className="token-amount">{formatAmount((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} {token.symbol}</span>
                             )}
                         </div>
+                        {handleRefreshToken && (
+                            <button
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+                                    await handleRefreshToken(token);
+                                    // Also refresh neurons if it's an SNS token
+                                    if (isSnsToken && refetchNeurons) {
+                                        await refetchNeurons();
+                                    }
+                                }}
+                                disabled={isRefreshing}
+                                style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: isRefreshing ? 'default' : 'pointer',
+                                    padding: '4px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    color: theme.colors.mutedText,
+                                    fontSize: '1.2rem',
+                                    transition: 'color 0.2s ease',
+                                    opacity: isRefreshing ? 0.6 : 1
+                                }}
+                                onMouseEnter={(e) => !isRefreshing && (e.target.style.color = theme.colors.primaryText)}
+                                onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
+                                title="Refresh token data"
+                            >
+                                {isRefreshing ? '⏳' : '🔄'}
+                            </button>
+                        )}
                     </div>
-                    {/* Row 3: Refresh button + SNS pill (left) and divot (right) */}
+                    {/* Row 3: SNS pill (left) and divot (right) */}
                     <div className="header-row-3" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {handleRefreshToken && (
-                                <button
-                                    onClick={async (e) => {
-                                        e.stopPropagation();
-                                        await handleRefreshToken(token);
-                                        // Also refresh neurons if it's an SNS token
-                                        if (isSnsToken && refetchNeurons) {
-                                            await refetchNeurons();
-                                        }
-                                    }}
-                                    disabled={isRefreshing}
-                                    style={{
-                                        background: 'none',
-                                        border: 'none',
-                                        cursor: isRefreshing ? 'default' : 'pointer',
-                                        padding: '4px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        color: theme.colors.mutedText,
-                                        fontSize: '1.2rem',
-                                        transition: 'color 0.2s ease',
-                                        opacity: isRefreshing ? 0.6 : 1
-                                    }}
-                                    onMouseEnter={(e) => !isRefreshing && (e.target.style.color = theme.colors.primaryText)}
-                                    onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
-                                    title="Refresh token data"
-                                >
-                                    {isRefreshing ? '⏳' : '🔄'}
-                                </button>
-                            )}
                             {isSnsToken && (
                                 <span style={{
                                     background: theme.colors.accent,
