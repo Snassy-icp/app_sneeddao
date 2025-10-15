@@ -1269,7 +1269,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                     {balanceSectionExpanded ? '▼' : '▶'}
                                 </span>
                             </div>
-                            <div className="balance-value">${formatAmountWithConversion(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate, 2)}</div>
+                            <div className="balance-value">{formatAmount(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(availableOrZero(token.available) + token.locked + getTotalNeuronStake() + getTotalNeuronMaturity() + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}</div>
                         </div>
                         {balanceSectionExpanded && (
                             <>
@@ -1305,7 +1305,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 }}>
                                     <div>
                                         <div style={{ fontSize: '12px', color: '#bdc3c7' }}>Wallet</div>
-                                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'white' }}>
+                                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: theme.colors.primaryText }}>
                                             {formatAmount(token.balance || 0n, token.decimals)} {token.symbol}
                                         </div>
                                         {(() => {
@@ -1347,20 +1347,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 
                                 <div className="balance-breakdown-item">
                                     <div style={{ fontSize: '12px', color: '#bdc3c7' }}>Deposited</div>
-                                    <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'white' }}>
+                                    <div style={{ fontSize: '14px', fontWeight: 'bold', color: theme.colors.primaryText }}>
                                         {formatAmount(token.available_backend || 0n, token.decimals)} {token.symbol}
                                     </div>
                                     {(() => {
                                         const shouldShowButton = token.available_backend > 0n && !hideButtons;
-                                        console.log('Withdraw button debug:', {
-                                            symbol: token.symbol,
-                                            available_backend: token.available_backend?.toString(),
-                                            available_backend_bigint: typeof token.available_backend,
-                                            is_greater_than_zero: token.available_backend > 0n,
-                                            hideButtons,
-                                            shouldShowButton,
-                                            handleWithdrawFromBackend: typeof handleWithdrawFromBackend
-                                        });
                                         
                                         return shouldShowButton ? (
                                             <div
@@ -1425,9 +1416,11 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 )}
                 {(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0) ? (
                     <div className="balance-item">
-                        <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '14px' }}>🎁</span>
-                            Rewards:
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                            <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '14px' }}>🎁</span>
+                                Rewards
+                            </div>
                             <button 
                                 onClick={() => handleClaimRewards(token)}
                                 style={{
