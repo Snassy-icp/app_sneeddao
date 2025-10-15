@@ -902,6 +902,134 @@ function Wallet() {
         }
     }
 
+    // Refresh a single liquidity position instead of all positions
+    async function refreshSinglePosition(swapCanisterId) {
+        try {
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            const sneedLockActor = createSneedLockActor(sneedLockCanisterId, { agentOptions: { identity } });
+
+            // Get claimed positions for this swap canister
+            const claimed_positions = await sneedLockActor.get_claimed_positions_for_principal(identity.getPrincipal());
+            const claimed_positions_for_swap = claimed_positions.filter(cp => 
+                cp.swap_canister_id === swapCanisterId || 
+                (typeof swapCanisterId === 'string' && cp.swap_canister_id === swapCanisterId) ||
+                (cp.swap_canister_id?.toText?.() === swapCanisterId?.toText?.())
+            );
+            const claimed_position_ids_for_swap = claimed_positions_for_swap.map(cp => cp.position_id);
+            const claimed_positions_for_swap_by_id = {};
+            for (const claimed_position of claimed_positions_for_swap) {
+                claimed_positions_for_swap_by_id[claimed_position.position_id] = claimed_position;
+            }
+
+            // Get swap metadata and token info
+            const swapActor = createIcpSwapActor(swapCanisterId);
+            const token_meta = await getTokenMetaForSwap(swapActor, backendActor, swapCanisterId);
+            const swap_meta = await swapActor.metadata();
+
+            const icrc1_ledger0 = swap_meta.ok.token0.address;
+            const ledgerActor0 = createLedgerActor(icrc1_ledger0);
+            const metadata0 = await ledgerActor0.icrc1_metadata();
+            const token0Logo = getTokenLogo(metadata0);
+
+            const icrc1_ledger1 = swap_meta.ok.token1.address;
+            const ledgerActor1 = createLedgerActor(icrc1_ledger1);
+            const metadata1 = await ledgerActor1.icrc1_metadata();
+            const token1Logo = getTokenLogo(metadata1);
+
+            const token0Decimals = token_meta?.token0?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 0;
+            const token0Symbol = token_meta?.token0?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
+            const token1Decimals = token_meta?.token1?.find(([key]) => key === "decimals")?.[1]?.Nat ?? 0;
+            const token1Symbol = token_meta?.token1?.find(([key]) => key === "symbol")?.[1]?.Text ?? "Unknown";
+
+            const token0Fee = await ledgerActor0.icrc1_fee();
+            const token1Fee = await ledgerActor1.icrc1_fee();
+
+            let token0LogoFinal = token0Logo;
+            let token1LogoFinal = token1Logo;
+            if (token0Symbol?.toLowerCase() === "icp" && token0Logo === "") { token0LogoFinal = "icp_symbol.svg"; }
+            if (token1Symbol?.toLowerCase() === "icp" && token1Logo === "") { token1LogoFinal = "icp_symbol.svg"; }
+
+            const token0_conversion_rate = await get_token_conversion_rate(icrc1_ledger0, token0Decimals);
+            const token1_conversion_rate = await get_token_conversion_rate(icrc1_ledger1, token1Decimals);
+
+            const userPositionIds = (await swapActor.getUserPositionIdsByPrincipal(identity.getPrincipal())).ok;
+
+            let offset = 0;
+            const limit = 10;
+            let userPositions = [];
+            let hasMorePositions = true;
+            while (hasMorePositions) {
+                const allPositions = (await swapActor.getUserPositionWithTokenAmount(offset, limit)).ok.content;
+                for (const position of allPositions) {
+                    if (userPositionIds.includes(position.id) || claimed_position_ids_for_swap.includes(position.id)) {
+                        userPositions.push({
+                            position: position,
+                            claimInfo: claimed_positions_for_swap_by_id[position.id],
+                            frontendOwnership: userPositionIds.includes(position.id)
+                        });
+                    }
+                }
+                offset += limit;
+                hasMorePositions = allPositions.length === limit;
+            }
+
+            const unused = await swapActor.getUserUnusedBalance(identity.getPrincipal());
+            const swapCanisterBalance0 = unused.ok ? unused.ok.balance0 : 0n;
+            const swapCanisterBalance1 = unused.ok ? unused.ok.balance1 : 0n;
+
+            const positionDetails = await Promise.all(userPositions.map(async (compoundPosition) => {
+                const position = compoundPosition.position;
+                return {
+                    positionId: position.id,
+                    tokensOwed0: position.tokensOwed0,
+                    tokensOwed1: position.tokensOwed1,
+                    token0Amount: position.token0Amount,
+                    token1Amount: position.token1Amount,
+                    frontendOwnership: compoundPosition.frontendOwnership,
+                    lockInfo: (!compoundPosition.frontendOwnership && compoundPosition.claimInfo.position_lock && toJsonString(compoundPosition.claimInfo.position_lock) !== '[]')
+                        ? compoundPosition.claimInfo.position_lock[0]
+                        : null
+                };
+            }));
+
+            const liquidityPosition = {
+                swapCanisterId: swapCanisterId,
+                token0: Principal.fromText(icrc1_ledger0),
+                token1: Principal.fromText(icrc1_ledger1),
+                token0Symbol: token0Symbol,
+                token1Symbol: token1Symbol,
+                token0Logo: token0LogoFinal,
+                token1Logo: token1LogoFinal,
+                token0Decimals: token0Decimals,
+                token1Decimals: token1Decimals,
+                token0Fee: token0Fee,
+                token1Fee: token1Fee,
+                token0_conversion_rate: token0_conversion_rate,
+                token1_conversion_rate: token1_conversion_rate,
+                swapCanisterBalance0: swapCanisterBalance0,
+                swapCanisterBalance1: swapCanisterBalance1,
+                positions: positionDetails,
+                loading: false
+            };
+
+            // Update only this position in state
+            setLiquidityPositions(prevPositions => prevPositions.map(pos => {
+                const posSwapId = pos.swapCanisterId?.toText?.() || pos.swapCanisterId?.toString?.() || pos.swapCanisterId;
+                const targetSwapId = swapCanisterId?.toText?.() || swapCanisterId?.toString?.() || swapCanisterId;
+                return posSwapId === targetSwapId ? liquidityPosition : pos;
+            }));
+
+            return {
+                token0Ledger: Principal.fromText(icrc1_ledger0),
+                token1Ledger: Principal.fromText(icrc1_ledger1)
+            };
+
+        } catch (error) {
+            console.error('Error refreshing single position:', error);
+            throw error;
+        }
+    }
+
     async function fetchLockDetails(currentTokens) {
         // Initialize lockDetailsLoading state
         const initialLoadingState = {};
@@ -1862,8 +1990,10 @@ function Wallet() {
                 );
         }
 
-        // we don't need to wait for this, but it is nice to trigger a refresh here.
-        if (result["Ok"]) { /*await*/ fetchLiquidityPositions(); }
+        // Refresh only the specific position that was locked
+        if (result["Ok"]) { 
+            /*await*/ refreshSinglePosition(position.swapCanisterId); 
+        }
 
         return result;
     };
@@ -2002,8 +2132,35 @@ function Wallet() {
                 token1: claimedAmount1.toString()
             });
 
-            // Refresh liquidity positions to update the UI
-            await fetchLiquidityPositions();
+            // Refresh only this position
+            const { token0Ledger, token1Ledger } = await refreshSinglePosition(liquidityPosition.swapCanisterId);
+            
+            // Ensure both tokens are in wallet and refresh them
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            
+            // Check if tokens exist in wallet, if not add them
+            const token0Exists = tokens.some(t => 
+                t.ledger_canister_id?.toText?.() === token0Ledger.toText() || 
+                t.ledger_canister_id?.toString?.() === token0Ledger.toString()
+            );
+            const token1Exists = tokens.some(t => 
+                t.ledger_canister_id?.toText?.() === token1Ledger.toText() || 
+                t.ledger_canister_id?.toString?.() === token1Ledger.toString()
+            );
+            
+            // Auto-add tokens if not in wallet
+            if (!token0Exists) {
+                console.log('Auto-adding token0 to wallet:', token0Ledger.toText());
+                await backendActor.register_ledger_canister_id(token0Ledger);
+            }
+            if (!token1Exists) {
+                console.log('Auto-adding token1 to wallet:', token1Ledger.toText());
+                await backendActor.register_ledger_canister_id(token1Ledger);
+            }
+            
+            // Refresh both tokens (whether newly added or existing)
+            await fetchBalancesAndLocks(token0Ledger);
+            await fetchBalancesAndLocks(token1Ledger);
             
             console.log('=== Claim process completed ===');
 
@@ -2138,8 +2295,35 @@ function Wallet() {
                 throw new Error('Polling timeout - request may still be processing');
             }
 
-            // Refresh liquidity positions to update the UI
-            await fetchLiquidityPositions();
+            // Refresh only this position
+            const { token0Ledger, token1Ledger } = await refreshSinglePosition(swapCanisterId);
+            
+            // Ensure both tokens are in wallet and refresh them
+            const backendActor = createBackendActor(backendCanisterId, { agentOptions: { identity } });
+            
+            // Check if tokens exist in wallet, if not add them
+            const token0Exists = tokens.some(t => 
+                t.ledger_canister_id?.toText?.() === token0Ledger.toText() || 
+                t.ledger_canister_id?.toString?.() === token0Ledger.toString()
+            );
+            const token1Exists = tokens.some(t => 
+                t.ledger_canister_id?.toText?.() === token1Ledger.toText() || 
+                t.ledger_canister_id?.toString?.() === token1Ledger.toString()
+            );
+            
+            // Auto-add tokens if not in wallet
+            if (!token0Exists) {
+                console.log('Auto-adding token0 to wallet:', token0Ledger.toText());
+                await backendActor.register_ledger_canister_id(token0Ledger);
+            }
+            if (!token1Exists) {
+                console.log('Auto-adding token1 to wallet:', token1Ledger.toText());
+                await backendActor.register_ledger_canister_id(token1Ledger);
+            }
+            
+            // Refresh both tokens (whether newly added or existing)
+            await fetchBalancesAndLocks(token0Ledger);
+            await fetchBalancesAndLocks(token1Ledger);
             
             console.log('=== Locked position claim completed ===');
 
