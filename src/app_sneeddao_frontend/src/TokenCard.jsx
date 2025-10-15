@@ -1387,80 +1387,80 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </div>
                             </div>
                         )}
-                <div className="balance-item">
-                    <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '14px' }}>🔐</span>
-                        Locked
-                    </div>
-                    <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate)}</div>
-                </div>
-                {isSnsToken && neurons.length > 0 && (
-                    <>
                         <div className="balance-item">
                             <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '14px' }}>🧠</span>
-                                Staked
+                                <span style={{ fontSize: '14px' }}>🔐</span>
+                                Locked
                             </div>
-                            <div className="balance-value">{formatAmount(getTotalNeuronStake(), token.decimals)}{getUSD(getTotalNeuronStake(), token.decimals, token.conversion_rate)}</div>
+                            <div className="balance-value">{formatAmount(token.locked || 0n, token.decimals)}{getUSD(token.locked || 0n, token.decimals, token.conversion_rate)}</div>
                         </div>
-                        {getTotalNeuronMaturity() > 0n && (
-                            <div className="balance-item">
-                                <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '14px' }}>🌱</span>
-                                    Maturity
+                        {isSnsToken && neurons.length > 0 && (
+                            <>
+                                <div className="balance-item">
+                                    <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ fontSize: '14px' }}>🧠</span>
+                                        Staked
+                                    </div>
+                                    <div className="balance-value">{formatAmount(getTotalNeuronStake(), token.decimals)}{getUSD(getTotalNeuronStake(), token.decimals, token.conversion_rate)}</div>
                                 </div>
-                                <div className="balance-value">{formatAmount(getTotalNeuronMaturity(), token.decimals)}{getUSD(getTotalNeuronMaturity(), token.decimals, token.conversion_rate)}</div>
-                            </div>
+                                {getTotalNeuronMaturity() > 0n && (
+                                    <div className="balance-item">
+                                        <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ fontSize: '14px' }}>🌱</span>
+                                            Maturity
+                                        </div>
+                                        <div className="balance-value">{formatAmount(getTotalNeuronMaturity(), token.decimals)}{getUSD(getTotalNeuronMaturity(), token.decimals, token.conversion_rate)}</div>
+                                    </div>
+                                )}
+                            </>
                         )}
-                    </>
-                )}
-                {(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0) ? (
-                    <div className="balance-item">
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                            <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '14px' }}>🎁</span>
-                                Rewards
+                        {(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0) ? (
+                            <div className="balance-item">
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                    <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ fontSize: '14px' }}>🎁</span>
+                                        Rewards
+                                    </div>
+                                    <button 
+                                        onClick={() => handleClaimRewards(token)}
+                                        style={{
+                                            background: theme.colors.success || theme.colors.accent,
+                                            color: theme.colors.primaryBg,
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '4px 8px',
+                                            cursor: 'pointer',
+                                            fontSize: '0.75rem',
+                                            fontWeight: '500',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.target.style.background = theme.colors.successHover || theme.colors.accentHover;
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.target.style.background = theme.colors.success || theme.colors.accent;
+                                        }}
+                                    >
+                                        <img 
+                                            src="grasp-white.png" 
+                                            alt="Claim" 
+                                            style={{ width: '12px', height: '12px' }}
+                                        />
+                                        Claim
+                                    </button>
+                                </div>
+                                <div className="balance-value">{formatAmount(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}</div>
                             </div>
-                            <button 
-                                onClick={() => handleClaimRewards(token)}
-                                style={{
-                                    background: theme.colors.success || theme.colors.accent,
-                                    color: theme.colors.primaryBg,
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '4px 8px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.75rem',
-                                    fontWeight: '500',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px',
-                                    transition: 'all 0.2s ease'
-                                }}
-                                onMouseEnter={(e) => {
-                                    e.target.style.background = theme.colors.successHover || theme.colors.accentHover;
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.target.style.background = theme.colors.success || theme.colors.accent;
-                                }}
-                            >
-                                <img 
-                                    src="grasp-white.png" 
-                                    alt="Claim" 
-                                    style={{ width: '12px', height: '12px' }}
-                                />
-                                Claim
-                            </button>
-                        </div>
-                        <div className="balance-value">{formatAmount(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)}{getUSD(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}</div>
-                    </div>
-                ) : (
-                    ((Object.keys(rewardDetailsLoading).length === 0 || (rewardDetailsLoading[token.ledger_canister_id] != null && rewardDetailsLoading[token.ledger_canister_id] < 0))) && (
-                        <div className="spinner-container">
-                            <div className="spinner"></div>
-                        </div>
-                    )
-                )}
+                        ) : (
+                            ((Object.keys(rewardDetailsLoading).length === 0 || (rewardDetailsLoading[token.ledger_canister_id] != null && rewardDetailsLoading[token.ledger_canister_id] < 0))) && (
+                                <div className="spinner-container">
+                                    <div className="spinner"></div>
+                                </div>
+                            )
+                        )}
                             </>
                         )}
                     </>
