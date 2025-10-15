@@ -38,7 +38,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
         if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet'].includes(path)) return 'Me';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
-        if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path)) return 'Locks';
+        if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path) || path.startsWith('/lock/')) return 'Locks';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
         if (['/admin'].includes(path) || location.pathname.startsWith('/admin/')) return 'Admin';
         if (['/help', '/doc'].includes(path) || location.pathname.startsWith('/help/')) return 'Help';
@@ -102,7 +102,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             setActiveSection('Me');
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
-        } else if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path)) {
+        } else if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path) || path.startsWith('/lock/')) {
             setActiveSection('Locks');
         } else if (['/admin'].includes(path) || path.startsWith('/admin/')) {
             setActiveSection('Admin');
@@ -295,8 +295,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
             return true;
         }
         
-        // Special handling for Locks submenu item - highlight for sneedlock, tokenlock and positionlock
-        if (itemPath === '/sneedlock' && ['/sneedlock', '/tokenlock', '/positionlock'].includes(currentPath)) {
+        // Special handling for Locks submenu item - highlight for sneedlock, tokenlock, positionlock, and lock
+        if (itemPath === '/sneedlock' && (['/sneedlock', '/tokenlock', '/positionlock'].includes(currentPath) || currentPath.startsWith('/lock/'))) {
             return true;
         }
         

@@ -7,6 +7,7 @@ import Help from './Help';
 import Dashboard from './Dashboard';
 import TokenLock from './TokenLock';
 import PositionLock from './PositionLock';
+import Lock from './Lock';
 import TokenLocksOverview from './TokenLocksOverview';
 import RLL from './RLL';
 import RLLInfo from './RLLInfo';
@@ -105,6 +106,7 @@ function App() {
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/tokenlock" element={<TokenLock />} />
                     <Route path="/positionlock" element={<PositionLock />} />
+                    <Route path="/lock/:id" element={<Lock />} />
                     <Route path="/tokenlocksoverview" element={<TokenLocksOverview />} />
                     <Route path="/neuron" element={<Neuron />} />
                     <Route path="/proposal" element={<Proposal />} />
