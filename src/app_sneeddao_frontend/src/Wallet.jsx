@@ -1756,8 +1756,8 @@ function Wallet() {
 
                 console.log('Position withdrawal result:', toJsonString(result));
 
-                // Refresh the liquidity positions
-                await fetchLiquidityPositions();
+                // Refresh only the specific position
+                await refreshSinglePosition(liquidityPosition.swapCanisterId);
                 console.log('=== Position withdrawal completed ===');
                 
             } catch (error) {
@@ -2080,8 +2080,8 @@ function Wallet() {
                 console.log('Token1 balance too small to withdraw:', balance1.toString());
             }
 
-            // Refresh liquidity positions to update the UI
-            await fetchLiquidityPositions();
+            // Refresh only the specific position
+            await refreshSinglePosition(liquidityPosition.swapCanisterId);
             
             // Also refresh token balances for both tokens
             await fetchBalancesAndLocks(Principal.fromText(token0Ledger));
