@@ -38,6 +38,7 @@ import Header from './components/Header';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from './utils/BackendUtils';
 import priceService from './services/PriceService';
+import ConsolidateModal from './ConsolidateModal';
 
 // Component for empty position cards (when no positions exist for a swap pair)
 const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefreshing, theme }) => {
@@ -325,6 +326,9 @@ function Wallet() {
     const [tokensTotal, setTokensTotal] = useState(0.0);
     const [lpPositionsTotal, setLpPositionsTotal] = useState(0.0);
     const [icpPrice, setIcpPrice] = useState(null);
+    const [showConsolidateModal, setShowConsolidateModal] = useState(false);
+    const [consolidateType, setConsolidateType] = useState(null); // 'fees', 'rewards', 'maturity', 'all'
+    const [consolidateItems, setConsolidateItems] = useState([]);
 
     const dex_icpswap = 1;
  
@@ -2704,6 +2708,152 @@ function Wallet() {
         }
     };
 
+    // Consolidation Functions
+    const getFeesItems = () => {
+        const items = [];
+        liquidityPositions.forEach(position => {
+            position.positions.forEach(positionDetails => {
+                if (positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n) {
+                    const fee0USD = position.token0_conversion_rate 
+                        ? Number(positionDetails.tokensOwed0) / Number(10n ** BigInt(position.token0Decimals)) * position.token0_conversion_rate
+                        : 0;
+                    const fee1USD = position.token1_conversion_rate
+                        ? Number(positionDetails.tokensOwed1) / Number(10n ** BigInt(position.token1Decimals)) * position.token1_conversion_rate
+                        : 0;
+                    const totalFeesUSD = fee0USD + fee1USD;
+                    
+                    items.push({
+                        type: 'fee',
+                        name: `${position.token0Symbol}/${position.token1Symbol} Position #${positionDetails.positionId.toString()}`,
+                        description: `${formatAmount(positionDetails.tokensOwed0, position.token0Decimals)} ${position.token0Symbol} + ${formatAmount(positionDetails.tokensOwed1, position.token1Decimals)} ${position.token1Symbol}`,
+                        usdValue: totalFeesUSD,
+                        position: position,
+                        positionDetails: positionDetails
+                    });
+                }
+            });
+        });
+        return items;
+    };
+
+    const getRewardsItems = () => {
+        const items = [];
+        tokens.forEach(token => {
+            const rewardAmount = rewardAmountOrZero(token, rewardDetailsLoading, false);
+            if (rewardAmount > 0n) {
+                const rewardsUSD = token.conversion_rate 
+                    ? Number(rewardAmount) / Number(10n ** BigInt(token.decimals)) * token.conversion_rate
+                    : 0;
+                
+                items.push({
+                    type: 'reward',
+                    name: `${token.symbol} Rewards`,
+                    description: `${formatAmount(rewardAmount, token.decimals)} ${token.symbol}`,
+                    usdValue: rewardsUSD,
+                    token: token,
+                    amount: rewardAmount
+                });
+            }
+        });
+        return items;
+    };
+
+    const getMaturityItems = () => {
+        const items = [];
+        // Only SNS tokens have neurons with maturity
+        tokens.forEach(token => {
+            if (!snsTokens.has(token.ledger_canister_id?.toString?.())) return;
+            
+            const neurons = token.neurons || [];
+            neurons.forEach(neuron => {
+                const maturity = BigInt(neuron.maturity_e8s_equivalent || 0n);
+                if (maturity > 0n) {
+                    const maturityUSD = token.conversion_rate 
+                        ? Number(maturity) / Number(10n ** BigInt(token.decimals)) * token.conversion_rate
+                        : 0;
+                    
+                    const neuronIdHex = Array.from(neuron.id[0].id)
+                        .map(b => b.toString(16).padStart(2, '0'))
+                        .join('');
+                    
+                    items.push({
+                        type: 'maturity',
+                        name: `${token.symbol} Neuron ${neuronIdHex.substring(0, 8)}...`,
+                        description: `${formatAmount(maturity, token.decimals)} ${token.symbol}`,
+                        usdValue: maturityUSD,
+                        token: token,
+                        neuron: neuron,
+                        neuronIdHex: neuronIdHex,
+                        amount: maturity
+                    });
+                }
+            });
+        });
+        return items;
+    };
+
+    const handleOpenConsolidateModal = (type) => {
+        let items = [];
+        
+        if (type === 'fees') {
+            items = getFeesItems();
+        } else if (type === 'rewards') {
+            items = getRewardsItems();
+        } else if (type === 'maturity') {
+            items = getMaturityItems();
+        } else if (type === 'all') {
+            items = [
+                ...getFeesItems(),
+                ...getRewardsItems(),
+                ...getMaturityItems()
+            ];
+        }
+        
+        setConsolidateItems(items);
+        setConsolidateType(type);
+        setShowConsolidateModal(true);
+    };
+
+    const handleConsolidateItem = async (item) => {
+        if (item.type === 'fee') {
+            await handleClaimLockedPositionFees({
+                position: item.position,
+                positionDetails: item.positionDetails
+            });
+        } else if (item.type === 'reward') {
+            await handleClaimRewards(item.token);
+        } else if (item.type === 'maturity') {
+            await handleDisburseMaturity(item.token, item.neuronIdHex);
+        }
+    };
+
+    const handleDisburseMaturity = async (token, neuronIdHex) => {
+        const snsInfo = getSnsById(token.ledger_canister_id?.toString?.());
+        if (!snsInfo) {
+            throw new Error('SNS information not found');
+        }
+
+        const governanceActor = createSnsGovernanceActor(snsInfo.governance_canister_id, {
+            agentOptions: { identity }
+        });
+
+        const neuronId = { id: Array.from(Buffer.from(neuronIdHex, 'hex')) };
+        
+        const result = await governanceActor.manage_neuron({
+            subaccount: neuronId.id,
+            command: [{
+                DisburseMaturity: { 
+                    to_account: [],
+                    percentage_to_disburse: 100 
+                }
+            }]
+        });
+
+        if (result.command && result.command[0] && 'Error' in result.command[0]) {
+            throw new Error(result.command[0].Error.error_message);
+        }
+    };
+
     const [isSneedLockExpanded, setIsSneedLockExpanded] = useState(() => {
         try {
             const saved = localStorage.getItem('sneedLockDisclaimerExpanded');
@@ -3094,6 +3244,254 @@ function Wallet() {
                         </div>
                     </div>
                 )}
+
+                {/* Consolidation Section */}
+                {isAuthenticated && (totalBreakdown.fees > 0 || totalBreakdown.rewards > 0 || totalBreakdown.maturity > 0) && (
+                    <div style={{
+                        background: theme.colors.cardGradient,
+                        border: `1px solid ${theme.colors.border}`,
+                        borderRadius: '12px',
+                        padding: '20px',
+                        marginBottom: '20px',
+                        boxShadow: theme.colors.cardShadow
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '16px'
+                        }}>
+                            <h3 style={{
+                                margin: 0,
+                                color: theme.colors.primaryText,
+                                fontSize: '1.2rem',
+                                fontWeight: '600'
+                            }}>
+                                Quick Consolidate
+                            </h3>
+                            <button
+                                onClick={() => handleOpenConsolidateModal('all')}
+                                style={{
+                                    background: theme.colors.accent,
+                                    color: theme.colors.primaryBg,
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    padding: '10px 20px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.9rem',
+                                    fontWeight: '600',
+                                    transition: 'all 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.target.style.background = theme.colors.accentHover;
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.target.style.background = theme.colors.accent;
+                                }}
+                            >
+                                Consolidate All
+                            </button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {/* Fees Row */}
+                            {totalBreakdown.fees > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '12px 16px',
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    borderRadius: '8px',
+                                    border: `1px solid ${theme.colors.border}`
+                                }}>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            marginBottom: '4px'
+                                        }}>
+                                            <span style={{ fontSize: '1.2rem' }}>💸</span>
+                                            <span style={{
+                                                color: theme.colors.primaryText,
+                                                fontSize: '1rem',
+                                                fontWeight: '500'
+                                            }}>
+                                                Total Unclaimed Fees
+                                            </span>
+                                        </div>
+                                        <div style={{
+                                            color: theme.colors.accent,
+                                            fontSize: '1.3rem',
+                                            fontWeight: '600',
+                                            marginLeft: '28px'
+                                        }}>
+                                            ${totalBreakdown.fees.toLocaleString(undefined, { 
+                                                minimumFractionDigits: 2, 
+                                                maximumFractionDigits: 2 
+                                            })}
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleOpenConsolidateModal('fees')}
+                                        style={{
+                                            background: theme.colors.accent,
+                                            color: theme.colors.primaryBg,
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '8px 16px',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '600',
+                                            transition: 'all 0.2s ease',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.target.style.background = theme.colors.accentHover;
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.target.style.background = theme.colors.accent;
+                                        }}
+                                    >
+                                        Consolidate
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Rewards Row */}
+                            {totalBreakdown.rewards > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '12px 16px',
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    borderRadius: '8px',
+                                    border: `1px solid ${theme.colors.border}`
+                                }}>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            marginBottom: '4px'
+                                        }}>
+                                            <span style={{ fontSize: '1.2rem' }}>🎁</span>
+                                            <span style={{
+                                                color: theme.colors.primaryText,
+                                                fontSize: '1rem',
+                                                fontWeight: '500'
+                                            }}>
+                                                Total Unclaimed Rewards
+                                            </span>
+                                        </div>
+                                        <div style={{
+                                            color: theme.colors.accent,
+                                            fontSize: '1.3rem',
+                                            fontWeight: '600',
+                                            marginLeft: '28px'
+                                        }}>
+                                            ${totalBreakdown.rewards.toLocaleString(undefined, { 
+                                                minimumFractionDigits: 2, 
+                                                maximumFractionDigits: 2 
+                                            })}
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleOpenConsolidateModal('rewards')}
+                                        style={{
+                                            background: theme.colors.accent,
+                                            color: theme.colors.primaryBg,
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '8px 16px',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '600',
+                                            transition: 'all 0.2s ease',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.target.style.background = theme.colors.accentHover;
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.target.style.background = theme.colors.accent;
+                                        }}
+                                    >
+                                        Consolidate
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Maturity Row */}
+                            {totalBreakdown.maturity > 0 && (
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '12px 16px',
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    borderRadius: '8px',
+                                    border: `1px solid ${theme.colors.border}`
+                                }}>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            marginBottom: '4px'
+                                        }}>
+                                            <span style={{ fontSize: '1.2rem' }}>🌱</span>
+                                            <span style={{
+                                                color: theme.colors.primaryText,
+                                                fontSize: '1rem',
+                                                fontWeight: '500'
+                                            }}>
+                                                Total Neuron Maturity
+                                            </span>
+                                        </div>
+                                        <div style={{
+                                            color: theme.colors.accent,
+                                            fontSize: '1.3rem',
+                                            fontWeight: '600',
+                                            marginLeft: '28px'
+                                        }}>
+                                            ${totalBreakdown.maturity.toLocaleString(undefined, { 
+                                                minimumFractionDigits: 2, 
+                                                maximumFractionDigits: 2 
+                                            })}
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleOpenConsolidateModal('maturity')}
+                                        style={{
+                                            background: theme.colors.accent,
+                                            color: theme.colors.primaryBg,
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '8px 16px',
+                                            cursor: 'pointer',
+                                            fontSize: '0.85rem',
+                                            fontWeight: '600',
+                                            transition: 'all 0.2s ease',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.target.style.background = theme.colors.accentHover;
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.target.style.background = theme.colors.accent;
+                                        }}
+                                    >
+                                        Consolidate
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {!isAuthenticated ? (
                     <div style={{
                         display: 'flex',
