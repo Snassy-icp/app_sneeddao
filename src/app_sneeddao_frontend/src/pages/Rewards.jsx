@@ -393,6 +393,19 @@ function Rewards() {
         }, 0);
     };
 
+    // Calculate total USD value of claimed rewards
+    const getTotalClaimedRewardsUSD = () => {
+        // Get all successful claim events
+        const successfulClaims = userClaimEvents.filter(event => 
+            'Success' in event.status
+        );
+        
+        // Sum up the USD value of all successful claims
+        return successfulClaims.reduce((total, event) => {
+            return total + getTokenUSDValue(event.amount, event.token_id);
+        }, 0);
+    };
+
     // Add helper function to format status
     const formatStatus = (status) => {
         if (typeof status === 'object') {
@@ -510,28 +523,64 @@ function Rewards() {
                             </h2>
                             
                             {/* Total Rewards Value */}
-                            {userBalances.length > 0 && (
-                                <div style={{
-                                    backgroundColor: theme.colors.tertiaryBg,
-                                    padding: '15px 20px',
-                                    borderRadius: '8px',
+                            {(userBalances.length > 0 || getTotalClaimedRewardsUSD() > 0) && (
+                                <div style={{ 
+                                    display: 'flex', 
+                                    gap: '15px', 
                                     marginBottom: '20px',
-                                    border: `1px solid ${theme.colors.accent}`
+                                    flexWrap: 'wrap'
                                 }}>
-                                    <div style={{ 
-                                        color: theme.colors.mutedText,
-                                        fontSize: '0.9em',
-                                        marginBottom: '5px'
-                                    }}>
-                                        Total Unclaimed Rewards Value
-                                    </div>
-                                    <div style={{ 
-                                        color: theme.colors.accent,
-                                        fontSize: '1.8em',
-                                        fontWeight: 'bold'
-                                    }}>
-                                        {formatUSD(getTotalRewardsUSD())}
-                                    </div>
+                                    {userBalances.length > 0 && (
+                                        <div style={{
+                                            backgroundColor: theme.colors.tertiaryBg,
+                                            padding: '15px 20px',
+                                            borderRadius: '8px',
+                                            border: `1px solid ${theme.colors.accent}`,
+                                            flex: '1',
+                                            minWidth: '250px'
+                                        }}>
+                                            <div style={{ 
+                                                color: theme.colors.mutedText,
+                                                fontSize: '0.9em',
+                                                marginBottom: '5px'
+                                            }}>
+                                                Total Unclaimed Rewards Value
+                                            </div>
+                                            <div style={{ 
+                                                color: theme.colors.accent,
+                                                fontSize: '1.8em',
+                                                fontWeight: 'bold'
+                                            }}>
+                                                {formatUSD(getTotalRewardsUSD())}
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {getTotalClaimedRewardsUSD() > 0 && (
+                                        <div style={{
+                                            backgroundColor: theme.colors.tertiaryBg,
+                                            padding: '15px 20px',
+                                            borderRadius: '8px',
+                                            border: `1px solid ${theme.colors.success || theme.colors.accent}`,
+                                            flex: '1',
+                                            minWidth: '250px'
+                                        }}>
+                                            <div style={{ 
+                                                color: theme.colors.mutedText,
+                                                fontSize: '0.9em',
+                                                marginBottom: '5px'
+                                            }}>
+                                                Total Claimed Rewards Value
+                                            </div>
+                                            <div style={{ 
+                                                color: theme.colors.success || theme.colors.accent,
+                                                fontSize: '1.8em',
+                                                fontWeight: 'bold'
+                                            }}>
+                                                {formatUSD(getTotalClaimedRewardsUSD())}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                             
