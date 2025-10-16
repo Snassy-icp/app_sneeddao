@@ -2813,6 +2813,11 @@ function Wallet() {
             ];
         }
         
+        if (items.length === 0) {
+            alert('No items available to consolidate at this time. Please ensure data is loaded and try again.');
+            return;
+        }
+        
         setConsolidateItems(items);
         setConsolidateType(type);
         setShowConsolidateModal(true);

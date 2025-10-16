@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTheme } from './contexts/ThemeContext';
 import { formatAmount } from './utils/StringUtils';
 
@@ -10,10 +10,24 @@ const ConsolidateModal = ({
     onConsolidate 
 }) => {
     const { theme } = useTheme();
-    const [selectedItems, setSelectedItems] = useState(() => 
-        items.map(item => ({ ...item, selected: true, status: 'pending' }))
-    );
+    const [selectedItems, setSelectedItems] = useState([]);
     const [isProcessing, setIsProcessing] = useState(false);
+
+    // Update selectedItems when items prop changes
+    useEffect(() => {
+        if (items && items.length > 0) {
+            setSelectedItems(items.map(item => ({ ...item, selected: true, status: 'pending' })));
+            setIsProcessing(false);
+        }
+    }, [items]);
+
+    // Reset when modal closes
+    useEffect(() => {
+        if (!isOpen) {
+            setSelectedItems([]);
+            setIsProcessing(false);
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
