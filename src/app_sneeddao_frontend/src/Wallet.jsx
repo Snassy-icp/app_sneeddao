@@ -37,6 +37,7 @@ import { createActor as createForumActor, canisterId as forumCanisterId } from '
 import Header from './components/Header';
 import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from './utils/BackendUtils';
+import priceService from './services/PriceService';
 
 // Component for empty position cards (when no positions exist for a swap pair)
 const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefreshing, theme }) => {
@@ -323,6 +324,7 @@ function Wallet() {
     });
     const [tokensTotal, setTokensTotal] = useState(0.0);
     const [lpPositionsTotal, setLpPositionsTotal] = useState(0.0);
+    const [icpPrice, setIcpPrice] = useState(null);
 
     const dex_icpswap = 1;
  
@@ -394,7 +396,19 @@ function Wallet() {
         
         fetchBalancesAndLocks();
         fetchLiquidityPositions();
+        fetchIcpPrice();
     }, [isAuthenticated, location.search, refreshTrigger]);
+
+    // Fetch ICP price
+    const fetchIcpPrice = async () => {
+        try {
+            const price = await priceService.getICPUSDPrice();
+            setIcpPrice(price);
+        } catch (error) {
+            console.error('Error fetching ICP price:', error);
+            setIcpPrice(null);
+        }
+    };
 
     async function fetchTokenDetails(icrc1_ledger, summed_locks) {
         try {
@@ -2886,6 +2900,26 @@ function Wallet() {
                         gap: '16px',
                         position: 'relative'
                     }}>
+                        {/* ICP Price - Top Left */}
+                        {icpPrice && (
+                            <div style={{
+                                position: 'absolute',
+                                top: '16px',
+                                left: '16px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                color: theme.colors.mutedText,
+                                fontSize: '0.85rem',
+                                fontWeight: '500'
+                            }}>
+                                <span>ICP:</span>
+                                <span style={{ color: theme.colors.primaryText }}>
+                                    ${icpPrice.toFixed(2)}
+                                </span>
+                            </div>
+                        )}
+                        
                         {/* Refresh Wallet Button - Top Right */}
                         <button
                             onClick={handleRefreshAllWallet}
