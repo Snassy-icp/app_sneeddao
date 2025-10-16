@@ -2654,33 +2654,40 @@ function Wallet() {
     };
 
     // Refresh functions for different sections
-    const handleRefreshAllWallet = () => {
-        if (refreshingAllWallet) return;
+    const handleRefreshAllWallet = async () => {
         setRefreshingAllWallet(true);
-        // Trigger a full refresh
-        setRefreshTrigger(prev => prev + 1);
-        // Reset the loading state after a delay to allow the refresh to start
-        setTimeout(() => setRefreshingAllWallet(false), 1000);
+        try {
+            await Promise.all([
+                fetchBalancesAndLocks(),
+                fetchLiquidityPositions()
+            ]);
+        } catch (error) {
+            console.error('Error refreshing all wallet:', error);
+        } finally {
+            setRefreshingAllWallet(false);
+        }
     };
 
-    const handleRefreshTokensSection = () => {
-        if (refreshingTokensSection) return;
+    const handleRefreshTokensSection = async () => {
         setRefreshingTokensSection(true);
-        // Trigger token refresh
-        setShowTokensSpinner(true);
-        setRefreshTrigger(prev => prev + 1);
-        // Reset the loading state after a delay
-        setTimeout(() => setRefreshingTokensSection(false), 1000);
+        try {
+            await fetchBalancesAndLocks();
+        } catch (error) {
+            console.error('Error refreshing tokens section:', error);
+        } finally {
+            setRefreshingTokensSection(false);
+        }
     };
 
-    const handleRefreshPositionsSection = () => {
-        if (refreshingPositionsSection) return;
+    const handleRefreshPositionsSection = async () => {
         setRefreshingPositionsSection(true);
-        // Trigger positions refresh
-        setShowPositionsSpinner(true);
-        setRefreshTrigger(prev => prev + 1);
-        // Reset the loading state after a delay
-        setTimeout(() => setRefreshingPositionsSection(false), 1000);
+        try {
+            await fetchLiquidityPositions();
+        } catch (error) {
+            console.error('Error refreshing positions section:', error);
+        } finally {
+            setRefreshingPositionsSection(false);
+        }
     };
 
     const [isSneedLockExpanded, setIsSneedLockExpanded] = useState(() => {
@@ -2768,31 +2775,6 @@ function Wallet() {
                                 <span className="principal-full-text">Your Sneed Wallet Principal</span>
                                 <span className="principal-short-text" style={{ display: 'none' }}>Your Principal</span>
                             </div>
-                            <button
-                                onClick={handleRefreshAllWallet}
-                                disabled={refreshingAllWallet}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    cursor: refreshingAllWallet ? 'default' : 'pointer',
-                                    padding: '6px 10px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    color: theme.colors.mutedText,
-                                    fontSize: '0.9rem',
-                                    fontWeight: '500',
-                                    borderRadius: '6px',
-                                    transition: 'all 0.2s ease',
-                                    opacity: refreshingAllWallet ? 0.6 : 1
-                                }}
-                                onMouseEnter={(e) => !refreshingAllWallet && (e.target.style.color = theme.colors.primaryText)}
-                                onMouseLeave={(e) => !refreshingAllWallet && (e.target.style.color = theme.colors.mutedText)}
-                                title="Refresh entire wallet"
-                            >
-                                <span style={{ fontSize: '1rem' }}>{refreshingAllWallet ? '⏳' : '🔄'}</span>
-                                <span style={{ whiteSpace: 'nowrap' }}>Refresh Wallet</span>
-                            </button>
                             <Link 
                                 to="/help/wallet"
                                 style={{
@@ -2901,8 +2883,36 @@ function Wallet() {
                         boxShadow: theme.colors.cardShadow,
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '16px'
+                        gap: '16px',
+                        position: 'relative'
                     }}>
+                        {/* Refresh Wallet Button - Top Right */}
+                        <button
+                            onClick={handleRefreshAllWallet}
+                            disabled={refreshingAllWallet}
+                            style={{
+                                position: 'absolute',
+                                top: '16px',
+                                right: '16px',
+                                background: 'none',
+                                border: 'none',
+                                cursor: refreshingAllWallet ? 'default' : 'pointer',
+                                padding: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                color: theme.colors.mutedText,
+                                fontSize: '1.2rem',
+                                borderRadius: '6px',
+                                transition: 'all 0.2s ease',
+                                opacity: refreshingAllWallet ? 0.6 : 1
+                            }}
+                            onMouseEnter={(e) => !refreshingAllWallet && (e.target.style.color = theme.colors.primaryText)}
+                            onMouseLeave={(e) => !refreshingAllWallet && (e.target.style.color = theme.colors.mutedText)}
+                            title="Refresh entire wallet"
+                        >
+                            {refreshingAllWallet ? '⏳' : '🔄'}
+                        </button>
+                        
                         {/* Center - Total Value */}
                         <div style={{
                             textAlign: 'center'
@@ -3100,13 +3110,40 @@ function Wallet() {
                     subtitle={tokensTotal > 0 ? `$${tokensTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null}
                     isExpanded={tokensExpanded}
                     onToggle={() => setTokensExpanded(!tokensExpanded)}
-                    onAdd={() => setShowAddLedgerModal(true)}
-                    addButtonText="Add Token"
                     onRefresh={handleRefreshTokensSection}
                     isRefreshing={refreshingTokensSection}
                     theme={theme}
                 />
                 {tokensExpanded && (
+                    <>
+                    <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'flex-end', 
+                        marginBottom: '16px' 
+                    }}>
+                        <button
+                            onClick={() => setShowAddLedgerModal(true)}
+                            style={{
+                                background: theme.colors.accent,
+                                color: theme.colors.primaryBg,
+                                border: 'none',
+                                borderRadius: '8px',
+                                padding: '8px 16px',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: '600',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.background = theme.colors.accentHover;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.background = theme.colors.accent;
+                            }}
+                        >
+                            Add Token
+                        </button>
+                    </div>
                     <div className="card-grid">
                     {tokens.map((token, index) => {
                         // Debug logging for each token
@@ -3160,19 +3197,47 @@ function Wallet() {
                         <div/>
                     )}
                 </div>
+                </>
                 )}
                 <SectionHeader 
                     title="Liquidity Positions"
                     subtitle={lpPositionsTotal > 0 ? `$${lpPositionsTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null}
                     isExpanded={positionsExpanded}
                     onToggle={() => setPositionsExpanded(!positionsExpanded)}
-                    onAdd={() => setShowAddSwapModal(true)}
-                    addButtonText="Add Swap Pair"
                     onRefresh={handleRefreshPositionsSection}
                     isRefreshing={refreshingPositionsSection}
                     theme={theme}
                 />
                 {positionsExpanded && (
+                    <>
+                    <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'flex-end', 
+                        marginBottom: '16px' 
+                    }}>
+                        <button
+                            onClick={() => setShowAddSwapModal(true)}
+                            style={{
+                                background: theme.colors.accent,
+                                color: theme.colors.primaryBg,
+                                border: 'none',
+                                borderRadius: '8px',
+                                padding: '8px 16px',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                fontWeight: '600',
+                                transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                                e.target.style.background = theme.colors.accentHover;
+                            }}
+                            onMouseLeave={(e) => {
+                                e.target.style.background = theme.colors.accent;
+                            }}
+                        >
+                            Add Swap Pair
+                        </button>
+                    </div>
                     <div className="card-grid">                
                     {liquidityPositions.map((position, index) => (
                         position.positions.length < 1 
@@ -3217,6 +3282,7 @@ function Wallet() {
                         <div/>
                     )}
                 </div>
+                </>
                 )}
                 <SectionHeader 
                     title="What is Sneed Lock?"
