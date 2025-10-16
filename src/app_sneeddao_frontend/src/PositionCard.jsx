@@ -237,16 +237,31 @@ const PositionCard = ({ position, positionDetails, openSendLiquidityPositionModa
                                     🔒
                                 </span>
                             )}
-                            {(positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n) && (
-                                <span style={{
-                                    fontSize: '14px',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    cursor: 'help'
-                                }} title={`Unclaimed fees: ${formatAmount(positionDetails.tokensOwed0, position.token0Decimals)} ${position.token0Symbol} + ${formatAmount(positionDetails.tokensOwed1, position.token1Decimals)} ${position.token1Symbol}`}>
-                                    💸
-                                </span>
-                            )}
+                            {(positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n) && (() => {
+                                // Calculate total fees in USD
+                                const fee0USD = position.token0_conversion_rate 
+                                    ? Number(positionDetails.tokensOwed0) / Number(10n ** BigInt(position.token0Decimals)) * position.token0_conversion_rate
+                                    : 0;
+                                const fee1USD = position.token1_conversion_rate
+                                    ? Number(positionDetails.tokensOwed1) / Number(10n ** BigInt(position.token1Decimals)) * position.token1_conversion_rate
+                                    : 0;
+                                const totalFeesUSD = fee0USD + fee1USD;
+                                
+                                return (
+                                    <span style={{
+                                        fontSize: '14px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        cursor: 'help'
+                                    }} title={`Unclaimed fees: ${formatAmount(positionDetails.tokensOwed0, position.token0Decimals)} ${position.token0Symbol} + ${formatAmount(positionDetails.tokensOwed1, position.token1Decimals)} ${position.token1Symbol}`}>
+                                        💸
+                                        <span style={{ fontSize: '12px', color: theme.colors.secondaryText }}>
+                                            ${totalFeesUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </span>
+                                    </span>
+                                );
+                            })()}
                         </div>
                     )}
                 </div>
