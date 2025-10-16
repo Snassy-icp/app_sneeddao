@@ -1175,23 +1175,53 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             </span>
                         )}
                         {/* Maturity icon */}
-                        {getTotalNeuronMaturity() > 0n && (
-                            <span 
-                                style={{ fontSize: '14px', cursor: 'help' }} 
-                                title={`${formatAmount(getTotalNeuronMaturity(), token.decimals)} ${token.symbol} maturity`}
-                            >
-                                🌱
-                            </span>
-                        )}
+                        {getTotalNeuronMaturity() > 0n && (() => {
+                            const maturityUSD = token.conversion_rate 
+                                ? Number(getTotalNeuronMaturity()) / Number(10n ** BigInt(token.decimals)) * token.conversion_rate
+                                : 0;
+                            
+                            return (
+                                <span 
+                                    style={{ 
+                                        fontSize: '14px', 
+                                        cursor: 'help',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }} 
+                                    title={`${formatAmount(getTotalNeuronMaturity(), token.decimals)} ${token.symbol} maturity`}
+                                >
+                                    🌱
+                                    <span style={{ fontSize: '12px', color: theme.colors.secondaryText }}>
+                                        ${maturityUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                </span>
+                            );
+                        })()}
                         {/* Rewards icon */}
-                        {rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0n && (
-                            <span 
-                                style={{ fontSize: '14px', cursor: 'help' }} 
-                                title={`${formatAmount(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} ${token.symbol} rewards`}
-                            >
-                                🎁
-                            </span>
-                        )}
+                        {rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0n && (() => {
+                            const rewardsUSD = token.conversion_rate 
+                                ? Number(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) / Number(10n ** BigInt(token.decimals)) * token.conversion_rate
+                                : 0;
+                            
+                            return (
+                                <span 
+                                    style={{ 
+                                        fontSize: '14px', 
+                                        cursor: 'help',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }} 
+                                    title={`${formatAmount(rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals)} ${token.symbol} rewards`}
+                                >
+                                    🎁
+                                    <span style={{ fontSize: '12px', color: theme.colors.secondaryText }}>
+                                        ${rewardsUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                </span>
+                            );
+                        })()}
                     </div>
                 </div>
             </div>
