@@ -2654,40 +2654,33 @@ function Wallet() {
     };
 
     // Refresh functions for different sections
-    const handleRefreshAllWallet = async () => {
+    const handleRefreshAllWallet = () => {
+        if (refreshingAllWallet) return;
         setRefreshingAllWallet(true);
-        try {
-            await Promise.all([
-                fetchBalancesAndLocks(),
-                fetchLiquidityPositions()
-            ]);
-        } catch (error) {
-            console.error('Error refreshing all wallet:', error);
-        } finally {
-            setRefreshingAllWallet(false);
-        }
+        // Trigger a full refresh
+        setRefreshTrigger(prev => prev + 1);
+        // Reset the loading state after a delay to allow the refresh to start
+        setTimeout(() => setRefreshingAllWallet(false), 1000);
     };
 
-    const handleRefreshTokensSection = async () => {
+    const handleRefreshTokensSection = () => {
+        if (refreshingTokensSection) return;
         setRefreshingTokensSection(true);
-        try {
-            await fetchBalancesAndLocks();
-        } catch (error) {
-            console.error('Error refreshing tokens section:', error);
-        } finally {
-            setRefreshingTokensSection(false);
-        }
+        // Trigger token refresh
+        setShowTokensSpinner(true);
+        setRefreshTrigger(prev => prev + 1);
+        // Reset the loading state after a delay
+        setTimeout(() => setRefreshingTokensSection(false), 1000);
     };
 
-    const handleRefreshPositionsSection = async () => {
+    const handleRefreshPositionsSection = () => {
+        if (refreshingPositionsSection) return;
         setRefreshingPositionsSection(true);
-        try {
-            await fetchLiquidityPositions();
-        } catch (error) {
-            console.error('Error refreshing positions section:', error);
-        } finally {
-            setRefreshingPositionsSection(false);
-        }
+        // Trigger positions refresh
+        setShowPositionsSpinner(true);
+        setRefreshTrigger(prev => prev + 1);
+        // Reset the loading state after a delay
+        setTimeout(() => setRefreshingPositionsSection(false), 1000);
     };
 
     const [isSneedLockExpanded, setIsSneedLockExpanded] = useState(() => {
