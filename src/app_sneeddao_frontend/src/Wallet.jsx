@@ -28,7 +28,7 @@ import { get_short_timezone, format_duration, bigDateToReadable, dateToReadable 
 import { formatAmount, toJsonString, formatAmountWithConversion } from './utils/StringUtils';
 import TokenCard from './TokenCard';
 import PositionCard from './PositionCard';
-import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap } from './utils/TokenUtils';
+import { get_available, get_available_backend, getTokenLogo, get_token_conversion_rate, get_token_icp_rate, getTokenTVL, getTokenMetaForSwap, rewardAmountOrZero, availableOrZero } from './utils/TokenUtils';
 import { getPositionTVL, isLockedPosition } from "./utils/PositionUtils";
 import { headerStyles } from './styles/HeaderStyles';
 import { createActor as createSnsGovernanceActor, canisterId as snsGovernanceCanisterId } from 'external/sns_governance';
@@ -2722,9 +2722,13 @@ function Wallet() {
                         : 0;
                     const totalFeesUSD = fee0USD + fee1USD;
                     
+                    const isFrontend = positionDetails.frontendOwnership;
+                    const isLocked = !isFrontend && positionDetails.lockInfo;
+                    
                     items.push({
                         type: 'fee',
-                        name: `${position.token0Symbol}/${position.token1Symbol} Position #${positionDetails.positionId.toString()}`,
+                        subtype: isFrontend ? 'frontend' : (isLocked ? 'locked' : 'unlocked'),
+                        name: `${position.token0Symbol}/${position.token1Symbol} Position #${positionDetails.positionId.toString()}${isFrontend ? ' (Direct)' : (isLocked ? ' (Locked)' : ' (Unlocked)')}`,
                         description: `${formatAmount(positionDetails.tokensOwed0, position.token0Decimals)} ${position.token0Symbol} + ${formatAmount(positionDetails.tokensOwed1, position.token1Decimals)} ${position.token1Symbol}`,
                         usdValue: totalFeesUSD,
                         position: position,
@@ -2816,10 +2820,34 @@ function Wallet() {
 
     const handleConsolidateItem = async (item) => {
         if (item.type === 'fee') {
-            await handleClaimLockedPositionFees({
-                position: item.position,
-                positionDetails: item.positionDetails
-            });
+            const { position, positionDetails, subtype } = item;
+            
+            if (subtype === 'frontend') {
+                // Direct position - withdraw rewards directly
+                await handleWithdrawPositionRewards({
+                    swapCanisterId: position.swapCanisterId,
+                    id: positionDetails.positionId,
+                    frontendOwnership: positionDetails.frontendOwnership,
+                    symbols: position.token0Symbol + '/' + position.token1Symbol
+                });
+            } else if (subtype === 'locked') {
+                // Locked position - claim through SneedLock
+                await handleClaimLockedPositionFees({
+                    swapCanisterId: position.swapCanisterId,
+                    positionId: positionDetails.positionId,
+                    symbols: position.token0Symbol + '/' + position.token1Symbol,
+                    onStatusUpdate: (status) => {
+                        console.log('Claim status:', status);
+                    }
+                });
+            } else if (subtype === 'unlocked') {
+                // Unlocked backend position - withdraw and claim
+                await handleClaimUnlockedDepositedPositionFees({
+                    swapCanisterId: position.swapCanisterId,
+                    id: positionDetails.positionId,
+                    symbols: position.token0Symbol + '/' + position.token1Symbol
+                });
+            }
         } else if (item.type === 'reward') {
             await handleClaimRewards(item.token);
         } else if (item.type === 'maturity') {
@@ -3837,6 +3865,13 @@ function Wallet() {
                     onTransfer={handleTransferTokenLock}
                     tokenLock={selectedTokenLock}
                     token={selectedTokenLock?.token}
+                />
+                <ConsolidateModal
+                    isOpen={showConsolidateModal}
+                    onClose={() => setShowConsolidateModal(false)}
+                    type={consolidateType}
+                    items={consolidateItems}
+                    onConsolidate={handleConsolidateItem}
                 />
                     </>
                 )}
