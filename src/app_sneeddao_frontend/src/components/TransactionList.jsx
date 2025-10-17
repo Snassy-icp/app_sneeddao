@@ -284,8 +284,8 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
     const [indexCanisterId, setIndexCanisterId] = useState(null);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [sortConfig, setSortConfig] = useState({
-        key: 'timestamp',
-        direction: 'desc'
+        key: 'index',
+        direction: 'asc'
     });
     const [fromFilter, setFromFilter] = useState('');
     const [toFilter, setToFilter] = useState('');
@@ -779,6 +779,12 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
 
             try {
                 switch (sortConfig.key) {
+                    case 'index':
+                        aValue = a.txIndex ?? a.id ?? 0;
+                        bValue = b.txIndex ?? b.id ?? 0;
+                        return sortConfig.direction === 'asc' 
+                            ? aValue - bValue 
+                            : bValue - aValue;
                     case 'type':
                         aValue = a.kind || '';
                         bValue = b.kind || '';
@@ -1304,9 +1310,13 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
                                         <span style={styles.sortIcon}>{renderSortIndicator('type')}</span>
                                     </div>
                                 </th>
-                                <th style={{...styles.th, width: '10%'}}>
+                                <th 
+                                    style={{...styles.th, width: '10%'}}
+                                    onClick={() => handleSort('index')}
+                                >
                                     <div style={styles.sortableHeader}>
                                         ID
+                                        <span style={styles.sortIcon}>{renderSortIndicator('index')}</span>
                                     </div>
                                 </th>
                                 <th style={{...styles.th, width: '35%'}}>
