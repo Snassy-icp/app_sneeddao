@@ -48,7 +48,7 @@ const subaccountToHex = (subaccount) => {
     
     // Convert the subaccount array to a hex string
     const bytes = Array.isArray(subaccount) ? subaccount : Array.from(subaccount);
-    return '0x' + bytes.map(byte => {
+    return bytes.map(byte => {
         const hex = byte.toString(16);
         return hex.length === 1 ? '0' + hex : hex;
     }).join('');
