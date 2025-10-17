@@ -1069,7 +1069,7 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
                         {txType}
                     </div>
                     <Link 
-                        to={`/transaction?sns=${snsRootCanisterId}&id=${txId}`}
+                        to={`/transaction?sns=${snsRootCanisterId}&id=${txId}${ledgerCanisterId ? `&ledger=${ledgerCanisterId.toString()}` : ''}`}
                         style={{
                             color: '#3498db',
                             textDecoration: 'none',
@@ -1351,7 +1351,7 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
                                         <td style={styles.td}>{txType}</td>
                                         <td style={styles.td}>
                                             <Link 
-                                                to={`/transaction?sns=${snsRootCanisterId}&id=${!principalId ? startTxIndex + index : (tx.id || index)}`}
+                                                to={`/transaction?sns=${snsRootCanisterId}&id=${!principalId ? startTxIndex + index : (tx.id || index)}${ledgerCanisterId ? `&ledger=${ledgerCanisterId.toString()}` : ''}`}
                                                 style={{
                                                     color: '#3498db',
                                                     textDecoration: 'none',

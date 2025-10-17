@@ -9,7 +9,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useNaming } from '../NamingContext';
 import Header from '../components/Header';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
-import { fetchAndCacheSnsData, getSnsById } from '../utils/SnsUtils';
+import { fetchAndCacheSnsData, getSnsById, getAllSnses } from '../utils/SnsUtils';
 import { formatAmount } from '../utils/StringUtils';
 import { getTokenLogo } from '../utils/TokenUtils';
 import { Principal } from '@dfinity/principal';
@@ -26,6 +26,7 @@ function Transaction() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    const [ledgerCanisterId, setLedgerCanisterId] = useState(null);
     const [tokenMetadata, setTokenMetadata] = useState({
         name: '',
         symbol: '',
@@ -167,7 +168,7 @@ function Transaction() {
     };
 
     const fetchTransaction = async () => {
-        if (!currentId) return;
+        if (!currentId || !ledgerCanisterId) return;
 
         setLoading(true);
         setError(null);
@@ -178,14 +179,8 @@ function Transaction() {
                 throw new Error('Invalid transaction ID');
             }
 
-            const snsRoot = searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT;
-            const selectedSns = getSnsById(snsRoot);
-            if (!selectedSns) {
-                throw new Error('Selected SNS not found');
-            }
-
-            // First try to get the transaction directly from the ledger
-            const ledgerActor = createSnsLedgerActor(selectedSns.canisters.ledger, {
+            // Use the ledger canister ID that was determined (either from URL param or SNS)
+            const ledgerActor = createSnsLedgerActor(ledgerCanisterId, {
                 agentOptions: { identity }
             });
 
@@ -240,17 +235,45 @@ function Transaction() {
         }
     };
 
-    // Fetch token metadata when SNS root changes
+    // Determine which ledger canister to use (from URL param or SNS)
+    useEffect(() => {
+        const determineLedgerCanister = async () => {
+            try {
+                const ledgerParam = searchParams.get('ledger');
+                
+                if (ledgerParam) {
+                    // Use the ledger from URL parameter
+                    setLedgerCanisterId(Principal.fromText(ledgerParam));
+                } else {
+                    // Fall back to SNS ledger
+                    const snsRoot = searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT;
+                    const selectedSns = getSnsById(snsRoot);
+                    
+                    if (selectedSns?.canisters?.ledger) {
+                        setLedgerCanisterId(Principal.fromText(selectedSns.canisters.ledger));
+                    } else {
+                        // Try to fetch from SNS root if not in cache
+                        const snsRootActor = createSnsRootActor(snsRoot);
+                        const response = await snsRootActor.list_sns_canisters({});
+                        setLedgerCanisterId(response.ledger[0]);
+                    }
+                }
+            } catch (err) {
+                console.error('Error determining ledger canister:', err);
+                setError('Failed to determine ledger canister');
+            }
+        };
+
+        determineLedgerCanister();
+    }, [searchParams, selectedSnsRoot]);
+
+    // Fetch token metadata when ledger canister changes
     useEffect(() => {
         const fetchTokenMetadata = async () => {
-            try {
-                const snsRoot = searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT;
-                const selectedSns = getSnsById(snsRoot);
-                if (!selectedSns) {
-                    throw new Error('Selected SNS not found');
-                }
+            if (!ledgerCanisterId) return;
 
-                const ledgerActor = createSnsLedgerActor(selectedSns.canisters.ledger);
+            try {
+                const ledgerActor = createSnsLedgerActor(ledgerCanisterId);
                 const [metadata, decimals] = await Promise.all([
                     ledgerActor.icrc1_metadata(),
                     ledgerActor.icrc1_decimals()
@@ -272,31 +295,17 @@ function Transaction() {
         };
 
         fetchTokenMetadata();
-    }, [searchParams]);
+    }, [ledgerCanisterId]);
 
-    // Fetch archive canister ID when SNS root changes
+    // Note: Archive canisters are fetched dynamically when needed in fetchTransaction
+    // We no longer need to pre-fetch them
+
+    // Fetch transaction when ID or ledger changes
     useEffect(() => {
-        const fetchArchiveCanisterId = async () => {
-            try {
-                const snsRoot = searchParams.get('sns') || selectedSnsRoot || SNEED_SNS_ROOT;
-                const snsRootActor = createSnsRootActor(snsRoot);
-                const response = await snsRootActor.list_sns_canisters({});
-                setArchiveCanisterId(response.archives[0]);
-            } catch (err) {
-                setError('Failed to fetch archive canister ID');
-                console.error('Error fetching archive canister ID:', err);
-            }
-        };
-
-        fetchArchiveCanisterId();
-    }, [searchParams]);
-
-    // Fetch transaction when ID changes
-    useEffect(() => {
-        if (searchParams.get('id')) {
+        if (searchParams.get('id') && ledgerCanisterId) {
             fetchTransaction();
         }
-    }, [archiveCanisterId, searchParams]);
+    }, [currentId, ledgerCanisterId]);
 
     // Fetch principal display info when transaction changes
     useEffect(() => {
@@ -368,6 +377,11 @@ function Transaction() {
             BigInt(parsedId);
             const params = new URLSearchParams(searchParams);
             params.set('id', parsedId);
+            // Preserve ledger parameter if it exists
+            const ledgerParam = searchParams.get('ledger');
+            if (ledgerParam) {
+                params.set('ledger', ledgerParam);
+            }
             setSearchParams(params);
             setError(null);
         } catch (e) {
@@ -468,16 +482,15 @@ function Transaction() {
         setCurrentId(newId.toString());
         setSearchParams(prev => {
             prev.set('id', newId.toString());
+            // Preserve ledger parameter if it exists
+            const ledgerParam = searchParams.get('ledger');
+            if (ledgerParam) {
+                prev.set('ledger', ledgerParam);
+            }
             return prev;
         });
     };
 
-    // Update useEffect to use currentId
-    useEffect(() => {
-        if (archiveCanisterId && currentId) {
-            fetchTransaction();
-        }
-    }, [currentId, archiveCanisterId]);
 
     return (
         <div className="page-container" style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
