@@ -10,7 +10,7 @@ import { useNaming } from '../NamingContext';
 import Header from '../components/Header';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { fetchAndCacheSnsData, getSnsById, getAllSnses } from '../utils/SnsUtils';
-import { formatAmount } from '../utils/StringUtils';
+import { formatAmount, subaccountToHex } from '../utils/StringUtils';
 import { getTokenLogo } from '../utils/TokenUtils';
 import { Principal } from '@dfinity/principal';
 
@@ -462,7 +462,7 @@ function Transaction() {
                     </div>
                     {account.subaccount && account.subaccount.length > 0 && (
                         <div style={styles.subaccount}>
-                            Subaccount: {account.subaccount[0]}
+                            Subaccount: {subaccountToHex(account.subaccount[0])}
                         </div>
                     )}
                 </div>

@@ -43,9 +43,21 @@ function getUSD(amount, decimals, conversion_rate) {
     return (<i></i>);
 }
 
+const subaccountToHex = (subaccount) => {
+    if (!subaccount || subaccount.length === 0) return '';
+    
+    // Convert the subaccount array to a hex string
+    const bytes = Array.isArray(subaccount) ? subaccount : Array.from(subaccount);
+    return '0x' + bytes.map(byte => {
+        const hex = byte.toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+    }).join('');
+};
+
 export { 
     toJsonString,
     formatAmount,
     formatAmountWithConversion,
-    getUSD
+    getUSD,
+    subaccountToHex
 };

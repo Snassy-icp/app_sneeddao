@@ -11,6 +11,7 @@ import { useNaming } from '../NamingContext';
 import PrincipalInput from './PrincipalInput';
 import { Link } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
+import { subaccountToHex } from '../utils/StringUtils';
 
 const validateNameInput = (input) => {
     if (!input.trim()) return 'Name cannot be empty';
@@ -892,10 +893,10 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
             // Get subaccounts
             const fromSubaccount = transaction.transfer?.[0]?.from?.subaccount?.[0] || 
                                  transaction.burn?.[0]?.from?.subaccount?.[0] || 
-                                 transaction.approve?.[0]?.from?.subaccount?.[0] || '';
+                                 transaction.approve?.[0]?.from?.subaccount?.[0];
             const toSubaccount = transaction.transfer?.[0]?.to?.subaccount?.[0] || 
                                transaction.mint?.[0]?.to?.subaccount?.[0] || 
-                               transaction.approve?.[0]?.spender?.subaccount?.[0] || '';
+                               transaction.approve?.[0]?.spender?.subaccount?.[0];
             
             // Get fee
             const fee = transaction.transfer?.[0]?.fee?.[0] || 
@@ -921,11 +922,11 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
                 fromPrincipal ? fromPrincipal.toString() : '',
                 fromDisplayInfo?.name || '',
                 fromDisplayInfo?.nickname || '',
-                Array.isArray(fromSubaccount) ? fromSubaccount.join('') : fromSubaccount,
+                fromSubaccount ? subaccountToHex(fromSubaccount) : '',
                 toPrincipal ? toPrincipal.toString() : '',
                 toDisplayInfo?.name || '',
                 toDisplayInfo?.nickname || '',
-                Array.isArray(toSubaccount) ? toSubaccount.join('') : toSubaccount,
+                toSubaccount ? subaccountToHex(toSubaccount) : '',
                 amount.toString(),
                 formatAmount(amount),
                 fee.toString(),
@@ -1374,9 +1375,19 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
                                                         short={true}
                                                         isAuthenticated={isAuthenticated}
                                                     />
-                                                    {txType === 'transfer' && transaction.transfer?.[0]?.from?.subaccount?.length > 0 && (
+                                                    {(txType === 'transfer' && transaction.transfer?.[0]?.from?.subaccount?.length > 0) && (
                                                         <div style={styles.subaccount}>
-                                                            Subaccount: {transaction.transfer[0].from.subaccount[0]}
+                                                            Subaccount: {subaccountToHex(transaction.transfer[0].from.subaccount[0])}
+                                                        </div>
+                                                    )}
+                                                    {(txType === 'burn' && transaction.burn?.[0]?.from?.subaccount?.length > 0) && (
+                                                        <div style={styles.subaccount}>
+                                                            Subaccount: {subaccountToHex(transaction.burn[0].from.subaccount[0])}
+                                                        </div>
+                                                    )}
+                                                    {(txType === 'approve' && transaction.approve?.[0]?.from?.subaccount?.length > 0) && (
+                                                        <div style={styles.subaccount}>
+                                                            Subaccount: {subaccountToHex(transaction.approve[0].from.subaccount[0])}
                                                         </div>
                                                     )}
                                                 </div>
@@ -1391,9 +1402,19 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
                                                         short={true}
                                                         isAuthenticated={isAuthenticated}
                                                     />
-                                                    {txType === 'transfer' && transaction.transfer?.[0]?.to?.subaccount?.length > 0 && (
+                                                    {(txType === 'transfer' && transaction.transfer?.[0]?.to?.subaccount?.length > 0) && (
                                                         <div style={styles.subaccount}>
-                                                            Subaccount: {transaction.transfer[0].to.subaccount[0]}
+                                                            Subaccount: {subaccountToHex(transaction.transfer[0].to.subaccount[0])}
+                                                        </div>
+                                                    )}
+                                                    {(txType === 'mint' && transaction.mint?.[0]?.to?.subaccount?.length > 0) && (
+                                                        <div style={styles.subaccount}>
+                                                            Subaccount: {subaccountToHex(transaction.mint[0].to.subaccount[0])}
+                                                        </div>
+                                                    )}
+                                                    {(txType === 'approve' && transaction.approve?.[0]?.spender?.subaccount?.length > 0) && (
+                                                        <div style={styles.subaccount}>
+                                                            Subaccount: {subaccountToHex(transaction.approve[0].spender.subaccount[0])}
                                                         </div>
                                                     )}
                                                 </div>
