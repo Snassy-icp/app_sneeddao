@@ -112,6 +112,50 @@ const ConsolidateModal = ({
     const allSelected = selectedItems.every(item => item.selected);
     const anyProcessed = selectedItems.some(item => item.status !== 'pending');
 
+    // Calculate totals for selected items
+    const calculateTotals = () => {
+        const selectedFilteredItems = selectedItems.filter(item => item.selected);
+        const totalUSD = selectedFilteredItems.reduce((sum, item) => sum + (item.usdValue || 0), 0);
+        
+        // Aggregate by token
+        const tokenTotals = {};
+        selectedFilteredItems.forEach(item => {
+            if (item.type === 'fee') {
+                // Parse description like "0.00301529 SNEED + 118.98941312 DKP"
+                const parts = item.description.split(' + ');
+                parts.forEach(part => {
+                    const match = part.match(/^([\d.]+)\s+(.+)$/);
+                    if (match) {
+                        const [, amount, symbol] = match;
+                        if (!tokenTotals[symbol]) tokenTotals[symbol] = 0;
+                        tokenTotals[symbol] += parseFloat(amount);
+                    }
+                });
+            } else if (item.type === 'reward' || item.type === 'maturity') {
+                // Parse description like "1234.56 SNEED"
+                const match = item.description.match(/^([\d.]+)\s+(.+)$/);
+                if (match) {
+                    const [, amount, symbol] = match;
+                    if (!tokenTotals[symbol]) tokenTotals[symbol] = 0;
+                    tokenTotals[symbol] += parseFloat(amount);
+                }
+            }
+        });
+        
+        return { totalUSD, tokenTotals };
+    };
+
+    const { totalUSD, tokenTotals } = calculateTotals();
+
+    const getItemIcon = (item) => {
+        switch (item.type) {
+            case 'fee': return '💸';
+            case 'reward': return '🎁';
+            case 'maturity': return '🌱';
+            default: return '';
+        }
+    };
+
     return (
         <div style={{
             position: 'fixed',
@@ -232,6 +276,14 @@ const ConsolidateModal = ({
                                         />
                                     )}
                                     
+                                    {/* Item Icon */}
+                                    <span style={{ 
+                                        fontSize: '1.5rem',
+                                        marginRight: '8px'
+                                    }}>
+                                        {getItemIcon(item)}
+                                    </span>
+                                    
                                     <div style={{ flex: 1 }}>
                                         <div style={{
                                             color: theme.colors.primaryText,
@@ -280,6 +332,88 @@ const ConsolidateModal = ({
                         </div>
                     )}
                 </div>
+
+                {/* Totals Section */}
+                {!anyProcessed && selectedCount > 0 && (
+                    <div style={{
+                        padding: '16px',
+                        backgroundColor: theme.colors.tertiaryBg,
+                        borderRadius: '8px',
+                        marginBottom: '20px',
+                        border: `1px solid ${theme.colors.border}`
+                    }}>
+                        <div style={{
+                            color: theme.colors.primaryText,
+                            fontWeight: '600',
+                            marginBottom: '12px',
+                            fontSize: '1rem'
+                        }}>
+                            Selected Totals
+                        </div>
+                        
+                        {/* USD Total */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '12px',
+                            padding: '8px 0',
+                            borderBottom: `1px solid ${theme.colors.border}`
+                        }}>
+                            <span style={{ 
+                                color: theme.colors.secondaryText,
+                                fontSize: '0.95rem'
+                            }}>
+                                Total Value:
+                            </span>
+                            <span style={{ 
+                                color: theme.colors.accent,
+                                fontWeight: '600',
+                                fontSize: '1.1rem'
+                            }}>
+                                ${totalUSD.toLocaleString(undefined, { 
+                                    minimumFractionDigits: 2, 
+                                    maximumFractionDigits: 2 
+                                })}
+                            </span>
+                        </div>
+                        
+                        {/* Token Breakdown */}
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '6px'
+                        }}>
+                            {Object.entries(tokenTotals).map(([symbol, amount]) => (
+                                <div 
+                                    key={symbol}
+                                    style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center'
+                                    }}
+                                >
+                                    <span style={{ 
+                                        color: theme.colors.secondaryText,
+                                        fontSize: '0.9rem'
+                                    }}>
+                                        {symbol}:
+                                    </span>
+                                    <span style={{ 
+                                        color: theme.colors.primaryText,
+                                        fontWeight: '500',
+                                        fontSize: '0.9rem'
+                                    }}>
+                                        {amount.toLocaleString(undefined, {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 8
+                                        })}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Action Buttons */}
                 <div style={{
