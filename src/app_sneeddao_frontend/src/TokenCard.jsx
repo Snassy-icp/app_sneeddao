@@ -1088,25 +1088,9 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                 </div>
                 <div className="header-content-column">
                     {/* Row 1: Token name (left) and USD total (right) */}
-                    <div className="header-row-1" style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'flex-start',
-                        minWidth: 0
-                    }}>
-                        <span className="token-name" style={{ 
-                            whiteSpace: 'nowrap', 
-                            overflow: 'hidden', 
-                            textOverflow: 'ellipsis',
-                            marginRight: '12px',
-                            flex: '1 1 auto',
-                            minWidth: 0
-                        }}>{token.name || token.symbol}</span>
-                        <span className="token-usd-value" style={{
-                            whiteSpace: 'nowrap',
-                            flexShrink: 0,
-                            marginLeft: 'auto'
-                        }}>
+                    <div className="header-row-1" style={{ minWidth: 0 }}>
+                        <span className="token-name">{token.name || token.symbol}</span>
+                        <span className="token-usd-value">
                             {((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
                                 `$${formatAmountWithConversion((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}`
                             }

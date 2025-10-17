@@ -126,6 +126,7 @@ body {
     flex-direction: column;
     flex: 1;
     justify-content: space-between;
+    min-width: 0;
 }
 
 .header-row-1,
@@ -133,6 +134,21 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    min-width: 0;
+}
+
+.token-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1;
+    margin-right: 12px;
+}
+
+.token-usd-value {
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .amount-symbol {
