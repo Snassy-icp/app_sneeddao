@@ -657,3 +657,22 @@ img.token-logo-card {
         font-size: 1.5em;
     }
 }
+
+/* Responsive button text for Consolidate All */
+.consolidate-all-short {
+    display: none;
+}
+
+.consolidate-all-full {
+    display: inline;
+}
+
+@media (max-width: 768px) {
+    .consolidate-all-short {
+        display: inline;
+    }
+    
+    .consolidate-all-full {
+        display: none;
+    }
+}

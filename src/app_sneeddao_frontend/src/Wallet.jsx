@@ -3368,7 +3368,7 @@ function Wallet() {
                                         fontSize: '1.2rem',
                                         fontWeight: '600'
                                     }}>
-                                        Quick Consolidate
+                                        Consolidate
                                     </h3>
                                     <div style={{
                                         color: theme.colors.accent,
@@ -3410,7 +3410,8 @@ function Wallet() {
                                 }}
                             >
                                 <span style={{ fontSize: '1rem' }}>🎩</span>
-                                Consolidate All
+                                <span className="consolidate-all-full">Consolidate All</span>
+                                <span className="consolidate-all-short">All</span>
                             </button>
                         </div>
 
