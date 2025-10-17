@@ -3361,14 +3361,27 @@ function Wallet() {
                                 }}>
                                     {consolidationExpanded ? '▼' : '▶'}
                                 </span>
-                                <h3 style={{
-                                    margin: 0,
-                                    color: theme.colors.primaryText,
-                                    fontSize: '1.2rem',
-                                    fontWeight: '600'
-                                }}>
-                                    Quick Consolidate
-                                </h3>
+                                <div>
+                                    <h3 style={{
+                                        margin: 0,
+                                        color: theme.colors.primaryText,
+                                        fontSize: '1.2rem',
+                                        fontWeight: '600'
+                                    }}>
+                                        Quick Consolidate
+                                    </h3>
+                                    <div style={{
+                                        color: theme.colors.accent,
+                                        fontSize: '1rem',
+                                        fontWeight: '600',
+                                        marginTop: '4px'
+                                    }}>
+                                        ${(totalBreakdown.fees + totalBreakdown.rewards + totalBreakdown.maturity).toLocaleString(undefined, { 
+                                            minimumFractionDigits: 2, 
+                                            maximumFractionDigits: 2 
+                                        })}
+                                    </div>
+                                </div>
                             </div>
                             <button
                                 onClick={(e) => {
