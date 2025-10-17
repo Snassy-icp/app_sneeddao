@@ -322,7 +322,9 @@ function Wallet() {
         fees: 0.0,
         staked: 0.0,
         locked: 0.0,
-        hasAnyFees: false
+        hasAnyFees: false,
+        hasAnyRewards: false,
+        hasAnyMaturity: false
     });
     const [tokensTotal, setTokensTotal] = useState(0.0);
     const [lpPositionsTotal, setLpPositionsTotal] = useState(0.0);
@@ -1144,6 +1146,8 @@ function Wallet() {
         var rewardsTotal = 0.0;
         var stakedTotal = 0.0;
         var maturityTotal = 0.0;
+        var hasAnyRewards = false; // Track if there are any rewards regardless of USD value
+        var hasAnyMaturity = false; // Track if there are any maturity regardless of USD value
         
         for (const token of tokens) {
             const divisor = 10 ** token.decimals;
@@ -1160,6 +1164,7 @@ function Wallet() {
             // Calculate rewards
             const ledgerId = token.ledger_canister_id?.toString?.() || token.ledger_canister_id?.toText?.() || token.ledger_canister_id;
             if (rewardDetailsLoading && rewardDetailsLoading[token.ledger_canister_id] != null && BigInt(rewardDetailsLoading[token.ledger_canister_id]) > 0) {
+                hasAnyRewards = true;
                 const rewardAmount = Number(BigInt(rewardDetailsLoading[token.ledger_canister_id])) / divisor * rate;
                 rewardsTotal += rewardAmount;
             }
@@ -1169,7 +1174,10 @@ function Wallet() {
                 const neuronData = neuronTotals[ledgerId];
                 if (typeof neuronData === 'object') {
                     stakedTotal += neuronData.staked || 0;
-                    maturityTotal += neuronData.maturity || 0;
+                    if (neuronData.maturity && neuronData.maturity > 0) {
+                        hasAnyMaturity = true;
+                        maturityTotal += neuronData.maturity;
+                    }
                 } else {
                     // Legacy support: if it's just a number, add to staked
                     stakedTotal += neuronData || 0;
@@ -1241,7 +1249,9 @@ function Wallet() {
             fees: feesTotal,
             staked: stakedTotal,
             locked: lockedTotal,
-            hasAnyFees: hasAnyFees // Track if there are any fees in tokens
+            hasAnyFees: hasAnyFees, // Track if there are any fees in tokens
+            hasAnyRewards: hasAnyRewards, // Track if there are any rewards in tokens
+            hasAnyMaturity: hasAnyMaturity // Track if there are any maturity in tokens
         });
         
         // Calculate tokens total (liquid + locked + staked + maturity + rewards)
@@ -3203,7 +3213,7 @@ function Wallet() {
                                     </span>
                                 </div>
                             )}
-                            {totalBreakdown.maturity > 0 && (
+                            {totalBreakdown.hasAnyMaturity && (
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -3219,7 +3229,7 @@ function Wallet() {
                                     </span>
                                 </div>
                             )}
-                            {totalBreakdown.rewards > 0 && (
+                            {totalBreakdown.hasAnyRewards && (
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -3288,7 +3298,7 @@ function Wallet() {
                 )}
 
                 {/* Consolidation Section */}
-                {isAuthenticated && (totalBreakdown.hasAnyFees || totalBreakdown.rewards > 0 || totalBreakdown.maturity > 0) && (
+                {isAuthenticated && (totalBreakdown.hasAnyFees || totalBreakdown.hasAnyRewards || totalBreakdown.hasAnyMaturity) && (
                     <div style={{
                         background: theme.colors.cardGradient,
                         border: `1px solid ${theme.colors.border}`,
@@ -3402,7 +3412,7 @@ function Wallet() {
                             )}
 
                             {/* Rewards Row */}
-                            {totalBreakdown.rewards > 0 && (
+                            {totalBreakdown.hasAnyRewards && (
                                 <div style={{
                                     display: 'flex',
                                     justifyContent: 'space-between',
@@ -3467,7 +3477,7 @@ function Wallet() {
                             )}
 
                             {/* Maturity Row */}
-                            {totalBreakdown.maturity > 0 && (
+                            {totalBreakdown.hasAnyMaturity && (
                                 <div style={{
                                     display: 'flex',
                                     justifyContent: 'space-between',
