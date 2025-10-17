@@ -476,7 +476,11 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
 
             console.log("Ledger response:", response);
 
-            let txs = [...response.transactions];
+            // Add the actual transaction index to each transaction
+            let txs = response.transactions.map((tx, idx) => ({
+                ...tx,
+                txIndex: startIndex + idx
+            }));
             setTotalTransactions(Number(response.log_length));
 
             // If we have archived transactions to fetch, get them
@@ -498,7 +502,12 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
                             length: archive.length
                         });
 
-                        txs = [...txs, ...archiveResponse.transactions];
+                        // Add transaction index to archived transactions
+                        const archivedTxsWithIndex = archiveResponse.transactions.map((tx, idx) => ({
+                            ...tx,
+                            txIndex: Number(archive.start) + idx
+                        }));
+                        txs = [...txs, ...archivedTxsWithIndex];
                     } catch (archiveErr) {
                         console.error('Error fetching from archive:', archiveErr);
                     }
@@ -1055,7 +1064,7 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
         };
 
         // Calculate correct transaction ID (same logic as table view)
-        const txId = !principalId ? startTxIndex + index : (tx.id || index);
+        const txId = !principalId ? (tx.txIndex ?? startTxIndex + index) : (tx.id || index);
         
         return (
             <div key={index} style={styles.transactionCard}>
@@ -1352,7 +1361,7 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
                                         <td style={styles.td}>{txType}</td>
                                         <td style={styles.td}>
                                             <Link 
-                                                to={`/transaction?sns=${snsRootCanisterId}&id=${!principalId ? startTxIndex + index : (tx.id || index)}${ledgerCanisterId ? `&ledger=${ledgerCanisterId.toString()}` : ''}`}
+                                                to={`/transaction?sns=${snsRootCanisterId}&id=${!principalId ? (tx.txIndex ?? startTxIndex + index) : (tx.id || index)}${ledgerCanisterId ? `&ledger=${ledgerCanisterId.toString()}` : ''}`}
                                                 style={{
                                                     color: '#3498db',
                                                     textDecoration: 'none',
@@ -1361,7 +1370,7 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
                                                     }
                                                 }}
                                             >
-                                                #{!principalId ? startTxIndex + index : (tx.id.toString() || index)}
+                                                #{!principalId ? (tx.txIndex ?? startTxIndex + index) : (tx.id.toString() || index)}
                                             </Link>
                                         </td>
                                         <td style={{...styles.td, ...styles.principalCell}}>
