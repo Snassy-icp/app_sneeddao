@@ -1384,61 +1384,68 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
                                             </Link>
                                         </td>
                                         <td style={{...styles.td, ...styles.principalCell}}>
-                                            {fromPrincipal && (
-                                                <div>
-                                                    <span style={{color: '#888'}}>From: </span>
-                                                    <PrincipalDisplay 
-                                                        principal={fromPrincipal}
-                                                        displayInfo={principalDisplayInfo.get(fromPrincipal?.toString?.() || '')}
-                                                        showCopyButton={false}
-                                                        short={true}
-                                                        isAuthenticated={isAuthenticated}
-                                                    />
-                                                    {(txType === 'transfer' && transaction.transfer?.[0]?.from?.subaccount?.length > 0) && (
-                                                        <div style={styles.subaccount}>
-                                                            Subaccount: {subaccountToHex(transaction.transfer[0].from.subaccount[0])}
-                                                        </div>
-                                                    )}
-                                                    {(txType === 'burn' && transaction.burn?.[0]?.from?.subaccount?.length > 0) && (
-                                                        <div style={styles.subaccount}>
-                                                            Subaccount: {subaccountToHex(transaction.burn[0].from.subaccount[0])}
-                                                        </div>
-                                                    )}
-                                                    {(txType === 'approve' && transaction.approve?.[0]?.from?.subaccount?.length > 0) && (
-                                                        <div style={styles.subaccount}>
-                                                            Subaccount: {subaccountToHex(transaction.approve[0].from.subaccount[0])}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                            {toPrincipal && (
-                                                <div style={{marginTop: fromPrincipal ? '8px' : '0'}}>
-                                                    <span style={{color: '#888'}}>To: </span>
-                                                    <PrincipalDisplay 
-                                                        principal={toPrincipal}
-                                                        displayInfo={principalDisplayInfo.get(toPrincipal?.toString?.() || '')}
-                                                        showCopyButton={false}
-                                                        short={true}
-                                                        isAuthenticated={isAuthenticated}
-                                                    />
-                                                    {(txType === 'transfer' && transaction.transfer?.[0]?.to?.subaccount?.length > 0) && (
-                                                        <div style={styles.subaccount}>
-                                                            Subaccount: {subaccountToHex(transaction.transfer[0].to.subaccount[0])}
-                                                        </div>
-                                                    )}
-                                                    {(txType === 'mint' && transaction.mint?.[0]?.to?.subaccount?.length > 0) && (
-                                                        <div style={styles.subaccount}>
-                                                            Subaccount: {subaccountToHex(transaction.mint[0].to.subaccount[0])}
-                                                        </div>
-                                                    )}
-                                                    {(txType === 'approve' && transaction.approve?.[0]?.spender?.subaccount?.length > 0) && (
-                                                        <div style={styles.subaccount}>
-                                                            Subaccount: {subaccountToHex(transaction.approve[0].spender.subaccount[0])}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                            {!fromPrincipal && !toPrincipal && '-'}
+                                            <div>
+                                                <span style={{color: '#888'}}>From: </span>
+                                                {fromPrincipal ? (
+                                                    <>
+                                                        <PrincipalDisplay 
+                                                            principal={fromPrincipal}
+                                                            displayInfo={principalDisplayInfo.get(fromPrincipal?.toString?.() || '')}
+                                                            showCopyButton={false}
+                                                            short={true}
+                                                            isAuthenticated={isAuthenticated}
+                                                        />
+                                                        {(txType === 'transfer' && transaction.transfer?.[0]?.from?.subaccount?.length > 0) && (
+                                                            <div style={styles.subaccount}>
+                                                                Subaccount: {subaccountToHex(transaction.transfer[0].from.subaccount[0])}
+                                                            </div>
+                                                        )}
+                                                        {(txType === 'burn' && transaction.burn?.[0]?.from?.subaccount?.length > 0) && (
+                                                            <div style={styles.subaccount}>
+                                                                Subaccount: {subaccountToHex(transaction.burn[0].from.subaccount[0])}
+                                                            </div>
+                                                        )}
+                                                        {(txType === 'approve' && transaction.approve?.[0]?.from?.subaccount?.length > 0) && (
+                                                            <div style={styles.subaccount}>
+                                                                Subaccount: {subaccountToHex(transaction.approve[0].from.subaccount[0])}
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <span style={{color: '#888'}}>-</span>
+                                                )}
+                                            </div>
+                                            <div style={{marginTop: '8px'}}>
+                                                <span style={{color: '#888'}}>To: </span>
+                                                {toPrincipal ? (
+                                                    <>
+                                                        <PrincipalDisplay 
+                                                            principal={toPrincipal}
+                                                            displayInfo={principalDisplayInfo.get(toPrincipal?.toString?.() || '')}
+                                                            showCopyButton={false}
+                                                            short={true}
+                                                            isAuthenticated={isAuthenticated}
+                                                        />
+                                                        {(txType === 'transfer' && transaction.transfer?.[0]?.to?.subaccount?.length > 0) && (
+                                                            <div style={styles.subaccount}>
+                                                                Subaccount: {subaccountToHex(transaction.transfer[0].to.subaccount[0])}
+                                                            </div>
+                                                        )}
+                                                        {(txType === 'mint' && transaction.mint?.[0]?.to?.subaccount?.length > 0) && (
+                                                            <div style={styles.subaccount}>
+                                                                Subaccount: {subaccountToHex(transaction.mint[0].to.subaccount[0])}
+                                                            </div>
+                                                        )}
+                                                        {(txType === 'approve' && transaction.approve?.[0]?.spender?.subaccount?.length > 0) && (
+                                                            <div style={styles.subaccount}>
+                                                                Subaccount: {subaccountToHex(transaction.approve[0].spender.subaccount[0])}
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <span style={{color: '#888'}}>-</span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td style={styles.td}>
                                             {amount ? formatAmount(amount) : '-'}
