@@ -332,6 +332,15 @@ function Wallet() {
     const [showConsolidateModal, setShowConsolidateModal] = useState(false);
     const [consolidateType, setConsolidateType] = useState(null); // 'fees', 'rewards', 'maturity', 'all'
     const [consolidateItems, setConsolidateItems] = useState([]);
+    const [consolidationExpanded, setConsolidationExpanded] = useState(() => {
+        try {
+            const saved = localStorage.getItem('consolidationExpanded');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch (error) {
+            console.warn('Could not read consolidation state from localStorage:', error);
+            return true; // Default to expanded
+        }
+    });
 
     const dex_icpswap = 1;
  
@@ -343,6 +352,15 @@ function Wallet() {
             console.warn('Could not save principalExpanded state to localStorage:', error);
         }
     }, [principalExpanded]);
+
+    // Save consolidationExpanded state to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('consolidationExpanded', JSON.stringify(consolidationExpanded));
+        } catch (error) {
+            console.warn('Could not save consolidation expanded state to localStorage:', error);
+        }
+    }, [consolidationExpanded]);
 
     // Load SNS data progressively (non-blocking)
     useEffect(() => {
@@ -3303,26 +3321,48 @@ function Wallet() {
                         background: theme.colors.cardGradient,
                         border: `1px solid ${theme.colors.border}`,
                         borderRadius: '12px',
-                        padding: '20px',
                         marginBottom: '20px',
-                        boxShadow: theme.colors.cardShadow
+                        boxShadow: theme.colors.cardShadow,
+                        overflow: 'hidden'
                     }}>
-                        <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            marginBottom: '16px'
-                        }}>
-                            <h3 style={{
-                                margin: 0,
-                                color: theme.colors.primaryText,
-                                fontSize: '1.2rem',
-                                fontWeight: '600'
+                        {/* Collapsible Header */}
+                        <div 
+                            style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '16px 20px',
+                                borderBottom: consolidationExpanded ? `1px solid ${theme.colors.border}` : 'none',
+                                cursor: 'pointer'
+                            }}
+                            onClick={() => setConsolidationExpanded(!consolidationExpanded)}
+                        >
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px'
                             }}>
-                                Quick Consolidate
-                            </h3>
+                                <span style={{
+                                    fontSize: '1.2rem',
+                                    color: theme.colors.secondaryText,
+                                    transition: 'transform 0.2s ease'
+                                }}>
+                                    {consolidationExpanded ? '▼' : '▶'}
+                                </span>
+                                <h3 style={{
+                                    margin: 0,
+                                    color: theme.colors.primaryText,
+                                    fontSize: '1.2rem',
+                                    fontWeight: '600'
+                                }}>
+                                    Quick Consolidate
+                                </h3>
+                            </div>
                             <button
-                                onClick={() => handleOpenConsolidateModal('all')}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenConsolidateModal('all');
+                                }}
                                 style={{
                                     background: theme.colors.accent,
                                     color: theme.colors.primaryBg,
@@ -3332,19 +3372,26 @@ function Wallet() {
                                     cursor: 'pointer',
                                     fontSize: '0.9rem',
                                     fontWeight: '600',
-                                    transition: 'all 0.2s ease'
+                                    transition: 'all 0.2s ease',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
                                 }}
                                 onMouseEnter={(e) => {
-                                    e.target.style.background = theme.colors.accentHover;
+                                    e.currentTarget.style.background = theme.colors.accentHover;
                                 }}
                                 onMouseLeave={(e) => {
-                                    e.target.style.background = theme.colors.accent;
+                                    e.currentTarget.style.background = theme.colors.accent;
                                 }}
                             >
+                                <span style={{ fontSize: '1rem' }}>🎩</span>
                                 Consolidate All
                             </button>
                         </div>
 
+                        {/* Collapsible Content */}
+                        {consolidationExpanded && (
+                        <div style={{ padding: '20px' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             {/* Fees Row */}
                             {totalBreakdown.hasAnyFees && (
@@ -3541,6 +3588,8 @@ function Wallet() {
                                 </div>
                             )}
                         </div>
+                        </div>
+                        )}
                     </div>
                 )}
 
