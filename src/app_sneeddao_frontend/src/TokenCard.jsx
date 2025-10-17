@@ -1094,9 +1094,13 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             overflow: 'hidden', 
                             textOverflow: 'ellipsis',
                             marginRight: '12px',
-                            maxWidth: '200px'
+                            flex: '1',
+                            minWidth: 0
                         }}>{token.name || token.symbol}</span>
-                        <span className="token-usd-value">
+                        <span className="token-usd-value" style={{
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0
+                        }}>
                             {((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable)) > 0n && token.conversion_rate > 0 && 
                                 `$${formatAmountWithConversion((token.available || 0n) + (token.locked || 0n) + (isSnsToken ? (getTotalNeuronStake() + getTotalNeuronMaturity()) : 0n) + rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable), token.decimals, token.conversion_rate)}`
                             }
