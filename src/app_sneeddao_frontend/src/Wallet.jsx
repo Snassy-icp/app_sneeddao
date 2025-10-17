@@ -683,9 +683,20 @@ function Wallet() {
 
             const registered_icrc1_ledgers = await backendActor.get_ledger_canister_ids();
             var icrc1_ledgers = [];
+            
+            // If single refresh, only add new ledgers. If full refresh, add all ledgers.
+            if (single_refresh_ledger_canister_id) {
             for (const ledger of registered_icrc1_ledgers) {
                 const ledger_id = ledger.toText();
                 if (!known_icrc1_ledgers[ledger_id]) {
+                        known_icrc1_ledgers[ledger_id] = true;
+                        icrc1_ledgers.push(ledger);
+                    }
+                }
+            } else {
+                // Full refresh - fetch all ledgers
+                for (const ledger of registered_icrc1_ledgers) {
+                    const ledger_id = ledger.toText();
                     known_icrc1_ledgers[ledger_id] = true;
                     icrc1_ledgers.push(ledger);
                 }
@@ -2714,7 +2725,8 @@ function Wallet() {
         try {
             await Promise.all([
                 fetchBalancesAndLocks(),
-                fetchLiquidityPositions()
+                fetchLiquidityPositions(),
+                fetchIcpPrice()
             ]);
         } catch (error) {
             console.error('Error refreshing all wallet:', error);
