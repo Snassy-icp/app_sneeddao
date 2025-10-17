@@ -2512,15 +2512,16 @@ function Wallet() {
     };
 
     const handleClaimRewards = async (token) => {
-        setConfirmAction(() => async () => {
+        try {
             const rllActor = createRllActor(rllCanisterId, { agentOptions: { identity } });
             const claim_results = await rllActor.claim_full_balance_of_hotkey(
                 token.ledger_canister_id,
                 token.fee);
             /*await*/ fetchBalancesAndLocks(token.ledger_canister_id);
-        });
-        setConfirmMessage(`Do you want to claim your rewards of ${formatAmount(BigInt(rewardDetailsLoading[token.ledger_canister_id]), token.decimals)} ${token.symbol}?`);
-        setShowConfirmModal(true);
+        } catch (error) {
+            console.error('Error claiming rewards:', error);
+            throw error;
+        }
     };
 
     const handleRefreshToken = async (token) => {
