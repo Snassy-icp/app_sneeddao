@@ -321,7 +321,8 @@ function Wallet() {
         rewards: 0.0,
         fees: 0.0,
         staked: 0.0,
-        locked: 0.0
+        locked: 0.0,
+        hasAnyFees: false
     });
     const [tokensTotal, setTokensTotal] = useState(0.0);
     const [lpPositionsTotal, setLpPositionsTotal] = useState(0.0);
@@ -1192,11 +1193,17 @@ function Wallet() {
 
         // Calculate liquidity and fees from LP positions
         let feesTotal = 0.0;
+        let hasAnyFees = false; // Track if there are any fees regardless of USD value
         let liquidityTotal = 0.0;
         for (const lp of liquidityPositions) {
             for (const positionDetails of lp.positions) {
                 const positionTVL = getPositionTVL(lp, positionDetails, false);
                 total += positionTVL;
+                
+                // Check if there are any fees in tokens
+                if (positionDetails.tokensOwed0 > 0n || positionDetails.tokensOwed1 > 0n) {
+                    hasAnyFees = true;
+                }
                 
                 // Calculate unclaimed fees (tokensOwed)
                 const fees0USD = parseFloat(formatAmountWithConversion(positionDetails.tokensOwed0, lp.token0Decimals, lp.token0_conversion_rate));
@@ -1233,7 +1240,8 @@ function Wallet() {
             rewards: rewardsTotal,
             fees: feesTotal,
             staked: stakedTotal,
-            locked: lockedTotal
+            locked: lockedTotal,
+            hasAnyFees: hasAnyFees // Track if there are any fees in tokens
         });
         
         // Calculate tokens total (liquid + locked + staked + maturity + rewards)
@@ -3227,7 +3235,7 @@ function Wallet() {
                                     </span>
                                 </div>
                             )}
-                            {totalBreakdown.fees > 0 && (
+                            {totalBreakdown.hasAnyFees && (
                                 <div style={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -3280,7 +3288,7 @@ function Wallet() {
                 )}
 
                 {/* Consolidation Section */}
-                {isAuthenticated && (totalBreakdown.fees > 0 || totalBreakdown.rewards > 0 || totalBreakdown.maturity > 0) && (
+                {isAuthenticated && (totalBreakdown.hasAnyFees || totalBreakdown.rewards > 0 || totalBreakdown.maturity > 0) && (
                     <div style={{
                         background: theme.colors.cardGradient,
                         border: `1px solid ${theme.colors.border}`,
@@ -3329,7 +3337,7 @@ function Wallet() {
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             {/* Fees Row */}
-                            {totalBreakdown.fees > 0 && (
+                            {totalBreakdown.hasAnyFees && (
                                 <div style={{
                                     display: 'flex',
                                     justifyContent: 'space-between',
