@@ -41,7 +41,7 @@ const TransactionType = {
     APPROVE: 'approve'
 };
 
-function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, onToggleCollapse }) {
+function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCanisterId = null, principalId = null, isCollapsed, onToggleCollapse }) {
     const { theme } = useTheme();
     
     const styles = {
@@ -426,6 +426,23 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
     // Fetch canister IDs from SNS root
     const fetchCanisterIds = async () => {
         try {
+            // If ledger canister ID is provided directly, use it
+            if (providedLedgerCanisterId) {
+                setLedgerCanisterId(providedLedgerCanisterId);
+                // Try to fetch index canister if we have SNS root
+                if (snsRootCanisterId) {
+                    try {
+                        const snsRootActor = createSnsRootActor(snsRootCanisterId);
+                        const response = await snsRootActor.list_sns_canisters({});
+                        setIndexCanisterId(response.index[0]);
+                    } catch (err) {
+                        console.warn('Failed to fetch index canister, will work without it:', err);
+                    }
+                }
+                return;
+            }
+
+            // Otherwise, fetch from SNS root
             const snsRootActor = createSnsRootActor(snsRootCanisterId);
             const response = await snsRootActor.list_sns_canisters({});
             console.log("list_sns_canisters", response);
@@ -582,7 +599,7 @@ function TransactionList({ snsRootCanisterId, principalId = null, isCollapsed, o
     // Effect to fetch canister IDs
     useEffect(() => {
         fetchCanisterIds();
-    }, [snsRootCanisterId]);
+    }, [snsRootCanisterId, providedLedgerCanisterId]);
 
     // Effect to fetch transactions when dependencies change
     useEffect(() => {
