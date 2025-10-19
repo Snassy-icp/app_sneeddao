@@ -2966,6 +2966,12 @@ function Wallet() {
                     .breakdown-text-label {
                         display: none !important;
                     }
+                    .wallet-help-text {
+                        display: none !important;
+                    }
+                    .total-portfolio-label {
+                        display: none !important;
+                    }
                 }
             `}</style>
             <Header />
@@ -3047,7 +3053,7 @@ function Wallet() {
                                 }}
                             >
                                 <span style={{ fontSize: '0.95rem' }}>❓</span>
-                                <span style={{ whiteSpace: 'nowrap' }}>Wallet Help</span>
+                                <span className="wallet-help-text" style={{ whiteSpace: 'nowrap' }}>Wallet Help</span>
                             </Link>
                         </div>
 
@@ -3183,7 +3189,7 @@ function Wallet() {
                         <div style={{
                             textAlign: 'center'
                         }}>
-                            <div style={{
+                            <div className="total-portfolio-label" style={{
                                 color: theme.colors.mutedText,
                                 fontSize: '14px',
                                 letterSpacing: '1px',
