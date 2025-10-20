@@ -3138,56 +3138,52 @@ function Wallet() {
                         gap: '16px',
                         position: 'relative'
                     }}>
-                        {/* Top Row: ICP Price and Refresh Button */}
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            position: 'absolute',
-                            top: '16px',
-                            left: '16px'
-                        }}>
-                            {/* ICP Price */}
-                            {icpPrice && (
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    color: theme.colors.mutedText,
-                                    fontSize: '0.85rem',
-                                    fontWeight: '500'
-                                }}>
-                                    <span>ICP:</span>
-                                    <span style={{ color: theme.colors.primaryText }}>
-                                        ${icpPrice.toFixed(2)}
-                                    </span>
-                                </div>
-                            )}
-                            
-                            {/* Refresh Wallet Button */}
-                            <button
-                                onClick={handleRefreshAllWallet}
-                                disabled={refreshingAllWallet}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    cursor: refreshingAllWallet ? 'default' : 'pointer',
-                                    padding: '4px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    color: theme.colors.mutedText,
-                                    fontSize: '1.1rem',
-                                    borderRadius: '6px',
-                                    transition: 'all 0.2s ease',
-                                    opacity: refreshingAllWallet ? 0.6 : 1
-                                }}
-                                onMouseEnter={(e) => !refreshingAllWallet && (e.target.style.color = theme.colors.primaryText)}
-                                onMouseLeave={(e) => !refreshingAllWallet && (e.target.style.color = theme.colors.mutedText)}
-                                title="Refresh entire wallet"
-                            >
-                                {refreshingAllWallet ? '⏳' : '🔄'}
-                            </button>
-                        </div>
+                        {/* ICP Price - Top Left */}
+                        {icpPrice && (
+                            <div style={{
+                                position: 'absolute',
+                                top: '16px',
+                                left: '16px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                color: theme.colors.mutedText,
+                                fontSize: '0.85rem',
+                                fontWeight: '500'
+                            }}>
+                                <span>ICP:</span>
+                                <span style={{ color: theme.colors.primaryText }}>
+                                    ${icpPrice.toFixed(2)}
+                                </span>
+                            </div>
+                        )}
+                        
+                        {/* Refresh Wallet Button - Top Right */}
+                        <button
+                            onClick={handleRefreshAllWallet}
+                            disabled={refreshingAllWallet}
+                            style={{
+                                position: 'absolute',
+                                top: '16px',
+                                right: '16px',
+                                background: 'none',
+                                border: 'none',
+                                cursor: refreshingAllWallet ? 'default' : 'pointer',
+                                padding: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                color: theme.colors.mutedText,
+                                fontSize: '1.1rem',
+                                borderRadius: '6px',
+                                transition: 'all 0.2s ease',
+                                opacity: refreshingAllWallet ? 0.6 : 1
+                            }}
+                            onMouseEnter={(e) => !refreshingAllWallet && (e.target.style.color = theme.colors.primaryText)}
+                            onMouseLeave={(e) => !refreshingAllWallet && (e.target.style.color = theme.colors.mutedText)}
+                            title="Refresh entire wallet"
+                        >
+                            {refreshingAllWallet ? '⏳' : '🔄'}
+                        </button>
                         
                         {/* Center - Total Value */}
                         <div style={{
