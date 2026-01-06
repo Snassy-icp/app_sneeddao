@@ -1911,50 +1911,6 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                     {/* Collapsible Neurons Content */}
                     {neuronsExpanded && (
                         <div>
-                            {/* Beta Warning */}
-                            <div 
-                                style={{
-                                    background: `${theme.colors.warning || '#f39c12'}15`,
-                                    border: `1px solid ${theme.colors.warning || '#f39c12'}40`,
-                                    borderRadius: '8px',
-                                    padding: '10px 16px',
-                                    marginBottom: '16px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '12px',
-                                    cursor: 'help'
-                                }}
-                                title="⚠️ The neuron wallet feature is in beta and may contain bugs. Please use only small test amounts at your own risk."
-                            >
-                                <span style={{ fontSize: '1.5rem' }}>⚠️</span>
-                                <div style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: '8px',
-                                    flex: 1
-                                }}>
-                                    <span style={{ 
-                                        background: theme.colors.warning || '#f39c12',
-                                        color: '#ffffff',
-                                        padding: '2px 8px',
-                                        borderRadius: '10px',
-                                        fontSize: '0.7rem',
-                                        fontWeight: '600',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px'
-                                    }}>
-                                        BETA
-                                    </span>
-                                    <span style={{ 
-                                        color: theme.colors.primaryText,
-                                        fontWeight: '600',
-                                        fontSize: '0.9rem'
-                                    }}>
-                                        Hover for details
-                                    </span>
-                                </div>
-                            </div>
-                            
                             {neuronsLoading ? (
                                 <div className="spinner-container">
                                     <div className="spinner"></div>
