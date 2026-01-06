@@ -316,6 +316,15 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         return userPerms?.permission_type?.includes(permissionType) || false;
     };
 
+    // Check if SNS allows granting MANAGE_PRINCIPALS permission (needed to add/remove hotkeys)
+    // If this permission can't be granted, neurons created in this wallet will be stuck here
+    const canManageNeuronPrincipals = () => {
+        if (!nervousSystemParameters) return true; // Assume allowed if we haven't loaded params yet
+        const grantablePerms = nervousSystemParameters.neuron_grantable_permissions?.[0]?.permissions || 
+                               nervousSystemParameters.neuron_grantable_permissions?.permissions || [];
+        return grantablePerms.includes(PERM.MANAGE_PRINCIPALS);
+    };
+
     // Neuron management functions
     const manageNeuron = async (neuronIdHex, command) => {
         if (!governanceCanisterId || !identity) {
@@ -1953,45 +1962,79 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                             ) : (
                                 <>
                                     {/* Create Neuron Button */}
-                                    <button
-                                        onClick={async () => {
-                                            if (token.available <= 0n) return;
-                                            setShowCreateNeuronDialog(true);
-                                            setCreateNeuronNonce('');
-                                            setCreateNeuronNonceFree(null);
-                                            setCreateNeuronNonceChecking(true);
-                                            const result = await findUnusedNonce();
-                                            if (result) {
-                                                setCreateNeuronNonce(result.nonce.toString());
-                                                setCreateNeuronNonceFree(true);
-                                            }
-                                            setCreateNeuronNonceChecking(false);
-                                        }}
-                                        disabled={token.available <= 0n}
-                                        title={token.available <= 0n ? `You need ${token.symbol} tokens to create a neuron` : 'Create a new neuron'}
-                                        style={{
-                                            background: token.available > 0n ? theme.colors.accent : theme.colors.mutedText,
-                                            color: theme.colors.primaryBg,
-                                            border: 'none',
-                                            borderRadius: '8px',
-                                            padding: '12px 16px',
-                                            cursor: token.available > 0n ? 'pointer' : 'not-allowed',
-                                            fontSize: '0.9rem',
-                                            fontWeight: '600',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            gap: '6px',
-                                            width: '100%',
+                                    {(() => {
+                                        const canManage = canManageNeuronPrincipals();
+                                        const hasBalance = token.available > 0n;
+                                        const isDisabled = !hasBalance || !canManage;
+                                        const getTitle = () => {
+                                            if (!canManage) return `This SNS doesn't allow managing neuron permissions. Neurons created here would be stuck in this wallet.`;
+                                            if (!hasBalance) return `You need ${token.symbol} tokens to create a neuron`;
+                                            return 'Create a new neuron';
+                                        };
+                                        
+                                        return (
+                                            <button
+                                                onClick={async () => {
+                                                    if (isDisabled) return;
+                                                    setShowCreateNeuronDialog(true);
+                                                    setCreateNeuronNonce('');
+                                                    setCreateNeuronNonceFree(null);
+                                                    setCreateNeuronNonceChecking(true);
+                                                    const result = await findUnusedNonce();
+                                                    if (result) {
+                                                        setCreateNeuronNonce(result.nonce.toString());
+                                                        setCreateNeuronNonceFree(true);
+                                                    }
+                                                    setCreateNeuronNonceChecking(false);
+                                                }}
+                                                disabled={isDisabled}
+                                                title={getTitle()}
+                                                style={{
+                                                    background: !isDisabled ? theme.colors.accent : theme.colors.mutedText,
+                                                    color: theme.colors.primaryBg,
+                                                    border: 'none',
+                                                    borderRadius: '8px',
+                                                    padding: '12px 16px',
+                                                    cursor: !isDisabled ? 'pointer' : 'not-allowed',
+                                                    fontSize: '0.9rem',
+                                                    fontWeight: '600',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    gap: '6px',
+                                                    width: '100%',
+                                                    marginBottom: !canManage ? '8px' : '16px',
+                                                    opacity: !isDisabled ? 1 : 0.6,
+                                                    transition: 'opacity 0.2s ease'
+                                                }}
+                                                onMouseEnter={(e) => { if (!isDisabled) e.target.style.opacity = '0.9' }}
+                                                onMouseLeave={(e) => { if (!isDisabled) e.target.style.opacity = '1' }}
+                                            >
+                                                {!canManage ? '🚫' : '➕'} Create New Neuron
+                                            </button>
+                                        );
+                                    })()}
+                                    {/* Warning message when SNS doesn't allow managing neuron permissions */}
+                                    {!canManageNeuronPrincipals() && (
+                                        <div style={{
+                                            background: `${theme.colors.warning}20`,
+                                            border: `1px solid ${theme.colors.warning}`,
+                                            borderRadius: '6px',
+                                            padding: '10px 12px',
                                             marginBottom: '16px',
-                                            opacity: token.available > 0n ? 1 : 0.6,
-                                            transition: 'opacity 0.2s ease'
-                                        }}
-                                        onMouseEnter={(e) => { if (token.available > 0n) e.target.style.opacity = '0.9' }}
-                                        onMouseLeave={(e) => { if (token.available > 0n) e.target.style.opacity = '1' }}
-                                    >
-                                        ➕ Create New Neuron
-                                    </button>
+                                            fontSize: '0.85rem',
+                                            color: theme.colors.warning,
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            gap: '8px'
+                                        }}>
+                                            <span style={{ fontSize: '1rem' }}>⚠️</span>
+                                            <span>
+                                                This SNS doesn't allow managing neuron permissions. 
+                                                Neurons created here cannot be transferred to other wallets.
+                                            </span>
+                                        </div>
+                                    )}
                                     
                                     {/* Hide empty neurons checkbox */}
                                     {neurons.length > 0 && (
