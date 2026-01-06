@@ -207,6 +207,14 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
         }, 0n);
     };
 
+    // Get total maturity currently being disbursed (7-day vesting period)
+    const getTotalDisbursingMaturity = () => {
+        return neurons.reduce((total, neuron) => {
+            const disbursing = neuron.disburse_maturity_in_progress || [];
+            return total + disbursing.reduce((sum, d) => sum + BigInt(d.amount_e8s || 0n), 0n);
+        }, 0n);
+    };
+
     const getTotalLockedAmount = () => {
         const tokenLocks = locks[token.ledger_canister_id] || [];
         return tokenLocks.reduce((total, lock) => {
@@ -1192,6 +1200,30 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </span>
                             );
                         })()}
+                        {/* Disbursing maturity icon */}
+                        {getTotalDisbursingMaturity() > 0n && (() => {
+                            const disbursingUSD = token.conversion_rate 
+                                ? Number(getTotalDisbursingMaturity()) / Number(10n ** BigInt(token.decimals)) * token.conversion_rate
+                                : 0;
+                            
+                            return (
+                                <span 
+                                    style={{ 
+                                        fontSize: '14px', 
+                                        cursor: 'help',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                    }} 
+                                    title={`${formatAmount(getTotalDisbursingMaturity(), token.decimals)} ${token.symbol} disbursing (7-day vesting)`}
+                                >
+                                    ⏳
+                                    <span style={{ fontSize: '12px', color: theme.colors.accent }}>
+                                        ${disbursingUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                </span>
+                            );
+                        })()}
                         {/* Rewards icon */}
                         {rewardAmountOrZero(token, rewardDetailsLoading, hideAvailable) > 0n && (() => {
                             const rewardsUSD = token.conversion_rate 
@@ -1457,6 +1489,15 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                             Maturity
                                         </div>
                                         <div className="balance-value">{formatAmount(getTotalNeuronMaturity(), token.decimals)}{getUSD(getTotalNeuronMaturity(), token.decimals, token.conversion_rate)}</div>
+                                    </div>
+                                )}
+                                {getTotalDisbursingMaturity() > 0n && (
+                                    <div className="balance-item">
+                                        <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ fontSize: '14px' }}>⏳</span>
+                                            Disbursing
+                                        </div>
+                                        <div className="balance-value" style={{ color: theme.colors.accent }}>{formatAmount(getTotalDisbursingMaturity(), token.decimals)}{getUSD(getTotalDisbursingMaturity(), token.decimals, token.conversion_rate)}</div>
                                     </div>
                                 )}
                             </>
@@ -2195,6 +2236,71 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                                                         {formatAmount(neuron.maturity_e8s_equivalent || 0n, token.decimals)} {token.symbol}
                                                                     </span>
                                                                 </div>
+                                                                
+                                                                {/* Disbursing Maturity - show if there's maturity in the 7-day vesting period */}
+                                                                {neuron.disburse_maturity_in_progress && neuron.disburse_maturity_in_progress.length > 0 && (
+                                                                    <div style={{ 
+                                                                        marginTop: '8px',
+                                                                        padding: '10px',
+                                                                        backgroundColor: theme.colors.tertiaryBg,
+                                                                        borderRadius: '6px',
+                                                                        border: `1px solid ${theme.colors.accent}40`
+                                                                    }}>
+                                                                        <div style={{ 
+                                                                            display: 'flex', 
+                                                                            alignItems: 'center', 
+                                                                            gap: '6px',
+                                                                            marginBottom: '8px',
+                                                                            color: theme.colors.accent,
+                                                                            fontWeight: '600',
+                                                                            fontSize: '0.9rem'
+                                                                        }}>
+                                                                            <span>⏳</span>
+                                                                            <span>Disbursing Maturity</span>
+                                                                        </div>
+                                                                        {neuron.disburse_maturity_in_progress.map((disbursement, idx) => {
+                                                                            const amount = BigInt(disbursement.amount_e8s || 0n);
+                                                                            const finalizeTimestamp = disbursement.finalize_disbursement_timestamp_seconds?.[0] || disbursement.finalize_disbursement_timestamp_seconds;
+                                                                            const finalizeDate = finalizeTimestamp ? new Date(Number(finalizeTimestamp) * 1000) : null;
+                                                                            const now = new Date();
+                                                                            const timeRemaining = finalizeDate ? finalizeDate - now : 0;
+                                                                            
+                                                                            return (
+                                                                                <div key={idx} style={{ 
+                                                                                    display: 'flex', 
+                                                                                    flexDirection: 'column',
+                                                                                    gap: '4px',
+                                                                                    paddingTop: idx > 0 ? '8px' : '0',
+                                                                                    borderTop: idx > 0 ? `1px solid ${theme.colors.border}` : 'none'
+                                                                                }}>
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                        <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>Amount:</span>
+                                                                                        <span style={{ color: theme.colors.primaryText, fontWeight: '600', fontSize: '0.85rem' }}>
+                                                                                            {formatAmount(amount, token.decimals)} {token.symbol}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    {finalizeDate && (
+                                                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                            <span style={{ color: theme.colors.secondaryText, fontSize: '0.85rem' }}>
+                                                                                                {timeRemaining > 0 ? 'Arrives in:' : 'Available:'}
+                                                                                            </span>
+                                                                                            <span style={{ 
+                                                                                                color: timeRemaining > 0 ? theme.colors.accent : theme.colors.success, 
+                                                                                                fontWeight: '500',
+                                                                                                fontSize: '0.85rem'
+                                                                                            }}>
+                                                                                                {timeRemaining > 0 
+                                                                                                    ? format_duration(timeRemaining)
+                                                                                                    : 'Ready to claim'
+                                                                                                }
+                                                                                            </span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                )}
                                                                 
                                                                 {/* Auto-stake Maturity Checkbox */}
                                                                 {userHasPermission(neuron, PERM.MANAGE_VOTING_PERMISSION) && (
