@@ -1269,6 +1269,7 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
                         </div>
                         
                         <div style={styles.compactFilterGroup} className="transaction-compact-filter-group">
+                            <span style={styles.filterLabel}>Export:</span>
                             <button
                                 onClick={exportTransactionsToCSV}
                                 style={{
