@@ -780,11 +780,11 @@ function TransactionList({ snsRootCanisterId, ledgerCanisterId: providedLedgerCa
             try {
                 switch (sortConfig.key) {
                     case 'index':
-                        aValue = a.txIndex ?? a.id ?? 0;
-                        bValue = b.txIndex ?? b.id ?? 0;
+                        aValue = a.txIndex ?? a.id ?? 0n;
+                        bValue = b.txIndex ?? b.id ?? 0n;
                         return sortConfig.direction === 'asc' 
-                            ? aValue - bValue 
-                            : bValue - aValue;
+                            ? (aValue < bValue ? -1 : aValue > bValue ? 1 : 0)
+                            : (bValue < aValue ? -1 : bValue > aValue ? 1 : 0);
                     case 'type':
                         aValue = a.kind || '';
                         bValue = b.kind || '';
