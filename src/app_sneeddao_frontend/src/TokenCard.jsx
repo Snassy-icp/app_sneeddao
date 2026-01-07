@@ -1485,7 +1485,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                         {isSnsToken && neurons.length > 0 && (
                             <>
                                 <div className="balance-item">
-                                    <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
                                         <span style={{ fontSize: '14px' }}>🧠</span>
                                         Staked
                                     </div>
@@ -1493,7 +1493,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 </div>
                                 {getTotalNeuronMaturity() > 0n && (
                                     <div className="balance-item">
-                                        <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
                                             <span style={{ fontSize: '14px' }}>🌱</span>
                                             Maturity
                                         </div>
@@ -1502,7 +1502,7 @@ const TokenCard = ({ token, locks, lockDetailsLoading, principalDisplayInfo, sho
                                 )}
                                 {getTotalDisbursingMaturity() > 0n && (
                                     <div className="balance-item">
-                                        <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <div className="balance-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-start' }}>
                                             <span style={{ fontSize: '14px' }}>⏳</span>
                                             Disbursing
                                         </div>
