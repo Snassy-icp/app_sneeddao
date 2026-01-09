@@ -107,7 +107,7 @@ const Post = () => {
         setLoadingLogo(true);
         
         try {
-            const host = process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943';
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943';
             const agent = new HttpAgent({
                 host,
                 ...(identity && { identity })

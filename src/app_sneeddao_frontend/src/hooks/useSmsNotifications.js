@@ -29,7 +29,7 @@ export function useSmsNotifications() {
             const canisterId = process.env.CANISTER_ID_SNEED_SMS || 'v33jy-4qaaa-aaaad-absna-cai';
             const actor = createSmsActor(canisterId, {
                 agentOptions: {
-                    host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                    host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
                     identity: identity || undefined,
                 },
             });

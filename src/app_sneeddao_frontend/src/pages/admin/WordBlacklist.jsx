@@ -31,7 +31,7 @@ export default function WordBlacklist() {
             const backendActor = createBackendActor(backendCanisterId, {
                 agentOptions: {
                     identity,
-                    host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                    host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
                 }
             });
             const result = await backendActor.get_blacklisted_words();
@@ -66,7 +66,7 @@ export default function WordBlacklist() {
             const backendActor = createBackendActor(backendCanisterId, {
                 agentOptions: {
                     identity,
-                    host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                    host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
                 }
             });
             const result = await backendActor.add_blacklisted_word(newWord.trim());
@@ -93,7 +93,7 @@ export default function WordBlacklist() {
             const backendActor = createBackendActor(backendCanisterId, {
                 agentOptions: {
                     identity,
-                    host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                    host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
                 }
             });
             const result = await backendActor.remove_blacklisted_word(word);

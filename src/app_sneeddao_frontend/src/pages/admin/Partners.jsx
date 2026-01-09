@@ -29,7 +29,7 @@ function AdminPartners() {
         try {
             const backendActor = createBackendActor(backendCanisterId, {
                 agentOptions: {
-                    host: process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943',
+                    host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943',
                 }
             });
             const result = await backendActor.get_partners();
@@ -53,7 +53,7 @@ function AdminPartners() {
         try {
             const backendActor = createBackendActor(backendCanisterId, {
                 agentOptions: {
-                    host: process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943',
+                    host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943',
                     identity: identity
                 }
             });
@@ -112,7 +112,7 @@ function AdminPartners() {
         try {
             const backendActor = createBackendActor(backendCanisterId, {
                 agentOptions: {
-                    host: process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943',
+                    host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943',
                     identity: identity
                 }
             });

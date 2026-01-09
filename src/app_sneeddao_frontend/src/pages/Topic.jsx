@@ -410,7 +410,7 @@ function Topic() {
     const forumActor = useMemo(() => {
         return identity ? createActor(canisterId, {
             agentOptions: {
-                host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
                 identity: identity,
             },
         }) : null;
@@ -453,7 +453,7 @@ function Topic() {
         setLoadingLogo(true);
         
         try {
-            const host = process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943';
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943';
             const agent = new HttpAgent({
                 host,
                 ...(identity && { identity })
@@ -809,7 +809,7 @@ function Topic() {
         try {
             const forumActor = createActor(canisterId, {
                 agentOptions: {
-                    host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                    host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
                     identity: identity,
                 },
             });
@@ -845,7 +845,7 @@ function Topic() {
             // Create forum actor
             const forumActor = createActor(canisterId, {
                 agentOptions: {
-                    host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                    host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
                     identity: identity || undefined,
                 },
             });
@@ -986,7 +986,7 @@ function Topic() {
 
             const forumActor = createActor(canisterId, {
                 agentOptions: {
-                    host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+                    host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
                     identity: identity,
                 },
             });

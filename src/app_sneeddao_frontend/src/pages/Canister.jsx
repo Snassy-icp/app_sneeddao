@@ -52,7 +52,7 @@ const managementCanisterIdlFactory = ({ IDL }) => {
 };
 
 // Helper to get the host URL based on environment
-const getHost = () => process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943';
+const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
 
 // Helper function to convert Uint8Array to hex string
 const uint8ArrayToHex = (arr) => {

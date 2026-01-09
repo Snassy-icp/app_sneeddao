@@ -105,7 +105,7 @@ export async function fetchAndCacheSnsData(identity) {
         console.log('Creating NNS SNS Wrapper actor...'); // Debug log
         
         // Create an agent with proper host configuration
-        const host = process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943';
+        const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943';
         console.log('Using host:', host);
         
         const agentConfig = {
@@ -294,7 +294,7 @@ export async function fetchSingleSnsData(rootCanisterId, identity) {
 
     try {
         // Create an agent with proper host configuration
-        const host = process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943';
+        const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943';
         const agentConfig = {
             host,
             ...(identity && { identity })
@@ -376,7 +376,7 @@ export async function fetchAndCacheSnsDataOptimized(identity, options = {}) {
     try {
         console.log('Creating NNS SNS Wrapper actor...'); // Debug log
         
-        const host = process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943';
+        const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://ic0.app' : 'http://localhost:4943';
         const agentConfig = {
             host,
             ...(identity && { identity })

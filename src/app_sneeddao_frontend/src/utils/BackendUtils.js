@@ -6,7 +6,7 @@ import { createActor, canisterId } from 'declarations/app_sneeddao_backend';
 export const createBackendActor = (identity) => {
     return createActor(canisterId, {
         agentOptions: {
-            host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+            host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
             identity: identity || undefined,
         },
     });

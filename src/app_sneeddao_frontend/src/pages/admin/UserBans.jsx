@@ -78,7 +78,7 @@ export default function UserBans() {
       const backendActor = createBackendActor(backendCanisterId, {
         agentOptions: {
           identity,
-          host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+          host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
         }
       });
       const result = await backendActor.get_banned_users();
@@ -113,7 +113,7 @@ export default function UserBans() {
       const backendActor = createBackendActor(backendCanisterId, {
         agentOptions: {
           identity,
-          host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+          host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
         }
       });
       
@@ -154,7 +154,7 @@ export default function UserBans() {
       const backendActor = createBackendActor(backendCanisterId, {
         agentOptions: {
           identity,
-          host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+          host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
         }
       });
       const result = await backendActor.ban_user(Principal.fromText(e.target.principal.value), durationInHours, reason);
@@ -179,7 +179,7 @@ export default function UserBans() {
       const backendActor = createBackendActor(backendCanisterId, {
         agentOptions: {
           identity,
-          host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+          host: process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943',
         }
       });
       // Convert the principal string to a Principal object
