@@ -1,7 +1,7 @@
 export const idlFactory = ({ IDL }) => {
   const Result_1 = IDL.Variant({ 'ok' : IDL.Null, 'err' : IDL.Text });
   const PartnerLink = IDL.Record({ 'url' : IDL.Text, 'title' : IDL.Text });
-  const Result_5 = IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text });
+  const Result_6 = IDL.Variant({ 'ok' : IDL.Nat, 'err' : IDL.Text });
   const ProjectType = IDL.Variant({
     'fork' : IDL.Null,
     'product' : IDL.Null,
@@ -32,7 +32,7 @@ export const idlFactory = ({ IDL }) => {
     'ok' : IDL.Vec(BanLogEntry),
     'err' : IDL.Text,
   });
-  const Result_4 = IDL.Variant({
+  const Result_5 = IDL.Variant({
     'ok' : IDL.Vec(IDL.Tuple(IDL.Principal, IDL.Int)),
     'err' : IDL.Text,
   });
@@ -45,6 +45,13 @@ export const idlFactory = ({ IDL }) => {
   const TokenMeta = IDL.Record({
     'token0' : IDL.Vec(IDL.Tuple(IDL.Text, TokenMetaValue)),
     'token1' : IDL.Vec(IDL.Tuple(IDL.Text, TokenMetaValue)),
+  });
+  const Result_4 = IDL.Variant({
+    'ok' : IDL.Record({
+      'controllers' : IDL.Vec(IDL.Principal),
+      'module_hash' : IDL.Opt(IDL.Vec(IDL.Nat8)),
+    }),
+    'err' : IDL.Text,
   });
   const Partner = IDL.Record({
     'id' : IDL.Nat,
@@ -105,7 +112,7 @@ export const idlFactory = ({ IDL }) => {
     'add_blacklisted_word' : IDL.Func([IDL.Text], [Result_1], []),
     'add_partner' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Text, IDL.Vec(PartnerLink), IDL.Opt(IDL.Nat)],
-        [Result_5],
+        [Result_6],
         [],
       ),
     'add_project' : IDL.Func(
@@ -117,7 +124,7 @@ export const idlFactory = ({ IDL }) => {
           IDL.Vec(ProjectLink),
           IDL.Opt(IDL.Nat),
         ],
-        [Result_5],
+        [Result_6],
         [],
       ),
     'add_whitelisted_token' : IDL.Func([WhitelistedToken], [], []),
@@ -146,13 +153,14 @@ export const idlFactory = ({ IDL }) => {
         ['query'],
       ),
     'get_ban_log' : IDL.Func([], [Result_3], ['query']),
-    'get_banned_users' : IDL.Func([], [Result_4], ['query']),
+    'get_banned_users' : IDL.Func([], [Result_5], ['query']),
     'get_blacklisted_words' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
     'get_cached_token_meta' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(TokenMeta)],
         ['query'],
       ),
+    'get_canister_info' : IDL.Func([IDL.Principal], [Result_4], []),
     'get_ledger_canister_ids' : IDL.Func(
         [],
         [IDL.Vec(IDL.Principal)],

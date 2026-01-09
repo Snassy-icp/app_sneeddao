@@ -66,6 +66,7 @@ import Topic from './pages/Topic';
 import HelpNeurons from './pages/HelpNeurons';
 import HelpWallet from './pages/HelpWallet';
 import HelpSneedlock from './pages/HelpSneedlock';
+import Canister from './pages/Canister';
 
 // Component to set up global naming function
 function GlobalNamingSetup() {
@@ -133,6 +134,7 @@ function App() {
                     <Route path="/post" element={<Post />} />
                     <Route path="/disclaimer" element={<Disclaimer />} />
                     <Route path="/principal" element={<Principal />} />
+                    <Route path="/canister" element={<Canister />} />
                     <Route path="/neurons" element={<Neurons />} />
                     <Route path="/transaction" element={<Transaction />} />
                     <Route path="/transactions" element={<Transactions />} />

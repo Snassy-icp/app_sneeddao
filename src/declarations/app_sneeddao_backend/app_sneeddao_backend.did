@@ -58,18 +58,26 @@ type TokenMeta =
                };
  };
 type Timestamp = nat64;
-type Result_5 = 
+type Result_6 = 
  variant {
    err: text;
    ok: nat;
  };
-type Result_4 = 
+type Result_5 = 
  variant {
    err: text;
    ok: vec record {
              principal;
              int;
            };
+ };
+type Result_4 = 
+ variant {
+   err: text;
+   ok: record {
+         controllers: vec principal;
+         module_hash: opt blob;
+       };
  };
 type Result_3 = 
  variant {
@@ -158,10 +166,10 @@ type AppSneedDaoBackend =
    add_admin: ("principal": principal) -> ();
    add_blacklisted_word: (word: text) -> (Result_1);
    add_partner: (name: text, logo_url: text, description: text, links:
-    vec PartnerLink, index: opt nat) -> (Result_5);
+    vec PartnerLink, index: opt nat) -> (Result_6);
    add_project: (name: text, logo_url: opt text, description: text,
     project_type: ProjectType, links: vec ProjectLink, index: opt nat) ->
-    (Result_5);
+    (Result_6);
    add_whitelisted_token: (token: WhitelistedToken) -> ();
    ban_user: (user: principal, duration_hours: nat, reason: text) ->
     (Result_1);
@@ -193,10 +201,11 @@ type AppSneedDaoBackend =
                                              text;
                                            }) query;
    get_ban_log: () -> (Result_3) query;
-   get_banned_users: () -> (Result_4) query;
+   get_banned_users: () -> (Result_5) query;
    get_blacklisted_words: () -> (vec text) query;
    get_cached_token_meta: (swap_canister_id: principal) ->
     (opt TokenMeta) query;
+   get_canister_info: (canister_id: principal) -> (Result_4);
    get_ledger_canister_ids: () -> (vec principal) query;
    get_neuron_name: (sns_root_canister_id: principal, neuron_id: NeuronId) ->
     (opt record {

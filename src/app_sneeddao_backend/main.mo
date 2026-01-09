@@ -42,6 +42,10 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   type ProjectLink = T.ProjectLink;
   type ProjectType = T.ProjectType;
 
+  // Canister info types
+  type CanisterInfoRequest = T.CanisterInfoRequest;
+  type CanisterInfoResponse = T.CanisterInfoResponse;
+
   // Token whitelist types
   type WhitelistedToken = {
     ledger_id: Principal;
@@ -1570,6 +1574,28 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       };
     };
     null
+  };
+
+  // IC Management canister actor
+  let IC = actor "aaaaa-aa" : actor {
+    canister_info : shared (CanisterInfoRequest) -> async CanisterInfoResponse;
+  };
+
+  // Get canister info (controllers and module hash) via IC management canister
+  // This is an update call because it makes an async call to another canister
+  public shared func get_canister_info(canister_id : Principal) : async Result.Result<{ controllers : [Principal]; module_hash : ?Blob }, Text> {
+    try {
+      let info = await IC.canister_info({
+        canister_id = canister_id;
+        num_requested_changes = null;
+      });
+      #ok({
+        controllers = info.controllers;
+        module_hash = info.module_hash;
+      })
+    } catch (e) {
+      #err("Failed to get canister info: " # Error.message(e))
+    }
   };
 
   // save state to stable arrays

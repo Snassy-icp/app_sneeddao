@@ -144,4 +144,36 @@ module {
         created_at : Int;
         updated_at : Int;
     };
+
+    // Canister info types for IC management canister
+    public type CanisterInfoRequest = {
+        canister_id : Principal;
+        num_requested_changes : ?Nat64;
+    };
+
+    public type CanisterChange = {
+        timestamp_nanos : Nat64;
+        canister_version : Nat64;
+        origin : CanisterChangeOrigin;
+        details : CanisterChangeDetails;
+    };
+
+    public type CanisterChangeOrigin = {
+        #from_user : { user_id : Principal };
+        #from_canister : { canister_id : Principal; canister_version : ?Nat64 };
+    };
+
+    public type CanisterChangeDetails = {
+        #creation : { controllers : [Principal] };
+        #code_uninstall;
+        #code_deployment : { mode : { #install; #reinstall; #upgrade } ; module_hash : Blob };
+        #controllers_change : { controllers : [Principal] };
+    };
+
+    public type CanisterInfoResponse = {
+        total_num_changes : Nat64;
+        recent_changes : [CanisterChange];
+        module_hash : ?Blob;
+        controllers : [Principal];
+    };
 };

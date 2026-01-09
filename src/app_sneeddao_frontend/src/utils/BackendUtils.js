@@ -729,4 +729,21 @@ export const getThreadContext = async (forumActor, threadId) => {
         console.error('Error getting thread context:', error);
         throw error;
     }
+};
+
+// Get canister info (controllers and module hash) via backend
+// This calls our backend which in turn calls the IC management canister
+export const getCanisterInfo = async (identity, canisterId) => {
+    if (!canisterId) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const result = await actor.get_canister_info(
+            typeof canisterId === 'string' ? Principal.fromText(canisterId) : canisterId
+        );
+        return result;
+    } catch (error) {
+        console.error('Error getting canister info:', error);
+        throw error;
+    }
 }; 
