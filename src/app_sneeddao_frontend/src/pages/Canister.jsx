@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
@@ -50,6 +50,9 @@ const managementCanisterIdlFactory = ({ IDL }) => {
         ),
     });
 };
+
+// Helper to get the host URL based on environment
+const getHost = () => process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943';
 
 // Helper function to convert Uint8Array to hex string
 const uint8ArrayToHex = (arr) => {
@@ -134,9 +137,10 @@ export default function CanisterPage() {
             // First, try canister_status if user is authenticated (might be controller)
             if (identity) {
                 try {
+                    const host = getHost();
                     const agent = new HttpAgent({
+                        host,
                         identity,
-                        host: process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943'
                     });
 
                     if (process.env.DFX_NETWORK !== 'ic') {

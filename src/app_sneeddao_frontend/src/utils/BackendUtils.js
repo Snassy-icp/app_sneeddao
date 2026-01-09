@@ -1,25 +1,14 @@
 import { Actor, HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
-import { idlFactory } from 'declarations/app_sneeddao_backend';
-import { canisterId } from 'declarations/app_sneeddao_backend';
+import { createActor, canisterId } from 'declarations/app_sneeddao_backend';
 
-// Create an actor for the backend canister
+// Create an actor for the backend canister using the established pattern
 export const createBackendActor = (identity) => {
-    const agent = new HttpAgent({
-        identity,
-        host: process.env.DFX_NETWORK === 'ic' ? 'https://ic0.app' : 'http://localhost:4943'
-    });
-
-    if (process.env.DFX_NETWORK !== 'ic') {
-        agent.fetchRootKey().catch(err => {
-            console.warn('Unable to fetch root key. Check to ensure that your local replica is running');
-            console.error(err);
-        });
-    }
-
-    return Actor.createActor(idlFactory, {
-        agent,
-        canisterId
+    return createActor(canisterId, {
+        agentOptions: {
+            host: process.env.DFX_NETWORK === 'ic' ? 'https://icp0.io' : 'http://localhost:4943',
+            identity: identity || undefined,
+        },
     });
 };
 
