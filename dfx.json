@@ -31,7 +31,8 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "twapx-riaaa-aaaak-qlojq-cai"
+          "ic": "lvc4n-7aaaa-aaaam-adm6a-cai",
+          "staging": "twapx-riaaa-aaaak-qlojq-cai"
         }
       }
     },
@@ -42,7 +43,8 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "25fsc-7yaaa-aaaal-qjt5q-cai"
+          "ic": "pqsms-lqaaa-aaaal-ajjza-cai",
+          "staging": "25fsc-7yaaa-aaaal-qjt5q-cai"
         }
       }
     },
@@ -53,7 +55,8 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "i2s4q-syaaa-aaaan-qz4sq-cai"
+          "ic": "i2s4q-syaaa-aaaan-qz4sq-cai",
+          "staging": "i2s4q-syaaa-aaaan-qz4sq-cai"
         }
       }
     },
@@ -64,7 +67,8 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "rxaqa-eyaaa-aaaao-a356q-cai"
+          "ic": "tt72q-zqaaa-aaaaj-az4va-cai",
+          "staging": "rxaqa-eyaaa-aaaao-a356q-cai"
         }
       }
     },
@@ -75,7 +79,8 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "s4yi7-yiaaa-aaaar-qacpq-cai"
+          "ic": "s4yi7-yiaaa-aaaar-qacpq-cai",
+          "staging": "s4yi7-yiaaa-aaaar-qacpq-cai"
         }
       }
     },
@@ -86,7 +91,8 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "fi3zi-fyaaa-aaaaq-aachq-cai"
+          "ic": "fi3zi-fyaaa-aaaaq-aachq-cai",
+          "staging": "fi3zi-fyaaa-aaaaq-aachq-cai"
         }
       }
     },
@@ -97,7 +103,8 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "fp274-iaaaa-aaaaq-aacha-cai"
+          "ic": "fp274-iaaaa-aaaaq-aacha-cai",
+          "staging": "fp274-iaaaa-aaaaq-aacha-cai"
         }
       }
     },
@@ -108,7 +115,8 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "h4f44-ayaaa-aaaaq-aacjq-cai"
+          "ic": "h4f44-ayaaa-aaaaq-aacjq-cai",
+          "staging": "h4f44-ayaaa-aaaaq-aacjq-cai"
         }
       }
     },
@@ -119,7 +127,8 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "h3e2i-naaaa-aaaaq-aacja-cai"
+          "ic": "h3e2i-naaaa-aaaaq-aacja-cai",
+          "staging": "h3e2i-naaaa-aaaaq-aacja-cai"
         }
       }
     },
@@ -130,7 +139,8 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "rrkah-fqaaa-aaaaa-aaaaq-cai"
+          "ic": "rrkah-fqaaa-aaaaa-aaaaq-cai",
+          "staging": "rrkah-fqaaa-aaaaa-aaaaq-cai"
         }
       }
     },
@@ -141,7 +151,8 @@
       "build": "false",
       "remote": {
         "id": {
-          "ic": "qaa6y-5yaaa-aaaaa-aaafa-cai"
+          "ic": "qaa6y-5yaaa-aaaaa-aaafa-cai",
+          "staging": "qaa6y-5yaaa-aaaaa-aaafa-cai"
         }
       }
     }
