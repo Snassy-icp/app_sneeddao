@@ -147,9 +147,11 @@ export default function CanisterPage() {
                         await agent.fetchRootKey();
                     }
 
+                    // Use the target canister ID for routing - the IC will route the request
+                    // to the correct subnet, and the management canister call will be handled there
                     const managementCanister = Actor.createActor(managementCanisterIdlFactory, {
                         agent,
-                        canisterId: Principal.fromText('aaaaa-aa')
+                        canisterId: canisterPrincipal  // Route to target canister's subnet
                     });
 
                     const status = await managementCanister.canister_status({
