@@ -1577,7 +1577,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   };
 
   // IC Management canister actor
-  let IC = actor "aaaaa-aa" : actor {
+  transient let IC = actor "aaaaa-aa" : actor {
     canister_info : shared (CanisterInfoRequest) -> async CanisterInfoResponse;
   };
 
