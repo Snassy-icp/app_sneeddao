@@ -390,6 +390,8 @@ export default function CanistersPage() {
                                                 isAuthenticated={isAuthenticated}
                                                 noLink={true}
                                                 style={{ fontSize: '14px' }}
+                                                showSendMessage={false}
+                                                showViewProfile={false}
                                             />
                                         </div>
                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

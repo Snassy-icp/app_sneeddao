@@ -10,7 +10,9 @@ const PrincipalContextMenu = ({
     currentNickname,
     onSendMessage,
     onSetNickname,
-    isAuthenticated = false
+    isAuthenticated = false,
+    showSendMessage = true,
+    showViewProfile = true
 }) => {
     const navigate = useNavigate();
     const menuRef = useRef(null);
@@ -118,68 +120,70 @@ const PrincipalContextMenu = ({
                 minWidth: '200px'
             }}
         >
-            {isAuthenticated && (
-                <>
-                    <div
-                        onClick={handleSendMessage}
-                        style={{
-                            padding: '12px 16px',
-                            color: '#ffffff',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            fontSize: '14px',
-                            transition: 'background-color 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
-                        onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                    >
-                        <span>💬</span>
-                        <span>Send Message</span>
-                    </div>
-
-                    <div
-                        onClick={handleSetNickname}
-                        style={{
-                            padding: '12px 16px',
-                            color: '#ffffff',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            fontSize: '14px',
-                            transition: 'background-color 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
-                        onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-                    >
-                        <span>🏷️</span>
-                        <span>{currentNickname ? 'Edit Nickname' : 'Set Nickname'}</span>
-                    </div>
-                </>
+            {isAuthenticated && showSendMessage && (
+                <div
+                    onClick={handleSendMessage}
+                    style={{
+                        padding: '12px 16px',
+                        color: '#ffffff',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                >
+                    <span>💬</span>
+                    <span>Send Message</span>
+                </div>
             )}
 
-            <div
-                onClick={handleViewProfile}
-                style={{
-                    padding: '12px 16px',
-                    color: '#ffffff',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '14px',
-                    transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-            >
-                <span>👤</span>
-                <span>View Profile</span>
-            </div>
-
             {isAuthenticated && (
+                <div
+                    onClick={handleSetNickname}
+                    style={{
+                        padding: '12px 16px',
+                        color: '#ffffff',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                >
+                    <span>🏷️</span>
+                    <span>{currentNickname ? 'Edit Nickname' : 'Set Nickname'}</span>
+                </div>
+            )}
+
+            {showViewProfile && (
+                <div
+                    onClick={handleViewProfile}
+                    style={{
+                        padding: '12px 16px',
+                        color: '#ffffff',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '14px',
+                        transition: 'background-color 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#3a3a3a'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+                >
+                    <span>👤</span>
+                    <span>View Profile</span>
+                </div>
+            )}
+
+            {isAuthenticated && (showSendMessage || showViewProfile) && (
                 <hr style={{
                     margin: '8px 0',
                     border: 'none',

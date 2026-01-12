@@ -88,7 +88,9 @@ export const PrincipalDisplay = React.memo(({
     noLink = false,
     enableContextMenu = true,
     isAuthenticated = false,
-    onNicknameUpdate = null 
+    onNicknameUpdate = null,
+    showSendMessage = true,
+    showViewProfile = true
 }) => {
     const [contextMenuOpen, setContextMenuOpen] = useState(false);
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
@@ -265,7 +267,9 @@ export const PrincipalDisplay = React.memo(({
                 currentNickname: currentNickname,
                 onSendMessage: handleSendMessage,
                 onSetNickname: handleSetNickname,
-                isAuthenticated: isAuthenticated
+                isAuthenticated: isAuthenticated,
+                showSendMessage: showSendMessage,
+                showViewProfile: showViewProfile
             }),
             // Message dialog
             React.createElement(MessageDialog, {
@@ -380,7 +384,9 @@ export const PrincipalDisplay = React.memo(({
             currentNickname: currentNickname,
             onSendMessage: handleSendMessage,
             onSetNickname: handleSetNickname,
-            isAuthenticated: isAuthenticated
+            isAuthenticated: isAuthenticated,
+            showSendMessage: showSendMessage,
+            showViewProfile: showViewProfile
         }),
         // Message dialog
         React.createElement(MessageDialog, {
@@ -407,6 +413,8 @@ export const PrincipalDisplay = React.memo(({
         prevProps.isAuthenticated === nextProps.isAuthenticated &&
         JSON.stringify(prevProps.style) === JSON.stringify(nextProps.style) &&
         prevProps.short === nextProps.short &&
-        prevProps.noLink === nextProps.noLink
+        prevProps.noLink === nextProps.noLink &&
+        prevProps.showSendMessage === nextProps.showSendMessage &&
+        prevProps.showViewProfile === nextProps.showViewProfile
     );
 }); 
