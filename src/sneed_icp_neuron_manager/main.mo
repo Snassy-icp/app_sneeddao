@@ -117,11 +117,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             
             let canisterId = Principal.fromActor(newManager);
 
-            // Transfer control to the caller (factory starts as controller after spawning)
+            // Add caller as controller alongside factory (factory remains controller for now)
             await ic.update_settings({
                 canister_id = canisterId;
                 settings = {
-                    controllers = ?[caller];
+                    controllers = ?[caller, Principal.fromActor(this)];
                     compute_allocation = null;
                     memory_allocation = null;
                     freezing_threshold = null;
