@@ -33,6 +33,7 @@ function IcpNeuronManager() {
     
     // Form state
     const [stakeAmount, setStakeAmount] = useState('1');
+    const [stakeDissolveDelay, setStakeDissolveDelay] = useState('365'); // Default 1 year for new neurons
     const [dissolveDelay, setDissolveDelay] = useState('');
     const [hotKeyPrincipal, setHotKeyPrincipal] = useState('');
     
@@ -141,6 +142,16 @@ function IcpNeuronManager() {
             return;
         }
         
+        const delayDays = parseInt(stakeDissolveDelay);
+        if (!delayDays || delayDays < 183) {
+            setError('Minimum dissolve delay is 183 days (~6 months) to vote');
+            return;
+        }
+        if (delayDays > 2922) {
+            setError('Maximum dissolve delay is 2922 days (8 years)');
+            return;
+        }
+        
         setActionLoading('stake');
         setError('');
         setSuccess('');
@@ -153,7 +164,8 @@ function IcpNeuronManager() {
             const manager = createManagerActor(canisterId, { agent });
             
             const amountE8s = BigInt(Math.floor(parseFloat(stakeAmount) * E8S));
-            const result = await manager.stakeNeuron(amountE8s);
+            const dissolveDelaySeconds = BigInt(delayDays * 24 * 60 * 60);
+            const result = await manager.stakeNeuron(amountE8s, dissolveDelaySeconds);
             
             if ('Ok' in result) {
                 setSuccess(`🎉 Neuron created! ID: ${result.Ok.id.toString()}`);
@@ -167,6 +179,9 @@ function IcpNeuronManager() {
                     setError(`Transfer failed: ${err.TransferFailed}`);
                 } else if ('NeuronAlreadyExists' in err) {
                     setError('A neuron already exists for this manager');
+                } else if ('InvalidDissolveDelay' in err) {
+                    const d = err.InvalidDissolveDelay;
+                    setError(`Invalid dissolve delay: min ${Math.floor(Number(d.min) / 86400)} days, max ${Math.floor(Number(d.max) / 86400)} days, you provided ${Math.floor(Number(d.provided) / 86400)} days`);
                 } else if ('GovernanceError' in err) {
                     setError(`Governance error: ${err.GovernanceError.error_message}`);
                 } else {
@@ -584,7 +599,7 @@ function IcpNeuronManager() {
                                     No neuron has been created yet. Fund this canister with ICP, then stake to create a neuron.
                                 </p>
                                 
-                                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '15px' }}>
                                     <div style={{ flex: 1, minWidth: '150px' }}>
                                         <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
                                             Amount to Stake (ICP)
@@ -599,18 +614,37 @@ function IcpNeuronManager() {
                                             placeholder="1.0"
                                         />
                                     </div>
-                                    <button
-                                        onClick={handleStakeNeuron}
-                                        disabled={actionLoading === 'stake' || icpBalance < E8S}
-                                        style={{ 
-                                            ...buttonStyle, 
-                                            opacity: (actionLoading === 'stake' || icpBalance < E8S) ? 0.6 : 1,
-                                            cursor: (actionLoading === 'stake' || icpBalance < E8S) ? 'not-allowed' : 'pointer',
-                                        }}
-                                    >
-                                        {actionLoading === 'stake' ? '⏳ Creating...' : '🚀 Stake & Create Neuron'}
-                                    </button>
+                                    <div style={{ flex: 1, minWidth: '150px' }}>
+                                        <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+                                            Dissolve Delay (days)
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="183"
+                                            max="2922"
+                                            value={stakeDissolveDelay}
+                                            onChange={(e) => setStakeDissolveDelay(e.target.value)}
+                                            style={inputStyle}
+                                            placeholder="365"
+                                        />
+                                    </div>
                                 </div>
+                                
+                                <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
+                                    💡 Min 183 days (~6 months) to vote. Max 8 years (2922 days). Higher delay = more voting power.
+                                </p>
+                                
+                                <button
+                                    onClick={handleStakeNeuron}
+                                    disabled={actionLoading === 'stake' || icpBalance < E8S}
+                                    style={{ 
+                                        ...buttonStyle, 
+                                        opacity: (actionLoading === 'stake' || icpBalance < E8S) ? 0.6 : 1,
+                                        cursor: (actionLoading === 'stake' || icpBalance < E8S) ? 'not-allowed' : 'pointer',
+                                    }}
+                                >
+                                    {actionLoading === 'stake' ? '⏳ Creating...' : '🚀 Stake & Create Neuron'}
+                                </button>
                                 
                                 {icpBalance !== null && icpBalance < E8S && (
                                     <p style={{ color: theme.colors.warning || '#f59e0b', fontSize: '13px', marginTop: '10px' }}>

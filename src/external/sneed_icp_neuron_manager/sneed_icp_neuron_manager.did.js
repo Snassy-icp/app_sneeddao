@@ -18,6 +18,7 @@ export const idlFactory = ({ IDL }) => {
     'TransferFailed' : IDL.Text,
     'NeuronAlreadyExists' : IDL.Null,
     'InvalidAmount' : IDL.Text,
+    'InvalidDissolveDelay' : IDL.Record({ 'min' : IDL.Nat64, 'max' : IDL.Nat64, 'provided' : IDL.Nat64 }),
   });
   
   const StakeNeuronResult = IDL.Variant({
@@ -143,7 +144,7 @@ export const idlFactory = ({ IDL }) => {
     'getFullNeuron' : IDL.Func([], [FullNeuronResult], []),
     
     // Neuron creation
-    'stakeNeuron' : IDL.Func([IDL.Nat64], [StakeNeuronResult], []),
+    'stakeNeuron' : IDL.Func([IDL.Nat64, IDL.Nat64], [StakeNeuronResult], []),
     
     // Stake management
     'increaseStake' : IDL.Func([IDL.Nat64], [OperationResult], []),
