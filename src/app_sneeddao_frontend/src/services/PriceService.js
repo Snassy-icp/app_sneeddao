@@ -50,7 +50,7 @@ class PriceService {
 
         this.initPromise = (async () => {
             try {
-                const isLocal = process.env.DFX_NETWORK !== 'ic';
+                const isLocal = process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging';
                 const host = isLocal ? 'http://localhost:4943' : 'https://ic0.app';
 
                 this.agent = new HttpAgent({ host });
