@@ -21,7 +21,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // CONSTANTS
     // ============================================
 
-    transient let CANISTER_CREATION_CYCLES: Nat = 500_000_000_000; // 0.5T cycles for new canister
+    transient let CANISTER_CREATION_CYCLES: Nat = 1_000_000_000_000; // 1T cycles for new canister
     transient let CURRENT_VERSION: T.Version = { major = 1; minor = 0; patch = 0 };
 
     // ============================================
