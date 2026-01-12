@@ -8,7 +8,7 @@ import { Actor, HttpAgent } from '@dfinity/agent';
 import { getCanisterInfo, setCanisterName, setPrincipalNickname } from '../utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaEdit, FaSave, FaTimes } from 'react-icons/fa';
+import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt } from 'react-icons/fa';
 
 // Management canister ID
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
@@ -691,6 +691,67 @@ export default function CanisterPage() {
                                 wordBreak: 'break-all'
                             }}>
                                 {canisterIdParam}
+                            </div>
+                        </div>
+
+                        {/* External Links */}
+                        <div style={{ marginBottom: '20px' }}>
+                            <div style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '12px',
+                                marginBottom: '8px'
+                            }}>
+                                View on External Sites
+                            </div>
+                            <div style={{ 
+                                display: 'flex', 
+                                gap: '12px', 
+                                flexWrap: 'wrap' 
+                            }}>
+                                <a
+                                    href={`https://dashboard.internetcomputer.org/canister/${canisterIdParam}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 14px',
+                                        backgroundColor: theme.colors.tertiaryBg,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '6px',
+                                        color: theme.colors.accent,
+                                        textDecoration: 'none',
+                                        fontSize: '13px',
+                                        fontWeight: '500',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <FaExternalLinkAlt size={12} />
+                                    ICP Dashboard
+                                </a>
+                                <a
+                                    href={`https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=${canisterIdParam}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '8px 14px',
+                                        backgroundColor: theme.colors.tertiaryBg,
+                                        border: `1px solid ${theme.colors.border}`,
+                                        borderRadius: '6px',
+                                        color: theme.colors.accent,
+                                        textDecoration: 'none',
+                                        fontSize: '13px',
+                                        fontWeight: '500',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <FaExternalLinkAlt size={12} />
+                                    Candid UI
+                                </a>
                             </div>
                         </div>
 
