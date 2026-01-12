@@ -411,17 +411,9 @@ function CreateIcpNeuron() {
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div>
-                                                        <span style={{ 
-                                                            color: theme.colors.primaryText, 
-                                                            fontSize: '11px',
-                                                            fontWeight: '500',
-                                                            background: `${theme.colors.accent}20`,
-                                                            padding: '4px 10px',
-                                                            borderRadius: '4px',
-                                                            whiteSpace: 'nowrap',
-                                                        }}>
-                                                            v{manager.version.major}.{manager.version.minor}.{manager.version.patch}
+                                                    <div style={{ flexShrink: 0 }}>
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                            Version {Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
                                                         </span>
                                                     </div>
                                                 </div>
