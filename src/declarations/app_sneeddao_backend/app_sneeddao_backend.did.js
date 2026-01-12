@@ -215,6 +215,7 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'set_cached_token_meta' : IDL.Func([IDL.Principal, TokenMeta], [], []),
+    'set_canister_name' : IDL.Func([IDL.Principal, IDL.Text], [Result], []),
     'set_neuron_name' : IDL.Func(
         [IDL.Principal, NeuronId, IDL.Text],
         [Result],

@@ -1212,6 +1212,90 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
       }
   };
 
+  // Set a public name for a canister (caller must be a controller)
+  public shared ({ caller }) func set_canister_name(canister_id : Principal, name : Text) : async Result.Result<Text, Text> {
+      if (Principal.isAnonymous(caller)) {
+          return #err("Anonymous caller not allowed");
+      };
+
+      if (is_banned(caller)) {
+          switch (banned_users.get(caller)) {
+              case (?expiry) {
+                  let time_remaining = expiry - Time.now();
+                  if (time_remaining > 0) {
+                      let hours_remaining = Int.abs(time_remaining) / 3600_000_000_000;
+                      return #err("You are banned. Ban expires in " # format_duration(hours_remaining));
+                  } else {
+                      return #err("You are banned");
+                  };
+              };
+              case null {
+                  return #err("You are banned");
+              };
+          };
+      };
+
+      // Verify caller is a controller of the canister
+      try {
+          let info = await IC.canister_info({ canister_id = canister_id; num_requested_changes = null });
+          let isController = Array.find<Principal>(info.controllers, func (c) { Principal.equal(c, caller) });
+          switch (isController) {
+              case null {
+                  return #err("You are not a controller of this canister");
+              };
+              case (?_) {
+                  // Caller is a controller, proceed to set the name
+              };
+          };
+      } catch (e) {
+          return #err("Failed to verify canister controllers: " # Error.message(e));
+      };
+
+      // Validate name format (unless it's empty)
+      if (name != "") {
+          if (Text.size(name) < 2) {
+              return #err("Name must be at least 2 characters");
+          };
+          if (Text.size(name) > 32) {
+              return #err("Name must be at most 32 characters");
+          };
+          // Check that name contains at least one alphanumeric character
+          var hasAlphanumeric = false;
+          for (c in name.chars()) {
+              if ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9')) {
+                  hasAlphanumeric := true;
+              };
+          };
+          if (not hasAlphanumeric) {
+              return #err("Name must contain at least one alphanumeric character");
+          };
+      };
+
+      // Check name uniqueness (only if setting a new name)
+      if (name != "") {
+          for ((existing_principal, (existing_name, _)) in principal_names.entries()) {
+              if (Text.equal(existing_name, name) and not Principal.equal(existing_principal, canister_id)) {
+                  return #err("Name is already taken by another principal");
+              };
+          };
+      };
+
+      if (name == "") {
+          // Remove the name if it exists
+          principal_names.delete(canister_id);
+          return #ok("Successfully removed canister name");
+      } else {
+          // Keep verification status if it exists, otherwise set to false
+          let current_verified = switch (principal_names.get(canister_id)) {
+              case (?(_, verified)) { verified };
+              case null { false };
+          };
+          
+          principal_names.put(canister_id, (name, current_verified));
+          return #ok("Successfully set canister name");
+      };
+  };
+
   // Principal nickname management
   public shared ({ caller }) func set_principal_nickname(principal : Principal, nickname : Text) : async Result.Result<Text, Text> {
       if (Principal.isAnonymous(caller)) {

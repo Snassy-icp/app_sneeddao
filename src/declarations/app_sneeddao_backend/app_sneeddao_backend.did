@@ -243,6 +243,7 @@ type AppSneedDaoBackend =
     principal) -> (TransferResult);
    set_cached_token_meta: (swap_canister_id: principal, new_token_meta:
     TokenMeta) -> ();
+   set_canister_name: (canister_id: principal, name: text) -> (Result);
    set_neuron_name: (sns_root_canister_id: principal, neuron_id: NeuronId,
     name: text) -> (Result);
    set_neuron_nickname: (sns_root_canister_id: principal, neuron_id:

@@ -69,6 +69,7 @@ export interface AppSneedDaoBackend {
   'remove_whitelisted_token' : ActorMethod<[Principal], undefined>,
   'send_tokens' : ActorMethod<[Principal, bigint, Principal], TransferResult>,
   'set_cached_token_meta' : ActorMethod<[Principal, TokenMeta], undefined>,
+  'set_canister_name' : ActorMethod<[Principal, string], Result>,
   'set_neuron_name' : ActorMethod<[Principal, NeuronId, string], Result>,
   'set_neuron_nickname' : ActorMethod<[Principal, NeuronId, string], Result>,
   'set_principal_name' : ActorMethod<[string], Result>,

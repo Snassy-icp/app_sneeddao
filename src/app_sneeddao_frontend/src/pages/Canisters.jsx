@@ -5,11 +5,14 @@ import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister } from '../utils/BackendUtils';
-import { FaPlus, FaTrash, FaCube, FaSpinner } from 'react-icons/fa';
+import { getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { useNaming } from '../NamingContext';
+import { FaPlus, FaTrash, FaCube, FaSpinner, FaCheckCircle } from 'react-icons/fa';
 
 export default function CanistersPage() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
+    const { principalNames, principalNicknames } = useNaming();
     const [canisters, setCanisters] = useState([]);
     const [loading, setLoading] = useState(true);
     const [newCanisterId, setNewCanisterId] = useState('');
@@ -368,7 +371,12 @@ export default function CanistersPage() {
                             </div>
                         ) : (
                             <div style={styles.canisterList}>
-                                {canisters.map((canisterId) => (
+                                {canisters.map((canisterId) => {
+                                    const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
+                                    const displayName = displayInfo?.nickname || displayInfo?.name || null;
+                                    const isVerified = displayInfo?.verified || false;
+                                    
+                                    return (
                                     <div 
                                         key={canisterId} 
                                         style={styles.canisterCard}
@@ -377,12 +385,36 @@ export default function CanistersPage() {
                                             <div style={styles.canisterIcon}>
                                                 <FaCube size={18} />
                                             </div>
-                                            <Link
-                                                to={`/canister?id=${canisterId}`}
-                                                style={styles.canisterLink}
-                                            >
-                                                {canisterId}
-                                            </Link>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                {displayName && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span style={{ 
+                                                            color: theme.colors.text, 
+                                                            fontSize: '15px', 
+                                                            fontWeight: 500 
+                                                        }}>
+                                                            {displayName}
+                                                        </span>
+                                                        {isVerified && (
+                                                            <FaCheckCircle 
+                                                                size={12} 
+                                                                style={{ color: theme.colors.primary }} 
+                                                                title="Verified"
+                                                            />
+                                                        )}
+                                                    </div>
+                                                )}
+                                                <Link
+                                                    to={`/canister?id=${canisterId}`}
+                                                    style={{
+                                                        ...styles.canisterLink,
+                                                        fontSize: displayName ? '12px' : '14px',
+                                                        opacity: displayName ? 0.7 : 1
+                                                    }}
+                                                >
+                                                    {canisterId}
+                                                </Link>
+                                            </div>
                                         </div>
                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                             <Link
@@ -405,7 +437,8 @@ export default function CanistersPage() {
                                             </button>
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </>

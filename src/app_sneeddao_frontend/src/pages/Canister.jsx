@@ -5,9 +5,10 @@ import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { Actor, HttpAgent } from '@dfinity/agent';
-import { getCanisterInfo } from '../utils/BackendUtils';
+import { getCanisterInfo, setCanisterName, setPrincipalNickname } from '../utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
+import { FaEdit, FaSave, FaTimes } from 'react-icons/fa';
 
 // Management canister ID
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
@@ -104,6 +105,14 @@ export default function CanisterPage() {
     const [updating, setUpdating] = useState(false);
     const [confirmRemove, setConfirmRemove] = useState(null); // Principal string to confirm removal
     const [successMessage, setSuccessMessage] = useState(null);
+    
+    // Canister naming state
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [isEditingNickname, setIsEditingNickname] = useState(false);
+    const [nameInput, setNameInput] = useState('');
+    const [nicknameInput, setNicknameInput] = useState('');
+    const [savingName, setSavingName] = useState(false);
+    const [savingNickname, setSavingNickname] = useState(false);
 
     const canisterIdParam = searchParams.get('id');
     
@@ -411,6 +420,77 @@ export default function CanisterPage() {
         setConfirmRemove(null);
     };
 
+    // Get current canister name and nickname from context
+    const canisterIdStr = canisterIdParam || '';
+    const canisterDisplayInfo = canisterIdStr 
+        ? getPrincipalDisplayInfoFromContext(
+            canisterIdStr,
+            principalNames,
+            principalNicknames
+        )
+        : null;
+    const currentName = canisterDisplayInfo?.name || '';
+    const currentNickname = canisterDisplayInfo?.nickname || '';
+    const isVerified = canisterDisplayInfo?.verified || false;
+
+    // Start editing canister name
+    const handleStartEditName = () => {
+        setNameInput(currentName);
+        setIsEditingName(true);
+    };
+
+    // Start editing canister nickname
+    const handleStartEditNickname = () => {
+        setNicknameInput(currentNickname);
+        setIsEditingNickname(true);
+    };
+
+    // Save canister public name (requires controller access)
+    const handleSaveName = async () => {
+        if (!identity || !canisterIdParam) return;
+        
+        setSavingName(true);
+        setError(null);
+        
+        try {
+            const result = await setCanisterName(identity, canisterIdParam, nameInput.trim());
+            if ('ok' in result) {
+                setSuccessMessage(result.ok);
+                setIsEditingName(false);
+                // Refresh naming context - the NamingContext should auto-refresh but we can force it
+                // For now, the user will see the update on the next render cycle
+            } else if ('err' in result) {
+                setError(result.err);
+            }
+        } catch (e) {
+            setError('Failed to save name: ' + (e.message || 'Unknown error'));
+        } finally {
+            setSavingName(false);
+        }
+    };
+
+    // Save canister nickname (any user can do this)
+    const handleSaveNickname = async () => {
+        if (!identity || !canisterIdParam) return;
+        
+        setSavingNickname(true);
+        setError(null);
+        
+        try {
+            const result = await setPrincipalNickname(identity, canisterIdParam, nicknameInput.trim());
+            if ('ok' in result) {
+                setSuccessMessage('Successfully set canister nickname');
+                setIsEditingNickname(false);
+            } else if ('err' in result) {
+                setError(result.err);
+            }
+        } catch (e) {
+            setError('Failed to save nickname: ' + (e.message || 'Unknown error'));
+        } finally {
+            setSavingNickname(false);
+        }
+    };
+
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header showSnsDropdown={false} />
@@ -611,6 +691,243 @@ export default function CanisterPage() {
                                 {canisterIdParam}
                             </div>
                         </div>
+
+                        {/* Public Name (editable by controllers) */}
+                        <div style={{ marginBottom: '20px' }}>
+                            <div style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '12px',
+                                marginBottom: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                            }}>
+                                Public Name
+                                {isVerified && (
+                                    <span style={{
+                                        backgroundColor: `${theme.colors.success}30`,
+                                        color: theme.colors.success,
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        fontSize: '10px'
+                                    }}>
+                                        ✓ Verified
+                                    </span>
+                                )}
+                            </div>
+                            {isEditingName ? (
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    <input
+                                        type="text"
+                                        value={nameInput}
+                                        onChange={(e) => setNameInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') handleSaveName();
+                                            if (e.key === 'Escape') setIsEditingName(false);
+                                        }}
+                                        placeholder="Enter public name"
+                                        disabled={savingName}
+                                        style={{
+                                            flex: 1,
+                                            padding: '8px 12px',
+                                            border: `1px solid ${theme.colors.border}`,
+                                            borderRadius: '4px',
+                                            backgroundColor: theme.colors.tertiaryBg,
+                                            color: theme.colors.primaryText,
+                                            fontSize: '14px',
+                                            outline: 'none'
+                                        }}
+                                        autoFocus
+                                    />
+                                    <button
+                                        onClick={handleSaveName}
+                                        disabled={savingName}
+                                        style={{
+                                            backgroundColor: theme.colors.success,
+                                            color: '#fff',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '8px 12px',
+                                            cursor: savingName ? 'not-allowed' : 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px'
+                                        }}
+                                    >
+                                        <FaSave /> {savingName ? '...' : 'Save'}
+                                    </button>
+                                    <button
+                                        onClick={() => setIsEditingName(false)}
+                                        disabled={savingName}
+                                        style={{
+                                            backgroundColor: 'transparent',
+                                            color: theme.colors.mutedText,
+                                            border: `1px solid ${theme.colors.border}`,
+                                            borderRadius: '4px',
+                                            padding: '8px 12px',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center'
+                                        }}
+                                    >
+                                        <FaTimes />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div style={{ 
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    backgroundColor: theme.colors.tertiaryBg,
+                                    padding: '8px 12px',
+                                    borderRadius: '4px'
+                                }}>
+                                    <span style={{ 
+                                        color: currentName ? theme.colors.primaryText : theme.colors.mutedText,
+                                        fontSize: '14px',
+                                        flex: 1,
+                                        fontStyle: currentName ? 'normal' : 'italic'
+                                    }}>
+                                        {currentName || 'No public name set'}
+                                    </span>
+                                    {/* Only show edit button if user has controller access */}
+                                    {fetchMethod === 'canister_status' && isAuthenticated && (
+                                        <button
+                                            onClick={handleStartEditName}
+                                            style={{
+                                                backgroundColor: 'transparent',
+                                                color: theme.colors.accent,
+                                                border: 'none',
+                                                padding: '4px 8px',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                fontSize: '12px'
+                                            }}
+                                        >
+                                            <FaEdit /> Edit
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                            {fetchMethod === 'canister_status' && (
+                                <p style={{ 
+                                    color: theme.colors.mutedText, 
+                                    fontSize: '11px', 
+                                    marginTop: '4px',
+                                    marginBottom: 0 
+                                }}>
+                                    As a controller, you can set a public name visible to all users.
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Private Nickname (editable by any logged in user) */}
+                        {isAuthenticated && (
+                            <div style={{ marginBottom: '20px' }}>
+                                <div style={{ 
+                                    color: theme.colors.mutedText, 
+                                    fontSize: '12px',
+                                    marginBottom: '4px'
+                                }}>
+                                    Your Nickname <span style={{ opacity: 0.7 }}>(private to you)</span>
+                                </div>
+                                {isEditingNickname ? (
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        <input
+                                            type="text"
+                                            value={nicknameInput}
+                                            onChange={(e) => setNicknameInput(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') handleSaveNickname();
+                                                if (e.key === 'Escape') setIsEditingNickname(false);
+                                            }}
+                                            placeholder="Enter your nickname for this canister"
+                                            disabled={savingNickname}
+                                            style={{
+                                                flex: 1,
+                                                padding: '8px 12px',
+                                                border: `1px solid ${theme.colors.border}`,
+                                                borderRadius: '4px',
+                                                backgroundColor: theme.colors.tertiaryBg,
+                                                color: theme.colors.primaryText,
+                                                fontSize: '14px',
+                                                outline: 'none'
+                                            }}
+                                            autoFocus
+                                        />
+                                        <button
+                                            onClick={handleSaveNickname}
+                                            disabled={savingNickname}
+                                            style={{
+                                                backgroundColor: theme.colors.success,
+                                                color: '#fff',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                padding: '8px 12px',
+                                                cursor: savingNickname ? 'not-allowed' : 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}
+                                        >
+                                            <FaSave /> {savingNickname ? '...' : 'Save'}
+                                        </button>
+                                        <button
+                                            onClick={() => setIsEditingNickname(false)}
+                                            disabled={savingNickname}
+                                            style={{
+                                                backgroundColor: 'transparent',
+                                                color: theme.colors.mutedText,
+                                                border: `1px solid ${theme.colors.border}`,
+                                                borderRadius: '4px',
+                                                padding: '8px 12px',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center'
+                                            }}
+                                        >
+                                            <FaTimes />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div style={{ 
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        backgroundColor: theme.colors.tertiaryBg,
+                                        padding: '8px 12px',
+                                        borderRadius: '4px'
+                                    }}>
+                                        <span style={{ 
+                                            color: currentNickname ? theme.colors.primaryText : theme.colors.mutedText,
+                                            fontSize: '14px',
+                                            flex: 1,
+                                            fontStyle: currentNickname ? 'normal' : 'italic'
+                                        }}>
+                                            {currentNickname || 'No nickname set'}
+                                        </span>
+                                        <button
+                                            onClick={handleStartEditNickname}
+                                            style={{
+                                                backgroundColor: 'transparent',
+                                                color: theme.colors.accent,
+                                                border: 'none',
+                                                padding: '4px 8px',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                fontSize: '12px'
+                                            }}
+                                        >
+                                            <FaEdit /> Edit
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Status (if available from canister_status) */}
                         {canisterInfo.status && (

@@ -779,4 +779,21 @@ export const unregisterTrackedCanister = async (identity, canisterId) => {
         console.error('Error unregistering tracked canister:', error);
         throw error;
     }
+};
+
+// Set a public name for a canister (caller must be a controller)
+export const setCanisterName = async (identity, canisterId, name) => {
+    if (!identity || !canisterId) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        const result = await actor.set_canister_name(
+            typeof canisterId === 'string' ? Principal.fromText(canisterId) : canisterId,
+            name
+        );
+        return result;
+    } catch (error) {
+        console.error('Error setting canister name:', error);
+        throw error;
+    }
 }; 
