@@ -12,7 +12,7 @@ import { useNaming } from '../NamingContext';
 // Management canister ID
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
 
-// IDL factory for IC management canister canister_status call
+// IDL factory for IC management canister
 const managementCanisterIdlFactory = ({ IDL }) => {
     const definite_canister_settings = IDL.Record({
         'controllers': IDL.Vec(IDL.Principal),
@@ -45,10 +45,31 @@ const managementCanisterIdlFactory = ({ IDL }) => {
         }),
         'reserved_cycles': IDL.Nat,
     });
+    // Settings for update_settings - all fields are optional
+    const canister_settings = IDL.Record({
+        'controllers': IDL.Opt(IDL.Vec(IDL.Principal)),
+        'compute_allocation': IDL.Opt(IDL.Nat),
+        'memory_allocation': IDL.Opt(IDL.Nat),
+        'freezing_threshold': IDL.Opt(IDL.Nat),
+        'reserved_cycles_limit': IDL.Opt(IDL.Nat),
+        'log_visibility': IDL.Opt(IDL.Variant({
+            'controllers': IDL.Null,
+            'public': IDL.Null,
+        })),
+        'wasm_memory_limit': IDL.Opt(IDL.Nat),
+    });
     return IDL.Service({
         'canister_status': IDL.Func(
             [IDL.Record({ 'canister_id': IDL.Principal })],
             [canister_status_result],
+            []
+        ),
+        'update_settings': IDL.Func(
+            [IDL.Record({
+                'canister_id': IDL.Principal,
+                'settings': canister_settings,
+            })],
+            [],
             []
         ),
     });
@@ -77,8 +98,17 @@ export default function CanisterPage() {
     const [fetchMethod, setFetchMethod] = useState(null); // 'canister_status' or 'canister_info'
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const requestIdRef = useRef(0); // Track current request to prevent race conditions
+    
+    // Controller management state
+    const [newControllerInput, setNewControllerInput] = useState('');
+    const [updating, setUpdating] = useState(false);
+    const [confirmRemove, setConfirmRemove] = useState(null); // Principal string to confirm removal
+    const [successMessage, setSuccessMessage] = useState(null);
 
     const canisterIdParam = searchParams.get('id');
+    
+    // Get current user's principal for self-removal warning
+    const currentUserPrincipal = identity?.getPrincipal?.()?.toString?.();
 
     // Initialize input from URL parameter
     useEffect(() => {
@@ -263,6 +293,124 @@ export default function CanisterPage() {
         }
     };
 
+    // Update controllers on the canister
+    const updateControllers = async (newControllers) => {
+        if (!identity || !canisterIdParam) return;
+        
+        setUpdating(true);
+        setError(null);
+        setSuccessMessage(null);
+        
+        try {
+            const canisterPrincipal = Principal.fromText(canisterIdParam);
+            const host = getHost();
+            const agent = HttpAgent.createSync({
+                host,
+                identity,
+            });
+
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+
+            const managementCanister = Actor.createActor(managementCanisterIdlFactory, {
+                agent,
+                canisterId: MANAGEMENT_CANISTER_ID,
+                callTransform: (methodName, args, callConfig) => {
+                    return {
+                        ...callConfig,
+                        effectiveCanisterId: canisterPrincipal,
+                    };
+                },
+            });
+
+            console.log('Updating controllers to:', newControllers.map(c => c.toString()));
+            
+            await managementCanister.update_settings({
+                canister_id: canisterPrincipal,
+                settings: {
+                    controllers: [newControllers],
+                    compute_allocation: [],
+                    memory_allocation: [],
+                    freezing_threshold: [],
+                    reserved_cycles_limit: [],
+                    log_visibility: [],
+                    wasm_memory_limit: [],
+                },
+            });
+
+            console.log('Controllers updated successfully!');
+            setSuccessMessage('Controllers updated successfully!');
+            
+            // Refresh canister info
+            await fetchCanisterInfo(canisterIdParam);
+            
+        } catch (e) {
+            console.error('Failed to update controllers:', e);
+            setError('Failed to update controllers: ' + (e.message || 'Unknown error'));
+        } finally {
+            setUpdating(false);
+        }
+    };
+
+    // Add a new controller
+    const handleAddController = async () => {
+        if (!newControllerInput.trim()) return;
+        
+        try {
+            const newControllerPrincipal = Principal.fromText(newControllerInput.trim());
+            
+            // Check if already a controller
+            const currentControllers = canisterInfo.controllers || [];
+            const isAlreadyController = currentControllers.some(c => {
+                const cStr = typeof c === 'string' ? c : c.toString();
+                return cStr === newControllerPrincipal.toString();
+            });
+            
+            if (isAlreadyController) {
+                setError('This principal is already a controller');
+                return;
+            }
+            
+            // Create new list with the added controller
+            const newControllers = [
+                ...currentControllers.map(c => typeof c === 'string' ? Principal.fromText(c) : c),
+                newControllerPrincipal
+            ];
+            
+            await updateControllers(newControllers);
+            setNewControllerInput('');
+            
+        } catch (e) {
+            setError('Invalid principal ID format');
+        }
+    };
+
+    // Remove a controller
+    const handleRemoveController = async (controllerToRemove) => {
+        const controllerStr = typeof controllerToRemove === 'string' 
+            ? controllerToRemove 
+            : controllerToRemove.toString();
+        
+        // Check if this is the last controller
+        if (canisterInfo.controllers?.length === 1) {
+            setError('Cannot remove the last controller. The canister would become permanently uncontrollable.');
+            setConfirmRemove(null);
+            return;
+        }
+        
+        // Create new list without the removed controller
+        const newControllers = canisterInfo.controllers
+            .filter(c => {
+                const cStr = typeof c === 'string' ? c : c.toString();
+                return cStr !== controllerStr;
+            })
+            .map(c => typeof c === 'string' ? Principal.fromText(c) : c);
+        
+        await updateControllers(newControllers);
+        setConfirmRemove(null);
+    };
+
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header showSnsDropdown={false} />
@@ -332,6 +480,36 @@ export default function CanisterPage() {
                     </p>
                 </div>
 
+                {/* Success Message */}
+                {successMessage && (
+                    <div style={{ 
+                        backgroundColor: `${theme.colors.success}20`, 
+                        border: `1px solid ${theme.colors.success}`,
+                        color: theme.colors.success,
+                        padding: '15px',
+                        borderRadius: '6px',
+                        marginBottom: '20px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                    }}>
+                        {successMessage}
+                        <button
+                            onClick={() => setSuccessMessage(null)}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: theme.colors.success,
+                                cursor: 'pointer',
+                                fontSize: '18px',
+                                padding: '0 5px'
+                            }}
+                        >
+                            ×
+                        </button>
+                    </div>
+                )}
+
                 {/* Error Display */}
                 {error && (
                     <div style={{ 
@@ -340,9 +518,25 @@ export default function CanisterPage() {
                         color: theme.colors.error,
                         padding: '15px',
                         borderRadius: '6px',
-                        marginBottom: '20px'
+                        marginBottom: '20px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
                     }}>
                         {error}
+                        <button
+                            onClick={() => setError(null)}
+                            style={{
+                                background: 'none',
+                                border: 'none',
+                                color: theme.colors.error,
+                                cursor: 'pointer',
+                                fontSize: '18px',
+                                padding: '0 5px'
+                            }}
+                        >
+                            ×
+                        </button>
                     </div>
                 )}
 
@@ -536,6 +730,8 @@ export default function CanisterPage() {
                                                 ? controller 
                                                 : controller.toString();
                                             const displayInfo = principalDisplayInfo.get(controllerStr);
+                                            const isSelf = controllerStr === currentUserPrincipal;
+                                            const isConfirmingRemove = confirmRemove === controllerStr;
                                             
                                             return (
                                                 <div 
@@ -543,21 +739,102 @@ export default function CanisterPage() {
                                                     style={{
                                                         display: 'flex',
                                                         alignItems: 'center',
+                                                        justifyContent: 'space-between',
                                                         gap: '8px',
                                                         padding: '8px',
                                                         backgroundColor: theme.colors.secondaryBg,
                                                         borderRadius: '4px'
                                                     }}
                                                 >
-                                                    <PrincipalDisplay
-                                                        principal={typeof controller === 'string' 
-                                                            ? Principal.fromText(controller) 
-                                                            : controller}
-                                                        displayInfo={displayInfo}
-                                                        showCopyButton={true}
-                                                        isAuthenticated={isAuthenticated}
-                                                        style={{ fontSize: '14px' }}
-                                                    />
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                                                        <PrincipalDisplay
+                                                            principal={typeof controller === 'string' 
+                                                                ? Principal.fromText(controller) 
+                                                                : controller}
+                                                            displayInfo={displayInfo}
+                                                            showCopyButton={true}
+                                                            isAuthenticated={isAuthenticated}
+                                                            style={{ fontSize: '14px' }}
+                                                        />
+                                                        {isSelf && (
+                                                            <span style={{
+                                                                backgroundColor: `${theme.colors.accent}30`,
+                                                                color: theme.colors.accent,
+                                                                padding: '2px 6px',
+                                                                borderRadius: '4px',
+                                                                fontSize: '10px',
+                                                                fontWeight: '500',
+                                                                whiteSpace: 'nowrap'
+                                                            }}>
+                                                                YOU
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {/* Remove button - only show if user has controller access */}
+                                                    {fetchMethod === 'canister_status' && (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            {isConfirmingRemove ? (
+                                                                <>
+                                                                    <span style={{ 
+                                                                        color: isSelf ? theme.colors.warning : theme.colors.error, 
+                                                                        fontSize: '12px',
+                                                                        whiteSpace: 'nowrap'
+                                                                    }}>
+                                                                        {isSelf ? '⚠️ Remove yourself?' : 'Confirm?'}
+                                                                    </span>
+                                                                    <button
+                                                                        onClick={() => handleRemoveController(controller)}
+                                                                        disabled={updating}
+                                                                        style={{
+                                                                            backgroundColor: theme.colors.error,
+                                                                            color: '#fff',
+                                                                            border: 'none',
+                                                                            borderRadius: '4px',
+                                                                            padding: '4px 8px',
+                                                                            cursor: updating ? 'not-allowed' : 'pointer',
+                                                                            fontSize: '12px',
+                                                                            opacity: updating ? 0.7 : 1
+                                                                        }}
+                                                                    >
+                                                                        Yes
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setConfirmRemove(null)}
+                                                                        disabled={updating}
+                                                                        style={{
+                                                                            backgroundColor: theme.colors.tertiaryBg,
+                                                                            color: theme.colors.primaryText,
+                                                                            border: `1px solid ${theme.colors.border}`,
+                                                                            borderRadius: '4px',
+                                                                            padding: '4px 8px',
+                                                                            cursor: updating ? 'not-allowed' : 'pointer',
+                                                                            fontSize: '12px'
+                                                                        }}
+                                                                    >
+                                                                        No
+                                                                    </button>
+                                                                </>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => setConfirmRemove(controllerStr)}
+                                                                    disabled={updating}
+                                                                    style={{
+                                                                        backgroundColor: 'transparent',
+                                                                        color: theme.colors.error,
+                                                                        border: `1px solid ${theme.colors.error}`,
+                                                                        borderRadius: '4px',
+                                                                        padding: '4px 10px',
+                                                                        cursor: updating ? 'not-allowed' : 'pointer',
+                                                                        fontSize: '12px',
+                                                                        opacity: updating ? 0.7 : 1
+                                                                    }}
+                                                                >
+                                                                    Remove
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             );
                                         })}
@@ -569,6 +846,74 @@ export default function CanisterPage() {
                                         padding: '8px'
                                     }}>
                                         No controllers
+                                    </div>
+                                )}
+                                
+                                {/* Add Controller - only show if user has controller access */}
+                                {fetchMethod === 'canister_status' && (
+                                    <div style={{ 
+                                        marginTop: '12px',
+                                        paddingTop: '12px',
+                                        borderTop: `1px solid ${theme.colors.border}`
+                                    }}>
+                                        <div style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '12px',
+                                            marginBottom: '8px'
+                                        }}>
+                                            Add Controller
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                            <input
+                                                type="text"
+                                                value={newControllerInput}
+                                                onChange={(e) => setNewControllerInput(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        handleAddController();
+                                                    }
+                                                }}
+                                                placeholder="Enter principal ID"
+                                                disabled={updating}
+                                                style={{
+                                                    flex: '1',
+                                                    minWidth: '250px',
+                                                    padding: '8px 12px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    borderRadius: '4px',
+                                                    backgroundColor: theme.colors.secondaryBg,
+                                                    color: theme.colors.primaryText,
+                                                    fontSize: '14px',
+                                                    outline: 'none'
+                                                }}
+                                            />
+                                            <button
+                                                onClick={handleAddController}
+                                                disabled={updating || !newControllerInput.trim()}
+                                                style={{
+                                                    backgroundColor: theme.colors.success,
+                                                    color: '#fff',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    padding: '8px 16px',
+                                                    cursor: (updating || !newControllerInput.trim()) ? 'not-allowed' : 'pointer',
+                                                    fontSize: '14px',
+                                                    fontWeight: '500',
+                                                    opacity: (updating || !newControllerInput.trim()) ? 0.7 : 1
+                                                }}
+                                            >
+                                                {updating ? 'Updating...' : 'Add'}
+                                            </button>
+                                        </div>
+                                        <p style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '11px',
+                                            marginTop: '8px',
+                                            marginBottom: 0
+                                        }}>
+                                            ⚠️ Be careful when modifying controllers. Removing all controllers will make the canister permanently uncontrollable.
+                                        </p>
                                     </div>
                                 )}
                             </div>
