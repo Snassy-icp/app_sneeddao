@@ -3,6 +3,9 @@ import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'external/sneed_icp_neuron_manager_factory';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+
+const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
@@ -11,6 +14,7 @@ function CreateIcpNeuron() {
     const { theme } = useTheme();
     const { identity, isAuthenticated, login } = useAuth();
     const [managers, setManagers] = useState([]);
+    const [balances, setBalances] = useState({}); // canisterId -> balance in e8s
     const [loading, setLoading] = useState(false);
     const [creating, setCreating] = useState(false);
     const [error, setError] = useState('');
@@ -66,11 +70,47 @@ function CreateIcpNeuron() {
             const result = await factory.getMyManagers();
             setManagers(result);
             setError('');
+            
+            // Fetch balances for all managers
+            if (result.length > 0) {
+                fetchBalances(result, agent);
+            }
         } catch (err) {
             console.error('Error fetching managers:', err);
             setError('Failed to load your neuron managers');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchBalances = async (managerList, agent) => {
+        try {
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
+            const newBalances = {};
+            
+            // Fetch balances in parallel
+            const balancePromises = managerList.map(async (manager) => {
+                try {
+                    // ICRC-1 uses { owner, subaccount } format
+                    const balance = await ledger.icrc1_balance_of({
+                        owner: manager.canisterId,
+                        subaccount: [],
+                    });
+                    return { canisterId: manager.canisterId.toText(), balance: Number(balance) };
+                } catch (err) {
+                    console.error(`Error fetching balance for ${manager.canisterId.toText()}:`, err);
+                    return { canisterId: manager.canisterId.toText(), balance: null };
+                }
+            });
+            
+            const results = await Promise.all(balancePromises);
+            results.forEach(({ canisterId, balance }) => {
+                newBalances[canisterId] = balance;
+            });
+            
+            setBalances(newBalances);
+        } catch (err) {
+            console.error('Error fetching balances:', err);
         }
     };
 
@@ -130,6 +170,12 @@ function CreateIcpNeuron() {
         } catch (err) {
             return 'Unknown';
         }
+    };
+
+    const formatIcp = (e8s) => {
+        if (e8s === null || e8s === undefined) return '...';
+        const icp = e8s / 100_000_000;
+        return icp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 });
     };
 
     const copyToClipboard = (text) => {
@@ -344,18 +390,20 @@ function CreateIcpNeuron() {
                             <div>
                                 {managers.map((manager, index) => {
                                     const accountId = computeAccountId(manager.canisterId);
+                                    const canisterIdText = manager.canisterId.toText();
+                                    const balance = balances[canisterIdText];
                                     return (
-                                        <div key={manager.canisterId.toText()} style={cardStyle}>
+                                        <div key={canisterIdText} style={cardStyle}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
                                                 <div style={{ flex: 1, minWidth: '250px' }}>
                                                     <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
                                                         Canister ID
                                                     </div>
                                                     <div style={{ color: theme.colors.primaryText, fontFamily: 'monospace', fontSize: '14px' }}>
-                                                        {manager.canisterId.toText()}
+                                                        {canisterIdText}
                                                         <button 
                                                             style={smallButtonStyle}
-                                                            onClick={() => copyToClipboard(manager.canisterId.toText())}
+                                                            onClick={() => copyToClipboard(canisterIdText)}
                                                         >
                                                             Copy
                                                         </button>
@@ -363,10 +411,14 @@ function CreateIcpNeuron() {
                                                 </div>
                                                 <div style={{ textAlign: 'right' }}>
                                                     <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                        Created
+                                                        ICP Balance
                                                     </div>
-                                                    <div style={{ color: theme.colors.primaryText, fontSize: '14px' }}>
-                                                        {formatDate(manager.createdAt)}
+                                                    <div style={{ 
+                                                        color: balance > 0 ? (theme.colors.success || '#22c55e') : theme.colors.primaryText, 
+                                                        fontSize: '18px', 
+                                                        fontWeight: '600' 
+                                                    }}>
+                                                        {formatIcp(balance)} ICP
                                                     </div>
                                                 </div>
                                             </div>
