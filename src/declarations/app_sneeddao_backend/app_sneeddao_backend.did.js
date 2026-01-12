@@ -191,6 +191,7 @@ export const idlFactory = ({ IDL }) => {
     'get_project' : IDL.Func([IDL.Nat], [IDL.Opt(Project)], ['query']),
     'get_projects' : IDL.Func([], [IDL.Vec(Project)], ['query']),
     'get_swap_canister_ids' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
+    'get_tracked_canisters' : IDL.Func([], [IDL.Vec(IDL.Principal)], ['query']),
     'get_user_ban_history' : IDL.Func([IDL.Principal], [Result_3], ['query']),
     'get_user_neurons' : IDL.Func([], [Result_2], []),
     'get_whitelisted_tokens' : IDL.Func(
@@ -202,6 +203,7 @@ export const idlFactory = ({ IDL }) => {
     'is_token_whitelisted' : IDL.Func([IDL.Principal], [IDL.Bool], ['query']),
     'register_ledger_canister_id' : IDL.Func([IDL.Principal], [], []),
     'register_swap_canister_id' : IDL.Func([IDL.Principal], [], []),
+    'register_tracked_canister' : IDL.Func([IDL.Principal], [], []),
     'remove_admin' : IDL.Func([IDL.Principal], [], []),
     'remove_blacklisted_word' : IDL.Func([IDL.Text], [Result_1], []),
     'remove_partner' : IDL.Func([IDL.Nat], [Result_1], []),
@@ -243,6 +245,7 @@ export const idlFactory = ({ IDL }) => {
     'unban_user' : IDL.Func([IDL.Principal], [Result_1], []),
     'unregister_ledger_canister_id' : IDL.Func([IDL.Principal], [], []),
     'unregister_swap_canister_id' : IDL.Func([IDL.Principal], [], []),
+    'unregister_tracked_canister' : IDL.Func([IDL.Principal], [], []),
     'unverify_neuron_name' : IDL.Func([IDL.Principal, NeuronId], [Result], []),
     'unverify_principal_name' : IDL.Func([IDL.Principal], [Result], []),
     'update_partner' : IDL.Func(

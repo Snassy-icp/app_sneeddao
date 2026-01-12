@@ -6,12 +6,15 @@ module {
     // state management types
     public type PrincipalSwapCanisterMap = HashMap.HashMap<Principal, List.List<Principal>>;
     public type PrincipalLedgerCanisterMap = HashMap.HashMap<Principal, List.List<Principal>>;
+    public type PrincipalTrackedCanisterMap = HashMap.HashMap<Principal, List.List<Principal>>;
     public type StablePrincipalSwapCanisters = [(Principal, [Principal])];
     public type StablePrincipalLedgerCanisters = [(Principal, [Principal])];
+    public type StablePrincipalTrackedCanisters = [(Principal, [Principal])];
 
     public type State = object {
         principal_swap_canisters: PrincipalSwapCanisterMap;
         principal_ledger_canisters: PrincipalLedgerCanisterMap;
+        principal_tracked_canisters: PrincipalTrackedCanisterMap;
     };
 
     // token metadata types

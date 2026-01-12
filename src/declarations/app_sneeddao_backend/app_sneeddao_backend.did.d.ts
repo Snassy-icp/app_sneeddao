@@ -53,6 +53,7 @@ export interface AppSneedDaoBackend {
   'get_project' : ActorMethod<[bigint], [] | [Project]>,
   'get_projects' : ActorMethod<[], Array<Project>>,
   'get_swap_canister_ids' : ActorMethod<[], Array<Principal>>,
+  'get_tracked_canisters' : ActorMethod<[], Array<Principal>>,
   'get_user_ban_history' : ActorMethod<[Principal], Result_3>,
   'get_user_neurons' : ActorMethod<[], Result_2>,
   'get_whitelisted_tokens' : ActorMethod<[], Array<WhitelistedToken>>,
@@ -60,6 +61,7 @@ export interface AppSneedDaoBackend {
   'is_token_whitelisted' : ActorMethod<[Principal], boolean>,
   'register_ledger_canister_id' : ActorMethod<[Principal], undefined>,
   'register_swap_canister_id' : ActorMethod<[Principal], undefined>,
+  'register_tracked_canister' : ActorMethod<[Principal], undefined>,
   'remove_admin' : ActorMethod<[Principal], undefined>,
   'remove_blacklisted_word' : ActorMethod<[string], Result_1>,
   'remove_partner' : ActorMethod<[bigint], Result_1>,
@@ -83,6 +85,7 @@ export interface AppSneedDaoBackend {
   'unban_user' : ActorMethod<[Principal], Result_1>,
   'unregister_ledger_canister_id' : ActorMethod<[Principal], undefined>,
   'unregister_swap_canister_id' : ActorMethod<[Principal], undefined>,
+  'unregister_tracked_canister' : ActorMethod<[Principal], undefined>,
   'unverify_neuron_name' : ActorMethod<[Principal, NeuronId], Result>,
   'unverify_principal_name' : ActorMethod<[Principal], Result>,
   'update_partner' : ActorMethod<

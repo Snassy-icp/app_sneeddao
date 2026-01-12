@@ -27,6 +27,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   type State = T.State;
   type StablePrincipalSwapCanisters = T.StablePrincipalSwapCanisters;
   type StablePrincipalLedgerCanisters = T.StablePrincipalLedgerCanisters;
+  type StablePrincipalTrackedCanisters = T.StablePrincipalTrackedCanisters;
   type SwapRunnerTokenMetadata = T.SwapRunnerTokenMetadata;
   type NeuronId = T.NeuronId;
   type NeuronName = T.NeuronName;
@@ -68,6 +69,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
   // stable memory
   stable var stable_principal_swap_canisters : StablePrincipalSwapCanisters = [];
   stable var stable_principal_ledger_canisters : StablePrincipalLedgerCanisters = [];
+  stable var stable_principal_tracked_canisters : StablePrincipalTrackedCanisters = [];
   stable var stable_whitelisted_tokens : [WhitelistedToken] = [];
   stable var stable_admins : [Principal] = [deployer.caller];
   stable var stable_blacklisted_words : [(Text, Bool)] = [];
@@ -134,6 +136,7 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     // initialize as empty here, see postupgrade for how to populate from stable memory
     public let principal_swap_canisters: HashMap.HashMap<Principal, List.List<Principal>> = HashMap.HashMap<Principal, List.List<Principal>>(100, Principal.equal, Principal.hash);
     public let principal_ledger_canisters: HashMap.HashMap<Principal, List.List<Principal>> = HashMap.HashMap<Principal, List.List<Principal>>(100, Principal.equal, Principal.hash);
+    public let principal_tracked_canisters: HashMap.HashMap<Principal, List.List<Principal>> = HashMap.HashMap<Principal, List.List<Principal>>(100, Principal.equal, Principal.hash);
   };
 
   // SwapRunner actor
@@ -286,6 +289,50 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     let principal = caller;
     switch (state.principal_ledger_canisters.get(principal)) {
       case (?existingLedgerCanisters) List.toArray<Principal>(existingLedgerCanisters);
+      case _ [] : [Principal];
+    };
+  };
+
+  // Tracked canisters - for users to track arbitrary canisters
+  public shared ({ caller }) func register_tracked_canister(canister_id : Principal) : async () {
+    let principal = caller;
+    if (Principal.isAnonymous(principal)) {
+      return; 
+    };
+
+    let trackedCanisters = switch (state.principal_tracked_canisters.get(principal)) {
+      case (?existingTrackedCanisters) existingTrackedCanisters;
+      case _ List.nil<Principal>();
+    };
+
+    // Check if already tracked (dedup)
+    if (List.some<Principal>(trackedCanisters, func trackedCanister { trackedCanister == canister_id; } )) {
+      return;
+    };
+
+    let newTrackedCanisters = List.push<Principal>(canister_id, trackedCanisters);
+    state.principal_tracked_canisters.put(principal, newTrackedCanisters);
+  };
+
+  public shared ({ caller }) func unregister_tracked_canister(canister_id : Principal) : async () {
+    let principal = caller;
+    if (Principal.isAnonymous(principal)) {
+      return; 
+    };
+
+    let trackedCanisters = switch (state.principal_tracked_canisters.get(principal)) {
+      case (?existingTrackedCanisters) existingTrackedCanisters;
+      case _ List.nil<Principal>();
+    };
+
+    let newTrackedCanisters = List.filter<Principal>(trackedCanisters, func test_canister { test_canister != canister_id; });
+    state.principal_tracked_canisters.put(principal, newTrackedCanisters);
+  };
+
+  public query ({ caller }) func get_tracked_canisters() : async [Principal] {
+    let principal = caller;
+    switch (state.principal_tracked_canisters.get(principal)) {
+      case (?existingTrackedCanisters) List.toArray<Principal>(existingTrackedCanisters);
       case _ [] : [Principal];
     };
   };
@@ -1626,6 +1673,19 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
     };
     stable_principal_ledger_canisters := List.toArray<(Principal, [Principal])>(list_stable_principal_ledger_canisters);
 
+    /// stable_principal_tracked_canisters
+    var list_stable_principal_tracked_canisters = List.nil<(Principal, [Principal])>();
+    let principalTrackedCanistersIter : Iter.Iter<Principal> = state.principal_tracked_canisters.keys();
+    for (principal in principalTrackedCanistersIter) {
+      let trackedCanisters = switch (state.principal_tracked_canisters.get(principal)) {
+        case (?existingTrackedCanisters) existingTrackedCanisters;
+        case _ List.nil<Principal>();
+      };
+
+      list_stable_principal_tracked_canisters := List.push<(Principal, [Principal])>((principal, List.toArray<Principal>(trackedCanisters)), list_stable_principal_tracked_canisters);
+    };
+    stable_principal_tracked_canisters := List.toArray<(Principal, [Principal])>(list_stable_principal_tracked_canisters);
+
     // Save whitelisted tokens to stable storage
     stable_whitelisted_tokens := Iter.toArray(whitelisted_tokens.vals());
 
@@ -1680,6 +1740,13 @@ shared (deployer) actor class AppSneedDaoBackend() = this {
         state.principal_ledger_canisters.put(principalLedgerCanisters.0, List.fromArray<Principal>(principalLedgerCanisters.1));
       };
       stable_principal_ledger_canisters := [];
+
+      /// stable_principal_tracked_canisters
+      let stableTrackedCanistersIter : Iter.Iter<(Principal, [Principal])> = stable_principal_tracked_canisters.vals();
+      for (principalTrackedCanisters in stableTrackedCanistersIter) {
+        state.principal_tracked_canisters.put(principalTrackedCanisters.0, List.fromArray<Principal>(principalTrackedCanisters.1));
+      };
+      stable_principal_tracked_canisters := [];
 
       // Restore whitelisted tokens from stable storage
       for (token in stable_whitelisted_tokens.vals()) {

@@ -735,4 +735,48 @@ export const getCanisterInfo = async (identity, canisterId) => {
         console.error('Error getting canister info:', error);
         throw error;
     }
+};
+
+// Tracked canisters - for users to track arbitrary canisters
+export const getTrackedCanisters = async (identity) => {
+    if (!identity) return [];
+    
+    try {
+        const actor = createBackendActor(identity);
+        const result = await actor.get_tracked_canisters();
+        return result;
+    } catch (error) {
+        console.error('Error getting tracked canisters:', error);
+        return [];
+    }
+};
+
+export const registerTrackedCanister = async (identity, canisterId) => {
+    if (!identity || !canisterId) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        await actor.register_tracked_canister(
+            typeof canisterId === 'string' ? Principal.fromText(canisterId) : canisterId
+        );
+        return true;
+    } catch (error) {
+        console.error('Error registering tracked canister:', error);
+        throw error;
+    }
+};
+
+export const unregisterTrackedCanister = async (identity, canisterId) => {
+    if (!identity || !canisterId) return null;
+    
+    try {
+        const actor = createBackendActor(identity);
+        await actor.unregister_tracked_canister(
+            typeof canisterId === 'string' ? Principal.fromText(canisterId) : canisterId
+        );
+        return true;
+    } catch (error) {
+        console.error('Error unregistering tracked canister:', error);
+        throw error;
+    }
 }; 
