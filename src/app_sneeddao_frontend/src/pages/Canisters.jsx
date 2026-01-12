@@ -5,9 +5,9 @@ import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
 import { getTrackedCanisters, registerTrackedCanister, unregisterTrackedCanister } from '../utils/BackendUtils';
-import { getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
+import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaPlus, FaTrash, FaCube, FaSpinner, FaCheckCircle } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaCube, FaSpinner } from 'react-icons/fa';
 
 export default function CanistersPage() {
     const { theme } = useTheme();
@@ -373,8 +373,6 @@ export default function CanistersPage() {
                             <div style={styles.canisterList}>
                                 {canisters.map((canisterId) => {
                                     const displayInfo = getPrincipalDisplayInfoFromContext(canisterId, principalNames, principalNicknames);
-                                    const displayName = displayInfo?.nickname || displayInfo?.name || null;
-                                    const isVerified = displayInfo?.verified || false;
                                     
                                     return (
                                     <div 
@@ -385,36 +383,14 @@ export default function CanistersPage() {
                                             <div style={styles.canisterIcon}>
                                                 <FaCube size={18} />
                                             </div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                {displayName && (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <span style={{ 
-                                                            color: theme.colors.text, 
-                                                            fontSize: '15px', 
-                                                            fontWeight: 500 
-                                                        }}>
-                                                            {displayName}
-                                                        </span>
-                                                        {isVerified && (
-                                                            <FaCheckCircle 
-                                                                size={12} 
-                                                                style={{ color: theme.colors.primary }} 
-                                                                title="Verified"
-                                                            />
-                                                        )}
-                                                    </div>
-                                                )}
-                                                <Link
-                                                    to={`/canister?id=${canisterId}`}
-                                                    style={{
-                                                        ...styles.canisterLink,
-                                                        fontSize: displayName ? '12px' : '14px',
-                                                        opacity: displayName ? 0.7 : 1
-                                                    }}
-                                                >
-                                                    {canisterId}
-                                                </Link>
-                                            </div>
+                                            <PrincipalDisplay
+                                                principal={canisterId}
+                                                displayInfo={displayInfo}
+                                                showCopyButton={true}
+                                                isAuthenticated={isAuthenticated}
+                                                noLink={true}
+                                                style={{ fontSize: '14px' }}
+                                            />
                                         </div>
                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                             <Link
