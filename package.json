@@ -18,9 +18,12 @@
   "dependencies": {
     "@dfinity/agent": "^2.0.0",
     "@dfinity/auth-client": "^2.0.0",
+    "@dfinity/identity": "^2.4.1",
     "@dfinity/ledger-icrc": "^2.0.0",
     "@dfinity/utils": "^2.0.0",
     "@emotion/styled": "^11.14.0",
+    "@icp-sdk/canisters": "^3.4.0",
+    "@icp-sdk/core": "^5.0.0",
     "react-icons": "^5.5.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^6.26.0",
