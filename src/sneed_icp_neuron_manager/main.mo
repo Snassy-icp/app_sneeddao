@@ -11,9 +11,9 @@ import Buffer "mo:base/Buffer";
 import Error "mo:base/Error";
 import Cycles "mo:base/ExperimentalCycles";
 import Text "mo:base/Text";
-import Option "mo:base/Option";
 
 import T "Types";
+import NeuronManagerCanister "neuron_manager_canister";
 
 shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
@@ -35,13 +35,10 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     var managersStable: [(Principal, T.ManagerInfo)] = [];
     transient var managers = HashMap.HashMap<Principal, T.ManagerInfo>(10, Principal.equal, Principal.hash);
     
-    // WASM module for neuron manager canisters (to be uploaded)
-    var managerWasm: ?Blob = null;
-    
     // Current version
     var currentVersion: T.Version = CURRENT_VERSION;
 
-    // IC Management canister
+    // IC Management canister (for updating controllers after spawning)
     transient let ic: T.ManagementCanister = actor("aaaaa-aa");
 
     // ============================================
@@ -101,73 +98,26 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     };
 
     // ============================================
-    // WASM MANAGEMENT
-    // ============================================
-
-    public shared ({ caller }) func uploadManagerWasm(wasm: Blob): async () {
-        assert(isAdmin(caller));
-        managerWasm := ?wasm;
-    };
-
-    public query func hasManagerWasm(): async Bool {
-        Option.isSome(managerWasm);
-    };
-
-    // ============================================
     // FACTORY OPERATIONS
     // ============================================
 
     // Create a new neuron manager canister for the caller
     // Users can create multiple managers (one neuron per manager)
+    // Uses direct actor class spawning - no WASM upload needed
     public shared ({ caller }) func createNeuronManager(): async T.CreateManagerResult {
-        // Check if we have the WASM module
-        let wasm = switch (managerWasm) {
-            case null {
-                return #Err(#CanisterCreationFailed("Manager WASM not uploaded"));
-            };
-            case (?w) { w };
-        };
-
         // Check cycles
         if (Cycles.balance() < CANISTER_CREATION_CYCLES) {
             return #Err(#InsufficientCycles);
         };
 
         try {
-            // Create canister with caller as controller
-            let createResult = await (with cycles = CANISTER_CREATION_CYCLES) ic.create_canister({
-                settings = ?{
-                    controllers = ?[caller]; // Caller becomes the sole controller
-                    compute_allocation = null;
-                    memory_allocation = null;
-                    freezing_threshold = null;
-                };
-            });
+            // Spawn a new NeuronManagerCanister with the caller as the owner
+            let newManager = await (with cycles = CANISTER_CREATION_CYCLES) 
+                NeuronManagerCanister.NeuronManagerCanister(caller);
+            
+            let canisterId = Principal.fromActor(newManager);
 
-            let canisterId = createResult.canister_id;
-
-            // Temporarily add self as controller to install code
-            await ic.update_settings({
-                canister_id = canisterId;
-                settings = {
-                    controllers = ?[caller, Principal.fromActor(this)];
-                    compute_allocation = null;
-                    memory_allocation = null;
-                    freezing_threshold = null;
-                };
-            });
-
-            // Install the neuron manager WASM
-            // The init arg is the owner principal
-            let initArg = to_candid(caller);
-            await ic.install_code({
-                mode = #install;
-                canister_id = canisterId;
-                wasm_module = wasm;
-                arg = initArg;
-            });
-
-            // Remove self from controllers, leaving only the caller
+            // Transfer control to the caller (factory starts as controller after spawning)
             await ic.update_settings({
                 canister_id = canisterId;
                 settings = {

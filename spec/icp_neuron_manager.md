@@ -226,7 +226,6 @@ type ManagerInfo = {
 
 ```motoko
 var managers: [(Principal, ManagerInfo)] = []; // canisterId -> manager info (allows multiple per user)
-var managerWasm: ?Blob = null; // WASM module for neuron managers
 var currentVersion: Version = { major = 1; minor = 0; patch = 0 };
 ```
 
@@ -259,10 +258,6 @@ getCurrentVersion(): async Version
 #### Admin Operations
 
 ```motoko
-// Upload new WASM module for manager canisters
-// Only callable by factory controllers
-uploadManagerWasm(wasm: Blob): async ()
-
 // Update the current version number
 // Only callable by factory controllers  
 setCurrentVersion(version: Version): async ()
@@ -271,11 +266,10 @@ setCurrentVersion(version: Version): async ()
 ### Canister Creation Flow
 
 1. User calls `createNeuronManager()`
-2. Factory creates new canister with cycles
-3. Factory installs `icp_neuron_manager` WASM code
-4. Factory sets caller as controller (removes factory as controller)
-5. Factory records the new manager in state
-6. Returns canister ID and ICP account ID
+2. Factory spawns new `NeuronManagerCanister` actor class directly (no WASM upload needed)
+3. Factory transfers control to caller (removes factory as controller)
+4. Factory records the new manager in state
+5. Returns canister ID and ICP account ID
 
 ---
 
