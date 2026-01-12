@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
+import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'external/sneed_icp_neuron_manager_factory';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
@@ -133,6 +134,59 @@ function CreateIcpNeuron() {
 
     const copyToClipboard = (text) => {
         navigator.clipboard.writeText(text);
+    };
+
+    // Compute account ID from principal (same algorithm as the canister)
+    const computeAccountId = (principal) => {
+        try {
+            const principalBytes = principal.toUint8Array();
+            // Domain separator: 0x0a + "account-id"
+            const domainSeparator = new Uint8Array([0x0a, ...new TextEncoder().encode('account-id')]);
+            // Subaccount: 32 zero bytes (default subaccount)
+            const subaccount = new Uint8Array(32);
+            // Preimage: domain separator + principal bytes + subaccount
+            const preimage = new Uint8Array(domainSeparator.length + principalBytes.length + subaccount.length);
+            preimage.set(domainSeparator, 0);
+            preimage.set(principalBytes, domainSeparator.length);
+            preimage.set(subaccount, domainSeparator.length + principalBytes.length);
+            // SHA-224 hash
+            const hash = sha224(preimage);
+            // CRC32 checksum
+            const crc = crc32(hash);
+            // Account ID: CRC32 (4 bytes) + hash (28 bytes)
+            const accountId = new Uint8Array(32);
+            accountId[0] = (crc >> 24) & 0xff;
+            accountId[1] = (crc >> 16) & 0xff;
+            accountId[2] = (crc >> 8) & 0xff;
+            accountId[3] = crc & 0xff;
+            accountId.set(hash, 4);
+            return Array.from(accountId).map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch (err) {
+            console.error('Error computing account ID:', err);
+            return null;
+        }
+    };
+
+    // CRC32 implementation
+    const crc32 = (data) => {
+        let crc = 0xffffffff;
+        const table = getCrc32Table();
+        for (let i = 0; i < data.length; i++) {
+            crc = (crc >>> 8) ^ table[(crc ^ data[i]) & 0xff];
+        }
+        return (crc ^ 0xffffffff) >>> 0;
+    };
+
+    const getCrc32Table = () => {
+        const table = new Uint32Array(256);
+        for (let i = 0; i < 256; i++) {
+            let c = i;
+            for (let j = 0; j < 8; j++) {
+                c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+            }
+            table[i] = c;
+        }
+        return table;
     };
 
     const cardStyle = {
@@ -288,62 +342,93 @@ function CreateIcpNeuron() {
                             </div>
                         ) : (
                             <div>
-                                {managers.map((manager, index) => (
-                                    <div key={manager.canisterId.toText()} style={cardStyle}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
-                                            <div style={{ flex: 1, minWidth: '250px' }}>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
-                                                    Canister ID
+                                {managers.map((manager, index) => {
+                                    const accountId = computeAccountId(manager.canisterId);
+                                    return (
+                                        <div key={manager.canisterId.toText()} style={cardStyle}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                                                <div style={{ flex: 1, minWidth: '250px' }}>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
+                                                        Canister ID
+                                                    </div>
+                                                    <div style={{ color: theme.colors.primaryText, fontFamily: 'monospace', fontSize: '14px' }}>
+                                                        {manager.canisterId.toText()}
+                                                        <button 
+                                                            style={smallButtonStyle}
+                                                            onClick={() => copyToClipboard(manager.canisterId.toText())}
+                                                        >
+                                                            Copy
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <div style={{ color: theme.colors.primaryText, fontFamily: 'monospace', fontSize: '14px' }}>
-                                                    {manager.canisterId.toText()}
-                                                    <button 
-                                                        style={smallButtonStyle}
-                                                        onClick={() => copyToClipboard(manager.canisterId.toText())}
-                                                    >
-                                                        Copy
-                                                    </button>
+                                                <div style={{ textAlign: 'right' }}>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                        Created
+                                                    </div>
+                                                    <div style={{ color: theme.colors.primaryText, fontSize: '14px' }}>
+                                                        {formatDate(manager.createdAt)}
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div style={{ textAlign: 'right' }}>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                    Created
-                                                </div>
-                                                <div style={{ color: theme.colors.primaryText, fontSize: '14px' }}>
-                                                    {formatDate(manager.createdAt)}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: `1px solid ${theme.colors.border}` }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                                                <div>
-                                                    <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Neuron: </span>
-                                                    {manager.neuronId && manager.neuronId.length > 0 ? (
-                                                        <span style={{ color: theme.colors.success || '#22c55e', fontFamily: 'monospace' }}>
-                                                            #{manager.neuronId[0].id.toString()}
-                                                        </span>
-                                                    ) : (
-                                                        <span style={{ color: theme.colors.warning || '#f59e0b' }}>
-                                                            Not created yet
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <span style={{ 
-                                                        color: theme.colors.mutedText, 
+
+                                            {/* Account ID for funding */}
+                                            {accountId && (
+                                                <div style={{ marginTop: '12px' }}>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
+                                                        Account ID (send ICP here to fund)
+                                                    </div>
+                                                    <div style={{ 
+                                                        color: theme.colors.accent, 
+                                                        fontFamily: 'monospace', 
                                                         fontSize: '12px',
-                                                        background: `${theme.colors.accent}20`,
-                                                        padding: '4px 8px',
+                                                        wordBreak: 'break-all',
+                                                        background: `${theme.colors.accent}10`,
+                                                        padding: '8px',
                                                         borderRadius: '4px',
                                                     }}>
-                                                        v{manager.version.major}.{manager.version.minor}.{manager.version.patch}
-                                                    </span>
+                                                        {accountId}
+                                                        <button 
+                                                            style={{ ...smallButtonStyle, marginTop: '4px' }}
+                                                            onClick={() => copyToClipboard(accountId)}
+                                                        >
+                                                            Copy
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            
+                                            <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: `1px solid ${theme.colors.border}` }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                                    <div>
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Neuron: </span>
+                                                        {manager.neuronId && manager.neuronId.length > 0 ? (
+                                                            <span style={{ color: theme.colors.success || '#22c55e', fontFamily: 'monospace' }}>
+                                                                #{manager.neuronId[0].id.toString()}
+                                                            </span>
+                                                        ) : (
+                                                            <span style={{ color: theme.colors.warning || '#f59e0b' }}>
+                                                                Not created yet
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ 
+                                                            color: theme.colors.primaryText, 
+                                                            fontSize: '11px',
+                                                            fontWeight: '500',
+                                                            background: `${theme.colors.accent}20`,
+                                                            padding: '4px 10px',
+                                                            borderRadius: '4px',
+                                                            whiteSpace: 'nowrap',
+                                                        }}>
+                                                            v{manager.version.major}.{manager.version.minor}.{manager.version.patch}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
 
