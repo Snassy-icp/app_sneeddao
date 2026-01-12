@@ -118,11 +118,12 @@ function IcpNeuronManager() {
                 manager.getFullNeuron(),
             ]);
             
-            if ('Ok' in infoResult) {
-                setNeuronInfo(infoResult.Ok);
+            // These return optional types directly, not Results
+            if (infoResult && infoResult.length > 0) {
+                setNeuronInfo(infoResult[0]);
             }
-            if ('Ok' in fullResult) {
-                setFullNeuron(fullResult.Ok);
+            if (fullResult && fullResult.length > 0) {
+                setFullNeuron(fullResult[0]);
             }
         } catch (err) {
             console.error('Error fetching neuron info:', err);
