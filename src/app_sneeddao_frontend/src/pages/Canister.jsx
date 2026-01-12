@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
@@ -76,6 +76,7 @@ export default function CanisterPage() {
     const [error, setError] = useState(null);
     const [fetchMethod, setFetchMethod] = useState(null); // 'canister_status' or 'canister_info'
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
+    const requestIdRef = useRef(0); // Track current request to prevent race conditions
 
     const canisterIdParam = searchParams.get('id');
 
@@ -121,6 +122,9 @@ export default function CanisterPage() {
     }, [canisterInfo, principalNames, principalNicknames]);
 
     const fetchCanisterInfo = async (canisterId) => {
+        // Increment request ID to track this specific request
+        const currentRequestId = ++requestIdRef.current;
+        
         setLoading(true);
         setError(null);
         setCanisterInfo(null);
@@ -168,6 +172,12 @@ export default function CanisterPage() {
                         canister_id: canisterPrincipal
                     });
 
+                    // Check if this request is still the current one (prevent race conditions)
+                    if (currentRequestId !== requestIdRef.current) {
+                        console.log('canister_status completed but request is stale, ignoring');
+                        return;
+                    }
+
                     console.log('canister_status SUCCESS! User is a controller. Status:', status);
 
                     // Success! User is a controller
@@ -188,10 +198,23 @@ export default function CanisterPage() {
                 }
             }
 
+            // Check if this request is still the current one before fallback
+            if (currentRequestId !== requestIdRef.current) {
+                console.log('Request is stale before fallback, ignoring');
+                return;
+            }
+
             // Fallback: use backend's canister_info call
             console.log('Using backend canister_info fallback...');
             try {
                 const result = await getCanisterInfo(identity, canisterId);
+                
+                // Check again after async call
+                if (currentRequestId !== requestIdRef.current) {
+                    console.log('canister_info completed but request is stale, ignoring');
+                    return;
+                }
+                
                 console.log('canister_info result:', result);
                 
                 if ('ok' in result) {
