@@ -69,6 +69,7 @@ import HelpSneedlock from './pages/HelpSneedlock';
 import Canister from './pages/Canister';
 import Canisters from './pages/Canisters';
 import CreateIcpNeuron from './pages/CreateIcpNeuron';
+import IcpNeuronManager from './pages/IcpNeuronManager';
 
 // Component to set up global naming function
 function GlobalNamingSetup() {
@@ -140,6 +141,7 @@ function App() {
                     <Route path="/canisters" element={<Canisters />} />
                     <Route path="/neurons" element={<Neurons />} />
                     <Route path="/create_icp_neuron" element={<CreateIcpNeuron />} />
+                    <Route path="/icp_neuron_manager/:canisterId" element={<IcpNeuronManager />} />
                     <Route path="/transaction" element={<Transaction />} />
                     <Route path="/transactions" element={<Transactions />} />
                     <Route path="/hub" element={<Hub />} />

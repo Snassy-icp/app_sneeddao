@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
@@ -463,10 +464,24 @@ function CreateIcpNeuron() {
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <div style={{ flexShrink: 0 }}>
-                                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px', flexShrink: 0 }}>
                                                             Version {Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
                                                         </span>
+                                                        <Link 
+                                                            to={`/icp_neuron_manager/${canisterIdText}`}
+                                                            style={{
+                                                                background: theme.colors.accent,
+                                                                color: '#fff',
+                                                                padding: '8px 16px',
+                                                                borderRadius: '6px',
+                                                                textDecoration: 'none',
+                                                                fontSize: '13px',
+                                                                fontWeight: '600',
+                                                            }}
+                                                        >
+                                                            Manage →
+                                                        </Link>
                                                     </div>
                                                 </div>
                                             </div>
