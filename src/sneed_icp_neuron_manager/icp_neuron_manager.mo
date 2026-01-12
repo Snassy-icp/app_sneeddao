@@ -1,0 +1,1027 @@
+import Principal "mo:base/Principal";
+import Blob "mo:base/Blob";
+import Array "mo:base/Array";
+import Nat64 "mo:base/Nat64";
+import Nat8 "mo:base/Nat8";
+import Nat32 "mo:base/Nat32";
+import Int "mo:base/Int";
+import Time "mo:base/Time";
+import Text "mo:base/Text";
+import Option "mo:base/Option";
+import Buffer "mo:base/Buffer";
+
+import T "Types";
+
+module {
+
+    // ============================================
+    // CONSTANTS
+    // ============================================
+
+    public let GOVERNANCE_CANISTER_ID: Text = "rrkah-fqaaa-aaaaa-aaaaq-cai";
+    public let LEDGER_CANISTER_ID: Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
+    
+    public let ICP_FEE: Nat64 = 10_000; // 0.0001 ICP
+    public let MIN_STAKE_E8S: Nat64 = 100_000_000; // 1 ICP minimum to create neuron
+    public let MIN_DISSOLVE_DELAY_FOR_VOTE: Nat64 = 15_778_800; // ~6 months in seconds
+    public let MAX_DISSOLVE_DELAY: Nat64 = 252_460_800; // 8 years in seconds
+
+    public let CURRENT_VERSION: T.Version = {
+        major = 1;
+        minor = 0;
+        patch = 0;
+    };
+
+    // ============================================
+    // ACTOR CLASS
+    // ============================================
+
+    public class IcpNeuronManager(initOwner: Principal) {
+
+        // State
+        var owner: Principal = initOwner;
+        var neuronId: ?T.NeuronId = null;
+        var neuronMemo: Nat64 = 0; // Memo used when creating the neuron
+        let createdAt: Int = Time.now();
+        let version: T.Version = CURRENT_VERSION;
+
+        // Actor references
+        let governance: T.GovernanceActor = actor(GOVERNANCE_CANISTER_ID);
+        let ledger: T.LedgerActor = actor(LEDGER_CANISTER_ID);
+
+        // ============================================
+        // CANISTER INFO
+        // ============================================
+
+        public func getVersion(): T.Version {
+            version;
+        };
+
+        public func getCreatedAt(): Int {
+            createdAt;
+        };
+
+        public func getOwner(): Principal {
+            owner;
+        };
+
+        public func getNeuronId(): ?T.NeuronId {
+            neuronId;
+        };
+
+        public func getNeuronMemo(): Nat64 {
+            neuronMemo;
+        };
+
+        // Get this canister's ICP balance
+        public func getBalance(selfPrincipal: Principal): async Nat {
+            let account: T.Account = {
+                owner = selfPrincipal;
+                subaccount = null;
+            };
+            await ledger.icrc1_balance_of(account);
+        };
+
+        // ============================================
+        // ACCOUNT ID COMPUTATION
+        // ============================================
+
+        // Compute account identifier from principal and subaccount
+        // This follows the ICP ledger's account identifier format
+        public func computeAccountId(principal: Principal, subaccount: ?Blob): T.AccountIdentifier {
+            let hash = computeAccountIdHash(principal, subaccount);
+            let crc = crc32(hash);
+            let result = Buffer.Buffer<Nat8>(32);
+            result.add(Nat8.fromNat(Nat32.toNat((crc >> 24) & 0xFF)));
+            result.add(Nat8.fromNat(Nat32.toNat((crc >> 16) & 0xFF)));
+            result.add(Nat8.fromNat(Nat32.toNat((crc >> 8) & 0xFF)));
+            result.add(Nat8.fromNat(Nat32.toNat(crc & 0xFF)));
+            for (byte in hash.vals()) {
+                result.add(byte);
+            };
+            Blob.fromArray(Buffer.toArray(result));
+        };
+
+        // Compute the 28-byte hash portion of account identifier
+        func computeAccountIdHash(principal: Principal, subaccount: ?Blob): [Nat8] {
+            let principalBytes = Blob.toArray(Principal.toBlob(principal));
+            let subaccountBytes = switch (subaccount) {
+                case null { Array.tabulate<Nat8>(32, func(_) = 0) };
+                case (?sa) { Blob.toArray(sa) };
+            };
+            
+            // Domain separator: 0x0a + "account-id"
+            let domainSeparatorText = Blob.toArray(Text.encodeUtf8("account-id"));
+            
+            // Concatenate: domain separator + principal bytes + subaccount
+            let preimage = Buffer.Buffer<Nat8>(1 + domainSeparatorText.size() + principalBytes.size() + subaccountBytes.size());
+            preimage.add(0x0a);
+            for (b in domainSeparatorText.vals()) { preimage.add(b) };
+            for (b in principalBytes.vals()) { preimage.add(b) };
+            for (b in subaccountBytes.vals()) { preimage.add(b) };
+            
+            sha224(Buffer.toArray(preimage));
+        };
+
+        // Compute the neuron subaccount from controller and memo
+        public func computeNeuronSubaccount(controller: Principal, memo: Nat64): Blob {
+            // Domain separator: 0x0c + "neuron-stake"
+            let domainSeparatorText = Blob.toArray(Text.encodeUtf8("neuron-stake"));
+            let controllerBytes = Blob.toArray(Principal.toBlob(controller));
+            let memoBytes = nat64ToBytes(memo);
+            
+            let preimage = Buffer.Buffer<Nat8>(1 + domainSeparatorText.size() + controllerBytes.size() + 8);
+            preimage.add(0x0c);
+            for (b in domainSeparatorText.vals()) { preimage.add(b) };
+            for (b in controllerBytes.vals()) { preimage.add(b) };
+            for (b in memoBytes.vals()) { preimage.add(b) };
+            
+            Blob.fromArray(sha256(Buffer.toArray(preimage)));
+        };
+
+        // Get the governance canister's account for this neuron
+        public func getNeuronAccountId(selfPrincipal: Principal, memo: Nat64): T.AccountIdentifier {
+            let subaccount = computeNeuronSubaccount(selfPrincipal, memo);
+            computeAccountId(Principal.fromText(GOVERNANCE_CANISTER_ID), ?subaccount);
+        };
+
+        // ============================================
+        // NEURON CREATION
+        // ============================================
+
+        // Stake ICP to create a neuron
+        public func stakeNeuron(
+            selfPrincipal: Principal,
+            amount_e8s: Nat64,
+            dissolve_delay_seconds: Nat64
+        ): async T.StakeNeuronResult {
+            // Check if neuron already exists
+            if (Option.isSome(neuronId)) {
+                return #Err(#NeuronAlreadyExists);
+            };
+
+            // Validate dissolve delay
+            if (dissolve_delay_seconds < MIN_DISSOLVE_DELAY_FOR_VOTE) {
+                return #Err(#InvalidDissolveDelay({
+                    min = MIN_DISSOLVE_DELAY_FOR_VOTE;
+                    max = MAX_DISSOLVE_DELAY;
+                    provided = dissolve_delay_seconds;
+                }));
+            };
+            if (dissolve_delay_seconds > MAX_DISSOLVE_DELAY) {
+                return #Err(#InvalidDissolveDelay({
+                    min = MIN_DISSOLVE_DELAY_FOR_VOTE;
+                    max = MAX_DISSOLVE_DELAY;
+                    provided = dissolve_delay_seconds;
+                }));
+            };
+
+            // Check balance
+            let balance = await getBalance(selfPrincipal);
+            let required = Nat64.toNat(amount_e8s + ICP_FEE);
+            if (balance < required) {
+                return #Err(#InsufficientFunds({
+                    balance = Nat64.fromNat(balance);
+                    required = Nat64.fromNat(required);
+                }));
+            };
+
+            // Validate minimum stake
+            if (amount_e8s < MIN_STAKE_E8S) {
+                return #Err(#InsufficientFunds({
+                    balance = amount_e8s;
+                    required = MIN_STAKE_E8S;
+                }));
+            };
+
+            // Generate memo from timestamp
+            let memo = Nat64.fromNat(Int.abs(Time.now()));
+            
+            // Compute neuron subaccount and account
+            let neuronSubaccount = computeNeuronSubaccount(selfPrincipal, memo);
+            
+            // Transfer ICP to governance canister's neuron subaccount
+            let transferArg: T.TransferArg = {
+                to = {
+                    owner = Principal.fromText(GOVERNANCE_CANISTER_ID);
+                    subaccount = ?neuronSubaccount;
+                };
+                fee = ?Nat64.toNat(ICP_FEE);
+                memo = ?Blob.fromArray(nat64ToBytes(memo));
+                from_subaccount = null;
+                created_at_time = null;
+                amount = Nat64.toNat(amount_e8s);
+            };
+
+            let transferResult = await ledger.icrc1_transfer(transferArg);
+            
+            switch (transferResult) {
+                case (#Err(e)) {
+                    return #Err(#TransferFailed(transferErrorToText(e)));
+                };
+                case (#Ok(_blockIndex)) {
+                    // Claim the neuron
+                    let claimRequest: T.ClaimOrRefreshNeuronFromAccount = {
+                        controller = ?selfPrincipal;
+                        memo = memo;
+                    };
+                    
+                    let claimResult = await governance.claim_or_refresh_neuron_from_account(claimRequest);
+                    
+                    switch (claimResult.result) {
+                        case null {
+                            return #Err(#GovernanceError({ error_message = "No result from claim"; error_type = 0 }));
+                        };
+                        case (?#Error(e)) {
+                            return #Err(#GovernanceError(e));
+                        };
+                        case (?#NeuronId(nid)) {
+                            // Set dissolve delay
+                            let configResult = await configureNeuron(nid, #IncreaseDissolveDelay({
+                                additional_dissolve_delay_seconds = Nat32.fromNat(Nat64.toNat(dissolve_delay_seconds));
+                            }));
+                            
+                            switch (configResult) {
+                                case (#Err(#GovernanceError(ge))) {
+                                    // Neuron was created but dissolve delay failed to set
+                                    // Still save the neuron ID
+                                    neuronId := ?nid;
+                                    neuronMemo := memo;
+                                    return #Err(#GovernanceError(ge));
+                                };
+                                case (#Err(_)) {
+                                    // Other errors - shouldn't happen but handle it
+                                    neuronId := ?nid;
+                                    neuronMemo := memo;
+                                    return #Ok(nid); // Return success since neuron was created
+                                };
+                                case (#Ok) {
+                                    neuronId := ?nid;
+                                    neuronMemo := memo;
+                                    return #Ok(nid);
+                                };
+                            };
+                        };
+                    };
+                };
+            };
+        };
+
+        // ============================================
+        // NEURON INFORMATION
+        // ============================================
+
+        public func getNeuronInfo(): async ?T.NeuronInfo {
+            switch (neuronId) {
+                case null { null };
+                case (?nid) {
+                    let result = await governance.get_neuron_info(nid.id);
+                    switch (result) {
+                        case (#Ok(info)) { ?info };
+                        case (#Err(_)) { null };
+                    };
+                };
+            };
+        };
+
+        public func getFullNeuron(): async ?T.Neuron {
+            switch (neuronId) {
+                case null { null };
+                case (?nid) {
+                    let result = await governance.get_full_neuron(nid.id);
+                    switch (result) {
+                        case (#Ok(neuron)) { ?neuron };
+                        case (#Err(_)) { null };
+                    };
+                };
+            };
+        };
+
+        // ============================================
+        // STAKE MANAGEMENT
+        // ============================================
+
+        // Increase stake by transferring more ICP to the neuron
+        public func increaseStake(selfPrincipal: Principal, amount_e8s: Nat64): async T.OperationResult {
+            switch (neuronId) {
+                case null { return #Err(#NoNeuron) };
+                case (?nid) {
+                    // Check balance
+                    let balance = await getBalance(selfPrincipal);
+                    let required = Nat64.toNat(amount_e8s + ICP_FEE);
+                    if (balance < required) {
+                        return #Err(#TransferFailed("Insufficient balance"));
+                    };
+
+                    // Compute neuron subaccount
+                    let neuronSubaccount = computeNeuronSubaccount(selfPrincipal, neuronMemo);
+                    
+                    // Transfer to neuron
+                    let transferArg: T.TransferArg = {
+                        to = {
+                            owner = Principal.fromText(GOVERNANCE_CANISTER_ID);
+                            subaccount = ?neuronSubaccount;
+                        };
+                        fee = ?Nat64.toNat(ICP_FEE);
+                        memo = ?Blob.fromArray(nat64ToBytes(neuronMemo));
+                        from_subaccount = null;
+                        created_at_time = null;
+                        amount = Nat64.toNat(amount_e8s);
+                    };
+
+                    let transferResult = await ledger.icrc1_transfer(transferArg);
+                    
+                    switch (transferResult) {
+                        case (#Err(e)) {
+                            return #Err(#TransferFailed(transferErrorToText(e)));
+                        };
+                        case (#Ok(_)) {
+                            // Refresh the neuron to register the new stake
+                            return await refreshStake(nid);
+                        };
+                    };
+                };
+            };
+        };
+
+        // Refresh stake (claim any ICP sent directly to neuron)
+        public func refreshStake(nid: T.NeuronId): async T.OperationResult {
+            let request: T.ManageNeuronRequest = {
+                id = ?nid;
+                command = ?#ClaimOrRefresh({
+                    by = ?#NeuronIdOrSubaccount;
+                });
+                neuron_id_or_subaccount = null;
+            };
+            
+            let result = await governance.manage_neuron(request);
+            
+            switch (result.command) {
+                case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+                case (?#Error(e)) { #Err(#GovernanceError(e)) };
+                case (?#ClaimOrRefresh(_)) { #Ok };
+                case (_) { #Err(#InvalidOperation("Unexpected response")) };
+            };
+        };
+
+        // ============================================
+        // DISSOLVE MANAGEMENT
+        // ============================================
+
+        // Increase dissolve delay
+        public func setDissolveDelay(additionalSeconds: Nat32): async T.OperationResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    await configureNeuron(nid, #IncreaseDissolveDelay({
+                        additional_dissolve_delay_seconds = additionalSeconds;
+                    }));
+                };
+            };
+        };
+
+        // Start dissolving
+        public func startDissolving(): async T.OperationResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    await configureNeuron(nid, #StartDissolving);
+                };
+            };
+        };
+
+        // Stop dissolving
+        public func stopDissolving(): async T.OperationResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    await configureNeuron(nid, #StopDissolving);
+                };
+            };
+        };
+
+        // ============================================
+        // DISBURSE
+        // ============================================
+
+        // Disburse neuron (withdraw ICP after dissolving)
+        public func disburse(amount_e8s: ?Nat64, to_account: ?T.AccountIdentifier): async T.DisburseResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    let request: T.ManageNeuronRequest = {
+                        id = ?nid;
+                        command = ?#Disburse({
+                            to_account = to_account;
+                            amount = switch (amount_e8s) {
+                                case null { null };
+                                case (?a) { ?{ e8s = a } };
+                            };
+                        });
+                        neuron_id_or_subaccount = null;
+                    };
+                    
+                    let result = await governance.manage_neuron(request);
+                    
+                    switch (result.command) {
+                        case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+                        case (?#Error(e)) { #Err(#GovernanceError(e)) };
+                        case (?#Disburse(r)) { #Ok({ transfer_block_height = r.transfer_block_height }) };
+                        case (_) { #Err(#InvalidOperation("Unexpected response")) };
+                    };
+                };
+            };
+        };
+
+        // Withdraw ICP from canister balance to external account
+        public func withdrawIcp(selfPrincipal: Principal, amount_e8s: Nat64, to_account: T.Account): async T.DisburseResult {
+            let balance = await getBalance(selfPrincipal);
+            let required = Nat64.toNat(amount_e8s + ICP_FEE);
+            if (balance < required) {
+                return #Err(#TransferFailed("Insufficient balance"));
+            };
+
+            let transferArg: T.TransferArg = {
+                to = to_account;
+                fee = ?Nat64.toNat(ICP_FEE);
+                memo = null;
+                from_subaccount = null;
+                created_at_time = null;
+                amount = Nat64.toNat(amount_e8s);
+            };
+
+            let result = await ledger.icrc1_transfer(transferArg);
+            
+            switch (result) {
+                case (#Err(e)) { #Err(#TransferFailed(transferErrorToText(e))) };
+                case (#Ok(blockIndex)) { #Ok({ transfer_block_height = Nat64.fromNat(blockIndex) }) };
+            };
+        };
+
+        // ============================================
+        // MATURITY MANAGEMENT
+        // ============================================
+
+        // Spawn maturity into a new neuron
+        public func spawnMaturity(percentage: Nat32, newController: ?Principal): async T.SpawnResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    let request: T.ManageNeuronRequest = {
+                        id = ?nid;
+                        command = ?#Spawn({
+                            percentage_to_spawn = ?percentage;
+                            new_controller = newController;
+                            nonce = null;
+                        });
+                        neuron_id_or_subaccount = null;
+                    };
+                    
+                    let result = await governance.manage_neuron(request);
+                    
+                    switch (result.command) {
+                        case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+                        case (?#Error(e)) { #Err(#GovernanceError(e)) };
+                        case (?#Spawn(r)) {
+                            switch (r.created_neuron_id) {
+                                case null { #Err(#InvalidOperation("No neuron ID returned")) };
+                                case (?newNid) { #Ok(newNid) };
+                            };
+                        };
+                        case (_) { #Err(#InvalidOperation("Unexpected response")) };
+                    };
+                };
+            };
+        };
+
+        // Stake maturity (convert maturity to staked ICP)
+        public func stakeMaturity(percentage: Nat32): async T.OperationResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    let request: T.ManageNeuronRequest = {
+                        id = ?nid;
+                        command = ?#StakeMaturity({
+                            percentage_to_stake = ?percentage;
+                        });
+                        neuron_id_or_subaccount = null;
+                    };
+                    
+                    let result = await governance.manage_neuron(request);
+                    
+                    switch (result.command) {
+                        case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+                        case (?#Error(e)) { #Err(#GovernanceError(e)) };
+                        case (?#StakeMaturity(_)) { #Ok };
+                        case (_) { #Err(#InvalidOperation("Unexpected response")) };
+                    };
+                };
+            };
+        };
+
+        // Merge maturity into stake (legacy method)
+        public func mergeMaturity(percentage: Nat32): async T.OperationResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    let request: T.ManageNeuronRequest = {
+                        id = ?nid;
+                        command = ?#MergeMaturity({
+                            percentage_to_merge = percentage;
+                        });
+                        neuron_id_or_subaccount = null;
+                    };
+                    
+                    let result = await governance.manage_neuron(request);
+                    
+                    switch (result.command) {
+                        case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+                        case (?#Error(e)) { #Err(#GovernanceError(e)) };
+                        case (?#MergeMaturity(_)) { #Ok };
+                        case (_) { #Err(#InvalidOperation("Unexpected response")) };
+                    };
+                };
+            };
+        };
+
+        // Disburse maturity to an account
+        public func disburseMaturity(percentage: Nat32, to_account: ?T.Account): async T.OperationResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    let request: T.ManageNeuronRequest = {
+                        id = ?nid;
+                        command = ?#DisburseMaturity({
+                            percentage_to_disburse = percentage;
+                            to_account = to_account;
+                        });
+                        neuron_id_or_subaccount = null;
+                    };
+                    
+                    let result = await governance.manage_neuron(request);
+                    
+                    switch (result.command) {
+                        case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+                        case (?#Error(e)) { #Err(#GovernanceError(e)) };
+                        case (?#DisburseMaturity(_)) { #Ok };
+                        case (_) { #Err(#InvalidOperation("Unexpected response")) };
+                    };
+                };
+            };
+        };
+
+        // Set auto-stake maturity
+        public func setAutoStakeMaturity(enabled: Bool): async T.OperationResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    await configureNeuron(nid, #ChangeAutoStakeMaturity({
+                        requested_setting_for_auto_stake_maturity = enabled;
+                    }));
+                };
+            };
+        };
+
+        // ============================================
+        // VOTING
+        // ============================================
+
+        // Vote on a proposal
+        public func vote(proposal_id: Nat64, vote: Int32): async T.OperationResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    let request: T.ManageNeuronRequest = {
+                        id = ?nid;
+                        command = ?#RegisterVote({
+                            vote = vote;
+                            proposal = ?{ id = proposal_id };
+                        });
+                        neuron_id_or_subaccount = null;
+                    };
+                    
+                    let result = await governance.manage_neuron(request);
+                    
+                    switch (result.command) {
+                        case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+                        case (?#Error(e)) { #Err(#GovernanceError(e)) };
+                        case (?#RegisterVote(_)) { #Ok };
+                        case (_) { #Err(#InvalidOperation("Unexpected response")) };
+                    };
+                };
+            };
+        };
+
+        // Set following for a topic
+        public func setFollowing(topic: Int32, followees: [T.NeuronId]): async T.OperationResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    let request: T.ManageNeuronRequest = {
+                        id = ?nid;
+                        command = ?#Follow({
+                            topic = topic;
+                            followees = followees;
+                        });
+                        neuron_id_or_subaccount = null;
+                    };
+                    
+                    let result = await governance.manage_neuron(request);
+                    
+                    switch (result.command) {
+                        case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+                        case (?#Error(e)) { #Err(#GovernanceError(e)) };
+                        case (?#Follow(_)) { #Ok };
+                        case (_) { #Err(#InvalidOperation("Unexpected response")) };
+                    };
+                };
+            };
+        };
+
+        // Refresh voting power
+        public func refreshVotingPower(): async T.OperationResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    let request: T.ManageNeuronRequest = {
+                        id = ?nid;
+                        command = ?#RefreshVotingPower({});
+                        neuron_id_or_subaccount = null;
+                    };
+                    
+                    let result = await governance.manage_neuron(request);
+                    
+                    switch (result.command) {
+                        case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+                        case (?#Error(e)) { #Err(#GovernanceError(e)) };
+                        case (?#RefreshVotingPower(_)) { #Ok };
+                        case (_) { #Err(#InvalidOperation("Unexpected response")) };
+                    };
+                };
+            };
+        };
+
+        // ============================================
+        // HOT KEY MANAGEMENT
+        // ============================================
+
+        // Add a hot key
+        public func addHotKey(hotkey: Principal): async T.OperationResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    await configureNeuron(nid, #AddHotKey({ new_hot_key = ?hotkey }));
+                };
+            };
+        };
+
+        // Remove a hot key
+        public func removeHotKey(hotkey: Principal): async T.OperationResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    await configureNeuron(nid, #RemoveHotKey({ hot_key_to_remove = ?hotkey }));
+                };
+            };
+        };
+
+        // ============================================
+        // NEURON SPLITTING / MERGING
+        // ============================================
+
+        // Split neuron
+        public func splitNeuron(amount_e8s: Nat64): async T.SplitResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    let request: T.ManageNeuronRequest = {
+                        id = ?nid;
+                        command = ?#Split({ amount_e8s = amount_e8s });
+                        neuron_id_or_subaccount = null;
+                    };
+                    
+                    let result = await governance.manage_neuron(request);
+                    
+                    switch (result.command) {
+                        case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+                        case (?#Error(e)) { #Err(#GovernanceError(e)) };
+                        case (?#Split(r)) {
+                            switch (r.created_neuron_id) {
+                                case null { #Err(#InvalidOperation("No neuron ID returned")) };
+                                case (?newNid) { #Ok(newNid) };
+                            };
+                        };
+                        case (_) { #Err(#InvalidOperation("Unexpected response")) };
+                    };
+                };
+            };
+        };
+
+        // Merge neurons
+        public func mergeNeurons(sourceNeuronId: T.NeuronId): async T.OperationResult {
+            switch (neuronId) {
+                case null { #Err(#NoNeuron) };
+                case (?nid) {
+                    let request: T.ManageNeuronRequest = {
+                        id = ?nid;
+                        command = ?#Merge({ source_neuron_id = ?sourceNeuronId });
+                        neuron_id_or_subaccount = null;
+                    };
+                    
+                    let result = await governance.manage_neuron(request);
+                    
+                    switch (result.command) {
+                        case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+                        case (?#Error(e)) { #Err(#GovernanceError(e)) };
+                        case (?#Merge(_)) { #Ok };
+                        case (_) { #Err(#InvalidOperation("Unexpected response")) };
+                    };
+                };
+            };
+        };
+
+        // ============================================
+        // STATE MANAGEMENT (for upgrades)
+        // ============================================
+
+        public type StableState = {
+            owner: Principal;
+            neuronId: ?T.NeuronId;
+            neuronMemo: Nat64;
+            createdAt: Int;
+        };
+
+        public func toStable(): StableState {
+            {
+                owner = owner;
+                neuronId = neuronId;
+                neuronMemo = neuronMemo;
+                createdAt = createdAt;
+            };
+        };
+
+        public func loadFromStable(state: StableState) {
+            owner := state.owner;
+            neuronId := state.neuronId;
+            neuronMemo := state.neuronMemo;
+        };
+
+        // ============================================
+        // INTERNAL HELPERS
+        // ============================================
+
+        func configureNeuron(nid: T.NeuronId, operation: T.Operation): async T.OperationResult {
+            let request: T.ManageNeuronRequest = {
+                id = ?nid;
+                command = ?#Configure({ operation = ?operation });
+                neuron_id_or_subaccount = null;
+            };
+            
+            let result = await governance.manage_neuron(request);
+            
+            switch (result.command) {
+                case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+                case (?#Error(e)) { #Err(#GovernanceError(e)) };
+                case (?#Configure(_)) { #Ok };
+                case (_) { #Err(#InvalidOperation("Unexpected response")) };
+            };
+        };
+
+        func transferErrorToText(e: T.TransferError): Text {
+            switch (e) {
+                case (#GenericError({ message })) { "Generic error: " # message };
+                case (#TemporarilyUnavailable) { "Temporarily unavailable" };
+                case (#BadBurn(_)) { "Bad burn" };
+                case (#Duplicate(_)) { "Duplicate transaction" };
+                case (#BadFee(_)) { "Bad fee" };
+                case (#CreatedInFuture(_)) { "Created in future" };
+                case (#TooOld) { "Too old" };
+                case (#InsufficientFunds(_)) { "Insufficient funds" };
+            };
+        };
+
+        func nat64ToBytes(n: Nat64): [Nat8] {
+            [
+                Nat8.fromNat(Nat64.toNat((n >> 56) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat((n >> 48) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat((n >> 40) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat((n >> 32) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat((n >> 24) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat((n >> 16) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat((n >> 8) & 0xFF)),
+                Nat8.fromNat(Nat64.toNat(n & 0xFF)),
+            ];
+        };
+
+        // ============================================
+        // SHA-224 and SHA-256 implementations
+        // ============================================
+
+        // SHA-256 initial hash values
+        let SHA256_H: [Nat32] = [
+            0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+            0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+        ];
+
+        // SHA-224 initial hash values
+        let SHA224_H: [Nat32] = [
+            0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939,
+            0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4
+        ];
+
+        // SHA-256 round constants
+        let K: [Nat32] = [
+            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+            0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+            0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+            0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+            0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+            0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+            0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+        ];
+
+        func sha256(data: [Nat8]): [Nat8] {
+            shaCore(data, SHA256_H, 32);
+        };
+
+        func sha224(data: [Nat8]): [Nat8] {
+            shaCore(data, SHA224_H, 28);
+        };
+
+        func shaCore(data: [Nat8], initialH: [Nat32], outputLen: Nat): [Nat8] {
+            // Pad the message
+            let paddedData = padMessage(data);
+            
+            // Initialize hash values
+            var h = Array.thaw<Nat32>(initialH);
+            
+            // Process each 512-bit block
+            let numBlocks = paddedData.size() / 64;
+            var blockIdx = 0;
+            while (blockIdx < numBlocks) {
+                let blockStart = blockIdx * 64;
+                
+                // Prepare message schedule
+                var w = Array.init<Nat32>(64, 0);
+                var i = 0;
+                while (i < 16) {
+                    let byteIdx = blockStart + i * 4;
+                    w[i] := (Nat32.fromNat(Nat8.toNat(paddedData[byteIdx])) << 24) |
+                            (Nat32.fromNat(Nat8.toNat(paddedData[byteIdx + 1])) << 16) |
+                            (Nat32.fromNat(Nat8.toNat(paddedData[byteIdx + 2])) << 8) |
+                            Nat32.fromNat(Nat8.toNat(paddedData[byteIdx + 3]));
+                    i += 1;
+                };
+                
+                while (i < 64) {
+                    let s0 = rotr32(w[i-15], 7) ^ rotr32(w[i-15], 18) ^ (w[i-15] >> 3);
+                    let s1 = rotr32(w[i-2], 17) ^ rotr32(w[i-2], 19) ^ (w[i-2] >> 10);
+                    w[i] := w[i-16] +% s0 +% w[i-7] +% s1;
+                    i += 1;
+                };
+                
+                // Working variables
+                var a = h[0];
+                var b = h[1];
+                var c = h[2];
+                var d = h[3];
+                var e = h[4];
+                var f = h[5];
+                var g = h[6];
+                var hh = h[7];
+                
+                // Main loop
+                i := 0;
+                while (i < 64) {
+                    let S1 = rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25);
+                    let ch = (e & f) ^ ((^e) & g);
+                    let temp1 = hh +% S1 +% ch +% K[i] +% w[i];
+                    let S0 = rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22);
+                    let maj = (a & b) ^ (a & c) ^ (b & c);
+                    let temp2 = S0 +% maj;
+                    
+                    hh := g;
+                    g := f;
+                    f := e;
+                    e := d +% temp1;
+                    d := c;
+                    c := b;
+                    b := a;
+                    a := temp1 +% temp2;
+                    i += 1;
+                };
+                
+                // Update hash values
+                h[0] +%= a;
+                h[1] +%= b;
+                h[2] +%= c;
+                h[3] +%= d;
+                h[4] +%= e;
+                h[5] +%= f;
+                h[6] +%= g;
+                h[7] +%= hh;
+                
+                blockIdx += 1;
+            };
+            
+            // Produce final hash
+            let result = Buffer.Buffer<Nat8>(outputLen);
+            let numWords = outputLen / 4;
+            var wordIdx = 0;
+            while (wordIdx < numWords) {
+                result.add(Nat8.fromNat(Nat32.toNat((h[wordIdx] >> 24) & 0xFF)));
+                result.add(Nat8.fromNat(Nat32.toNat((h[wordIdx] >> 16) & 0xFF)));
+                result.add(Nat8.fromNat(Nat32.toNat((h[wordIdx] >> 8) & 0xFF)));
+                result.add(Nat8.fromNat(Nat32.toNat(h[wordIdx] & 0xFF)));
+                wordIdx += 1;
+            };
+            Buffer.toArray(result);
+        };
+
+        func padMessage(data: [Nat8]): [Nat8] {
+            let dataLen = data.size();
+            let bitLen = dataLen * 8;
+            
+            // Calculate padding length
+            var paddingLen = 64 - ((dataLen + 9) % 64);
+            if (paddingLen == 64) { paddingLen := 0 };
+            
+            let totalLen = dataLen + 1 + paddingLen + 8;
+            let padded = Array.init<Nat8>(totalLen, 0);
+            
+            // Copy data
+            var i = 0;
+            while (i < dataLen) {
+                padded[i] := data[i];
+                i += 1;
+            };
+            
+            // Append 1 bit
+            padded[dataLen] := 0x80;
+            
+            // Append length as 64-bit big-endian
+            let bitLenNat64 = Nat64.fromNat(bitLen);
+            padded[totalLen - 8] := Nat8.fromNat(Nat64.toNat((bitLenNat64 >> 56) & 0xFF));
+            padded[totalLen - 7] := Nat8.fromNat(Nat64.toNat((bitLenNat64 >> 48) & 0xFF));
+            padded[totalLen - 6] := Nat8.fromNat(Nat64.toNat((bitLenNat64 >> 40) & 0xFF));
+            padded[totalLen - 5] := Nat8.fromNat(Nat64.toNat((bitLenNat64 >> 32) & 0xFF));
+            padded[totalLen - 4] := Nat8.fromNat(Nat64.toNat((bitLenNat64 >> 24) & 0xFF));
+            padded[totalLen - 3] := Nat8.fromNat(Nat64.toNat((bitLenNat64 >> 16) & 0xFF));
+            padded[totalLen - 2] := Nat8.fromNat(Nat64.toNat((bitLenNat64 >> 8) & 0xFF));
+            padded[totalLen - 1] := Nat8.fromNat(Nat64.toNat(bitLenNat64 & 0xFF));
+            
+            Array.freeze(padded);
+        };
+
+        func rotr32(x: Nat32, n: Nat32): Nat32 {
+            (x >> n) | (x << (32 - n));
+        };
+
+        // CRC32 for account identifier checksum
+        func crc32(data: [Nat8]): Nat32 {
+            var crc: Nat32 = 0xFFFFFFFF;
+            for (byte in data.vals()) {
+                let index = Nat32.toNat((crc ^ Nat32.fromNat(Nat8.toNat(byte))) & 0xFF);
+                crc := CRC32_TABLE[index] ^ (crc >> 8);
+            };
+            ^crc;
+        };
+
+        let CRC32_TABLE: [Nat32] = [
+            0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f, 0xe963a535, 0x9e6495a3,
+            0x0edb8832, 0x79dcb8a4, 0xe0d5e91e, 0x97d2d988, 0x09b64c2b, 0x7eb17cbd, 0xe7b82d07, 0x90bf1d91,
+            0x1db71064, 0x6ab020f2, 0xf3b97148, 0x84be41de, 0x1adad47d, 0x6ddde4eb, 0xf4d4b551, 0x83d385c7,
+            0x136c9856, 0x646ba8c0, 0xfd62f97a, 0x8a65c9ec, 0x14015c4f, 0x63066cd9, 0xfa0f3d63, 0x8d080df5,
+            0x3b6e20c8, 0x4c69105e, 0xd56041e4, 0xa2677172, 0x3c03e4d1, 0x4b04d447, 0xd20d85fd, 0xa50ab56b,
+            0x35b5a8fa, 0x42b2986c, 0xdbbbc9d6, 0xacbcf940, 0x32d86ce3, 0x45df5c75, 0xdcd60dcf, 0xabd13d59,
+            0x26d930ac, 0x51de003a, 0xc8d75180, 0xbfd06116, 0x21b4f4b5, 0x56b3c423, 0xcfba9599, 0xb8bda50f,
+            0x2802b89e, 0x5f058808, 0xc60cd9b2, 0xb10be924, 0x2f6f7c87, 0x58684c11, 0xc1611dab, 0xb6662d3d,
+            0x76dc4190, 0x01db7106, 0x98d220bc, 0xefd5102a, 0x71b18589, 0x06b6b51f, 0x9fbfe4a5, 0xe8b8d433,
+            0x7807c9a2, 0x0f00f934, 0x9609a88e, 0xe10e9818, 0x7f6a0dbb, 0x086d3d2d, 0x91646c97, 0xe6635c01,
+            0x6b6b51f4, 0x1c6c6162, 0x856530d8, 0xf262004e, 0x6c0695ed, 0x1b01a57b, 0x8208f4c1, 0xf50fc457,
+            0x65b0d9c6, 0x12b7e950, 0x8bbeb8ea, 0xfcb9887c, 0x62dd1ddf, 0x15da2d49, 0x8cd37cf3, 0xfbd44c65,
+            0x4db26158, 0x3ab551ce, 0xa3bc0074, 0xd4bb30e2, 0x4adfa541, 0x3dd895d7, 0xa4d1c46d, 0xd3d6f4fb,
+            0x4369e96a, 0x346ed9fc, 0xad678846, 0xda60b8d0, 0x44042d73, 0x33031de5, 0xaa0a4c5f, 0xdd0d7a9b,
+            0x5005713c, 0x270241aa, 0xbe0b1010, 0xc90c2086, 0x5768b525, 0x206f85b3, 0xb966d409, 0xce61e49f,
+            0x5edef90e, 0x29d9c998, 0xb0d09822, 0xc7d7a8b4, 0x59b33d17, 0x2eb40d81, 0xb7bd5c3b, 0xc0ba6cad,
+            0xedb88320, 0x9abfb3b6, 0x03b6e20c, 0x74b1d29a, 0xead54739, 0x9dd277af, 0x04db2615, 0x73dc1683,
+            0xe3630b12, 0x94643b84, 0x0d6d6a3e, 0x7a6a5aa8, 0xe40ecf0b, 0x9309ff9d, 0x0a00ae27, 0x7d079eb1,
+            0xf00f9344, 0x8708a3d2, 0x1e01f268, 0x6906c2fe, 0xf762575d, 0x806567cb, 0x196c3671, 0x6e6b06e7,
+            0xfed41b76, 0x89d32be0, 0x10da7a5a, 0x67dd4acc, 0xf9b9df6f, 0x8ebeeff9, 0x17b7be43, 0x60b08ed5,
+            0xd6d6a3e8, 0xa1d1937e, 0x38d8c2c4, 0x4fdff252, 0xd1bb67f1, 0xa6bc5767, 0x3fb506dd, 0x48b2364b,
+            0xd80d2bda, 0xaf0a1b4c, 0x36034af6, 0x41047a60, 0xdf60efc3, 0xa867df55, 0x316e8eef, 0x4669be79,
+            0xcb61b38c, 0xbc66831a, 0x256fd2a0, 0x5268e236, 0xcc0c7795, 0xbb0b4703, 0x220216b9, 0x5505262f,
+            0xc5ba3bbe, 0xb2bd0b28, 0x2bb45a92, 0x5cb36a04, 0xc2d7ffa7, 0xb5d0cf31, 0x2cd99e8b, 0x5bdeae1d,
+            0x9b64c2b0, 0xec63f226, 0x756aa39c, 0x026d930a, 0x9c0906a9, 0xeb0e363f, 0x72076785, 0x05005713,
+            0x95bf4a82, 0xe2b87a14, 0x7bb12bae, 0x0cb61b38, 0x92d28e9b, 0xe5d5be0d, 0x7cdcefb7, 0x0bdbdf21,
+            0x86d3d2d4, 0xf1d4e242, 0x68ddb3f8, 0x1fda836e, 0x81be16cd, 0xf6b9265b, 0x6fb077e1, 0x18b74777,
+            0x88085ae6, 0xff0f6a70, 0x66063bca, 0x11010b5c, 0x8f659eff, 0xf862ae69, 0x616bffd3, 0x166ccf45,
+            0xa00ae278, 0xd70dd2ee, 0x4e048354, 0x3903b3c2, 0xa7672661, 0xd06016f7, 0x4969474d, 0x3e6e77db,
+            0xaed16a4a, 0xd9d65adc, 0x40df0b66, 0x37d83bf0, 0xa9bcae53, 0xdebb9ec5, 0x47b2cf7f, 0x30b5ffe9,
+            0xbdbdf21c, 0xcabac28a, 0x53b39330, 0x24b4a3a6, 0xbad03605, 0xcdd706b3, 0x54de5729, 0x23d967bf,
+            0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
+        ];
+    };
+};
+
