@@ -31,7 +31,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Admins who can manage the factory
     var admins: [Principal] = [deployer.caller];
     
-    // Mapping of owner -> manager canister info
+    // Mapping of canister ID -> manager canister info (allows multiple per user)
     var managersStable: [(Principal, T.ManagerInfo)] = [];
     transient var managers = HashMap.HashMap<Principal, T.ManagerInfo>(10, Principal.equal, Principal.hash);
     
@@ -118,15 +118,8 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // ============================================
 
     // Create a new neuron manager canister for the caller
+    // Users can create multiple managers (one neuron per manager)
     public shared ({ caller }) func createNeuronManager(): async T.CreateManagerResult {
-        // Check if caller already has a manager
-        switch (managers.get(caller)) {
-            case (?_existing) {
-                return #Err(#AlreadyExists);
-            };
-            case null {};
-        };
-
         // Check if we have the WASM module
         let wasm = switch (managerWasm) {
             case null {
@@ -188,7 +181,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
             // Compute the account ID for the new canister
             let accountId = computeAccountId(canisterId, null);
 
-            // Record the manager
+            // Record the manager (keyed by canister ID to allow multiple per user)
             let managerInfo: T.ManagerInfo = {
                 canisterId = canisterId;
                 owner = caller;
@@ -196,7 +189,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 version = currentVersion;
                 neuronId = null;
             };
-            managers.put(caller, managerInfo);
+            managers.put(canisterId, managerInfo);
 
             #Ok({
                 canisterId = canisterId;
@@ -207,14 +200,31 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         };
     };
 
-    // Get the caller's manager canister info
-    public query ({ caller }) func getMyManager(): async ?T.ManagerInfo {
-        managers.get(caller);
+    // Get all manager canisters owned by the caller
+    public query ({ caller }) func getMyManagers(): async [T.ManagerInfo] {
+        let result = Buffer.Buffer<T.ManagerInfo>(5);
+        for ((_, info) in managers.entries()) {
+            if (Principal.equal(info.owner, caller)) {
+                result.add(info);
+            };
+        };
+        Buffer.toArray(result);
     };
 
-    // Get manager info by owner principal
-    public query func getManagerByOwner(owner: Principal): async ?T.ManagerInfo {
-        managers.get(owner);
+    // Get manager info by canister ID
+    public query func getManagerByCanisterId(canisterId: Principal): async ?T.ManagerInfo {
+        managers.get(canisterId);
+    };
+
+    // Get all managers for a specific owner
+    public query func getManagersByOwner(owner: Principal): async [T.ManagerInfo] {
+        let result = Buffer.Buffer<T.ManagerInfo>(5);
+        for ((_, info) in managers.entries()) {
+            if (Principal.equal(info.owner, owner)) {
+                result.add(info);
+            };
+        };
+        Buffer.toArray(result);
     };
 
     // Get all managers (admin only)
@@ -231,13 +241,13 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         managers.size();
     };
 
-    // Update neuron ID for a manager (called by the manager canister or admin)
-    public shared ({ caller }) func updateManagerNeuronId(owner: Principal, neuronId: ?T.NeuronId): async () {
-        switch (managers.get(owner)) {
+    // Update neuron ID for a manager (called by the manager canister itself or admin)
+    public shared ({ caller }) func updateManagerNeuronId(canisterId: Principal, neuronId: ?T.NeuronId): async () {
+        switch (managers.get(canisterId)) {
             case null { /* Manager not found */ };
             case (?info) {
                 // Only the manager canister itself or an admin can update
-                if (Principal.equal(caller, info.canisterId) or isAdmin(caller)) {
+                if (Principal.equal(caller, canisterId) or isAdmin(caller)) {
                     let updatedInfo: T.ManagerInfo = {
                         canisterId = info.canisterId;
                         owner = info.owner;
@@ -245,7 +255,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                         version = info.version;
                         neuronId = neuronId;
                     };
-                    managers.put(owner, updatedInfo);
+                    managers.put(canisterId, updatedInfo);
                 };
             };
         };

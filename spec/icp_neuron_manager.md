@@ -2,10 +2,12 @@
 
 ## Overview
 
-The ICP Neuron Manager is a factory-based system that allows users to create dedicated canisters for managing ICP NNS neurons. Each user gets their own canister that:
+The ICP Neuron Manager is a factory-based system that allows users to create dedicated canisters for managing ICP NNS neurons. Each neuron manager canister:
 - Is controlled entirely by the user
-- Creates and manages exactly one ICP NNS neuron
+- Creates and manages exactly **one** ICP NNS neuron
 - Enables transfer of neuron ownership by transferring canister control
+
+Users can create **multiple** neuron manager canisters (one neuron per canister) to manage multiple neurons independently.
 
 ## Architecture
 
@@ -223,9 +225,9 @@ type ManagerInfo = {
 ### State
 
 ```motoko
-stable var managers: [(Principal, ManagerInfo)] = []; // owner -> manager info
-stable var managerWasm: ?Blob = null; // WASM module for neuron managers
-stable var currentVersion: Version = { major = 1; minor = 0; patch = 0 };
+var managers: [(Principal, ManagerInfo)] = []; // canisterId -> manager info (allows multiple per user)
+var managerWasm: ?Blob = null; // WASM module for neuron managers
+var currentVersion: Version = { major = 1; minor = 0; patch = 0 };
 ```
 
 ### Public Functions
@@ -235,13 +237,17 @@ stable var currentVersion: Version = { major = 1; minor = 0; patch = 0 };
 ```motoko
 // Create a new neuron manager canister for the caller
 // The caller becomes the controller of the new canister
+// Users can create MULTIPLE managers (one neuron per manager)
 createNeuronManager(): async CreateManagerResult
 
-// Get the caller's manager canister info (if exists)
-getMyManager(): async ?ManagerInfo
+// Get all manager canisters owned by the caller
+getMyManagers(): async [ManagerInfo]
 
-// Get manager info by owner principal
-getManagerByOwner(owner: Principal): async ?ManagerInfo
+// Get manager info by canister ID
+getManagerByCanisterId(canisterId: Principal): async ?ManagerInfo
+
+// Get all managers for a specific owner
+getManagersByOwner(owner: Principal): async [ManagerInfo]
 
 // Get all managers (admin/query)
 getAllManagers(): async [ManagerInfo]
