@@ -90,7 +90,7 @@ const uint8ArrayToHex = (arr) => {
 export default function CanisterPage() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
-    const { principalNames, principalNicknames } = useNaming();
+    const { principalNames, principalNicknames, fetchAllNames } = useNaming();
     const [searchParams, setSearchParams] = useSearchParams();
     const [canisterInput, setCanisterInput] = useState('');
     const [canisterInfo, setCanisterInfo] = useState(null);
@@ -457,8 +457,8 @@ export default function CanisterPage() {
             if ('ok' in result) {
                 setSuccessMessage(result.ok);
                 setIsEditingName(false);
-                // Refresh naming context - the NamingContext should auto-refresh but we can force it
-                // For now, the user will see the update on the next render cycle
+                // Refresh naming context to show the updated name
+                await fetchAllNames();
             } else if ('err' in result) {
                 setError(result.err);
             }
@@ -481,6 +481,8 @@ export default function CanisterPage() {
             if ('ok' in result) {
                 setSuccessMessage('Successfully set canister nickname');
                 setIsEditingNickname(false);
+                // Refresh naming context to show the updated nickname
+                await fetchAllNames();
             } else if ('err' in result) {
                 setError(result.err);
             }
