@@ -4,8 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { Principal } from '@dfinity/principal';
-import { HttpAgent } from '@dfinity/agent';
-import { IDL } from '@dfinity/candid';
+import { Actor, HttpAgent } from '@dfinity/agent';
 import { getCanisterInfo } from '../utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
@@ -13,39 +12,47 @@ import { useNaming } from '../NamingContext';
 // Management canister ID
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
 
-// IDL types for canister_status
-const CanisterStatusArgs = IDL.Record({ 'canister_id': IDL.Principal });
-const DefiniteCanisterSettings = IDL.Record({
-    'controllers': IDL.Vec(IDL.Principal),
-    'freezing_threshold': IDL.Nat,
-    'memory_allocation': IDL.Nat,
-    'compute_allocation': IDL.Nat,
-    'reserved_cycles_limit': IDL.Nat,
-    'log_visibility': IDL.Variant({
-        'controllers': IDL.Null,
-        'public': IDL.Null,
-    }),
-    'wasm_memory_limit': IDL.Nat,
-});
-const CanisterStatusResult = IDL.Record({
-    'status': IDL.Variant({
-        'running': IDL.Null,
-        'stopping': IDL.Null,
-        'stopped': IDL.Null,
-    }),
-    'settings': DefiniteCanisterSettings,
-    'module_hash': IDL.Opt(IDL.Vec(IDL.Nat8)),
-    'memory_size': IDL.Nat,
-    'cycles': IDL.Nat,
-    'idle_cycles_burned_per_day': IDL.Nat,
-    'query_stats': IDL.Record({
-        'num_calls_total': IDL.Nat,
-        'num_instructions_total': IDL.Nat,
-        'request_payload_bytes_total': IDL.Nat,
-        'response_payload_bytes_total': IDL.Nat,
-    }),
-    'reserved_cycles': IDL.Nat,
-});
+// IDL factory for IC management canister canister_status call
+const managementCanisterIdlFactory = ({ IDL }) => {
+    const definite_canister_settings = IDL.Record({
+        'controllers': IDL.Vec(IDL.Principal),
+        'freezing_threshold': IDL.Nat,
+        'memory_allocation': IDL.Nat,
+        'compute_allocation': IDL.Nat,
+        'reserved_cycles_limit': IDL.Nat,
+        'log_visibility': IDL.Variant({
+            'controllers': IDL.Null,
+            'public': IDL.Null,
+        }),
+        'wasm_memory_limit': IDL.Nat,
+    });
+    const canister_status_result = IDL.Record({
+        'status': IDL.Variant({
+            'running': IDL.Null,
+            'stopping': IDL.Null,
+            'stopped': IDL.Null,
+        }),
+        'settings': definite_canister_settings,
+        'module_hash': IDL.Opt(IDL.Vec(IDL.Nat8)),
+        'memory_size': IDL.Nat,
+        'cycles': IDL.Nat,
+        'idle_cycles_burned_per_day': IDL.Nat,
+        'query_stats': IDL.Record({
+            'num_calls_total': IDL.Nat,
+            'num_instructions_total': IDL.Nat,
+            'request_payload_bytes_total': IDL.Nat,
+            'response_payload_bytes_total': IDL.Nat,
+        }),
+        'reserved_cycles': IDL.Nat,
+    });
+    return IDL.Service({
+        'canister_status': IDL.Func(
+            [IDL.Record({ 'canister_id': IDL.Principal })],
+            [canister_status_result],
+            []
+        ),
+    });
+};
 
 // Helper to get the host URL based on environment
 const getHost = () => process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' ? 'https://icp0.io' : 'http://localhost:4943';
@@ -143,26 +150,25 @@ export default function CanisterPage() {
                         await agent.fetchRootKey();
                     }
 
-                    // Encode the arguments
-                    const arg = IDL.encode([CanisterStatusArgs], [{ canister_id: canisterPrincipal }]);
-
-                    // Call management canister with effectiveCanisterId for proper routing
-                    const { response } = await agent.call(MANAGEMENT_CANISTER_ID, {
-                        methodName: 'canister_status',
-                        arg,
-                        effectiveCanisterId: canisterPrincipal,
+                    // Create actor for management canister with callTransform to set effectiveCanisterId
+                    const managementCanister = Actor.createActor(managementCanisterIdlFactory, {
+                        agent,
+                        canisterId: MANAGEMENT_CANISTER_ID,
+                        // Use callTransform to inject effectiveCanisterId for proper routing
+                        callTransform: (methodName, args, callConfig) => {
+                            return {
+                                ...callConfig,
+                                effectiveCanisterId: canisterPrincipal,
+                            };
+                        },
                     });
 
-                    // Poll for the response
-                    const responseBytes = await agent.pollForResponse(
-                        MANAGEMENT_CANISTER_ID,
-                        response.requestId,
-                        /* strategy */ undefined,
-                        /* request */ undefined
-                    );
+                    console.log('Calling canister_status on management canister for:', canisterPrincipal.toString());
+                    const status = await managementCanister.canister_status({
+                        canister_id: canisterPrincipal
+                    });
 
-                    // Decode the response
-                    const [status] = IDL.decode([CanisterStatusResult], responseBytes);
+                    console.log('canister_status SUCCESS! User is a controller. Status:', status);
 
                     // Success! User is a controller
                     setCanisterInfo({
@@ -183,8 +189,10 @@ export default function CanisterPage() {
             }
 
             // Fallback: use backend's canister_info call
+            console.log('Using backend canister_info fallback...');
             try {
                 const result = await getCanisterInfo(identity, canisterId);
+                console.log('canister_info result:', result);
                 
                 if ('ok' in result) {
                     setCanisterInfo({
