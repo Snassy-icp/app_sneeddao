@@ -70,6 +70,8 @@ function IcpNeuronManager() {
     const [mergeSourceNeuronId, setMergeSourceNeuronId] = useState('');
     const [withdrawAmount, setWithdrawAmount] = useState('');
     const [withdrawDestination, setWithdrawDestination] = useState('');
+    const [fundAmount, setFundAmount] = useState('');
+    const [userIcpBalance, setUserIcpBalance] = useState(null);
     
     // Tabs
     const [activeTab, setActiveTab] = useState('overview');
@@ -126,8 +128,9 @@ function IcpNeuronManager() {
                 setFullNeuron(null);
             }
             
-            // Fetch ICP balance
+            // Fetch ICP balance (canister and user)
             fetchIcpBalance(agent);
+            fetchUserBalance(agent);
             
         } catch (err) {
             console.error('Error fetching manager data:', err);
@@ -135,7 +138,7 @@ function IcpNeuronManager() {
         } finally {
             setLoading(false);
         }
-    }, [canisterId, getAgent]);
+    }, [canisterId, getAgent, identity]);
 
     const fetchIcpBalance = async (agent) => {
         try {
@@ -147,6 +150,20 @@ function IcpNeuronManager() {
             setIcpBalance(Number(balance));
         } catch (err) {
             console.error('Error fetching ICP balance:', err);
+        }
+    };
+
+    const fetchUserBalance = async (agent) => {
+        if (!identity) return;
+        try {
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
+            const balance = await ledger.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: [],
+            });
+            setUserIcpBalance(Number(balance));
+        } catch (err) {
+            console.error('Error fetching user ICP balance:', err);
         }
     };
 
@@ -257,6 +274,65 @@ function IcpNeuronManager() {
         } catch (err) {
             console.error('Error staking neuron:', err);
             setError(`Error: ${err.message || 'Failed to stake neuron'}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
+    const handleFundCanister = async () => {
+        if (!fundAmount || parseFloat(fundAmount) <= 0) {
+            setError('Please enter a valid amount');
+            return;
+        }
+        
+        const amount = parseFloat(fundAmount);
+        const amountE8s = BigInt(Math.floor(amount * E8S));
+        const fee = BigInt(10000); // 0.0001 ICP fee
+        
+        if (userIcpBalance === null || BigInt(userIcpBalance) < amountE8s + fee) {
+            setError(`Insufficient balance. You have ${formatIcp(userIcpBalance)} ICP, need ${amount + 0.0001} ICP (including fee)`);
+            return;
+        }
+        
+        setActionLoading('fund');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
+            
+            const result = await ledger.icrc1_transfer({
+                to: {
+                    owner: Principal.fromText(canisterId),
+                    subaccount: [],
+                },
+                amount: amountE8s,
+                fee: [fee],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+            });
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Sent ${fundAmount} ICP to canister! Block: ${result.Ok.toString()}`);
+                setFundAmount('');
+                fetchManagerData();
+            } else {
+                const err = result.Err;
+                if ('InsufficientFunds' in err) {
+                    setError(`Insufficient funds: ${Number(err.InsufficientFunds.balance) / E8S} ICP available`);
+                } else {
+                    setError(`Transfer failed: ${JSON.stringify(err)}`);
+                }
+            }
+        } catch (err) {
+            console.error('Error funding canister:', err);
+            setError(`Error: ${err.message}`);
         } finally {
             setActionLoading('');
         }
@@ -1195,6 +1271,57 @@ function IcpNeuronManager() {
                                     </span>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Fund Canister Card */}
+                        <div style={cardStyle}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '15px' }}>
+                                <div>
+                                    <h3 style={{ color: theme.colors.primaryText, margin: '0 0 5px 0' }}>💰 Fund Canister</h3>
+                                    <p style={{ color: theme.colors.mutedText, fontSize: '12px', margin: 0 }}>
+                                        Send ICP from your wallet to this canister
+                                    </p>
+                                </div>
+                                <div style={{ textAlign: 'right' }}>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Your Balance</div>
+                                    <div style={{ 
+                                        color: userIcpBalance > 0 ? (theme.colors.success || '#22c55e') : theme.colors.primaryText,
+                                        fontSize: '18px',
+                                        fontWeight: '600',
+                                    }}>
+                                        {userIcpBalance !== null ? `${formatIcp(userIcpBalance)} ICP` : '...'}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style={{ marginTop: '15px', display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                                <div style={{ flex: 1, minWidth: '150px' }}>
+                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                                        Amount (ICP)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="0.0001"
+                                        step="0.01"
+                                        value={fundAmount}
+                                        onChange={(e) => setFundAmount(e.target.value)}
+                                        style={inputStyle}
+                                        placeholder="1.0"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleFundCanister}
+                                    disabled={actionLoading === 'fund' || !userIcpBalance || userIcpBalance < 10000}
+                                    style={{
+                                        ...buttonStyle,
+                                        opacity: (actionLoading === 'fund' || !userIcpBalance || userIcpBalance < 10000) ? 0.6 : 1,
+                                    }}
+                                >
+                                    {actionLoading === 'fund' ? '⏳ Sending...' : '📤 Send ICP'}
+                                </button>
+                            </div>
+                            <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px', marginBottom: 0 }}>
+                                Fee: 0.0001 ICP • Canister Balance: {formatIcp(icpBalance)} ICP
+                            </p>
                         </div>
 
                         {/* Success/Error Messages */}
