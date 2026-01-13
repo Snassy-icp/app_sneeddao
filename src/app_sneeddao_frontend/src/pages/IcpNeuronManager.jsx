@@ -58,6 +58,9 @@ function IcpNeuronManager() {
     const [selectedTopic, setSelectedTopic] = useState(0);
     const [followeeIds, setFolloweeIds] = useState('');
     const [increaseStakeAmount, setIncreaseStakeAmount] = useState('');
+    const [maturityPercentage, setMaturityPercentage] = useState('100');
+    const [spawnController, setSpawnController] = useState('');
+    const [disburseMaturityDestination, setDisburseMaturityDestination] = useState('');
     
     // Tabs
     const [activeTab, setActiveTab] = useState('overview');
@@ -518,6 +521,162 @@ function IcpNeuronManager() {
         }
     };
 
+    const handleSpawnMaturity = async () => {
+        const percentage = parseInt(maturityPercentage);
+        if (!percentage || percentage < 1 || percentage > 100) {
+            setError('Percentage must be between 1 and 100');
+            return;
+        }
+        
+        setActionLoading('spawnMaturity');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            // Optional controller for the spawned neuron
+            const controllerOpt = spawnController ? [Principal.fromText(spawnController)] : [];
+            
+            const result = await manager.spawnMaturity(percentage, controllerOpt);
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Spawned new neuron! ID: ${result.Ok.id.toString()}`);
+                setSpawnController('');
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error spawning maturity:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
+    const handleStakeMaturity = async () => {
+        const percentage = parseInt(maturityPercentage);
+        if (!percentage || percentage < 1 || percentage > 100) {
+            setError('Percentage must be between 1 and 100');
+            return;
+        }
+        
+        setActionLoading('stakeMaturity');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            const result = await manager.stakeMaturity(percentage);
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Staked ${percentage}% of maturity`);
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error staking maturity:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
+    const handleMergeMaturity = async () => {
+        const percentage = parseInt(maturityPercentage);
+        if (!percentage || percentage < 1 || percentage > 100) {
+            setError('Percentage must be between 1 and 100');
+            return;
+        }
+        
+        setActionLoading('mergeMaturity');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            const result = await manager.mergeMaturity(percentage);
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Merged ${percentage}% of maturity into stake`);
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error merging maturity:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
+    const handleDisburseMaturity = async () => {
+        const percentage = parseInt(maturityPercentage);
+        if (!percentage || percentage < 1 || percentage > 100) {
+            setError('Percentage must be between 1 and 100');
+            return;
+        }
+        
+        setActionLoading('disburseMaturity');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            // Optional destination account
+            let destOpt = [];
+            if (disburseMaturityDestination) {
+                try {
+                    destOpt = [{ 
+                        owner: Principal.fromText(disburseMaturityDestination), 
+                        subaccount: [] 
+                    }];
+                } catch {
+                    setError('Invalid principal for destination');
+                    setActionLoading('');
+                    return;
+                }
+            }
+            
+            const result = await manager.disburseMaturity(percentage, destOpt);
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Disbursed ${percentage}% of maturity`);
+                setDisburseMaturityDestination('');
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error disbursing maturity:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
     const handleOperationError = (err) => {
         if ('GovernanceError' in err) {
             setError(`Governance error: ${err.GovernanceError.error_message}`);
@@ -894,6 +1053,9 @@ function IcpNeuronManager() {
                                     <button style={tabStyle(activeTab === 'stake')} onClick={() => setActiveTab('stake')}>
                                         Stake
                                     </button>
+                                    <button style={tabStyle(activeTab === 'maturity')} onClick={() => setActiveTab('maturity')}>
+                                        Maturity
+                                    </button>
                                     <button style={tabStyle(activeTab === 'following')} onClick={() => setActiveTab('following')}>
                                         Following
                                     </button>
@@ -1163,6 +1325,170 @@ function IcpNeuronManager() {
                                                         {actionLoading === 'autoStake' ? '⏳...' : 'Enable'}
                                                     </button>
                                                 )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'maturity' && (
+                                    <div style={cardStyle}>
+                                        <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Maturity Management</h3>
+                                        
+                                        {/* Current maturity info */}
+                                        <div style={{ 
+                                            background: `${theme.colors.accent}10`, 
+                                            padding: '15px', 
+                                            borderRadius: '8px', 
+                                            marginBottom: '25px',
+                                            display: 'flex',
+                                            gap: '30px',
+                                            flexWrap: 'wrap',
+                                        }}>
+                                            <div>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Available Maturity</div>
+                                                <div style={{ color: theme.colors.primaryText, fontSize: '20px', fontWeight: '700' }}>
+                                                    {fullNeuron ? formatIcp(Number(fullNeuron.maturity_e8s_equivalent)) : '...'} ICP
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Staked Maturity</div>
+                                                <div style={{ color: theme.colors.primaryText, fontSize: '20px', fontWeight: '700' }}>
+                                                    {fullNeuron?.staked_maturity_e8s_equivalent?.[0] 
+                                                        ? formatIcp(Number(fullNeuron.staked_maturity_e8s_equivalent[0])) 
+                                                        : '0.00'} ICP
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Auto-Stake</div>
+                                                <div style={{ 
+                                                    color: fullNeuron?.auto_stake_maturity?.[0] ? (theme.colors.success || '#22c55e') : theme.colors.mutedText,
+                                                    fontSize: '20px', 
+                                                    fontWeight: '700' 
+                                                }}>
+                                                    {fullNeuron?.auto_stake_maturity?.[0] ? 'On' : 'Off'}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Percentage input */}
+                                        <div style={{ marginBottom: '20px' }}>
+                                            <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+                                                Percentage of Maturity
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                max="100"
+                                                value={maturityPercentage}
+                                                onChange={(e) => setMaturityPercentage(e.target.value)}
+                                                style={{ ...inputStyle, maxWidth: '150px' }}
+                                                placeholder="100"
+                                            />
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '12px', marginLeft: '8px' }}>%</span>
+                                        </div>
+
+                                        {/* Maturity Actions */}
+                                        <div style={{ display: 'grid', gap: '20px' }}>
+                                            {/* Stake Maturity */}
+                                            <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px' }}>
+                                                <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>Stake Maturity</h4>
+                                                <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '12px' }}>
+                                                    Convert maturity to staked maturity. Staked maturity increases voting power but takes 7 days to become liquid.
+                                                </p>
+                                                <button
+                                                    onClick={handleStakeMaturity}
+                                                    disabled={actionLoading === 'stakeMaturity' || !fullNeuron || fullNeuron.maturity_e8s_equivalent === BigInt(0)}
+                                                    style={{ 
+                                                        ...buttonStyle, 
+                                                        opacity: (actionLoading === 'stakeMaturity' || !fullNeuron || fullNeuron.maturity_e8s_equivalent === BigInt(0)) ? 0.6 : 1,
+                                                    }}
+                                                >
+                                                    {actionLoading === 'stakeMaturity' ? '⏳...' : '📈 Stake Maturity'}
+                                                </button>
+                                            </div>
+
+                                            {/* Merge Maturity */}
+                                            <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px' }}>
+                                                <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>Merge Maturity</h4>
+                                                <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '12px' }}>
+                                                    Merge maturity directly into your neuron's stake. Increases stake permanently.
+                                                </p>
+                                                <button
+                                                    onClick={handleMergeMaturity}
+                                                    disabled={actionLoading === 'mergeMaturity' || !fullNeuron || fullNeuron.maturity_e8s_equivalent === BigInt(0)}
+                                                    style={{ 
+                                                        ...buttonStyle, 
+                                                        opacity: (actionLoading === 'mergeMaturity' || !fullNeuron || fullNeuron.maturity_e8s_equivalent === BigInt(0)) ? 0.6 : 1,
+                                                    }}
+                                                >
+                                                    {actionLoading === 'mergeMaturity' ? '⏳...' : '🔄 Merge into Stake'}
+                                                </button>
+                                            </div>
+
+                                            {/* Spawn Maturity */}
+                                            <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px' }}>
+                                                <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>Spawn New Neuron</h4>
+                                                <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '12px' }}>
+                                                    Create a new neuron from your maturity. Requires at least 1 ICP equivalent in maturity.
+                                                </p>
+                                                <div style={{ marginBottom: '12px' }}>
+                                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                                                        Controller (optional, defaults to this canister)
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={spawnController}
+                                                        onChange={(e) => setSpawnController(e.target.value)}
+                                                        style={inputStyle}
+                                                        placeholder="Principal ID (optional)"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={handleSpawnMaturity}
+                                                    disabled={actionLoading === 'spawnMaturity' || !fullNeuron || Number(fullNeuron.maturity_e8s_equivalent) < E8S}
+                                                    style={{ 
+                                                        ...buttonStyle, 
+                                                        opacity: (actionLoading === 'spawnMaturity' || !fullNeuron || Number(fullNeuron.maturity_e8s_equivalent) < E8S) ? 0.6 : 1,
+                                                    }}
+                                                >
+                                                    {actionLoading === 'spawnMaturity' ? '⏳...' : '🐣 Spawn Neuron'}
+                                                </button>
+                                                {fullNeuron && Number(fullNeuron.maturity_e8s_equivalent) < E8S && (
+                                                    <p style={{ color: theme.colors.warning || '#f59e0b', fontSize: '11px', marginTop: '8px' }}>
+                                                        Need at least 1 ICP equivalent in maturity to spawn.
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* Disburse Maturity */}
+                                            <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px' }}>
+                                                <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>Disburse Maturity</h4>
+                                                <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '12px' }}>
+                                                    Convert maturity to ICP and withdraw it. Subject to a 7-day modulation period.
+                                                </p>
+                                                <div style={{ marginBottom: '12px' }}>
+                                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                                                        Destination (optional, defaults to this canister)
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={disburseMaturityDestination}
+                                                        onChange={(e) => setDisburseMaturityDestination(e.target.value)}
+                                                        style={inputStyle}
+                                                        placeholder="Principal ID (optional)"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={handleDisburseMaturity}
+                                                    disabled={actionLoading === 'disburseMaturity' || !fullNeuron || fullNeuron.maturity_e8s_equivalent === BigInt(0)}
+                                                    style={{ 
+                                                        ...buttonStyle, 
+                                                        background: theme.colors.warning || '#f59e0b',
+                                                        opacity: (actionLoading === 'disburseMaturity' || !fullNeuron || fullNeuron.maturity_e8s_equivalent === BigInt(0)) ? 0.6 : 1,
+                                                    }}
+                                                >
+                                                    {actionLoading === 'disburseMaturity' ? '⏳...' : '💸 Disburse Maturity'}
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
