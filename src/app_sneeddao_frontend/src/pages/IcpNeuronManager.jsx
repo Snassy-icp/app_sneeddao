@@ -38,9 +38,14 @@ function IcpNeuronManager() {
     // Manager state
     const [managerInfo, setManagerInfo] = useState(null);
     const [icpBalance, setIcpBalance] = useState(null);
-    const [neuronId, setNeuronId] = useState(null);
+    const [neuronIds, setNeuronIds] = useState([]); // Array of neuron IDs
+    const [selectedNeuronId, setSelectedNeuronId] = useState(null); // Currently selected neuron
     const [neuronInfo, setNeuronInfo] = useState(null);
     const [fullNeuron, setFullNeuron] = useState(null);
+    
+    // Registration form state
+    const [registerNeuronId, setRegisterNeuronId] = useState('');
+    const [registerMemo, setRegisterMemo] = useState('');
     
     // UI state
     const [loading, setLoading] = useState(true);
@@ -91,10 +96,10 @@ function IcpNeuronManager() {
             const manager = createManagerActor(canisterId, { agent });
             
             // Fetch basic info
-            const [owner, version, neuronIdResult, accountId] = await Promise.all([
+            const [owner, version, neuronIdsResult, accountId] = await Promise.all([
                 manager.getOwner(),
                 manager.getVersion(),
-                manager.getNeuronId(),
+                manager.getNeuronIds(),
                 manager.getAccountId(),
             ]);
             
@@ -105,13 +110,18 @@ function IcpNeuronManager() {
                 accountId: Array.from(accountId).map(b => b.toString(16).padStart(2, '0')).join(''),
             });
             
-            // Set neuron ID if exists
-            if (neuronIdResult && neuronIdResult.length > 0) {
-                setNeuronId(neuronIdResult[0]);
-                // Fetch neuron info
-                fetchNeuronInfo(manager);
+            // Set neuron IDs
+            const neurons = neuronIdsResult || [];
+            setNeuronIds(neurons);
+            
+            // Select first neuron if exists and none selected
+            if (neurons.length > 0) {
+                const firstNeuron = neurons[0];
+                setSelectedNeuronId(prev => prev || firstNeuron);
+                // Fetch info for selected neuron
+                fetchNeuronInfo(manager, firstNeuron);
             } else {
-                setNeuronId(null);
+                setSelectedNeuronId(null);
                 setNeuronInfo(null);
                 setFullNeuron(null);
             }
@@ -140,22 +150,48 @@ function IcpNeuronManager() {
         }
     };
 
-    const fetchNeuronInfo = async (manager) => {
+    const fetchNeuronInfo = async (manager, neuronId) => {
+        if (!neuronId) return;
+        
         try {
             const [infoResult, fullResult] = await Promise.all([
-                manager.getNeuronInfo(),
-                manager.getFullNeuron(),
+                manager.getNeuronInfo(neuronId),
+                manager.getFullNeuron(neuronId),
             ]);
             
             // These return optional types directly, not Results
             if (infoResult && infoResult.length > 0) {
                 setNeuronInfo(infoResult[0]);
+            } else {
+                setNeuronInfo(null);
             }
             if (fullResult && fullResult.length > 0) {
                 setFullNeuron(fullResult[0]);
+            } else {
+                setFullNeuron(null);
             }
         } catch (err) {
             console.error('Error fetching neuron info:', err);
+        }
+    };
+    
+    // Handle neuron selection change
+    const handleNeuronSelect = async (neuronId) => {
+        setSelectedNeuronId(neuronId);
+        setNeuronInfo(null);
+        setFullNeuron(null);
+        
+        if (neuronId) {
+            try {
+                const agent = getAgent();
+                if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                    await agent.fetchRootKey();
+                }
+                const manager = createManagerActor(canisterId, { agent });
+                await fetchNeuronInfo(manager, neuronId);
+            } catch (err) {
+                console.error('Error fetching selected neuron:', err);
+            }
         }
     };
 
@@ -199,7 +235,7 @@ function IcpNeuronManager() {
             
             if ('Ok' in result) {
                 setSuccess(`🎉 Neuron created! ID: ${result.Ok.id.toString()}`);
-                setNeuronId(result.Ok);
+                setSelectedNeuronId(result.Ok);
                 fetchManagerData();
             } else {
                 const err = result.Err;
@@ -227,6 +263,10 @@ function IcpNeuronManager() {
     };
 
     const handleSetDissolveDelay = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
         if (!dissolveDelay || parseInt(dissolveDelay) < 1) {
             setError('Please enter a valid dissolve delay in days');
             return;
@@ -245,7 +285,7 @@ function IcpNeuronManager() {
             
             // setDissolveDelay takes Nat32 (additional seconds to add)
             const delaySeconds = parseInt(dissolveDelay) * 24 * 60 * 60;
-            const result = await manager.setDissolveDelay(delaySeconds);
+            const result = await manager.setDissolveDelay(selectedNeuronId, delaySeconds);
             
             if ('Ok' in result) {
                 setSuccess(`✅ Added ${dissolveDelay} days to dissolve delay`);
@@ -263,6 +303,11 @@ function IcpNeuronManager() {
     };
 
     const handleStartDissolving = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
+        
         setActionLoading('startDissolve');
         setError('');
         setSuccess('');
@@ -273,7 +318,7 @@ function IcpNeuronManager() {
                 await agent.fetchRootKey();
             }
             const manager = createManagerActor(canisterId, { agent });
-            const result = await manager.startDissolving();
+            const result = await manager.startDissolving(selectedNeuronId);
             
             if ('Ok' in result) {
                 setSuccess('✅ Neuron is now dissolving');
@@ -290,6 +335,11 @@ function IcpNeuronManager() {
     };
 
     const handleStopDissolving = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
+        
         setActionLoading('stopDissolve');
         setError('');
         setSuccess('');
@@ -300,7 +350,7 @@ function IcpNeuronManager() {
                 await agent.fetchRootKey();
             }
             const manager = createManagerActor(canisterId, { agent });
-            const result = await manager.stopDissolving();
+            const result = await manager.stopDissolving(selectedNeuronId);
             
             if ('Ok' in result) {
                 setSuccess('✅ Neuron stopped dissolving');
@@ -317,6 +367,10 @@ function IcpNeuronManager() {
     };
 
     const handleAddHotKey = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
         if (!hotKeyPrincipal) {
             setError('Please enter a principal ID');
             return;
@@ -333,7 +387,7 @@ function IcpNeuronManager() {
                 await agent.fetchRootKey();
             }
             const manager = createManagerActor(canisterId, { agent });
-            const result = await manager.addHotKey(principal);
+            const result = await manager.addHotKey(selectedNeuronId, principal);
             
             if ('Ok' in result) {
                 setSuccess(`✅ Hot key added: ${hotKeyPrincipal}`);
@@ -351,6 +405,11 @@ function IcpNeuronManager() {
     };
 
     const handleRemoveHotKey = async (principal) => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
+        
         setActionLoading('removeHotKey');
         setError('');
         setSuccess('');
@@ -361,7 +420,7 @@ function IcpNeuronManager() {
                 await agent.fetchRootKey();
             }
             const manager = createManagerActor(canisterId, { agent });
-            const result = await manager.removeHotKey(principal);
+            const result = await manager.removeHotKey(selectedNeuronId, principal);
             
             if ('Ok' in result) {
                 setSuccess(`✅ Hot key removed`);
@@ -378,6 +437,11 @@ function IcpNeuronManager() {
     };
 
     const handleDisburse = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
+        
         setActionLoading('disburse');
         setError('');
         setSuccess('');
@@ -403,7 +467,7 @@ function IcpNeuronManager() {
                 toAccountOpt = [bytes];
             }
             
-            const result = await manager.disburse(amountOpt, toAccountOpt);
+            const result = await manager.disburse(selectedNeuronId, amountOpt, toAccountOpt);
             
             if ('Ok' in result) {
                 setSuccess(`✅ Disbursed! Block height: ${result.Ok.transfer_block_height.toString()}`);
@@ -422,6 +486,11 @@ function IcpNeuronManager() {
     };
 
     const handleSetFollowing = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
+        
         setActionLoading('following');
         setError('');
         setSuccess('');
@@ -440,7 +509,7 @@ function IcpNeuronManager() {
                 .filter(s => s.length > 0)
                 .map(id => ({ id: BigInt(id) }));
             
-            const result = await manager.setFollowing(selectedTopic, followees);
+            const result = await manager.setFollowing(selectedNeuronId, selectedTopic, followees);
             
             if ('Ok' in result) {
                 const topicName = NNS_TOPICS.find(t => t.id === selectedTopic)?.name || `Topic ${selectedTopic}`;
@@ -463,6 +532,10 @@ function IcpNeuronManager() {
     };
 
     const handleIncreaseStake = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
         if (!increaseStakeAmount || parseFloat(increaseStakeAmount) <= 0) {
             setError('Please enter a valid amount');
             return;
@@ -480,7 +553,7 @@ function IcpNeuronManager() {
             const manager = createManagerActor(canisterId, { agent });
             
             const amountE8s = BigInt(Math.floor(parseFloat(increaseStakeAmount) * E8S));
-            const result = await manager.increaseStake(amountE8s);
+            const result = await manager.increaseStake(selectedNeuronId, amountE8s);
             
             if ('Ok' in result) {
                 setSuccess(`✅ Added ${increaseStakeAmount} ICP to neuron stake`);
@@ -498,6 +571,11 @@ function IcpNeuronManager() {
     };
 
     const handleToggleAutoStakeMaturity = async (newValue) => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
+        
         setActionLoading('autoStake');
         setError('');
         setSuccess('');
@@ -509,7 +587,7 @@ function IcpNeuronManager() {
             }
             const manager = createManagerActor(canisterId, { agent });
             
-            const result = await manager.setAutoStakeMaturity(newValue);
+            const result = await manager.setAutoStakeMaturity(selectedNeuronId, newValue);
             
             if ('Ok' in result) {
                 setSuccess(`✅ Auto-stake maturity ${newValue ? 'enabled' : 'disabled'}`);
@@ -526,6 +604,10 @@ function IcpNeuronManager() {
     };
 
     const handleSpawnMaturity = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
         const percentage = parseInt(maturityPercentage);
         if (!percentage || percentage < 1 || percentage > 100) {
             setError('Percentage must be between 1 and 100');
@@ -546,7 +628,7 @@ function IcpNeuronManager() {
             // Optional controller for the spawned neuron
             const controllerOpt = spawnController ? [Principal.fromText(spawnController)] : [];
             
-            const result = await manager.spawnMaturity(percentage, controllerOpt);
+            const result = await manager.spawnMaturity(selectedNeuronId, percentage, controllerOpt);
             
             if ('Ok' in result) {
                 setSuccess(`✅ Spawned new neuron! ID: ${result.Ok.id.toString()}`);
@@ -564,6 +646,10 @@ function IcpNeuronManager() {
     };
 
     const handleStakeMaturity = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
         const percentage = parseInt(maturityPercentage);
         if (!percentage || percentage < 1 || percentage > 100) {
             setError('Percentage must be between 1 and 100');
@@ -581,7 +667,7 @@ function IcpNeuronManager() {
             }
             const manager = createManagerActor(canisterId, { agent });
             
-            const result = await manager.stakeMaturity(percentage);
+            const result = await manager.stakeMaturity(selectedNeuronId, percentage);
             
             if ('Ok' in result) {
                 setSuccess(`✅ Staked ${percentage}% of maturity`);
@@ -598,6 +684,10 @@ function IcpNeuronManager() {
     };
 
     const handleMergeMaturity = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
         const percentage = parseInt(maturityPercentage);
         if (!percentage || percentage < 1 || percentage > 100) {
             setError('Percentage must be between 1 and 100');
@@ -615,7 +705,7 @@ function IcpNeuronManager() {
             }
             const manager = createManagerActor(canisterId, { agent });
             
-            const result = await manager.mergeMaturity(percentage);
+            const result = await manager.mergeMaturity(selectedNeuronId, percentage);
             
             if ('Ok' in result) {
                 setSuccess(`✅ Merged ${percentage}% of maturity into stake`);
@@ -632,6 +722,10 @@ function IcpNeuronManager() {
     };
 
     const handleDisburseMaturity = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
         const percentage = parseInt(maturityPercentage);
         if (!percentage || percentage < 1 || percentage > 100) {
             setError('Percentage must be between 1 and 100');
@@ -664,7 +758,7 @@ function IcpNeuronManager() {
                 }
             }
             
-            const result = await manager.disburseMaturity(percentage, destOpt);
+            const result = await manager.disburseMaturity(selectedNeuronId, percentage, destOpt);
             
             if ('Ok' in result) {
                 setSuccess(`✅ Disbursed ${percentage}% of maturity`);
@@ -682,6 +776,10 @@ function IcpNeuronManager() {
     };
 
     const handleSplitNeuron = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
         if (!splitAmount || parseFloat(splitAmount) < 1) {
             setError('Minimum split amount is 1 ICP');
             return;
@@ -699,7 +797,7 @@ function IcpNeuronManager() {
             const manager = createManagerActor(canisterId, { agent });
             
             const amountE8s = BigInt(Math.floor(parseFloat(splitAmount) * E8S));
-            const result = await manager.splitNeuron(amountE8s);
+            const result = await manager.splitNeuron(selectedNeuronId, amountE8s);
             
             if ('Ok' in result) {
                 setSuccess(`✅ Neuron split! New neuron ID: ${result.Ok.id.toString()}`);
@@ -717,6 +815,10 @@ function IcpNeuronManager() {
     };
 
     const handleMergeNeurons = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
         if (!mergeSourceNeuronId) {
             setError('Please enter the source neuron ID');
             return;
@@ -734,10 +836,10 @@ function IcpNeuronManager() {
             const manager = createManagerActor(canisterId, { agent });
             
             const sourceNeuronId = { id: BigInt(mergeSourceNeuronId) };
-            const result = await manager.mergeNeurons(sourceNeuronId);
+            const result = await manager.mergeNeurons(selectedNeuronId, sourceNeuronId);
             
             if ('Ok' in result) {
-                setSuccess(`✅ Neurons merged! Source neuron ${mergeSourceNeuronId} merged into this neuron.`);
+                setSuccess(`✅ Neurons merged! Source neuron ${mergeSourceNeuronId} merged into selected neuron.`);
                 setMergeSourceNeuronId('');
                 fetchManagerData();
             } else {
@@ -790,6 +892,85 @@ function IcpNeuronManager() {
             }
         } catch (err) {
             console.error('Error withdrawing ICP:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
+    const handleRegisterNeuron = async () => {
+        if (!registerNeuronId) {
+            setError('Please enter a neuron ID');
+            return;
+        }
+        if (!registerMemo) {
+            setError('Please enter the neuron memo');
+            return;
+        }
+        
+        setActionLoading('register');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            const neuronId = { id: BigInt(registerNeuronId) };
+            const memo = BigInt(registerMemo);
+            const result = await manager.registerNeuron(neuronId, memo);
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Neuron ${registerNeuronId} registered successfully`);
+                setRegisterNeuronId('');
+                setRegisterMemo('');
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error registering neuron:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
+    const handleDeregisterNeuron = async (neuronId) => {
+        if (!window.confirm(`Are you sure you want to deregister neuron ${neuronId.id.toString()}? This will NOT delete the neuron, just stop managing it.`)) {
+            return;
+        }
+        
+        setActionLoading('deregister');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            const result = await manager.deregisterNeuron(neuronId);
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Neuron ${neuronId.id.toString()} deregistered`);
+                // If we deregistered the selected neuron, clear selection
+                if (selectedNeuronId && selectedNeuronId.id === neuronId.id) {
+                    setSelectedNeuronId(null);
+                    setNeuronInfo(null);
+                    setFullNeuron(null);
+                }
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error deregistering neuron:', err);
             setError(`Error: ${err.message}`);
         } finally {
             setActionLoading('');
@@ -1042,14 +1223,89 @@ function IcpNeuronManager() {
                             </div>
                         )}
 
-                        {/* No Neuron - Create Section */}
-                        {!neuronId && (
+                        {/* Neuron Selector - when there are multiple neurons */}
+                        {neuronIds.length > 0 && (
                             <div style={cardStyle}>
-                                <h2 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Create Neuron</h2>
-                                <p style={{ color: theme.colors.mutedText, marginBottom: '20px' }}>
-                                    No neuron has been created yet. Fund this canister with ICP, then stake to create a neuron.
-                                </p>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                    <div>
+                                        <h3 style={{ color: theme.colors.primaryText, margin: '0 0 5px 0' }}>
+                                            {neuronIds.length} Neuron{neuronIds.length > 1 ? 's' : ''} Managed
+                                        </h3>
+                                        <p style={{ color: theme.colors.mutedText, fontSize: '12px', margin: 0 }}>
+                                            Select a neuron to manage
+                                        </p>
+                                    </div>
+                                    <select
+                                        value={selectedNeuronId ? selectedNeuronId.id.toString() : ''}
+                                        onChange={(e) => {
+                                            const found = neuronIds.find(n => n.id.toString() === e.target.value);
+                                            handleNeuronSelect(found);
+                                        }}
+                                        style={{
+                                            ...inputStyle,
+                                            width: 'auto',
+                                            minWidth: '200px',
+                                        }}
+                                    >
+                                        {neuronIds.map((n) => (
+                                            <option key={n.id.toString()} value={n.id.toString()}>
+                                                Neuron #{n.id.toString()}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                                 
+                                {/* Neuron list with deregister buttons */}
+                                <div style={{ marginTop: '15px', maxHeight: '200px', overflowY: 'auto' }}>
+                                    {neuronIds.map((n) => (
+                                        <div 
+                                            key={n.id.toString()} 
+                                            style={{ 
+                                                display: 'flex', 
+                                                justifyContent: 'space-between', 
+                                                alignItems: 'center',
+                                                padding: '8px 12px',
+                                                background: selectedNeuronId && selectedNeuronId.id === n.id ? `${theme.colors.accent}20` : 'transparent',
+                                                borderRadius: '6px',
+                                                marginBottom: '4px',
+                                                cursor: 'pointer',
+                                            }}
+                                            onClick={() => handleNeuronSelect(n)}
+                                        >
+                                            <span style={{ color: theme.colors.primaryText, fontFamily: 'monospace' }}>
+                                                Neuron #{n.id.toString()}
+                                            </span>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleDeregisterNeuron(n); }}
+                                                disabled={actionLoading === 'deregister'}
+                                                style={{ 
+                                                    background: 'transparent', 
+                                                    color: theme.colors.error || '#ef4444', 
+                                                    border: 'none',
+                                                    cursor: 'pointer',
+                                                    fontSize: '12px',
+                                                    padding: '4px 8px',
+                                                }}
+                                            >
+                                                ✕ Remove
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Create or Register Neuron Section */}
+                        <div style={cardStyle}>
+                            <h2 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>
+                                {neuronIds.length === 0 ? 'Create Your First Neuron' : 'Add Another Neuron'}
+                            </h2>
+                            
+                            {/* Create new neuron */}
+                            <div style={{ marginBottom: '20px' }}>
+                                <h4 style={{ color: theme.colors.primaryText, marginBottom: '10px', fontSize: '14px' }}>
+                                    🆕 Stake to Create New Neuron
+                                </h4>
                                 <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '15px' }}>
                                     <div style={{ flex: 1, minWidth: '150px' }}>
                                         <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
@@ -1079,39 +1335,78 @@ function IcpNeuronManager() {
                                             placeholder="365"
                                         />
                                     </div>
+                                    <button
+                                        onClick={handleStakeNeuron}
+                                        disabled={actionLoading === 'stake' || icpBalance < E8S}
+                                        style={{ 
+                                            ...buttonStyle, 
+                                            opacity: (actionLoading === 'stake' || icpBalance < E8S) ? 0.6 : 1,
+                                        }}
+                                    >
+                                        {actionLoading === 'stake' ? '⏳...' : '🚀 Create'}
+                                    </button>
                                 </div>
-                                
-                                <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
-                                    💡 Min 183 days (~6 months) to vote. Max 8 years (2922 days). Higher delay = more voting power.
+                                <p style={{ color: theme.colors.mutedText, fontSize: '11px', margin: 0 }}>
+                                    💡 Min 183 days to vote, max 8 years. Balance: {formatIcp(icpBalance)} ICP
                                 </p>
-                                
-                                <button
-                                    onClick={handleStakeNeuron}
-                                    disabled={actionLoading === 'stake' || icpBalance < E8S}
-                                    style={{ 
-                                        ...buttonStyle, 
-                                        opacity: (actionLoading === 'stake' || icpBalance < E8S) ? 0.6 : 1,
-                                        cursor: (actionLoading === 'stake' || icpBalance < E8S) ? 'not-allowed' : 'pointer',
-                                    }}
-                                >
-                                    {actionLoading === 'stake' ? '⏳ Creating...' : '🚀 Stake & Create Neuron'}
-                                </button>
-                                
-                                {icpBalance !== null && icpBalance < E8S && (
-                                    <p style={{ color: theme.colors.warning || '#f59e0b', fontSize: '13px', marginTop: '10px' }}>
-                                        ⚠️ Minimum 1 ICP required to create a neuron. Please fund this canister first.
-                                    </p>
-                                )}
                             </div>
-                        )}
+                            
+                            <hr style={{ border: 'none', borderTop: `1px solid ${theme.colors.border}`, margin: '20px 0' }} />
+                            
+                            {/* Register existing neuron */}
+                            <div>
+                                <h4 style={{ color: theme.colors.primaryText, marginBottom: '10px', fontSize: '14px' }}>
+                                    📝 Register Existing Neuron
+                                </h4>
+                                <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
+                                    Register a neuron that this canister already controls (e.g., after upgrade or manual transfer).
+                                </p>
+                                <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                                    <div style={{ flex: 1, minWidth: '150px' }}>
+                                        <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+                                            Neuron ID
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={registerNeuronId}
+                                            onChange={(e) => setRegisterNeuronId(e.target.value)}
+                                            style={inputStyle}
+                                            placeholder="12345678901234567890"
+                                        />
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: '150px' }}>
+                                        <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+                                            Memo
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={registerMemo}
+                                            onChange={(e) => setRegisterMemo(e.target.value)}
+                                            style={inputStyle}
+                                            placeholder="Memo used when creating"
+                                        />
+                                    </div>
+                                    <button
+                                        onClick={handleRegisterNeuron}
+                                        disabled={actionLoading === 'register'}
+                                        style={{ 
+                                            ...secondaryButtonStyle, 
+                                            opacity: actionLoading === 'register' ? 0.6 : 1,
+                                        }}
+                                    >
+                                        {actionLoading === 'register' ? '⏳...' : '📝 Register'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
 
-                        {/* Neuron exists - Show tabs */}
-                        {neuronId && (
+                        {/* Selected Neuron - Show tabs */}
+                        {selectedNeuronId && (
                             <>
                                 {/* Neuron Summary */}
                                 <div style={cardStyle}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}>
-                                        <h2 style={{ color: theme.colors.primaryText, margin: 0 }}>Neuron #{neuronId.id.toString()}</h2>
+                                        <h2 style={{ color: theme.colors.primaryText, margin: 0 }}>Neuron #{selectedNeuronId.id.toString()}</h2>
                                         {neuronInfo && (
                                             <span style={{
                                                 background: getNeuronState(neuronInfo.state).color,

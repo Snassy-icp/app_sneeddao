@@ -9,6 +9,9 @@ import Nat8 "mo:base/Nat8";
 import Buffer "mo:base/Buffer";
 import Option "mo:base/Option";
 import Text "mo:base/Text";
+import Iter "mo:base/Iter";
+import HashMap "mo:base/HashMap";
+import Hash "mo:base/Hash";
 
 import T "Types";
 import NM "icp_neuron_manager";
@@ -21,10 +24,32 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     // ============================================
 
     var owner: Principal = initOwner;
-    var neuronId: ?T.NeuronId = null;
-    var neuronMemo: Nat64 = 0;
     var createdAt: Int = Time.now();
     var version: T.Version = NM.CURRENT_VERSION;
+    
+    // Multi-neuron support: Map neuron ID -> memo (needed for refresh operations)
+    // Stable storage as array of entries for upgrades
+    stable var neuronsStable: [(Nat64, Nat64)] = []; // (neuronId.id, memo)
+    
+    // Transient HashMap for efficient lookups
+    func neuronIdHash(id: Nat64): Hash.Hash { 
+        Hash.hash(Nat64.toNat(id)) 
+    };
+    transient var neurons: HashMap.HashMap<Nat64, Nat64> = HashMap.fromIter(
+        neuronsStable.vals(), 
+        10, 
+        Nat64.equal, 
+        neuronIdHash
+    );
+    
+    // Upgrade hooks to persist the HashMap
+    system func preupgrade() {
+        neuronsStable := Iter.toArray(neurons.entries());
+    };
+    
+    system func postupgrade() {
+        neurons := HashMap.fromIter(neuronsStable.vals(), 10, Nat64.equal, neuronIdHash);
+    };
 
     // Actor references
     transient let governance: T.GovernanceActor = actor(NM.GOVERNANCE_CANISTER_ID);
@@ -60,12 +85,27 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
         owner;
     };
 
-    public query func getNeuronId(): async ?T.NeuronId {
-        neuronId;
+    // Get all managed neuron IDs
+    public query func getNeuronIds(): async [T.NeuronId] {
+        Array.map<(Nat64, Nat64), T.NeuronId>(
+            Iter.toArray(neurons.entries()),
+            func((id, _memo)) { { id = id } }
+        );
     };
 
-    public query func getNeuronMemo(): async Nat64 {
-        neuronMemo;
+    // Get count of managed neurons
+    public query func getNeuronCount(): async Nat {
+        neurons.size();
+    };
+
+    // Check if a specific neuron is managed by this canister
+    public query func hasNeuron(neuronId: T.NeuronId): async Bool {
+        Option.isSome(neurons.get(neuronId.id));
+    };
+
+    // Get the memo for a specific neuron (needed for some operations)
+    public query func getNeuronMemo(neuronId: T.NeuronId): async ?Nat64 {
+        neurons.get(neuronId.id);
     };
 
     // Get this canister's ICP account
@@ -90,12 +130,65 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
         await ledger.icrc1_balance_of(account);
     };
 
-    // Get the neuron's account (where ICP should be sent to increase stake)
-    public query func getNeuronAccountId(): async ?T.AccountIdentifier {
-        switch (neuronId) {
+    // Get a neuron's account (where ICP should be sent to increase stake)
+    public query func getNeuronAccountId(neuronId: T.NeuronId): async ?T.AccountIdentifier {
+        switch (neurons.get(neuronId.id)) {
             case null { null };
-            case (?_nid) {
-                ?computeNeuronAccountId(Principal.fromActor(this), neuronMemo);
+            case (?memo) {
+                ?computeNeuronAccountId(Principal.fromActor(this), memo);
+            };
+        };
+    };
+
+    // ============================================
+    // NEURON REGISTRATION
+    // ============================================
+
+    // Register an existing neuron (for re-registering after upgrade or manual management)
+    public shared ({ caller }) func registerNeuron(neuronId: T.NeuronId, memo: Nat64): async T.OperationResult {
+        assertController(caller);
+        
+        // Check if already registered
+        if (Option.isSome(neurons.get(neuronId.id))) {
+            return #Err(#InvalidOperation("Neuron is already registered"));
+        };
+        
+        // Verify this canister controls the neuron by trying to get its info
+        let result = await governance.get_full_neuron(neuronId.id);
+        switch (result) {
+            case (#Err(e)) {
+                return #Err(#GovernanceError(e));
+            };
+            case (#Ok(neuron)) {
+                let selfPrincipal = Principal.fromActor(this);
+                // Verify controller
+                switch (neuron.controller) {
+                    case null {
+                        return #Err(#InvalidOperation("Neuron has no controller"));
+                    };
+                    case (?ctrl) {
+                        if (not Principal.equal(ctrl, selfPrincipal)) {
+                            return #Err(#InvalidOperation("This canister is not the neuron's controller"));
+                        };
+                    };
+                };
+            };
+        };
+        
+        neurons.put(neuronId.id, memo);
+        neuronsStable := Iter.toArray(neurons.entries());
+        #Ok;
+    };
+
+    // Deregister a neuron (stop managing it, does NOT delete the neuron)
+    public shared ({ caller }) func deregisterNeuron(neuronId: T.NeuronId): async T.OperationResult {
+        assertController(caller);
+        
+        switch (neurons.remove(neuronId.id)) {
+            case null { #Err(#NoNeuron) };
+            case (?_) {
+                neuronsStable := Iter.toArray(neurons.entries());
+                #Ok;
             };
         };
     };
@@ -110,11 +203,6 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     ): async T.StakeNeuronResult {
         assertController(caller);
         
-        // Check if neuron already exists
-        if (Option.isSome(neuronId)) {
-            return #Err(#NeuronAlreadyExists);
-        };
-
         // Validate dissolve delay
         if (dissolve_delay_seconds < NM.MIN_DISSOLVE_DELAY_FOR_VOTE) {
             return #Err(#InvalidDissolveDelay({
@@ -193,6 +281,10 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
                         return #Err(#GovernanceError(e));
                     };
                     case (?#NeuronId(nid)) {
+                        // Register the neuron
+                        neurons.put(nid.id, memo);
+                        neuronsStable := Iter.toArray(neurons.entries());
+                        
                         // Set dissolve delay
                         let configResult = await configureNeuron(nid, #IncreaseDissolveDelay({
                             additional_dissolve_delay_seconds = Nat32.fromNat(Nat64.toNat(dissolve_delay_seconds));
@@ -201,19 +293,13 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
                         switch (configResult) {
                             case (#Err(#GovernanceError(ge))) {
                                 // Neuron was created but dissolve delay failed
-                                neuronId := ?nid;
-                                neuronMemo := memo;
                                 return #Err(#GovernanceError(ge));
                             };
                             case (#Err(_)) {
                                 // Other errors - neuron was still created
-                                neuronId := ?nid;
-                                neuronMemo := memo;
                                 return #Ok(nid);
                             };
                             case (#Ok) {
-                                neuronId := ?nid;
-                                neuronMemo := memo;
                                 return #Ok(nid);
                             };
                         };
@@ -227,42 +313,59 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     // NEURON INFORMATION
     // ============================================
 
-    public shared func getNeuronInfo(): async ?T.NeuronInfo {
-        switch (neuronId) {
-            case null { null };
-            case (?nid) {
-                let result = await governance.get_neuron_info(nid.id);
-                switch (result) {
-                    case (#Ok(info)) { ?info };
-                    case (#Err(_)) { null };
-                };
-            };
+    public shared func getNeuronInfo(neuronId: T.NeuronId): async ?T.NeuronInfo {
+        // Verify neuron is managed by this canister
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return null;
+        };
+        
+        let result = await governance.get_neuron_info(neuronId.id);
+        switch (result) {
+            case (#Ok(info)) { ?info };
+            case (#Err(_)) { null };
         };
     };
 
-    public shared func getFullNeuron(): async ?T.Neuron {
-        switch (neuronId) {
-            case null { null };
-            case (?nid) {
-                let result = await governance.get_full_neuron(nid.id);
-                switch (result) {
-                    case (#Ok(neuron)) { ?neuron };
-                    case (#Err(_)) { null };
-                };
+    public shared func getFullNeuron(neuronId: T.NeuronId): async ?T.Neuron {
+        // Verify neuron is managed by this canister
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return null;
+        };
+        
+        let result = await governance.get_full_neuron(neuronId.id);
+        switch (result) {
+            case (#Ok(neuron)) { ?neuron };
+            case (#Err(_)) { null };
+        };
+    };
+
+    // Get info for all managed neurons
+    public shared func getAllNeuronsInfo(): async [(T.NeuronId, ?T.NeuronInfo)] {
+        let neuronIds = Iter.toArray(neurons.entries());
+        let results = Buffer.Buffer<(T.NeuronId, ?T.NeuronInfo)>(neuronIds.size());
+        
+        for ((id, _memo) in neuronIds.vals()) {
+            let nid: T.NeuronId = { id = id };
+            let result = await governance.get_neuron_info(id);
+            switch (result) {
+                case (#Ok(info)) { results.add((nid, ?info)) };
+                case (#Err(_)) { results.add((nid, null)) };
             };
         };
+        
+        Buffer.toArray(results);
     };
 
     // ============================================
     // STAKE MANAGEMENT
     // ============================================
 
-    public shared ({ caller }) func increaseStake(amount_e8s: Nat64): async T.OperationResult {
+    public shared ({ caller }) func increaseStake(neuronId: T.NeuronId, amount_e8s: Nat64): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
+        switch (neurons.get(neuronId.id)) {
             case null { return #Err(#NoNeuron) };
-            case (?nid) {
+            case (?memo) {
                 let selfPrincipal = Principal.fromActor(this);
                 
                 // Check balance
@@ -272,8 +375,22 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
                     return #Err(#TransferFailed("Insufficient balance"));
                 };
 
-                // Compute neuron subaccount
-                let neuronSubaccount = computeNeuronSubaccount(selfPrincipal, neuronMemo);
+                // Get neuron subaccount - if memo is 0, fetch from governance
+                let neuronSubaccount: Blob = if (memo == 0) {
+                    // Fetch neuron account from governance
+                    let neuronResult = await governance.get_full_neuron(neuronId.id);
+                    switch (neuronResult) {
+                        case (#Err(e)) {
+                            return #Err(#GovernanceError(e));
+                        };
+                        case (#Ok(neuron)) {
+                            neuron.account;  // Already a Blob
+                        };
+                    };
+                } else {
+                    // Compute from memo
+                    computeNeuronSubaccount(selfPrincipal, memo);
+                };
                 
                 // Transfer to neuron
                 let transferArg: T.TransferArg = {
@@ -282,7 +399,7 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
                         subaccount = ?neuronSubaccount;
                     };
                     fee = ?Nat64.toNat(NM.ICP_FEE);
-                    memo = ?Blob.fromArray(nat64ToBytes(neuronMemo));
+                    memo = if (memo == 0) { null } else { ?Blob.fromArray(nat64ToBytes(memo)) };
                     from_subaccount = null;
                     created_at_time = null;
                     amount = Nat64.toNat(amount_e8s);
@@ -296,31 +413,40 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
                     };
                     case (#Ok(_)) {
                         // Refresh the neuron
-                        return await refreshStakeInternal(nid);
+                        return await refreshStakeInternal(neuronId, memo);
                     };
                 };
             };
         };
     };
 
-    public shared ({ caller }) func refreshStake(): async T.OperationResult {
+    public shared ({ caller }) func refreshStake(neuronId: T.NeuronId): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
+        switch (neurons.get(neuronId.id)) {
             case null { #Err(#NoNeuron) };
-            case (?nid) { await refreshStakeInternal(nid) };
+            case (?memo) { await refreshStakeInternal(neuronId, memo) };
         };
     };
 
-    func refreshStakeInternal(nid: T.NeuronId): async T.OperationResult {
+    func refreshStakeInternal(nid: T.NeuronId, memo: Nat64): async T.OperationResult {
         let selfPrincipal = Principal.fromActor(this);
+        
+        // If memo is 0, use neuron ID directly (for registered neurons without known memo)
+        // Otherwise use MemoAndController (for neurons we created)
+        let byMethod: ?T.ClaimOrRefreshBy = if (memo == 0) {
+            ?#NeuronIdOrSubaccount;
+        } else {
+            ?#MemoAndController({
+                controller = ?selfPrincipal;
+                memo = memo;
+            });
+        };
+        
         let request: T.ManageNeuronRequest = {
-            id = null;
+            id = ?nid;  // Always specify the neuron ID
             command = ?#ClaimOrRefresh({
-                by = ?#MemoAndController({
-                    controller = ?selfPrincipal;
-                    memo = neuronMemo;
-                });
+                by = byMethod;
             });
             neuron_id_or_subaccount = null;
         };
@@ -339,35 +465,33 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     // DISSOLVE MANAGEMENT
     // ============================================
 
-    public shared ({ caller }) func setDissolveDelay(additionalSeconds: Nat32): async T.OperationResult {
+    public shared ({ caller }) func setDissolveDelay(neuronId: T.NeuronId, additionalSeconds: Nat32): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                await configureNeuron(nid, #IncreaseDissolveDelay({
-                    additional_dissolve_delay_seconds = additionalSeconds;
-                }));
-            };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
         };
+        await configureNeuron(neuronId, #IncreaseDissolveDelay({
+            additional_dissolve_delay_seconds = additionalSeconds;
+        }));
     };
 
-    public shared ({ caller }) func startDissolving(): async T.OperationResult {
+    public shared ({ caller }) func startDissolving(neuronId: T.NeuronId): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) { await configureNeuron(nid, #StartDissolving({})) };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
         };
+        await configureNeuron(neuronId, #StartDissolving({}));
     };
 
-    public shared ({ caller }) func stopDissolving(): async T.OperationResult {
+    public shared ({ caller }) func stopDissolving(neuronId: T.NeuronId): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) { await configureNeuron(nid, #StopDissolving({})) };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
         };
+        await configureNeuron(neuronId, #StopDissolving({}));
     };
 
     // ============================================
@@ -375,35 +499,35 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     // ============================================
 
     public shared ({ caller }) func disburse(
+        neuronId: T.NeuronId,
         amount_e8s: ?Nat64,
         to_account: ?T.AccountIdentifier
     ): async T.DisburseResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                let request: T.ManageNeuronRequest = {
-                    id = ?nid;
-                    command = ?#Disburse({
-                        to_account = to_account;
-                        amount = switch (amount_e8s) {
-                            case null { null };
-                            case (?a) { ?{ e8s = a } };
-                        };
-                    });
-                    neuron_id_or_subaccount = null;
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
+        };
+        
+        let request: T.ManageNeuronRequest = {
+            id = ?neuronId;
+            command = ?#Disburse({
+                to_account = to_account;
+                amount = switch (amount_e8s) {
+                    case null { null };
+                    case (?a) { ?{ e8s = a } };
                 };
-                
-                let result = await governance.manage_neuron(request);
-                
-                switch (result.command) {
-                    case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
-                    case (?#Error(e)) { #Err(#GovernanceError(e)) };
-                    case (?#Disburse(r)) { #Ok({ transfer_block_height = r.transfer_block_height }) };
-                    case (_) { #Err(#InvalidOperation("Unexpected response")) };
-                };
-            };
+            });
+            neuron_id_or_subaccount = null;
+        };
+        
+        let result = await governance.manage_neuron(request);
+        
+        switch (result.command) {
+            case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+            case (?#Error(e)) { #Err(#GovernanceError(e)) };
+            case (?#Disburse(r)) { #Ok({ transfer_block_height = r.transfer_block_height }) };
+            case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
 
@@ -441,214 +565,213 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     // ============================================
 
     public shared ({ caller }) func spawnMaturity(
+        neuronId: T.NeuronId,
         percentage: Nat32,
         newController: ?Principal
     ): async T.SpawnResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                let request: T.ManageNeuronRequest = {
-                    id = ?nid;
-                    command = ?#Spawn({
-                        percentage_to_spawn = ?percentage;
-                        new_controller = newController;
-                        nonce = null;
-                    });
-                    neuron_id_or_subaccount = null;
-                };
-                
-                let result = await governance.manage_neuron(request);
-                
-                switch (result.command) {
-                    case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
-                    case (?#Error(e)) { #Err(#GovernanceError(e)) };
-                    case (?#Spawn(r)) {
-                        switch (r.created_neuron_id) {
-                            case null { #Err(#InvalidOperation("No neuron ID returned")) };
-                            case (?newNid) { #Ok(newNid) };
-                        };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
+        };
+        
+        let request: T.ManageNeuronRequest = {
+            id = ?neuronId;
+            command = ?#Spawn({
+                percentage_to_spawn = ?percentage;
+                new_controller = newController;
+                nonce = null;
+            });
+            neuron_id_or_subaccount = null;
+        };
+        
+        let result = await governance.manage_neuron(request);
+        
+        switch (result.command) {
+            case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+            case (?#Error(e)) { #Err(#GovernanceError(e)) };
+            case (?#Spawn(r)) {
+                switch (r.created_neuron_id) {
+                    case null { #Err(#InvalidOperation("No neuron ID returned")) };
+                    case (?newNid) {
+                        // Auto-register the spawned neuron (with 0 memo since spawned neurons use different mechanism)
+                        neurons.put(newNid.id, 0);
+                        neuronsStable := Iter.toArray(neurons.entries());
+                        #Ok(newNid);
                     };
-                    case (_) { #Err(#InvalidOperation("Unexpected response")) };
                 };
             };
+            case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
 
-    public shared ({ caller }) func stakeMaturity(percentage: Nat32): async T.OperationResult {
+    public shared ({ caller }) func stakeMaturity(neuronId: T.NeuronId, percentage: Nat32): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                let request: T.ManageNeuronRequest = {
-                    id = ?nid;
-                    command = ?#StakeMaturity({ percentage_to_stake = ?percentage });
-                    neuron_id_or_subaccount = null;
-                };
-                
-                let result = await governance.manage_neuron(request);
-                
-                switch (result.command) {
-                    case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
-                    case (?#Error(e)) { #Err(#GovernanceError(e)) };
-                    case (?#StakeMaturity(_)) { #Ok };
-                    case (_) { #Err(#InvalidOperation("Unexpected response")) };
-                };
-            };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
+        };
+        
+        let request: T.ManageNeuronRequest = {
+            id = ?neuronId;
+            command = ?#StakeMaturity({ percentage_to_stake = ?percentage });
+            neuron_id_or_subaccount = null;
+        };
+        
+        let result = await governance.manage_neuron(request);
+        
+        switch (result.command) {
+            case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+            case (?#Error(e)) { #Err(#GovernanceError(e)) };
+            case (?#StakeMaturity(_)) { #Ok };
+            case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
 
-    public shared ({ caller }) func mergeMaturity(percentage: Nat32): async T.OperationResult {
+    public shared ({ caller }) func mergeMaturity(neuronId: T.NeuronId, percentage: Nat32): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                let request: T.ManageNeuronRequest = {
-                    id = ?nid;
-                    command = ?#MergeMaturity({ percentage_to_merge = percentage });
-                    neuron_id_or_subaccount = null;
-                };
-                
-                let result = await governance.manage_neuron(request);
-                
-                switch (result.command) {
-                    case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
-                    case (?#Error(e)) { #Err(#GovernanceError(e)) };
-                    case (?#MergeMaturity(_)) { #Ok };
-                    case (_) { #Err(#InvalidOperation("Unexpected response")) };
-                };
-            };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
+        };
+        
+        let request: T.ManageNeuronRequest = {
+            id = ?neuronId;
+            command = ?#MergeMaturity({ percentage_to_merge = percentage });
+            neuron_id_or_subaccount = null;
+        };
+        
+        let result = await governance.manage_neuron(request);
+        
+        switch (result.command) {
+            case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+            case (?#Error(e)) { #Err(#GovernanceError(e)) };
+            case (?#MergeMaturity(_)) { #Ok };
+            case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
 
     public shared ({ caller }) func disburseMaturity(
+        neuronId: T.NeuronId,
         percentage: Nat32,
         to_account: ?T.Account
     ): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                let request: T.ManageNeuronRequest = {
-                    id = ?nid;
-                    command = ?#DisburseMaturity({
-                        percentage_to_disburse = percentage;
-                        to_account = to_account;
-                    });
-                    neuron_id_or_subaccount = null;
-                };
-                
-                let result = await governance.manage_neuron(request);
-                
-                switch (result.command) {
-                    case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
-                    case (?#Error(e)) { #Err(#GovernanceError(e)) };
-                    case (?#DisburseMaturity(_)) { #Ok };
-                    case (_) { #Err(#InvalidOperation("Unexpected response")) };
-                };
-            };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
+        };
+        
+        let request: T.ManageNeuronRequest = {
+            id = ?neuronId;
+            command = ?#DisburseMaturity({
+                percentage_to_disburse = percentage;
+                to_account = to_account;
+            });
+            neuron_id_or_subaccount = null;
+        };
+        
+        let result = await governance.manage_neuron(request);
+        
+        switch (result.command) {
+            case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+            case (?#Error(e)) { #Err(#GovernanceError(e)) };
+            case (?#DisburseMaturity(_)) { #Ok };
+            case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
 
-    public shared ({ caller }) func setAutoStakeMaturity(enabled: Bool): async T.OperationResult {
+    public shared ({ caller }) func setAutoStakeMaturity(neuronId: T.NeuronId, enabled: Bool): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                await configureNeuron(nid, #ChangeAutoStakeMaturity({
-                    requested_setting_for_auto_stake_maturity = enabled;
-                }));
-            };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
         };
+        await configureNeuron(neuronId, #ChangeAutoStakeMaturity({
+            requested_setting_for_auto_stake_maturity = enabled;
+        }));
     };
 
     // ============================================
     // VOTING
     // ============================================
 
-    public shared ({ caller }) func vote(proposal_id: Nat64, voteValue: Int32): async T.OperationResult {
+    public shared ({ caller }) func vote(neuronId: T.NeuronId, proposal_id: Nat64, voteValue: Int32): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                let request: T.ManageNeuronRequest = {
-                    id = ?nid;
-                    command = ?#RegisterVote({
-                        vote = voteValue;
-                        proposal = ?{ id = proposal_id };
-                    });
-                    neuron_id_or_subaccount = null;
-                };
-                
-                let result = await governance.manage_neuron(request);
-                
-                switch (result.command) {
-                    case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
-                    case (?#Error(e)) { #Err(#GovernanceError(e)) };
-                    case (?#RegisterVote(_)) { #Ok };
-                    case (_) { #Err(#InvalidOperation("Unexpected response")) };
-                };
-            };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
+        };
+        
+        let request: T.ManageNeuronRequest = {
+            id = ?neuronId;
+            command = ?#RegisterVote({
+                vote = voteValue;
+                proposal = ?{ id = proposal_id };
+            });
+            neuron_id_or_subaccount = null;
+        };
+        
+        let result = await governance.manage_neuron(request);
+        
+        switch (result.command) {
+            case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+            case (?#Error(e)) { #Err(#GovernanceError(e)) };
+            case (?#RegisterVote(_)) { #Ok };
+            case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
 
     public shared ({ caller }) func setFollowing(
+        neuronId: T.NeuronId,
         topic: Int32,
         followees: [T.NeuronId]
     ): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                let request: T.ManageNeuronRequest = {
-                    id = ?nid;
-                    command = ?#Follow({
-                        topic = topic;
-                        followees = followees;
-                    });
-                    neuron_id_or_subaccount = null;
-                };
-                
-                let result = await governance.manage_neuron(request);
-                
-                switch (result.command) {
-                    case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
-                    case (?#Error(e)) { #Err(#GovernanceError(e)) };
-                    case (?#Follow(_)) { #Ok };
-                    case (_) { #Err(#InvalidOperation("Unexpected response")) };
-                };
-            };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
+        };
+        
+        let request: T.ManageNeuronRequest = {
+            id = ?neuronId;
+            command = ?#Follow({
+                topic = topic;
+                followees = followees;
+            });
+            neuron_id_or_subaccount = null;
+        };
+        
+        let result = await governance.manage_neuron(request);
+        
+        switch (result.command) {
+            case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+            case (?#Error(e)) { #Err(#GovernanceError(e)) };
+            case (?#Follow(_)) { #Ok };
+            case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
 
-    public shared ({ caller }) func refreshVotingPower(): async T.OperationResult {
+    public shared ({ caller }) func refreshVotingPower(neuronId: T.NeuronId): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                let request: T.ManageNeuronRequest = {
-                    id = ?nid;
-                    command = ?#RefreshVotingPower({});
-                    neuron_id_or_subaccount = null;
-                };
-                
-                let result = await governance.manage_neuron(request);
-                
-                switch (result.command) {
-                    case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
-                    case (?#Error(e)) { #Err(#GovernanceError(e)) };
-                    case (?#RefreshVotingPower(_)) { #Ok };
-                    case (_) { #Err(#InvalidOperation("Unexpected response")) };
-                };
-            };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
+        };
+        
+        let request: T.ManageNeuronRequest = {
+            id = ?neuronId;
+            command = ?#RefreshVotingPower({});
+            neuron_id_or_subaccount = null;
+        };
+        
+        let result = await governance.manage_neuron(request);
+        
+        switch (result.command) {
+            case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+            case (?#Error(e)) { #Err(#GovernanceError(e)) };
+            case (?#RefreshVotingPower(_)) { #Ok };
+            case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
 
@@ -656,82 +779,90 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     // HOT KEY MANAGEMENT
     // ============================================
 
-    public shared ({ caller }) func addHotKey(hotkey: Principal): async T.OperationResult {
+    public shared ({ caller }) func addHotKey(neuronId: T.NeuronId, hotkey: Principal): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                await configureNeuron(nid, #AddHotKey({ new_hot_key = ?hotkey }));
-            };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
         };
+        await configureNeuron(neuronId, #AddHotKey({ new_hot_key = ?hotkey }));
     };
 
-    public shared ({ caller }) func removeHotKey(hotkey: Principal): async T.OperationResult {
+    public shared ({ caller }) func removeHotKey(neuronId: T.NeuronId, hotkey: Principal): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                await configureNeuron(nid, #RemoveHotKey({ hot_key_to_remove = ?hotkey }));
-            };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
         };
+        await configureNeuron(neuronId, #RemoveHotKey({ hot_key_to_remove = ?hotkey }));
     };
 
     // ============================================
     // NEURON SPLITTING / MERGING
     // ============================================
 
-    public shared ({ caller }) func splitNeuron(amount_e8s: Nat64): async T.SplitResult {
+    public shared ({ caller }) func splitNeuron(neuronId: T.NeuronId, amount_e8s: Nat64): async T.SplitResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                let request: T.ManageNeuronRequest = {
-                    id = ?nid;
-                    command = ?#Split({ amount_e8s = amount_e8s });
-                    neuron_id_or_subaccount = null;
-                };
-                
-                let result = await governance.manage_neuron(request);
-                
-                switch (result.command) {
-                    case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
-                    case (?#Error(e)) { #Err(#GovernanceError(e)) };
-                    case (?#Split(r)) {
-                        switch (r.created_neuron_id) {
-                            case null { #Err(#InvalidOperation("No neuron ID returned")) };
-                            case (?newNid) { #Ok(newNid) };
-                        };
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
+        };
+        
+        let request: T.ManageNeuronRequest = {
+            id = ?neuronId;
+            command = ?#Split({ amount_e8s = amount_e8s });
+            neuron_id_or_subaccount = null;
+        };
+        
+        let result = await governance.manage_neuron(request);
+        
+        switch (result.command) {
+            case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+            case (?#Error(e)) { #Err(#GovernanceError(e)) };
+            case (?#Split(r)) {
+                switch (r.created_neuron_id) {
+                    case null { #Err(#InvalidOperation("No neuron ID returned")) };
+                    case (?newNid) {
+                        // Auto-register the new split neuron (with 0 memo since split neurons use different mechanism)
+                        neurons.put(newNid.id, 0);
+                        neuronsStable := Iter.toArray(neurons.entries());
+                        #Ok(newNid);
                     };
-                    case (_) { #Err(#InvalidOperation("Unexpected response")) };
                 };
             };
+            case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
 
-    public shared ({ caller }) func mergeNeurons(sourceNeuronId: T.NeuronId): async T.OperationResult {
+    public shared ({ caller }) func mergeNeurons(targetNeuronId: T.NeuronId, sourceNeuronId: T.NeuronId): async T.OperationResult {
         assertController(caller);
         
-        switch (neuronId) {
-            case null { #Err(#NoNeuron) };
-            case (?nid) {
-                let request: T.ManageNeuronRequest = {
-                    id = ?nid;
-                    command = ?#Merge({ source_neuron_id = ?sourceNeuronId });
-                    neuron_id_or_subaccount = null;
-                };
-                
-                let result = await governance.manage_neuron(request);
-                
-                switch (result.command) {
-                    case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
-                    case (?#Error(e)) { #Err(#GovernanceError(e)) };
-                    case (?#Merge(_)) { #Ok };
-                    case (_) { #Err(#InvalidOperation("Unexpected response")) };
-                };
+        // Verify both neurons are managed
+        if (Option.isNull(neurons.get(targetNeuronId.id))) {
+            return #Err(#NoNeuron);
+        };
+        if (Option.isNull(neurons.get(sourceNeuronId.id))) {
+            return #Err(#InvalidOperation("Source neuron is not managed by this canister"));
+        };
+        
+        let request: T.ManageNeuronRequest = {
+            id = ?targetNeuronId;
+            command = ?#Merge({ source_neuron_id = ?sourceNeuronId });
+            neuron_id_or_subaccount = null;
+        };
+        
+        let result = await governance.manage_neuron(request);
+        
+        switch (result.command) {
+            case null { #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+            case (?#Error(e)) { #Err(#GovernanceError(e)) };
+            case (?#Merge(_)) {
+                // Remove the merged (destroyed) source neuron from our registry
+                ignore neurons.remove(sourceNeuronId.id);
+                neuronsStable := Iter.toArray(neurons.entries());
+                #Ok;
             };
+            case (_) { #Err(#InvalidOperation("Unexpected response")) };
         };
     };
 
