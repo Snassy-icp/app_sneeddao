@@ -160,21 +160,8 @@ module {
                 return #Err(#NeuronAlreadyExists);
             };
 
-            // Validate dissolve delay
-            if (dissolve_delay_seconds < MIN_DISSOLVE_DELAY_FOR_VOTE) {
-                return #Err(#InvalidDissolveDelay({
-                    min = MIN_DISSOLVE_DELAY_FOR_VOTE;
-                    max = MAX_DISSOLVE_DELAY;
-                    provided = dissolve_delay_seconds;
-                }));
-            };
-            if (dissolve_delay_seconds > MAX_DISSOLVE_DELAY) {
-                return #Err(#InvalidDissolveDelay({
-                    min = MIN_DISSOLVE_DELAY_FOR_VOTE;
-                    max = MAX_DISSOLVE_DELAY;
-                    provided = dissolve_delay_seconds;
-                }));
-            };
+            // Note: We don't validate dissolve delay here - let NNS governance enforce the limits
+            // This way if they change min/max, we don't need to upgrade all canisters
 
             // Check balance
             let balance = await getBalance(selfPrincipal);

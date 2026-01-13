@@ -247,7 +247,10 @@ function IcpNeuronManager() {
             const manager = createManagerActor(canisterId, { agent });
             
             const amountE8s = BigInt(Math.floor(parseFloat(stakeAmount) * E8S));
-            const dissolveDelaySeconds = BigInt(delayDays * 24 * 60 * 60);
+            // NNS governance adds ~7 days to dissolve delay, so we subtract 7 days to compensate
+            //const adjustedDelayDays = Math.max(183, delayDays - 7);
+            const adjustedDelayDays = delayDays - 7;
+            const dissolveDelaySeconds = BigInt(adjustedDelayDays * 24 * 60 * 60);
             const result = await manager.stakeNeuron(amountE8s, dissolveDelaySeconds);
             
             if ('Ok' in result) {
@@ -1474,7 +1477,7 @@ function IcpNeuronManager() {
                                     </button>
                                 </div>
                                 <p style={{ color: theme.colors.mutedText, fontSize: '11px', margin: 0 }}>
-                                    💡 Min 183 days to vote, max 8 years. Balance: {formatIcp(icpBalance)} ICP
+                                    💡 Min 183 days to vote, max 8 years. Canister Balance: {formatIcp(icpBalance)} ICP
                                 </p>
                             </div>
                             

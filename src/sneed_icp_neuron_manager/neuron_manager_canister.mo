@@ -203,21 +203,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     ): async T.StakeNeuronResult {
         assertController(caller);
         
-        // Validate dissolve delay
-        if (dissolve_delay_seconds < NM.MIN_DISSOLVE_DELAY_FOR_VOTE) {
-            return #Err(#InvalidDissolveDelay({
-                min = NM.MIN_DISSOLVE_DELAY_FOR_VOTE;
-                max = NM.MAX_DISSOLVE_DELAY;
-                provided = dissolve_delay_seconds;
-            }));
-        };
-        if (dissolve_delay_seconds > NM.MAX_DISSOLVE_DELAY) {
-            return #Err(#InvalidDissolveDelay({
-                min = NM.MIN_DISSOLVE_DELAY_FOR_VOTE;
-                max = NM.MAX_DISSOLVE_DELAY;
-                provided = dissolve_delay_seconds;
-            }));
-        };
+        // Note: We don't validate dissolve delay here - let NNS governance enforce the limits
+        // This way if they change min/max, we don't need to upgrade all canisters
 
         // Check balance
         let balance = await getBalance();
