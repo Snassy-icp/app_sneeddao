@@ -313,10 +313,14 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     };
 
     func refreshStakeInternal(nid: T.NeuronId): async T.OperationResult {
+        let selfPrincipal = Principal.fromActor(this);
         let request: T.ManageNeuronRequest = {
-            id = ?nid;
+            id = null;
             command = ?#ClaimOrRefresh({
-                by = ?#NeuronIdOrSubaccount;
+                by = ?#MemoAndController({
+                    controller = ?selfPrincipal;
+                    memo = neuronMemo;
+                });
             });
             neuron_id_or_subaccount = null;
         };
