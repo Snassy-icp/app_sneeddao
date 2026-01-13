@@ -834,28 +834,36 @@ function IcpNeuronManager() {
 
                                         {/* Start/Stop Dissolving */}
                                         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                            {/* State 1 = Locked, State 2 = Dissolving, State 3 = Dissolved */}
                                             <button
                                                 onClick={handleStartDissolving}
-                                                disabled={actionLoading === 'startDissolve'}
+                                                disabled={actionLoading === 'startDissolve' || !neuronInfo || neuronInfo.state !== 1}
                                                 style={{ 
                                                     ...buttonStyle,
                                                     background: theme.colors.warning || '#f59e0b',
-                                                    opacity: actionLoading === 'startDissolve' ? 0.6 : 1,
+                                                    opacity: (actionLoading === 'startDissolve' || !neuronInfo || neuronInfo.state !== 1) ? 0.5 : 1,
+                                                    cursor: (!neuronInfo || neuronInfo.state !== 1) ? 'not-allowed' : 'pointer',
                                                 }}
                                             >
                                                 {actionLoading === 'startDissolve' ? '⏳...' : '⏳ Start Dissolving'}
                                             </button>
                                             <button
                                                 onClick={handleStopDissolving}
-                                                disabled={actionLoading === 'stopDissolve'}
+                                                disabled={actionLoading === 'stopDissolve' || !neuronInfo || neuronInfo.state !== 2}
                                                 style={{ 
                                                     ...secondaryButtonStyle,
-                                                    opacity: actionLoading === 'stopDissolve' ? 0.6 : 1,
+                                                    opacity: (actionLoading === 'stopDissolve' || !neuronInfo || neuronInfo.state !== 2) ? 0.5 : 1,
+                                                    cursor: (!neuronInfo || neuronInfo.state !== 2) ? 'not-allowed' : 'pointer',
                                                 }}
                                             >
                                                 {actionLoading === 'stopDissolve' ? '⏳...' : '⏹️ Stop Dissolving'}
                                             </button>
                                         </div>
+                                        {neuronInfo && neuronInfo.state === 3 && (
+                                            <p style={{ color: theme.colors.success || '#22c55e', fontSize: '13px', marginTop: '10px' }}>
+                                                ✅ Neuron is fully dissolved and ready to disburse.
+                                            </p>
+                                        )}
                                     </div>
                                 )}
 
