@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
-import { createActor as createManagerActor } from 'external/sneed_icp_neuron_manager';
+import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
@@ -214,11 +214,13 @@ function IcpNeuronManager() {
             }
             const manager = createManagerActor(canisterId, { agent });
             
-            const delaySeconds = BigInt(parseInt(dissolveDelay) * 24 * 60 * 60);
+            // setDissolveDelay takes Nat32 (additional seconds to add)
+            const delaySeconds = parseInt(dissolveDelay) * 24 * 60 * 60;
             const result = await manager.setDissolveDelay(delaySeconds);
             
             if ('Ok' in result) {
-                setSuccess(`✅ Dissolve delay set to ${dissolveDelay} days`);
+                setSuccess(`✅ Added ${dissolveDelay} days to dissolve delay`);
+                setDissolveDelay('');
                 fetchManagerData();
             } else {
                 handleOperationError(result.Err);
@@ -773,14 +775,35 @@ function IcpNeuronManager() {
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Dissolve Management</h3>
                                         
-                                        {/* Set Dissolve Delay */}
+                                        {/* Current dissolve delay info */}
+                                        {neuronInfo && (
+                                            <div style={{ 
+                                                background: `${theme.colors.accent}10`, 
+                                                padding: '12px', 
+                                                borderRadius: '8px', 
+                                                marginBottom: '20px' 
+                                            }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Current Dissolve Delay</div>
+                                                <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '600' }}>
+                                                    {formatDuration(Number(neuronInfo.dissolve_delay_seconds))}
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '12px', marginLeft: '8px' }}>
+                                                        ({Math.floor(Number(neuronInfo.dissolve_delay_seconds) / 86400)} days)
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Increase Dissolve Delay */}
                                         <div style={{ marginBottom: '25px' }}>
-                                            <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '10px' }}>Set Dissolve Delay</h4>
+                                            <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '10px' }}>Increase Dissolve Delay</h4>
                                             <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '10px' }}>
-                                                Increase the dissolve delay to earn more voting power. Max is 8 years (2922 days).
+                                                <strong>Note:</strong> This <em>adds</em> to your current delay. Max total is 8 years (2922 days).
                                             </p>
                                             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
                                                 <div style={{ flex: 1, minWidth: '150px' }}>
+                                                    <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '4px' }}>
+                                                        Days to Add
+                                                    </label>
                                                     <input
                                                         type="number"
                                                         min="1"
@@ -788,7 +811,7 @@ function IcpNeuronManager() {
                                                         value={dissolveDelay}
                                                         onChange={(e) => setDissolveDelay(e.target.value)}
                                                         style={inputStyle}
-                                                        placeholder="Days (e.g., 365)"
+                                                        placeholder="e.g., 365"
                                                     />
                                                 </div>
                                                 <button
@@ -799,9 +822,14 @@ function IcpNeuronManager() {
                                                         opacity: actionLoading === 'dissolve' ? 0.6 : 1,
                                                     }}
                                                 >
-                                                    {actionLoading === 'dissolve' ? '⏳...' : 'Set Delay'}
+                                                    {actionLoading === 'dissolve' ? '⏳...' : '+ Add Days'}
                                                 </button>
                                             </div>
+                                            {dissolveDelay && neuronInfo && (
+                                                <p style={{ color: theme.colors.accent, fontSize: '12px', marginTop: '8px' }}>
+                                                    New total will be: {formatDuration(Number(neuronInfo.dissolve_delay_seconds) + parseInt(dissolveDelay) * 86400)}
+                                                </p>
+                                            )}
                                         </div>
 
                                         {/* Start/Stop Dissolving */}
