@@ -12,6 +12,23 @@ import { useAuth } from '../AuthContext';
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const E8S = 100_000_000;
 
+// NNS Governance Topics
+const NNS_TOPICS = [
+    { id: 0, name: 'Catch-all (Unspecified)', description: 'Default topic for proposals that don\'t fit elsewhere' },
+    { id: 1, name: 'Neuron Management', description: 'Proposals about neuron-related changes' },
+    { id: 3, name: 'Network Economics', description: 'ICP tokenomics, rewards, etc.' },
+    { id: 4, name: 'Governance', description: 'Changes to the governance system itself' },
+    { id: 5, name: 'Node Admin', description: 'Node operator management' },
+    { id: 6, name: 'Participant Management', description: 'Managing participants in the network' },
+    { id: 7, name: 'Subnet Management', description: 'Creating/managing subnets' },
+    { id: 8, name: 'Network Canister Management', description: 'NNS canister upgrades' },
+    { id: 9, name: 'KYC', description: 'Know Your Customer related' },
+    { id: 10, name: 'Node Provider Rewards', description: 'Rewards for node providers' },
+    { id: 12, name: 'SNS & Community Fund', description: 'SNS launches and community fund' },
+    { id: 13, name: 'Subnet Rental', description: 'Subnet rental requests' },
+    { id: 14, name: 'Protocol Canister Management', description: 'Protocol-level canister management' },
+];
+
 function IcpNeuronManager() {
     const { canisterId } = useParams();
     const navigate = useNavigate();
@@ -36,6 +53,10 @@ function IcpNeuronManager() {
     const [stakeDissolveDelay, setStakeDissolveDelay] = useState('365'); // Default 1 year for new neurons
     const [dissolveDelay, setDissolveDelay] = useState('');
     const [hotKeyPrincipal, setHotKeyPrincipal] = useState('');
+    const [disburseAmount, setDisburseAmount] = useState('');
+    const [disburseToAccount, setDisburseToAccount] = useState('');
+    const [selectedTopic, setSelectedTopic] = useState(0);
+    const [followeeIds, setFolloweeIds] = useState('');
     
     // Tabs
     const [activeTab, setActiveTab] = useState('overview');
@@ -342,6 +363,91 @@ function IcpNeuronManager() {
             }
         } catch (err) {
             console.error('Error removing hot key:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
+    const handleDisburse = async () => {
+        setActionLoading('disburse');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            // Amount: null means disburse all
+            const amountOpt = disburseAmount ? [BigInt(Math.floor(parseFloat(disburseAmount) * E8S))] : [];
+            
+            // Destination: null means send to controller (this canister)
+            // If provided, convert hex string to Uint8Array
+            let toAccountOpt = [];
+            if (disburseToAccount && disburseToAccount.length === 64) {
+                const bytes = [];
+                for (let i = 0; i < 64; i += 2) {
+                    bytes.push(parseInt(disburseToAccount.substr(i, 2), 16));
+                }
+                toAccountOpt = [bytes];
+            }
+            
+            const result = await manager.disburse(amountOpt, toAccountOpt);
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Disbursed! Block height: ${result.Ok.transfer_block_height.toString()}`);
+                setDisburseAmount('');
+                setDisburseToAccount('');
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error disbursing:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
+    const handleSetFollowing = async () => {
+        setActionLoading('following');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            // Parse followee IDs (comma-separated)
+            const followees = followeeIds
+                .split(',')
+                .map(s => s.trim())
+                .filter(s => s.length > 0)
+                .map(id => ({ id: BigInt(id) }));
+            
+            const result = await manager.setFollowing(selectedTopic, followees);
+            
+            if ('Ok' in result) {
+                const topicName = NNS_TOPICS.find(t => t.id === selectedTopic)?.name || `Topic ${selectedTopic}`;
+                if (followees.length === 0) {
+                    setSuccess(`✅ Cleared following for ${topicName}`);
+                } else {
+                    setSuccess(`✅ Now following ${followees.length} neuron(s) for ${topicName}`);
+                }
+                setFolloweeIds('');
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error setting following:', err);
             setError(`Error: ${err.message}`);
         } finally {
             setActionLoading('');
@@ -717,12 +823,18 @@ function IcpNeuronManager() {
                                 </div>
 
                                 {/* Tabs */}
-                                <div style={{ display: 'flex', borderBottom: `1px solid ${theme.colors.border}`, marginBottom: '20px' }}>
+                                <div style={{ display: 'flex', borderBottom: `1px solid ${theme.colors.border}`, marginBottom: '20px', flexWrap: 'wrap' }}>
                                     <button style={tabStyle(activeTab === 'overview')} onClick={() => setActiveTab('overview')}>
                                         Overview
                                     </button>
+                                    <button style={tabStyle(activeTab === 'following')} onClick={() => setActiveTab('following')}>
+                                        Following
+                                    </button>
                                     <button style={tabStyle(activeTab === 'dissolve')} onClick={() => setActiveTab('dissolve')}>
                                         Dissolve
+                                    </button>
+                                    <button style={tabStyle(activeTab === 'disburse')} onClick={() => setActiveTab('disburse')}>
+                                        Disburse
                                     </button>
                                     <button style={tabStyle(activeTab === 'hotkeys')} onClick={() => setActiveTab('hotkeys')}>
                                         Hot Keys
@@ -863,6 +975,173 @@ function IcpNeuronManager() {
                                             <p style={{ color: theme.colors.success || '#22c55e', fontSize: '13px', marginTop: '10px' }}>
                                                 ✅ Neuron is fully dissolved and ready to disburse.
                                             </p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {activeTab === 'following' && (
+                                    <div style={cardStyle}>
+                                        <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Following Management</h3>
+                                        <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '20px' }}>
+                                            Set neurons to follow for automatic voting. Your neuron will vote the same way as your followees.
+                                            Following the DFINITY Foundation neuron (27) is common for governance topics.
+                                        </p>
+                                        
+                                        {/* Current followees */}
+                                        {fullNeuron && fullNeuron.followees && fullNeuron.followees.length > 0 && (
+                                            <div style={{ marginBottom: '25px' }}>
+                                                <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '10px' }}>Current Following</h4>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                    {fullNeuron.followees.map(([topicId, followeesData]) => {
+                                                        const topicInfo = NNS_TOPICS.find(t => t.id === topicId);
+                                                        return (
+                                                            <div key={topicId} style={{
+                                                                background: `${theme.colors.accent}10`,
+                                                                padding: '10px',
+                                                                borderRadius: '6px',
+                                                            }}>
+                                                                <div style={{ color: theme.colors.primaryText, fontWeight: '500', fontSize: '13px' }}>
+                                                                    {topicInfo?.name || `Topic ${topicId}`}
+                                                                </div>
+                                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '4px' }}>
+                                                                    Following: {followeesData.followees.map(f => f.id.toString()).join(', ') || 'None'}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Set new following */}
+                                        <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '10px' }}>Set Following</h4>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                            <div>
+                                                <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+                                                    Topic
+                                                </label>
+                                                <select
+                                                    value={selectedTopic}
+                                                    onChange={(e) => setSelectedTopic(parseInt(e.target.value))}
+                                                    style={{ 
+                                                        ...inputStyle, 
+                                                        cursor: 'pointer',
+                                                    }}
+                                                >
+                                                    {NNS_TOPICS.map(topic => (
+                                                        <option key={topic.id} value={topic.id}>
+                                                            {topic.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '4px' }}>
+                                                    {NNS_TOPICS.find(t => t.id === selectedTopic)?.description}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+                                                    Neuron IDs to Follow (comma-separated)
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={followeeIds}
+                                                    onChange={(e) => setFolloweeIds(e.target.value)}
+                                                    style={inputStyle}
+                                                    placeholder="e.g., 27, 28 (leave empty to clear)"
+                                                />
+                                                <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '4px' }}>
+                                                    💡 Common: 27 (DFINITY Foundation), 28 (Internet Computer Association)
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={handleSetFollowing}
+                                                disabled={actionLoading === 'following'}
+                                                style={{ 
+                                                    ...buttonStyle, 
+                                                    opacity: actionLoading === 'following' ? 0.6 : 1,
+                                                    alignSelf: 'flex-start',
+                                                }}
+                                            >
+                                                {actionLoading === 'following' ? '⏳...' : '✅ Set Following'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'disburse' && (
+                                    <div style={cardStyle}>
+                                        <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Disburse Neuron</h3>
+                                        
+                                        {neuronInfo && neuronInfo.state !== 3 ? (
+                                            <div style={{
+                                                background: `${theme.colors.warning || '#f59e0b'}20`,
+                                                border: `1px solid ${theme.colors.warning || '#f59e0b'}`,
+                                                padding: '15px',
+                                                borderRadius: '8px',
+                                                marginBottom: '20px',
+                                            }}>
+                                                <p style={{ color: theme.colors.warning || '#f59e0b', margin: 0 }}>
+                                                    ⚠️ Neuron must be fully dissolved before disbursing.
+                                                    Current state: <strong>{getNeuronState(neuronInfo.state).label}</strong>
+                                                </p>
+                                                {neuronInfo.state === 1 && (
+                                                    <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginTop: '8px', marginBottom: 0 }}>
+                                                        Start dissolving first, then wait for the dissolve delay to complete.
+                                                    </p>
+                                                )}
+                                                {neuronInfo.state === 2 && (
+                                                    <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginTop: '8px', marginBottom: 0 }}>
+                                                        Dissolving... {formatDuration(Number(neuronInfo.dissolve_delay_seconds))} remaining.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '20px' }}>
+                                                    Withdraw ICP from your dissolved neuron. Leave fields empty to disburse all to this canister.
+                                                </p>
+                                                
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                                    <div>
+                                                        <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+                                                            Amount (ICP) - leave empty to disburse all
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            value={disburseAmount}
+                                                            onChange={(e) => setDisburseAmount(e.target.value)}
+                                                            style={inputStyle}
+                                                            placeholder="All"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+                                                            Destination Account ID (hex) - leave empty to send to this canister
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={disburseToAccount}
+                                                            onChange={(e) => setDisburseToAccount(e.target.value)}
+                                                            style={inputStyle}
+                                                            placeholder="64-character hex (optional)"
+                                                        />
+                                                    </div>
+                                                    <button
+                                                        onClick={handleDisburse}
+                                                        disabled={actionLoading === 'disburse'}
+                                                        style={{ 
+                                                            ...buttonStyle, 
+                                                            background: theme.colors.error || '#ef4444',
+                                                            opacity: actionLoading === 'disburse' ? 0.6 : 1,
+                                                            alignSelf: 'flex-start',
+                                                        }}
+                                                    >
+                                                        {actionLoading === 'disburse' ? '⏳...' : '💸 Disburse'}
+                                                    </button>
+                                                </div>
+                                            </>
                                         )}
                                     </div>
                                 )}
