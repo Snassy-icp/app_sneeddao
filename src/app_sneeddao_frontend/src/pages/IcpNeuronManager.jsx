@@ -226,14 +226,14 @@ function IcpNeuronManager() {
         }
         
         const delayDays = parseInt(stakeDissolveDelay);
-        if (!delayDays || delayDays < 183) {
-            setError('Minimum dissolve delay is 183 days (~6 months) to vote');
-            return;
-        }
-        if (delayDays > 2922) {
-            setError('Maximum dissolve delay is 2922 days (8 years)');
-            return;
-        }
+        //if (!delayDays || delayDays < 183) {
+        //    setError('Minimum dissolve delay is 183 days (~6 months) to vote');
+        //    return;
+        //}
+        //if (delayDays > 2922) {
+        //    setError('Maximum dissolve delay is 2922 days (8 years)');
+        //    return;
+        //}
         
         setActionLoading('stake');
         setError('');
@@ -249,8 +249,8 @@ function IcpNeuronManager() {
             const amountE8s = BigInt(Math.floor(parseFloat(stakeAmount) * E8S));
             // NNS governance adds ~7 days to dissolve delay, so we subtract 7 days to compensate
             //const adjustedDelayDays = Math.max(183, delayDays - 7);
-            const adjustedDelayDays = delayDays - 7;
-            const dissolveDelaySeconds = BigInt(adjustedDelayDays * 24 * 60 * 60);
+            //const adjustedDelayDays = delayDays - 7;
+            const dissolveDelaySeconds = BigInt(delayDays * 24 * 60 * 60);
             const result = await manager.stakeNeuron(amountE8s, dissolveDelaySeconds);
             
             if ('Ok' in result) {

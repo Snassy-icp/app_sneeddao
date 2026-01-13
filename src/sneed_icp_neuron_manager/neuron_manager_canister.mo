@@ -14,7 +14,6 @@ import HashMap "mo:base/HashMap";
 import Hash "mo:base/Hash";
 
 import T "Types";
-import NM "icp_neuron_manager";
 
 // This is the actual canister that gets deployed for each user
 shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Principal) = this {
@@ -25,7 +24,7 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
 
     var owner: Principal = initOwner;
     var createdAt: Int = Time.now();
-    var version: T.Version = NM.CURRENT_VERSION;
+    var version: T.Version = T.CURRENT_VERSION;
     
     // Multi-neuron support: Map neuron ID -> memo (needed for refresh operations)
     // Stable storage as array of entries for upgrades
@@ -52,8 +51,8 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
     };
 
     // Actor references
-    transient let governance: T.GovernanceActor = actor(NM.GOVERNANCE_CANISTER_ID);
-    transient let ledger: T.LedgerActor = actor(NM.LEDGER_CANISTER_ID);
+    transient let governance: T.GovernanceActor = actor(T.GOVERNANCE_CANISTER_ID);
+    transient let ledger: T.LedgerActor = actor(T.LEDGER_CANISTER_ID);
 
     // ============================================
     // ACCESS CONTROL
@@ -208,7 +207,7 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
 
         // Check balance
         let balance = await getBalance();
-        let required = Nat64.toNat(amount_e8s + NM.ICP_FEE);
+        let required = Nat64.toNat(amount_e8s + T.ICP_FEE);
         if (balance < required) {
             return #Err(#InsufficientFunds({
                 balance = Nat64.fromNat(balance);
@@ -217,10 +216,10 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
         };
 
         // Validate minimum stake
-        if (amount_e8s < NM.MIN_STAKE_E8S) {
+        if (amount_e8s < T.MIN_STAKE_E8S) {
             return #Err(#InsufficientFunds({
                 balance = amount_e8s;
-                required = NM.MIN_STAKE_E8S;
+                required = T.MIN_STAKE_E8S;
             }));
         };
 
@@ -235,10 +234,10 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
         // Transfer ICP to governance canister's neuron subaccount
         let transferArg: T.TransferArg = {
             to = {
-                owner = Principal.fromText(NM.GOVERNANCE_CANISTER_ID);
+                owner = Principal.fromText(T.GOVERNANCE_CANISTER_ID);
                 subaccount = ?neuronSubaccount;
             };
-            fee = ?Nat64.toNat(NM.ICP_FEE);
+            fee = ?Nat64.toNat(T.ICP_FEE);
             memo = ?Blob.fromArray(nat64ToBytes(memo));
             from_subaccount = null;
             created_at_time = null;
@@ -357,7 +356,7 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
                 
                 // Check balance
                 let balance = await getBalance();
-                let required = Nat64.toNat(amount_e8s + NM.ICP_FEE);
+                let required = Nat64.toNat(amount_e8s + T.ICP_FEE);
                 if (balance < required) {
                     return #Err(#TransferFailed("Insufficient balance"));
                 };
@@ -382,10 +381,10 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
                 // Transfer to neuron
                 let transferArg: T.TransferArg = {
                     to = {
-                        owner = Principal.fromText(NM.GOVERNANCE_CANISTER_ID);
+                        owner = Principal.fromText(T.GOVERNANCE_CANISTER_ID);
                         subaccount = ?neuronSubaccount;
                     };
-                    fee = ?Nat64.toNat(NM.ICP_FEE);
+                    fee = ?Nat64.toNat(T.ICP_FEE);
                     memo = if (memo == 0) { null } else { ?Blob.fromArray(nat64ToBytes(memo)) };
                     from_subaccount = null;
                     created_at_time = null;
@@ -525,14 +524,14 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
         assertController(caller);
         
         let balance = await getBalance();
-        let required = Nat64.toNat(amount_e8s + NM.ICP_FEE);
+        let required = Nat64.toNat(amount_e8s + T.ICP_FEE);
         if (balance < required) {
             return #Err(#TransferFailed("Insufficient balance"));
         };
 
         let transferArg: T.TransferArg = {
             to = to_account;
-            fee = ?Nat64.toNat(NM.ICP_FEE);
+            fee = ?Nat64.toNat(T.ICP_FEE);
             memo = null;
             from_subaccount = null;
             created_at_time = null;
@@ -954,7 +953,7 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
 
     func computeNeuronAccountId(controller: Principal, memo: Nat64): T.AccountIdentifier {
         let subaccount = computeNeuronSubaccount(controller, memo);
-        computeAccountId(Principal.fromText(NM.GOVERNANCE_CANISTER_ID), ?subaccount);
+        computeAccountId(Principal.fromText(T.GOVERNANCE_CANISTER_ID), ?subaccount);
     };
 
     // SHA-256/SHA-224 implementation

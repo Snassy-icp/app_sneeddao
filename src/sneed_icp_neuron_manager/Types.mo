@@ -1,5 +1,7 @@
 import Principal "mo:base/Principal";
 import Blob "mo:base/Blob";
+import Nat64 "mo:base/Nat64";
+import Text "mo:base/Text";
 
 module {
 
@@ -573,6 +575,22 @@ module {
         create_canister: shared (CreateCanisterArgs) -> async CanisterIdRecord;
         install_code: shared (InstallCodeArgs) -> async ();
         update_settings: shared (UpdateSettingsArgs) -> async ();
+    };
+
+    // ============================================
+    // CONSTANTS
+    // ============================================
+
+    public let GOVERNANCE_CANISTER_ID: Text = "rrkah-fqaaa-aaaaa-aaaaq-cai";
+    public let LEDGER_CANISTER_ID: Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
+    
+    public let ICP_FEE: Nat64 = 10_000; // 0.0001 ICP
+    public let MIN_STAKE_E8S: Nat64 = 100_000_000; // 1 ICP minimum to create neuron
+
+    public let CURRENT_VERSION: Version = {
+        major = 1;
+        minor = 0;
+        patch = 0;
     };
 
 };
