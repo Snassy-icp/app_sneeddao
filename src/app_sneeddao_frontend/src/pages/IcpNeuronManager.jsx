@@ -61,6 +61,10 @@ function IcpNeuronManager() {
     const [maturityPercentage, setMaturityPercentage] = useState('100');
     const [spawnController, setSpawnController] = useState('');
     const [disburseMaturityDestination, setDisburseMaturityDestination] = useState('');
+    const [splitAmount, setSplitAmount] = useState('');
+    const [mergeSourceNeuronId, setMergeSourceNeuronId] = useState('');
+    const [withdrawAmount, setWithdrawAmount] = useState('');
+    const [withdrawDestination, setWithdrawDestination] = useState('');
     
     // Tabs
     const [activeTab, setActiveTab] = useState('overview');
@@ -677,6 +681,121 @@ function IcpNeuronManager() {
         }
     };
 
+    const handleSplitNeuron = async () => {
+        if (!splitAmount || parseFloat(splitAmount) < 1) {
+            setError('Minimum split amount is 1 ICP');
+            return;
+        }
+        
+        setActionLoading('split');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            const amountE8s = BigInt(Math.floor(parseFloat(splitAmount) * E8S));
+            const result = await manager.splitNeuron(amountE8s);
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Neuron split! New neuron ID: ${result.Ok.id.toString()}`);
+                setSplitAmount('');
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error splitting neuron:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
+    const handleMergeNeurons = async () => {
+        if (!mergeSourceNeuronId) {
+            setError('Please enter the source neuron ID');
+            return;
+        }
+        
+        setActionLoading('merge');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            const sourceNeuronId = { id: BigInt(mergeSourceNeuronId) };
+            const result = await manager.mergeNeurons(sourceNeuronId);
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Neurons merged! Source neuron ${mergeSourceNeuronId} merged into this neuron.`);
+                setMergeSourceNeuronId('');
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error merging neurons:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
+    const handleWithdrawIcp = async () => {
+        if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
+            setError('Please enter a valid amount');
+            return;
+        }
+        if (!withdrawDestination) {
+            setError('Please enter a destination principal');
+            return;
+        }
+        
+        setActionLoading('withdraw');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            const amountE8s = BigInt(Math.floor(parseFloat(withdrawAmount) * E8S));
+            const destination = {
+                owner: Principal.fromText(withdrawDestination),
+                subaccount: [],
+            };
+            
+            const result = await manager.withdrawIcp(amountE8s, destination);
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Withdrew ${withdrawAmount} ICP! Block height: ${result.Ok.transfer_block_height.toString()}`);
+                setWithdrawAmount('');
+                setWithdrawDestination('');
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error withdrawing ICP:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
     const handleOperationError = (err) => {
         if ('GovernanceError' in err) {
             setError(`Governance error: ${err.GovernanceError.error_message}`);
@@ -1067,6 +1186,9 @@ function IcpNeuronManager() {
                                     </button>
                                     <button style={tabStyle(activeTab === 'hotkeys')} onClick={() => setActiveTab('hotkeys')}>
                                         Hot Keys
+                                    </button>
+                                    <button style={tabStyle(activeTab === 'advanced')} onClick={() => setActiveTab('advanced')}>
+                                        Advanced
                                     </button>
                                 </div>
 
@@ -1658,6 +1780,159 @@ function IcpNeuronManager() {
                                                 </div>
                                             </>
                                         )}
+                                    </div>
+                                )}
+
+                                {activeTab === 'advanced' && (
+                                    <div style={cardStyle}>
+                                        <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Advanced Operations</h3>
+                                        
+                                        {/* Withdraw ICP from Canister */}
+                                        <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px', marginBottom: '20px' }}>
+                                            <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>💰 Withdraw ICP from Canister</h4>
+                                            <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
+                                                Withdraw excess ICP from this canister's balance (not from the neuron). Useful for recovering ICP that was sent but not staked.
+                                            </p>
+                                            <div style={{ 
+                                                background: `${theme.colors.accent}10`, 
+                                                padding: '10px', 
+                                                borderRadius: '6px', 
+                                                marginBottom: '15px' 
+                                            }}>
+                                                <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Available: </span>
+                                                <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>{formatIcp(icpBalance)} ICP</span>
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                <div>
+                                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                                                        Amount (ICP)
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        value={withdrawAmount}
+                                                        onChange={(e) => setWithdrawAmount(e.target.value)}
+                                                        style={inputStyle}
+                                                        placeholder="Amount to withdraw"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                                                        Destination Principal
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={withdrawDestination}
+                                                        onChange={(e) => setWithdrawDestination(e.target.value)}
+                                                        style={inputStyle}
+                                                        placeholder="Principal ID"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={handleWithdrawIcp}
+                                                    disabled={actionLoading === 'withdraw' || !icpBalance || icpBalance === 0}
+                                                    style={{ 
+                                                        ...buttonStyle, 
+                                                        alignSelf: 'flex-start',
+                                                        opacity: (actionLoading === 'withdraw' || !icpBalance || icpBalance === 0) ? 0.6 : 1,
+                                                    }}
+                                                >
+                                                    {actionLoading === 'withdraw' ? '⏳...' : '💸 Withdraw'}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Split Neuron */}
+                                        <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px', marginBottom: '20px' }}>
+                                            <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>✂️ Split Neuron</h4>
+                                            <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
+                                                Split this neuron into two. Specify the amount for the new neuron (minimum 1 ICP). 
+                                                The new neuron will have the same controller and dissolve delay.
+                                            </p>
+                                            {neuronInfo && (
+                                                <div style={{ 
+                                                    background: `${theme.colors.accent}10`, 
+                                                    padding: '10px', 
+                                                    borderRadius: '6px', 
+                                                    marginBottom: '15px' 
+                                                }}>
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Current Stake: </span>
+                                                    <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>{formatIcp(Number(neuronInfo.stake_e8s))} ICP</span>
+                                                </div>
+                                            )}
+                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                                                <div style={{ flex: 1, minWidth: '150px' }}>
+                                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                                                        Amount for New Neuron (ICP)
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        step="0.01"
+                                                        value={splitAmount}
+                                                        onChange={(e) => setSplitAmount(e.target.value)}
+                                                        style={inputStyle}
+                                                        placeholder="Min 1 ICP"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={handleSplitNeuron}
+                                                    disabled={actionLoading === 'split' || !neuronInfo || Number(neuronInfo.stake_e8s) < 2 * E8S}
+                                                    style={{ 
+                                                        ...buttonStyle, 
+                                                        background: theme.colors.warning || '#f59e0b',
+                                                        opacity: (actionLoading === 'split' || !neuronInfo || Number(neuronInfo.stake_e8s) < 2 * E8S) ? 0.6 : 1,
+                                                    }}
+                                                >
+                                                    {actionLoading === 'split' ? '⏳...' : '✂️ Split'}
+                                                </button>
+                                            </div>
+                                            {neuronInfo && Number(neuronInfo.stake_e8s) < 2 * E8S && (
+                                                <p style={{ color: theme.colors.warning || '#f59e0b', fontSize: '11px', marginTop: '8px' }}>
+                                                    Need at least 2 ICP stake to split (1 ICP min for each neuron).
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Merge Neurons */}
+                                        <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px' }}>
+                                            <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>🔗 Merge Neurons</h4>
+                                            <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
+                                                Merge another neuron into this one. Both neurons must:
+                                            </p>
+                                            <ul style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px', paddingLeft: '20px' }}>
+                                                <li>Have the same controller</li>
+                                                <li>Have no hotkeys</li>
+                                                <li>Not be dissolving</li>
+                                                <li>Not be in the Community Fund</li>
+                                            </ul>
+                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                                                <div style={{ flex: 1, minWidth: '200px' }}>
+                                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                                                        Source Neuron ID (to merge FROM)
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={mergeSourceNeuronId}
+                                                        onChange={(e) => setMergeSourceNeuronId(e.target.value)}
+                                                        style={inputStyle}
+                                                        placeholder="Neuron ID"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={handleMergeNeurons}
+                                                    disabled={actionLoading === 'merge'}
+                                                    style={{ 
+                                                        ...buttonStyle, 
+                                                        background: theme.colors.warning || '#f59e0b',
+                                                        opacity: actionLoading === 'merge' ? 0.6 : 1,
+                                                    }}
+                                                >
+                                                    {actionLoading === 'merge' ? '⏳...' : '🔗 Merge'}
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
 
