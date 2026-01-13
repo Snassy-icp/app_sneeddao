@@ -761,6 +761,45 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
         };
     };
 
+    // Confirm all following settings (re-applies current followees to keep neuron active)
+    public shared ({ caller }) func confirmFollowing(neuronId: T.NeuronId): async T.OperationResult {
+        assertController(caller);
+        
+        if (Option.isNull(neurons.get(neuronId.id))) {
+            return #Err(#NoNeuron);
+        };
+        
+        // Get current neuron to read existing followees
+        let neuronResult = await governance.get_full_neuron(neuronId.id);
+        let neuron = switch (neuronResult) {
+            case (#Err(e)) { return #Err(#GovernanceError(e)) };
+            case (#Ok(n)) { n };
+        };
+        
+        // Re-apply each topic's followees
+        for ((topic, followeesRecord) in neuron.followees.vals()) {
+            let request: T.ManageNeuronRequest = {
+                id = ?neuronId;
+                command = ?#Follow({
+                    topic = topic;
+                    followees = followeesRecord.followees;
+                });
+                neuron_id_or_subaccount = null;
+            };
+            
+            let result = await governance.manage_neuron(request);
+            
+            switch (result.command) {
+                case (?#Error(e)) { return #Err(#GovernanceError(e)) };
+                case (?#Follow(_)) { /* continue */ };
+                case null { return #Err(#GovernanceError({ error_message = "No response"; error_type = 0 })) };
+                case (_) { return #Err(#InvalidOperation("Unexpected response")) };
+            };
+        };
+        
+        #Ok;
+    };
+
     // ============================================
     // HOT KEY MANAGEMENT
     // ============================================

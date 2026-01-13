@@ -610,6 +610,39 @@ function IcpNeuronManager() {
         }
     };
 
+    const handleConfirmFollowing = async () => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
+        
+        setActionLoading('confirmFollowing');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            const result = await manager.confirmFollowing(selectedNeuronId);
+            
+            if ('Ok' in result) {
+                setSuccess('✅ Following confirmed! Your neuron is now active for automatic voting.');
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error confirming following:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
     const handleIncreaseStake = async () => {
         if (!selectedNeuronId) {
             setError('No neuron selected');
@@ -2053,7 +2086,7 @@ function IcpNeuronManager() {
                                         {fullNeuron && fullNeuron.followees && fullNeuron.followees.length > 0 && (
                                             <div style={{ marginBottom: '25px' }}>
                                                 <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '10px' }}>Current Following</h4>
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
                                                     {fullNeuron.followees.map(([topicId, followeesData]) => {
                                                         const topicInfo = NNS_TOPICS.find(t => t.id === topicId);
                                                         return (
@@ -2072,6 +2105,20 @@ function IcpNeuronManager() {
                                                         );
                                                     })}
                                                 </div>
+                                                <button
+                                                    onClick={handleConfirmFollowing}
+                                                    disabled={actionLoading === 'confirmFollowing'}
+                                                    style={{ 
+                                                        ...buttonStyle, 
+                                                        opacity: actionLoading === 'confirmFollowing' ? 0.6 : 1,
+                                                        background: theme.colors.green || '#22c55e',
+                                                    }}
+                                                >
+                                                    {actionLoading === 'confirmFollowing' ? '⏳ Confirming...' : '✅ Confirm Following'}
+                                                </button>
+                                                <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px' }}>
+                                                    Neurons must periodically confirm following to remain active for automatic voting.
+                                                </p>
                                             </div>
                                         )}
 
