@@ -1134,6 +1134,31 @@ function IcpNeuronManager() {
         return states[state] || { label: 'Unknown', color: theme.colors.mutedText };
     };
 
+    // Calculate time remaining to confirm following (6 months from last refresh)
+    const FOLLOWING_CONFIRMATION_PERIOD_SECONDS = 15_778_800; // ~6 months
+    const getFollowingConfirmationStatus = (neuron) => {
+        if (!neuron?.voting_power_refreshed_timestamp_seconds?.[0]) {
+            return { text: 'Unknown', isUrgent: false, secondsRemaining: null };
+        }
+        
+        const lastRefreshSeconds = Number(neuron.voting_power_refreshed_timestamp_seconds[0]);
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        const deadlineSeconds = lastRefreshSeconds + FOLLOWING_CONFIRMATION_PERIOD_SECONDS;
+        const secondsRemaining = deadlineSeconds - nowSeconds;
+        
+        if (secondsRemaining <= 0) {
+            return { text: 'Inactive - confirmation needed!', isUrgent: true, secondsRemaining: 0 };
+        }
+        
+        const days = Math.floor(secondsRemaining / 86400);
+        const hours = Math.floor((secondsRemaining % 86400) / 3600);
+        
+        const isUrgent = days < 30; // Less than 30 days is urgent
+        const text = days > 0 ? `${days} days, ${hours} hours to confirm` : `${hours} hours to confirm`;
+        
+        return { text, isUrgent, secondsRemaining };
+    };
+
     // Styles
     const cardStyle = {
         background: theme.colors.cardBackground,
@@ -2105,6 +2130,46 @@ function IcpNeuronManager() {
                                                         );
                                                     })}
                                                 </div>
+                                                
+                                                {/* Confirmation status */}
+                                                {(() => {
+                                                    const status = getFollowingConfirmationStatus(fullNeuron);
+                                                    return (
+                                                        <div style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '10px',
+                                                            padding: '12px',
+                                                            borderRadius: '8px',
+                                                            marginBottom: '15px',
+                                                            background: status.isUrgent 
+                                                                ? `${theme.colors.warning || '#f59e0b'}20`
+                                                                : `${theme.colors.green || '#22c55e'}20`,
+                                                            border: `1px solid ${status.isUrgent 
+                                                                ? (theme.colors.warning || '#f59e0b')
+                                                                : (theme.colors.green || '#22c55e')}`,
+                                                        }}>
+                                                            <span style={{ fontSize: '20px' }}>
+                                                                {status.isUrgent ? '⚠️' : '✅'}
+                                                            </span>
+                                                            <div>
+                                                                <div style={{ 
+                                                                    color: status.isUrgent 
+                                                                        ? (theme.colors.warning || '#f59e0b')
+                                                                        : (theme.colors.green || '#22c55e'),
+                                                                    fontWeight: '600',
+                                                                    fontSize: '14px',
+                                                                }}>
+                                                                    {status.secondsRemaining > 0 ? 'Active neuron' : 'Inactive neuron'}
+                                                                </div>
+                                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                                    {status.text}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
+                                                
                                                 <button
                                                     onClick={handleConfirmFollowing}
                                                     disabled={actionLoading === 'confirmFollowing'}
@@ -2117,7 +2182,7 @@ function IcpNeuronManager() {
                                                     {actionLoading === 'confirmFollowing' ? '⏳ Confirming...' : '✅ Confirm Following'}
                                                 </button>
                                                 <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px' }}>
-                                                    Neurons must periodically confirm following to remain active for automatic voting.
+                                                    Neurons must confirm following every ~6 months to remain active for automatic voting.
                                                 </p>
                                             </div>
                                         )}
