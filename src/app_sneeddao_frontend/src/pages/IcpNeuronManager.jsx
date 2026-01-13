@@ -57,6 +57,7 @@ function IcpNeuronManager() {
     const [disburseToAccount, setDisburseToAccount] = useState('');
     const [selectedTopic, setSelectedTopic] = useState(0);
     const [followeeIds, setFolloweeIds] = useState('');
+    const [increaseStakeAmount, setIncreaseStakeAmount] = useState('');
     
     // Tabs
     const [activeTab, setActiveTab] = useState('overview');
@@ -454,6 +455,69 @@ function IcpNeuronManager() {
         }
     };
 
+    const handleIncreaseStake = async () => {
+        if (!increaseStakeAmount || parseFloat(increaseStakeAmount) <= 0) {
+            setError('Please enter a valid amount');
+            return;
+        }
+        
+        setActionLoading('increaseStake');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            const amountE8s = BigInt(Math.floor(parseFloat(increaseStakeAmount) * E8S));
+            const result = await manager.increaseStake(amountE8s);
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Added ${increaseStakeAmount} ICP to neuron stake`);
+                setIncreaseStakeAmount('');
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error increasing stake:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
+    const handleToggleAutoStakeMaturity = async (newValue) => {
+        setActionLoading('autoStake');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            const result = await manager.setAutoStakeMaturity(newValue);
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Auto-stake maturity ${newValue ? 'enabled' : 'disabled'}`);
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error toggling auto-stake maturity:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
     const handleOperationError = (err) => {
         if ('GovernanceError' in err) {
             setError(`Governance error: ${err.GovernanceError.error_message}`);
@@ -827,6 +891,9 @@ function IcpNeuronManager() {
                                     <button style={tabStyle(activeTab === 'overview')} onClick={() => setActiveTab('overview')}>
                                         Overview
                                     </button>
+                                    <button style={tabStyle(activeTab === 'stake')} onClick={() => setActiveTab('stake')}>
+                                        Stake
+                                    </button>
                                     <button style={tabStyle(activeTab === 'following')} onClick={() => setActiveTab('following')}>
                                         Following
                                     </button>
@@ -976,6 +1043,128 @@ function IcpNeuronManager() {
                                                 ✅ Neuron is fully dissolved and ready to disburse.
                                             </p>
                                         )}
+                                    </div>
+                                )}
+
+                                {activeTab === 'stake' && (
+                                    <div style={cardStyle}>
+                                        <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Stake Management</h3>
+                                        
+                                        {/* Current stake info */}
+                                        {neuronInfo && (
+                                            <div style={{ 
+                                                background: `${theme.colors.accent}10`, 
+                                                padding: '12px', 
+                                                borderRadius: '8px', 
+                                                marginBottom: '20px',
+                                                display: 'flex',
+                                                gap: '30px',
+                                                flexWrap: 'wrap',
+                                            }}>
+                                                <div>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Current Stake</div>
+                                                    <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '600' }}>
+                                                        {formatIcp(Number(neuronInfo.stake_e8s))} ICP
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Canister Balance</div>
+                                                    <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '600' }}>
+                                                        {formatIcp(icpBalance)} ICP
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Increase Stake */}
+                                        <div style={{ marginBottom: '30px' }}>
+                                            <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '10px' }}>Increase Stake</h4>
+                                            <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '15px' }}>
+                                                Add more ICP to your neuron from this canister's balance. More stake = more voting power.
+                                            </p>
+                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                                                <div style={{ flex: 1, minWidth: '150px' }}>
+                                                    <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+                                                        Amount (ICP)
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        min="0.0001"
+                                                        step="0.01"
+                                                        value={increaseStakeAmount}
+                                                        onChange={(e) => setIncreaseStakeAmount(e.target.value)}
+                                                        style={inputStyle}
+                                                        placeholder="e.g., 1.0"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={handleIncreaseStake}
+                                                    disabled={actionLoading === 'increaseStake' || !icpBalance || icpBalance < E8S * 0.01}
+                                                    style={{ 
+                                                        ...buttonStyle, 
+                                                        opacity: (actionLoading === 'increaseStake' || !icpBalance || icpBalance < E8S * 0.01) ? 0.6 : 1,
+                                                    }}
+                                                >
+                                                    {actionLoading === 'increaseStake' ? '⏳...' : '➕ Add to Stake'}
+                                                </button>
+                                            </div>
+                                            {icpBalance !== null && icpBalance < E8S * 0.01 && (
+                                                <p style={{ color: theme.colors.warning || '#f59e0b', fontSize: '12px', marginTop: '8px' }}>
+                                                    ⚠️ Fund this canister with ICP first (send to the account ID shown above).
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        {/* Auto-stake Maturity */}
+                                        <div style={{ borderTop: `1px solid ${theme.colors.border}`, paddingTop: '20px' }}>
+                                            <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '10px' }}>Auto-Stake Maturity</h4>
+                                            <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginBottom: '15px' }}>
+                                                When enabled, maturity rewards are automatically staked to your neuron instead of accumulating.
+                                            </p>
+                                            
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '10px',
+                                                    padding: '10px 15px',
+                                                    background: `${theme.colors.accent}10`,
+                                                    borderRadius: '8px',
+                                                }}>
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Current:</span>
+                                                    <span style={{ 
+                                                        color: fullNeuron?.auto_stake_maturity?.[0] ? (theme.colors.success || '#22c55e') : theme.colors.mutedText,
+                                                        fontWeight: '600',
+                                                    }}>
+                                                        {fullNeuron?.auto_stake_maturity?.[0] ? '✅ Enabled' : '❌ Disabled'}
+                                                    </span>
+                                                </div>
+                                                
+                                                {fullNeuron?.auto_stake_maturity?.[0] ? (
+                                                    <button
+                                                        onClick={() => handleToggleAutoStakeMaturity(false)}
+                                                        disabled={actionLoading === 'autoStake'}
+                                                        style={{ 
+                                                            ...secondaryButtonStyle, 
+                                                            opacity: actionLoading === 'autoStake' ? 0.6 : 1,
+                                                        }}
+                                                    >
+                                                        {actionLoading === 'autoStake' ? '⏳...' : 'Disable'}
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => handleToggleAutoStakeMaturity(true)}
+                                                        disabled={actionLoading === 'autoStake'}
+                                                        style={{ 
+                                                            ...buttonStyle, 
+                                                            opacity: actionLoading === 'autoStake' ? 0.6 : 1,
+                                                        }}
+                                                    >
+                                                        {actionLoading === 'autoStake' ? '⏳...' : 'Enable'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
 
