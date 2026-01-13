@@ -136,16 +136,17 @@ module {
     // ============================================
 
     // Configure operation types
+    // Note: NNS governance expects empty records {}, not unit variants
     public type Operation = {
         #RemoveHotKey: { hot_key_to_remove: ?Principal };
         #AddHotKey: { new_hot_key: ?Principal };
         #ChangeAutoStakeMaturity: { requested_setting_for_auto_stake_maturity: Bool };
-        #StopDissolving;
-        #StartDissolving;
+        #StopDissolving: {};
+        #StartDissolving: {};
         #IncreaseDissolveDelay: { additional_dissolve_delay_seconds: Nat32 };
         #SetVisibility: { visibility: ?Int32 };
-        #JoinCommunityFund;
-        #LeaveCommunityFund;
+        #JoinCommunityFund: {};
+        #LeaveCommunityFund: {};
         #SetDissolveTimestamp: { dissolve_timestamp_seconds: Nat64 };
     };
 

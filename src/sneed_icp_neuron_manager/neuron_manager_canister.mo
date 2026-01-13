@@ -353,7 +353,7 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
         
         switch (neuronId) {
             case null { #Err(#NoNeuron) };
-            case (?nid) { await configureNeuron(nid, #StartDissolving) };
+            case (?nid) { await configureNeuron(nid, #StartDissolving({})) };
         };
     };
 
@@ -362,7 +362,7 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
         
         switch (neuronId) {
             case null { #Err(#NoNeuron) };
-            case (?nid) { await configureNeuron(nid, #StopDissolving) };
+            case (?nid) { await configureNeuron(nid, #StopDissolving({})) };
         };
     };
 

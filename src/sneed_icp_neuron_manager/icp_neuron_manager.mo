@@ -385,7 +385,7 @@ module {
             switch (neuronId) {
                 case null { #Err(#NoNeuron) };
                 case (?nid) {
-                    await configureNeuron(nid, #StartDissolving);
+                    await configureNeuron(nid, #StartDissolving({}));
                 };
             };
         };
@@ -395,7 +395,7 @@ module {
             switch (neuronId) {
                 case null { #Err(#NoNeuron) };
                 case (?nid) {
-                    await configureNeuron(nid, #StopDissolving);
+                    await configureNeuron(nid, #StopDissolving({}));
                 };
             };
         };
