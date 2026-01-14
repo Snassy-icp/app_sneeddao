@@ -10,6 +10,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+const NNS_GOVERNANCE_CANISTER_ID = 'rrkah-fqaaa-aaaaa-aaaaq-cai';
 const E8S = 100_000_000;
 
 // NNS Governance Topics
@@ -28,6 +29,12 @@ const NNS_TOPICS = [
     { id: 13, name: 'Subnet Rental', description: 'Subnet rental requests' },
     { id: 14, name: 'Protocol Canister Management', description: 'Protocol-level canister management' },
 ];
+
+// Fallback known neurons (used if governance fetch fails)
+const KNOWN_NEURONS_FALLBACK = {
+    '27': 'DFINITY Foundation',
+    '28': 'Internet Computer Association',
+};
 
 function IcpNeuronManager() {
     const { canisterId } = useParams();
@@ -75,6 +82,9 @@ function IcpNeuronManager() {
     
     // Tabs
     const [activeTab, setActiveTab] = useState('overview');
+    
+    // Known neurons (fetched from governance)
+    const [knownNeurons, setKnownNeurons] = useState(KNOWN_NEURONS_FALLBACK);
 
     const getAgent = useCallback(() => {
         const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -82,6 +92,74 @@ function IcpNeuronManager() {
             : 'http://localhost:4943';
         return new HttpAgent({ identity, host });
     }, [identity]);
+
+    // Fetch known neurons from NNS governance
+    const fetchKnownNeurons = useCallback(async () => {
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            // Create a simple actor for the governance canister
+            const { Actor, IDL } = await import('@dfinity/candid');
+            
+            // Minimal IDL for list_known_neurons
+            const idlFactory = ({ IDL }) => {
+                const NeuronId = IDL.Record({ id: IDL.Nat64 });
+                const KnownNeuronData = IDL.Record({
+                    name: IDL.Text,
+                    description: IDL.Opt(IDL.Text),
+                });
+                const KnownNeuron = IDL.Record({
+                    id: IDL.Opt(NeuronId),
+                    known_neuron_data: IDL.Opt(KnownNeuronData),
+                });
+                const ListKnownNeuronsResponse = IDL.Record({
+                    known_neurons: IDL.Vec(KnownNeuron),
+                });
+                return IDL.Service({
+                    list_known_neurons: IDL.Func([], [ListKnownNeuronsResponse], ['query']),
+                });
+            };
+            
+            const governance = Actor.createActor(idlFactory, {
+                agent,
+                canisterId: NNS_GOVERNANCE_CANISTER_ID,
+            });
+            
+            const result = await governance.list_known_neurons();
+            
+            // Build lookup map
+            const neuronsMap = {};
+            for (const neuron of result.known_neurons) {
+                if (neuron.id?.[0] && neuron.known_neuron_data?.[0]) {
+                    const id = neuron.id[0].id.toString();
+                    const name = neuron.known_neuron_data[0].name;
+                    neuronsMap[id] = name;
+                }
+            }
+            
+            // Merge with fallback
+            setKnownNeurons({ ...KNOWN_NEURONS_FALLBACK, ...neuronsMap });
+            console.log(`Loaded ${Object.keys(neuronsMap).length} known neurons from governance`);
+        } catch (err) {
+            console.warn('Failed to fetch known neurons, using fallback:', err);
+            // Keep fallback values
+        }
+    }, [getAgent]);
+
+    // Helper to get neuron name
+    const getNeuronName = useCallback((neuronId) => {
+        const idStr = neuronId.toString();
+        return knownNeurons[idStr] || null;
+    }, [knownNeurons]);
+
+    // Format neuron ID with name if known
+    const formatNeuronId = useCallback((neuronId) => {
+        const name = getNeuronName(neuronId);
+        return name ? `${name} (${neuronId})` : neuronId.toString();
+    }, [getNeuronName]);
 
     const fetchManagerData = useCallback(async () => {
         if (!canisterId) return;
@@ -215,8 +293,9 @@ function IcpNeuronManager() {
     useEffect(() => {
         if (isAuthenticated && identity && canisterId) {
             fetchManagerData();
+            fetchKnownNeurons(); // Fetch known neurons for displaying names
         }
-    }, [isAuthenticated, identity, canisterId, fetchManagerData]);
+    }, [isAuthenticated, identity, canisterId, fetchManagerData, fetchKnownNeurons]);
 
     // Action handlers
     const handleStakeNeuron = async () => {
@@ -2124,7 +2203,7 @@ function IcpNeuronManager() {
                                                                     {topicInfo?.name || `Topic ${topicId}`}
                                                                 </div>
                                                                 <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '4px' }}>
-                                                                    Following: {followeesData.followees.map(f => f.id.toString()).join(', ') || 'None'}
+                                                                    Following: {followeesData.followees.map(f => formatNeuronId(f.id)).join(', ') || 'None'}
                                                                 </div>
                                                             </div>
                                                         );

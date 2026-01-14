@@ -75,6 +75,16 @@ module {
         description: ?Text;
     };
 
+    // Known neuron (for list_known_neurons response)
+    public type KnownNeuron = {
+        id: ?NeuronId;
+        known_neuron_data: ?KnownNeuronData;
+    };
+
+    public type ListKnownNeuronsResponse = {
+        known_neurons: [KnownNeuron];
+    };
+
     // Full Neuron type from governance
     public type Neuron = {
         id: ?NeuronId;
@@ -524,6 +534,7 @@ module {
         manage_neuron: shared (ManageNeuronRequest) -> async ManageNeuronResponse;
         claim_or_refresh_neuron_from_account: shared (ClaimOrRefreshNeuronFromAccount) -> async ClaimOrRefreshNeuronFromAccountResponse;
         list_neurons: shared query (ListNeurons) -> async ListNeuronsResponse;
+        list_known_neurons: shared query () -> async ListKnownNeuronsResponse;
         get_full_neuron: shared query (Nat64) -> async GetFullNeuronResult;
         get_full_neuron_by_id_or_subaccount: shared query (NeuronIdOrSubaccount) -> async GetFullNeuronResult;
         get_neuron_info: shared query (Nat64) -> async GetNeuronInfoResult;
