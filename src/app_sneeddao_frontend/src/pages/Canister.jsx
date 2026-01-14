@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../AuthContext';
 import { useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
@@ -8,7 +8,14 @@ import { Actor, HttpAgent } from '@dfinity/agent';
 import { getCanisterInfo, setCanisterName, setPrincipalNickname } from '../utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt, FaGasPump } from 'react-icons/fa';
+import { createActor as createLedgerActor } from 'external/icrc1_ledger';
+import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
+
+// ICP Ledger constants
+const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+const E8S = 100_000_000;
+const ICP_FEE = 10_000; // 0.0001 ICP
 
 // Management canister ID
 const MANAGEMENT_CANISTER_ID = Principal.fromText('aaaaa-aa');
@@ -113,6 +120,13 @@ export default function CanisterPage() {
     const [nicknameInput, setNicknameInput] = useState('');
     const [savingName, setSavingName] = useState(false);
     const [savingNickname, setSavingNickname] = useState(false);
+    
+    // Cycles top-up state
+    const [topUpAmount, setTopUpAmount] = useState('');
+    const [userIcpBalance, setUserIcpBalance] = useState(null);
+    const [toppingUp, setToppingUp] = useState(false);
+    const [conversionRate, setConversionRate] = useState(null);
+    const [showTopUpSection, setShowTopUpSection] = useState(false);
 
     const canisterIdParam = searchParams.get('id');
     
@@ -493,8 +507,230 @@ export default function CanisterPage() {
         }
     };
 
+    // Fetch user's ICP balance
+    const fetchUserIcpBalance = useCallback(async () => {
+        if (!identity) return;
+        
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
+            const balance = await ledger.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: [],
+            });
+            setUserIcpBalance(Number(balance));
+        } catch (err) {
+            console.error('Error fetching user ICP balance:', err);
+        }
+    }, [identity]);
+
+    // Fetch ICP to cycles conversion rate from CMC
+    const fetchConversionRate = useCallback(async () => {
+        try {
+            // Always fetch from mainnet CMC
+            const host = 'https://ic0.app';
+            const agent = HttpAgent.createSync({ host });
+            
+            const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
+            const response = await cmc.get_icp_xdr_conversion_rate();
+            
+            // xdr_permyriad_per_icp is the rate in XDR per 10,000 ICP
+            // 1 XDR = 1 trillion cycles
+            const xdrPerIcp = Number(response.data.xdr_permyriad_per_icp) / 10000;
+            const cyclesPerIcp = xdrPerIcp * 1_000_000_000_000; // 1T cycles per XDR
+            
+            setConversionRate({
+                xdrPerIcp,
+                cyclesPerIcp,
+                timestamp: Number(response.data.timestamp_seconds),
+            });
+        } catch (err) {
+            console.error('Error fetching conversion rate:', err);
+        }
+    }, []);
+
+    // Fetch user balance and conversion rate when authenticated
+    useEffect(() => {
+        if (isAuthenticated && identity) {
+            fetchUserIcpBalance();
+            fetchConversionRate();
+        }
+    }, [isAuthenticated, identity, fetchUserIcpBalance, fetchConversionRate]);
+
+    // Calculate CMC subaccount for a canister principal
+    // The subaccount is the principal bytes padded to 32 bytes
+    const principalToSubaccount = (principal) => {
+        const bytes = principal.toUint8Array();
+        const subaccount = new Uint8Array(32);
+        subaccount[0] = bytes.length;
+        subaccount.set(bytes, 1);
+        return subaccount;
+    };
+
+    // Format ICP amount
+    const formatIcp = (e8s) => {
+        if (e8s === null || e8s === undefined) return '...';
+        return (e8s / E8S).toLocaleString(undefined, { 
+            minimumFractionDigits: 2, 
+            maximumFractionDigits: 8 
+        });
+    };
+
+    // Format cycles amount
+    const formatCycles = (cycles) => {
+        if (cycles >= 1_000_000_000_000) {
+            return (cycles / 1_000_000_000_000).toFixed(4) + ' T';
+        } else if (cycles >= 1_000_000_000) {
+            return (cycles / 1_000_000_000).toFixed(4) + ' B';
+        } else if (cycles >= 1_000_000) {
+            return (cycles / 1_000_000).toFixed(4) + ' M';
+        }
+        return cycles.toLocaleString();
+    };
+
+    // Calculate estimated cycles from ICP amount
+    const estimatedCycles = () => {
+        if (!topUpAmount || !conversionRate) return null;
+        const icpAmount = parseFloat(topUpAmount);
+        if (isNaN(icpAmount) || icpAmount <= 0) return null;
+        return icpAmount * conversionRate.cyclesPerIcp;
+    };
+
+    // Handle top-up with cycles
+    const handleTopUp = async () => {
+        if (!identity || !canisterIdParam || !topUpAmount) return;
+        
+        const icpAmount = parseFloat(topUpAmount);
+        if (isNaN(icpAmount) || icpAmount <= 0) {
+            setError('Please enter a valid ICP amount');
+            return;
+        }
+        
+        const amountE8s = BigInt(Math.floor(icpAmount * E8S));
+        const totalNeeded = amountE8s + BigInt(ICP_FEE);
+        
+        if (userIcpBalance === null || BigInt(userIcpBalance) < totalNeeded) {
+            setError(`Insufficient ICP balance. You have ${formatIcp(userIcpBalance)} ICP, need ${(Number(totalNeeded) / E8S).toFixed(4)} ICP (including fee)`);
+            return;
+        }
+        
+        setToppingUp(true);
+        setError(null);
+        setSuccessMessage(null);
+        
+        try {
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const canisterPrincipal = Principal.fromText(canisterIdParam);
+            const cmcPrincipal = Principal.fromText(CMC_CANISTER_ID);
+            
+            // Step 1: Transfer ICP to CMC with canister's subaccount
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
+            const subaccount = principalToSubaccount(canisterPrincipal);
+            
+            console.log('Transferring ICP to CMC...');
+            console.log('Amount:', icpAmount, 'ICP');
+            console.log('To CMC:', CMC_CANISTER_ID);
+            console.log('Subaccount:', Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join(''));
+            
+            const transferResult = await ledger.icrc1_transfer({
+                to: {
+                    owner: cmcPrincipal,
+                    subaccount: [subaccount],
+                },
+                amount: amountE8s,
+                fee: [BigInt(ICP_FEE)],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+            });
+            
+            if ('Err' in transferResult) {
+                const err = transferResult.Err;
+                if ('InsufficientFunds' in err) {
+                    throw new Error(`Insufficient funds: ${formatIcp(Number(err.InsufficientFunds.balance))} ICP available`);
+                }
+                throw new Error(`Transfer failed: ${JSON.stringify(err)}`);
+            }
+            
+            const blockIndex = transferResult.Ok;
+            console.log('Transfer successful, block index:', blockIndex.toString());
+            
+            // Step 2: Notify CMC to mint cycles
+            // For mainnet, use mainnet CMC; for local, this won't work
+            const cmcHost = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : host;
+            const cmcAgent = HttpAgent.createSync({ host: cmcHost, identity });
+            
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await cmcAgent.fetchRootKey();
+            }
+            
+            const cmc = createCmcActor(CMC_CANISTER_ID, { agent: cmcAgent });
+            
+            console.log('Notifying CMC to mint cycles...');
+            const notifyResult = await cmc.notify_top_up({
+                block_index: blockIndex,
+                canister_id: canisterPrincipal,
+            });
+            
+            if ('Err' in notifyResult) {
+                const err = notifyResult.Err;
+                if ('Refunded' in err) {
+                    throw new Error(`Top-up refunded: ${err.Refunded.reason}`);
+                } else if ('InvalidTransaction' in err) {
+                    throw new Error(`Invalid transaction: ${err.InvalidTransaction}`);
+                } else if ('Other' in err) {
+                    throw new Error(`CMC error: ${err.Other.error_message}`);
+                } else if ('Processing' in err) {
+                    throw new Error('Transaction is still being processed. Please try again in a moment.');
+                } else if ('TransactionTooOld' in err) {
+                    throw new Error('Transaction too old');
+                }
+                throw new Error(`Unknown CMC error: ${JSON.stringify(err)}`);
+            }
+            
+            const cyclesAdded = Number(notifyResult.Ok);
+            console.log('Cycles added:', cyclesAdded);
+            
+            setSuccessMessage(`✅ Successfully topped up ${formatCycles(cyclesAdded)} cycles to the canister!`);
+            setTopUpAmount('');
+            setShowTopUpSection(false);
+            
+            // Refresh user balance and canister info
+            fetchUserIcpBalance();
+            if (canisterIdParam) {
+                fetchCanisterInfo(canisterIdParam);
+            }
+            
+        } catch (err) {
+            console.error('Top-up error:', err);
+            setError(`Top-up failed: ${err.message || 'Unknown error'}`);
+        } finally {
+            setToppingUp(false);
+        }
+    };
+
     return (
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
+            <style>{`
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `}</style>
             <Header showSnsDropdown={false} />
             <main className="wallet-container">
                 {/* Search Section */}
@@ -1041,6 +1277,221 @@ export default function CanisterPage() {
                                 }}>
                                     {(Number(canisterInfo.cycles) / 1_000_000_000_000).toFixed(4)} T
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Top Up with Cycles Section */}
+                        {isAuthenticated && (
+                            <div style={{ 
+                                marginBottom: '20px',
+                                backgroundColor: theme.colors.tertiaryBg,
+                                borderRadius: '8px',
+                                padding: '16px',
+                                border: `1px solid ${theme.colors.border}`
+                            }}>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'center',
+                                    marginBottom: showTopUpSection ? '16px' : '0'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <FaGasPump style={{ color: theme.colors.accent }} />
+                                        <span style={{ 
+                                            color: theme.colors.primaryText, 
+                                            fontWeight: '500',
+                                            fontSize: '14px'
+                                        }}>
+                                            Top Up with Cycles
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowTopUpSection(!showTopUpSection)}
+                                        style={{
+                                            backgroundColor: showTopUpSection ? 'transparent' : theme.colors.accent,
+                                            color: showTopUpSection ? theme.colors.mutedText : '#fff',
+                                            border: showTopUpSection ? `1px solid ${theme.colors.border}` : 'none',
+                                            borderRadius: '6px',
+                                            padding: '8px 16px',
+                                            cursor: 'pointer',
+                                            fontSize: '13px',
+                                            fontWeight: '500'
+                                        }}
+                                    >
+                                        {showTopUpSection ? 'Cancel' : 'Add Cycles'}
+                                    </button>
+                                </div>
+                                
+                                {showTopUpSection && (
+                                    <div>
+                                        {/* User ICP Balance */}
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            justifyContent: 'space-between', 
+                                            alignItems: 'center',
+                                            marginBottom: '12px',
+                                            padding: '10px 12px',
+                                            backgroundColor: theme.colors.secondaryBg,
+                                            borderRadius: '6px'
+                                        }}>
+                                            <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>
+                                                Your ICP Balance:
+                                            </span>
+                                            <span style={{ 
+                                                color: theme.colors.primaryText, 
+                                                fontWeight: '600',
+                                                fontSize: '14px'
+                                            }}>
+                                                {formatIcp(userIcpBalance)} ICP
+                                            </span>
+                                        </div>
+                                        
+                                        {/* Conversion Rate Info */}
+                                        {conversionRate && (
+                                            <div style={{ 
+                                                marginBottom: '12px',
+                                                padding: '10px 12px',
+                                                backgroundColor: `${theme.colors.accent}10`,
+                                                borderRadius: '6px',
+                                                fontSize: '12px',
+                                                color: theme.colors.mutedText
+                                            }}>
+                                                <strong style={{ color: theme.colors.primaryText }}>Current Rate:</strong> 1 ICP ≈ {formatCycles(conversionRate.cyclesPerIcp)} cycles
+                                            </div>
+                                        )}
+                                        
+                                        {/* Amount Input */}
+                                        <div style={{ marginBottom: '12px' }}>
+                                            <label style={{ 
+                                                display: 'block',
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '12px',
+                                                marginBottom: '6px'
+                                            }}>
+                                                Amount (ICP)
+                                            </label>
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <input
+                                                    type="number"
+                                                    value={topUpAmount}
+                                                    onChange={(e) => setTopUpAmount(e.target.value)}
+                                                    placeholder="0.0"
+                                                    step="0.01"
+                                                    min="0"
+                                                    disabled={toppingUp}
+                                                    style={{
+                                                        flex: 1,
+                                                        padding: '10px 12px',
+                                                        border: `1px solid ${theme.colors.border}`,
+                                                        borderRadius: '6px',
+                                                        backgroundColor: theme.colors.secondaryBg,
+                                                        color: theme.colors.primaryText,
+                                                        fontSize: '14px',
+                                                        outline: 'none'
+                                                    }}
+                                                />
+                                                <button
+                                                    onClick={() => {
+                                                        if (userIcpBalance) {
+                                                            // Max is balance minus fee, with a small buffer
+                                                            const maxAmount = Math.max(0, (userIcpBalance - ICP_FEE * 2) / E8S);
+                                                            setTopUpAmount(maxAmount.toFixed(4));
+                                                        }
+                                                    }}
+                                                    disabled={toppingUp || !userIcpBalance}
+                                                    style={{
+                                                        backgroundColor: 'transparent',
+                                                        color: theme.colors.accent,
+                                                        border: `1px solid ${theme.colors.accent}`,
+                                                        borderRadius: '6px',
+                                                        padding: '10px 12px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '12px',
+                                                        fontWeight: '500'
+                                                    }}
+                                                >
+                                                    MAX
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Estimated Cycles */}
+                                        {estimatedCycles() && (
+                                            <div style={{ 
+                                                marginBottom: '16px',
+                                                padding: '12px',
+                                                backgroundColor: `${theme.colors.success}15`,
+                                                borderRadius: '6px',
+                                                border: `1px solid ${theme.colors.success}30`,
+                                                textAlign: 'center'
+                                            }}>
+                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
+                                                    Estimated Cycles to Add
+                                                </div>
+                                                <div style={{ 
+                                                    color: theme.colors.success, 
+                                                    fontSize: '18px', 
+                                                    fontWeight: '600' 
+                                                }}>
+                                                    ~{formatCycles(estimatedCycles())}
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Top Up Button */}
+                                        <button
+                                            onClick={handleTopUp}
+                                            disabled={toppingUp || !topUpAmount || parseFloat(topUpAmount) <= 0}
+                                            style={{
+                                                width: '100%',
+                                                backgroundColor: theme.colors.accent,
+                                                color: '#fff',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                padding: '12px 24px',
+                                                cursor: (toppingUp || !topUpAmount || parseFloat(topUpAmount) <= 0) ? 'not-allowed' : 'pointer',
+                                                opacity: (toppingUp || !topUpAmount || parseFloat(topUpAmount) <= 0) ? 0.6 : 1,
+                                                fontSize: '14px',
+                                                fontWeight: '600',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '8px'
+                                            }}
+                                        >
+                                            {toppingUp ? (
+                                                <>
+                                                    <span className="spinner" style={{
+                                                        width: '16px',
+                                                        height: '16px',
+                                                        border: '2px solid transparent',
+                                                        borderTopColor: '#fff',
+                                                        borderRadius: '50%',
+                                                        animation: 'spin 1s linear infinite'
+                                                    }} />
+                                                    Processing...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <FaGasPump />
+                                                    Top Up Canister
+                                                </>
+                                            )}
+                                        </button>
+                                        
+                                        <p style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '11px', 
+                                            marginTop: '12px',
+                                            marginBottom: 0,
+                                            textAlign: 'center'
+                                        }}>
+                                            Converts ICP to cycles via the Cycles Minting Canister (CMC).
+                                            <br />
+                                            A small ICP fee (0.0001) applies to the transfer.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         )}
 
