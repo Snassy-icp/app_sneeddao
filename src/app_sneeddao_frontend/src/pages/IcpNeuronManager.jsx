@@ -2293,17 +2293,99 @@ function IcpNeuronManager() {
                                             </div>
                                             <div>
                                                 <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
-                                                    Neuron IDs to Follow (comma-separated)
+                                                    Select Neurons to Follow
+                                                </label>
+                                                
+                                                {/* Known neurons dropdown */}
+                                                <select
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        if (val && val !== '__clear__') {
+                                                            // Add to existing (avoid duplicates)
+                                                            const existing = followeeIds.split(',').map(s => s.trim()).filter(s => s);
+                                                            if (!existing.includes(val)) {
+                                                                setFolloweeIds(existing.length > 0 ? `${followeeIds}, ${val}` : val);
+                                                            }
+                                                        } else if (val === '__clear__') {
+                                                            setFolloweeIds('');
+                                                        }
+                                                        e.target.value = ''; // Reset dropdown
+                                                    }}
+                                                    style={{ 
+                                                        ...inputStyle, 
+                                                        cursor: 'pointer',
+                                                        marginBottom: '10px',
+                                                    }}
+                                                    defaultValue=""
+                                                >
+                                                    <option value="" disabled>+ Add known neuron...</option>
+                                                    <option value="__clear__">🗑️ Clear all followees</option>
+                                                    <option disabled>──────────────</option>
+                                                    {Object.entries(knownNeurons)
+                                                        .sort((a, b) => a[1].localeCompare(b[1]))
+                                                        .map(([id, name]) => (
+                                                            <option key={id} value={id}>
+                                                                {name} ({id})
+                                                            </option>
+                                                        ))
+                                                    }
+                                                </select>
+                                                
+                                                {/* Current selection / manual input */}
+                                                <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                                                    Selected neurons (or enter custom IDs, comma-separated):
                                                 </label>
                                                 <input
                                                     type="text"
                                                     value={followeeIds}
                                                     onChange={(e) => setFolloweeIds(e.target.value)}
                                                     style={inputStyle}
-                                                    placeholder="e.g., 27, 28 (leave empty to clear)"
+                                                    placeholder="Leave empty to clear following for this topic"
                                                 />
-                                                <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '4px' }}>
-                                                    💡 Common: 27 (DFINITY Foundation), 28 (Internet Computer Association)
+                                                
+                                                {/* Show selected as pills */}
+                                                {followeeIds && (
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                                                        {followeeIds.split(',').map(s => s.trim()).filter(s => s).map((id, idx) => (
+                                                            <span 
+                                                                key={idx}
+                                                                style={{
+                                                                    background: `${theme.colors.accent}20`,
+                                                                    border: `1px solid ${theme.colors.accent}`,
+                                                                    padding: '4px 8px',
+                                                                    borderRadius: '16px',
+                                                                    fontSize: '12px',
+                                                                    color: theme.colors.primaryText,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                }}
+                                                            >
+                                                                {knownNeurons[id] ? `${knownNeurons[id]}` : `Neuron ${id}`}
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const ids = followeeIds.split(',').map(s => s.trim()).filter(s => s && s !== id);
+                                                                        setFolloweeIds(ids.join(', '));
+                                                                    }}
+                                                                    style={{
+                                                                        background: 'transparent',
+                                                                        border: 'none',
+                                                                        color: theme.colors.mutedText,
+                                                                        cursor: 'pointer',
+                                                                        padding: '0',
+                                                                        fontSize: '14px',
+                                                                        lineHeight: 1,
+                                                                    }}
+                                                                >
+                                                                    ×
+                                                                </button>
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                
+                                                <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px' }}>
+                                                    {followeeIds ? '🔄 Setting these neurons as followees will replace any existing followees for this topic.' : '🗑️ Submitting with no neurons selected will clear following for this topic.'}
                                                 </p>
                                             </div>
                                             <button
@@ -2313,9 +2395,10 @@ function IcpNeuronManager() {
                                                     ...buttonStyle, 
                                                     opacity: actionLoading === 'following' ? 0.6 : 1,
                                                     alignSelf: 'flex-start',
+                                                    background: followeeIds ? theme.colors.accent : (theme.colors.error || '#ef4444'),
                                                 }}
                                             >
-                                                {actionLoading === 'following' ? '⏳...' : '✅ Set Following'}
+                                                {actionLoading === 'following' ? '⏳...' : (followeeIds ? '✅ Set Following' : '🗑️ Clear Following')}
                                             </button>
                                         </div>
                                     </div>
