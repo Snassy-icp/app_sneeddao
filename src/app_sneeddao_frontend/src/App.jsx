@@ -43,6 +43,7 @@ import AdminNames from './pages/AdminNames';
 import AdminForum from './pages/admin/Forum';
 import SmsAdmin from './pages/SmsAdmin';
 import SneedLockAdmin from './pages/admin/SneedLock';
+import IcpNeuronManagerFactoryAdmin from './pages/admin/IcpNeuronManagerFactory';
 import Projects from './pages/Projects';
 import Rewards from './pages/Rewards';
 import Disclaimer from './pages/Disclaimer';
@@ -166,6 +167,7 @@ function App() {
                     <Route path="/admin/forum" element={<AdminForum />} />
                     <Route path="/admin/sms" element={<SmsAdmin />} />
                     <Route path="/admin/sneedlock" element={<SneedLockAdmin />} />
+                    <Route path="/admin/neuron-manager-factory" element={<IcpNeuronManagerFactoryAdmin />} />
                   </Routes>
                   </Layout>
                 </NamingProvider>

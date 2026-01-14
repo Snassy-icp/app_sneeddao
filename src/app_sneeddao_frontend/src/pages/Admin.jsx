@@ -244,6 +244,29 @@ function Admin() {
                         <h2 style={{ margin: 0 }}>SneedLock</h2>
                         <p style={{ color: '#888', margin: 0 }}>Browse logs and manage SneedLock backend functions</p>
                     </Link>
+
+                    <Link 
+                        to="/admin/neuron-manager-factory"
+                        style={{
+                            backgroundColor: '#2a2a2a',
+                            padding: '20px',
+                            borderRadius: '8px',
+                            textDecoration: 'none',
+                            color: '#ffffff',
+                            textAlign: 'center',
+                            border: '1px solid #3a3a3a',
+                            transition: 'transform 0.2s ease',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '10px'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                    >
+                        <h2 style={{ margin: 0 }}>ICP Neuron Manager Factory</h2>
+                        <p style={{ color: '#888', margin: 0 }}>Manage factory settings, fees, and created managers</p>
+                    </Link>
                 </div>
             </main>
         </div>
