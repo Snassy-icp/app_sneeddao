@@ -573,6 +573,10 @@ export default function CanisterPage() {
         return subaccount;
     };
 
+    // CMC memo for top-up operation: "TPUP" = 0x50555054 in big-endian
+    // As bytes: [0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00] for little-endian Nat64
+    const TOP_UP_MEMO = new Uint8Array([0x54, 0x50, 0x55, 0x50, 0x00, 0x00, 0x00, 0x00]);
+
     // Format ICP amount
     const formatIcp = (e8s) => {
         if (e8s === null || e8s === undefined) return '...';
@@ -635,7 +639,7 @@ export default function CanisterPage() {
             const canisterPrincipal = Principal.fromText(canisterIdParam);
             const cmcPrincipal = Principal.fromText(CMC_CANISTER_ID);
             
-            // Step 1: Transfer ICP to CMC with canister's subaccount
+            // Step 1: Transfer ICP to CMC with canister's subaccount and TPUP memo
             const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
             const subaccount = principalToSubaccount(canisterPrincipal);
             
@@ -643,6 +647,7 @@ export default function CanisterPage() {
             console.log('Amount:', icpAmount, 'ICP');
             console.log('To CMC:', CMC_CANISTER_ID);
             console.log('Subaccount:', Array.from(subaccount).map(b => b.toString(16).padStart(2, '0')).join(''));
+            console.log('Memo (TPUP):', Array.from(TOP_UP_MEMO).map(b => b.toString(16).padStart(2, '0')).join(''));
             
             const transferResult = await ledger.icrc1_transfer({
                 to: {
@@ -651,7 +656,7 @@ export default function CanisterPage() {
                 },
                 amount: amountE8s,
                 fee: [BigInt(ICP_FEE)],
-                memo: [],
+                memo: [TOP_UP_MEMO],
                 from_subaccount: [],
                 created_at_time: [],
             });
