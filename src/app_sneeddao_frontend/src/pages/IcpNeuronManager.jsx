@@ -13,21 +13,29 @@ const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const NNS_GOVERNANCE_CANISTER_ID = 'rrkah-fqaaa-aaaaa-aaaaq-cai';
 const E8S = 100_000_000;
 
-// NNS Governance Topics
+// NNS Governance Topics (matching official NNS GUI)
+// Note: "All Except Governance, and SNS & Neurons' Fund" in NNS GUI is a convenience - 
+// it sets following for all topics except the critical ones (4 and 12)
 const NNS_TOPICS = [
-    { id: 0, name: 'Catch-all (Unspecified)', description: 'Default topic for proposals that don\'t fit elsewhere' },
-    { id: 1, name: 'Neuron Management', description: 'Proposals about neuron-related changes' },
-    { id: 3, name: 'Network Economics', description: 'ICP tokenomics, rewards, etc.' },
-    { id: 4, name: 'Governance', description: 'Changes to the governance system itself' },
-    { id: 5, name: 'Node Admin', description: 'Node operator management' },
-    { id: 6, name: 'Participant Management', description: 'Managing participants in the network' },
-    { id: 7, name: 'Subnet Management', description: 'Creating/managing subnets' },
-    { id: 8, name: 'Network Canister Management', description: 'NNS canister upgrades' },
-    { id: 9, name: 'KYC', description: 'Know Your Customer related' },
-    { id: 10, name: 'Node Provider Rewards', description: 'Rewards for node providers' },
-    { id: 12, name: 'SNS & Community Fund', description: 'SNS launches and community fund' },
-    { id: 13, name: 'Subnet Rental', description: 'Subnet rental requests' },
-    { id: 14, name: 'Protocol Canister Management', description: 'Protocol-level canister management' },
+    { id: 0, name: 'All Topics (Catch-all)', description: 'Default following for all topics without specific followees set', isCritical: false },
+    { id: 1, name: 'Neuron Management', description: 'Proposals about neuron-related changes', isCritical: false },
+    { id: 2, name: 'Exchange Rate', description: 'Exchange rate oracle updates', isCritical: false },
+    { id: 3, name: 'Network Economics', description: 'ICP tokenomics, rewards, etc.', isCritical: false },
+    { id: 4, name: 'Governance', description: 'Changes to the governance system itself (critical topic)', isCritical: true },
+    { id: 5, name: 'Node Admin', description: 'Node operator management', isCritical: false },
+    { id: 6, name: 'Participant Management', description: 'Managing participants in the network', isCritical: false },
+    { id: 7, name: 'Subnet Management', description: 'Creating/managing subnets', isCritical: false },
+    { id: 8, name: 'Network Canister Management', description: 'NNS canister upgrades', isCritical: false },
+    { id: 9, name: 'KYC', description: 'Know Your Customer related', isCritical: false },
+    { id: 10, name: 'Node Provider Rewards', description: 'Rewards for node providers', isCritical: false },
+    { id: 12, name: 'SNS & Neurons\' Fund', description: 'SNS launches and community fund (critical topic)', isCritical: true },
+    { id: 13, name: 'Subnet Rental', description: 'Subnet rental requests', isCritical: false },
+    { id: 14, name: 'Protocol Canister Management', description: 'Protocol-level canister management', isCritical: false },
+    { id: 15, name: 'Service Nervous System Management', description: 'SNS governance management', isCritical: false },
+    { id: 16, name: 'IC OS Version Election', description: 'Electing new IC-OS versions', isCritical: false },
+    { id: 17, name: 'IC OS Version Deployment', description: 'Deploying IC-OS versions to subnets', isCritical: false },
+    { id: 18, name: 'API Boundary Node Management', description: 'Managing API boundary nodes', isCritical: false },
+    { id: 19, name: 'Application Canister Management', description: 'Managing application-level canisters', isCritical: false },
 ];
 
 // Fallback known neurons (used if governance fetch fails)
@@ -2285,13 +2293,23 @@ function IcpNeuronManager() {
                                                 >
                                                     {NNS_TOPICS.map(topic => (
                                                         <option key={topic.id} value={topic.id}>
-                                                            {topic.name}
+                                                            {topic.isCritical ? '⚠️ ' : ''}{topic.name}
                                                         </option>
                                                     ))}
                                                 </select>
-                                                <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '4px' }}>
-                                                    {NNS_TOPICS.find(t => t.id === selectedTopic)?.description}
-                                                </p>
+                                                {(() => {
+                                                    const topic = NNS_TOPICS.find(t => t.id === selectedTopic);
+                                                    return (
+                                                        <p style={{ 
+                                                            color: topic?.isCritical ? (theme.colors.warning || '#f59e0b') : theme.colors.mutedText, 
+                                                            fontSize: '11px', 
+                                                            marginTop: '4px' 
+                                                        }}>
+                                                            {topic?.isCritical && '⚠️ Critical topic - following is NOT inherited from "All Topics". '}
+                                                            {topic?.description}
+                                                        </p>
+                                                    );
+                                                })()}
                                             </div>
                                             <div>
                                                 <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
