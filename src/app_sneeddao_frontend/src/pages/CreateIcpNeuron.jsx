@@ -1,15 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { HttpAgent } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
 import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
-
-const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
+import { FaCheckCircle, FaExclamationTriangle, FaArrowRight } from 'react-icons/fa';
+
+const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+const E8S = 100_000_000;
+const ICP_FEE = 10_000;
 
 function CreateIcpNeuron() {
     const { theme } = useTheme();
@@ -21,22 +25,26 @@ function CreateIcpNeuron() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [factoryInfo, setFactoryInfo] = useState(null);
+    
+    // Payment state
+    const [paymentConfig, setPaymentConfig] = useState(null);
+    const [userIcpBalance, setUserIcpBalance] = useState(null);
+    const [paymentBalance, setPaymentBalance] = useState(null);
+    const [conversionRate, setConversionRate] = useState(null);
+    const [sendingPayment, setSendingPayment] = useState(false);
+    const [paymentSubaccount, setPaymentSubaccount] = useState(null);
+    
+    // Creation step: 'idle' | 'payment' | 'creating' | 'done'
+    const [creationStep, setCreationStep] = useState('idle');
 
-    useEffect(() => {
-        if (isAuthenticated && identity) {
-            fetchMyManagers();
-            fetchFactoryInfo();
-        }
-    }, [isAuthenticated, identity]);
-
-    const getAgent = () => {
+    const getAgent = useCallback(() => {
         const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
             ? 'https://ic0.app' 
             : 'http://localhost:4943';
         return new HttpAgent({ identity, host });
-    };
+    }, [identity]);
 
-    const fetchFactoryInfo = async () => {
+    const fetchFactoryInfo = useCallback(async () => {
         try {
             const agent = getAgent();
             if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
@@ -44,10 +52,11 @@ function CreateIcpNeuron() {
             }
             const factory = createFactoryActor(factoryCanisterId, { agent });
             
-            const [version, cyclesBalance, managerCount] = await Promise.all([
+            const [version, cyclesBalance, managerCount, config] = await Promise.all([
                 factory.getCurrentVersion(),
                 factory.getCyclesBalance(),
                 factory.getManagerCount(),
+                factory.getPaymentConfig(),
             ]);
             
             setFactoryInfo({
@@ -55,12 +64,74 @@ function CreateIcpNeuron() {
                 cyclesBalance: Number(cyclesBalance),
                 managerCount: Number(managerCount),
             });
+            
+            setPaymentConfig({
+                creationFeeE8s: Number(config.creationFeeE8s),
+                icpForCyclesE8s: Number(config.icpForCyclesE8s),
+                minIcpForCyclesE8s: Number(config.minIcpForCyclesE8s),
+                maxIcpForCyclesE8s: Number(config.maxIcpForCyclesE8s),
+                feeDestination: config.feeDestination,
+                paymentRequired: config.paymentRequired,
+            });
+            
+            // Also get the user's payment subaccount
+            if (identity) {
+                const subaccount = await factory.getPaymentSubaccount(identity.getPrincipal());
+                setPaymentSubaccount(Array.from(subaccount));
+            }
         } catch (err) {
             console.error('Error fetching factory info:', err);
         }
-    };
+    }, [getAgent, identity]);
 
-    const fetchMyManagers = async () => {
+    const fetchUserBalances = useCallback(async () => {
+        if (!identity) return;
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            
+            // Fetch user's wallet balance
+            const walletBalance = await ledger.icrc1_balance_of({
+                owner: identity.getPrincipal(),
+                subaccount: [],
+            });
+            setUserIcpBalance(Number(walletBalance));
+            
+            // Fetch user's payment balance at factory
+            const payBalance = await factory.getUserPaymentBalance(identity.getPrincipal());
+            setPaymentBalance(Number(payBalance));
+        } catch (err) {
+            console.error('Error fetching user balances:', err);
+        }
+    }, [identity, getAgent]);
+
+    const fetchConversionRate = useCallback(async () => {
+        try {
+            const host = 'https://ic0.app';
+            const agent = HttpAgent.createSync({ host });
+            
+            const cmc = createCmcActor(CMC_CANISTER_ID, { agent });
+            const response = await cmc.get_icp_xdr_conversion_rate();
+            
+            const xdrPerIcp = Number(response.data.xdr_permyriad_per_icp) / 10000;
+            const cyclesPerIcp = xdrPerIcp * 1_000_000_000_000;
+            
+            setConversionRate({
+                xdrPerIcp,
+                cyclesPerIcp,
+            });
+        } catch (err) {
+            console.error('Error fetching conversion rate:', err);
+        }
+    }, []);
+
+    const fetchMyManagers = useCallback(async () => {
         setLoading(true);
         try {
             const agent = getAgent();
@@ -82,17 +153,24 @@ function CreateIcpNeuron() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [getAgent]);
+
+    useEffect(() => {
+        if (isAuthenticated && identity) {
+            fetchMyManagers();
+            fetchFactoryInfo();
+            fetchUserBalances();
+            fetchConversionRate();
+        }
+    }, [isAuthenticated, identity, fetchMyManagers, fetchFactoryInfo, fetchUserBalances, fetchConversionRate]);
 
     const fetchBalances = async (managerList, agent) => {
         try {
             const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
             const newBalances = {};
             
-            // Fetch balances in parallel
             const balancePromises = managerList.map(async (manager) => {
                 try {
-                    // ICRC-1 uses { owner, subaccount } format
                     const balance = await ledger.icrc1_balance_of({
                         owner: manager.canisterId,
                         subaccount: [],
@@ -115,6 +193,72 @@ function CreateIcpNeuron() {
         }
     };
 
+    // Calculate suggested ICP for cycles based on current rate
+    const calculateSuggestedIcpForCycles = () => {
+        if (!conversionRate || !paymentConfig) return null;
+        
+        // Target: ~2T cycles
+        const targetCycles = 2_000_000_000_000;
+        const suggestedIcp = targetCycles / conversionRate.cyclesPerIcp;
+        const suggestedE8s = Math.ceil(suggestedIcp * E8S);
+        
+        // Clamp to min/max bounds
+        const clamped = Math.max(
+            paymentConfig.minIcpForCyclesE8s,
+            Math.min(paymentConfig.maxIcpForCyclesE8s, suggestedE8s)
+        );
+        
+        return clamped;
+    };
+
+    // Send payment to factory
+    const handleSendPayment = async () => {
+        if (!identity || !paymentConfig || !paymentSubaccount) return;
+        
+        setSendingPayment(true);
+        setError('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const ledger = createLedgerActor(ICP_LEDGER_CANISTER_ID, { agent });
+            
+            // Transfer creation fee to factory's subaccount for this user
+            const result = await ledger.icrc1_transfer({
+                to: {
+                    owner: Principal.fromText(factoryCanisterId),
+                    subaccount: [new Uint8Array(paymentSubaccount)],
+                },
+                amount: BigInt(paymentConfig.creationFeeE8s),
+                fee: [BigInt(ICP_FEE)],
+                memo: [],
+                from_subaccount: [],
+                created_at_time: [],
+            });
+            
+            if ('Ok' in result) {
+                setSuccess('✅ Payment sent! You can now create your neuron manager.');
+                await fetchUserBalances();
+                setCreationStep('payment');
+            } else {
+                const err = result.Err;
+                if ('InsufficientFunds' in err) {
+                    setError(`Insufficient funds: ${formatIcp(Number(err.InsufficientFunds.balance))} ICP available`);
+                } else {
+                    setError(`Payment failed: ${JSON.stringify(err)}`);
+                }
+            }
+        } catch (err) {
+            console.error('Error sending payment:', err);
+            setError(`Payment error: ${err.message}`);
+        } finally {
+            setSendingPayment(false);
+        }
+    };
+
     const handleCreateManager = async () => {
         if (!isAuthenticated) {
             login();
@@ -124,6 +268,7 @@ function CreateIcpNeuron() {
         setCreating(true);
         setError('');
         setSuccess('');
+        setCreationStep('creating');
         
         try {
             const agent = getAgent();
@@ -131,14 +276,22 @@ function CreateIcpNeuron() {
                 await agent.fetchRootKey();
             }
             const factory = createFactoryActor(factoryCanisterId, { agent });
-            const result = await factory.createNeuronManager();
+            
+            // Calculate suggested ICP for cycles
+            const suggestedIcpForCycles = calculateSuggestedIcpForCycles();
+            
+            const result = await factory.createNeuronManager(
+                suggestedIcpForCycles ? [BigInt(suggestedIcpForCycles)] : []
+            );
             
             if ('Ok' in result) {
                 const { canisterId, accountId } = result.Ok;
                 const accountIdHex = Array.from(accountId).map(b => b.toString(16).padStart(2, '0')).join('');
                 setSuccess(`🎉 Neuron Manager Created!\n\nCanister ID: ${canisterId.toText()}\n\nAccount ID (for funding): ${accountIdHex}`);
+                setCreationStep('done');
                 fetchMyManagers();
                 fetchFactoryInfo();
+                fetchUserBalances();
             } else if ('Err' in result) {
                 const err = result.Err;
                 if ('InsufficientCycles' in err) {
@@ -147,60 +300,57 @@ function CreateIcpNeuron() {
                     setError(`Canister creation failed: ${err.CanisterCreationFailed}`);
                 } else if ('NotAuthorized' in err) {
                     setError('Not authorized to create a neuron manager.');
+                } else if ('InsufficientPayment' in err) {
+                    setError(`Insufficient payment: Required ${formatIcp(Number(err.InsufficientPayment.required))} ICP, provided ${formatIcp(Number(err.InsufficientPayment.provided))} ICP`);
+                } else if ('TransferFailed' in err) {
+                    setError(`Transfer failed: ${err.TransferFailed}`);
+                } else if ('CyclesTopUpFailed' in err) {
+                    setError(`Cycles top-up failed: ${err.CyclesTopUpFailed}`);
                 } else {
                     setError('Failed to create neuron manager');
                 }
+                setCreationStep('payment');
             }
         } catch (err) {
             console.error('Error creating manager:', err);
             setError(`Error: ${err.message || 'Failed to create neuron manager'}`);
+            setCreationStep('payment');
         } finally {
             setCreating(false);
         }
     };
 
-    const formatAccountId = (accountId) => {
-        const hex = Array.from(accountId).map(b => b.toString(16).padStart(2, '0')).join('');
-        return hex;
-    };
-
-    const formatDate = (timestamp) => {
-        try {
-            const date = new Date(Number(timestamp) / 1000000);
-            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-        } catch (err) {
-            return 'Unknown';
-        }
-    };
-
     const formatIcp = (e8s) => {
         if (e8s === null || e8s === undefined) return '...';
-        const icp = e8s / 100_000_000;
-        return icp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 });
+        const icp = e8s / E8S;
+        return icp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    };
+
+    const formatCycles = (cycles) => {
+        if (cycles >= 1_000_000_000_000) {
+            return (cycles / 1_000_000_000_000).toFixed(2) + ' T';
+        } else if (cycles >= 1_000_000_000) {
+            return (cycles / 1_000_000_000).toFixed(2) + ' B';
+        }
+        return cycles.toLocaleString();
     };
 
     const copyToClipboard = (text) => {
         navigator.clipboard.writeText(text);
     };
 
-    // Compute account ID from principal (same algorithm as the canister)
+    // Compute account ID from principal
     const computeAccountId = (principal) => {
         try {
             const principalBytes = principal.toUint8Array();
-            // Domain separator: 0x0a + "account-id"
             const domainSeparator = new Uint8Array([0x0a, ...new TextEncoder().encode('account-id')]);
-            // Subaccount: 32 zero bytes (default subaccount)
             const subaccount = new Uint8Array(32);
-            // Preimage: domain separator + principal bytes + subaccount
             const preimage = new Uint8Array(domainSeparator.length + principalBytes.length + subaccount.length);
             preimage.set(domainSeparator, 0);
             preimage.set(principalBytes, domainSeparator.length);
             preimage.set(subaccount, domainSeparator.length + principalBytes.length);
-            // SHA-224 hash
             const hash = sha224(preimage);
-            // CRC32 checksum
             const crc = crc32(hash);
-            // Account ID: CRC32 (4 bytes) + hash (28 bytes)
             const accountId = new Uint8Array(32);
             accountId[0] = (crc >> 24) & 0xff;
             accountId[1] = (crc >> 16) & 0xff;
@@ -214,7 +364,6 @@ function CreateIcpNeuron() {
         }
     };
 
-    // CRC32 implementation
     const crc32 = (data) => {
         let crc = 0xffffffff;
         const table = getCrc32Table();
@@ -235,6 +384,14 @@ function CreateIcpNeuron() {
         }
         return table;
     };
+
+    // Check if user has enough payment balance
+    const hasEnoughPayment = paymentConfig && paymentBalance !== null && 
+        paymentBalance >= paymentConfig.creationFeeE8s;
+    
+    // Check if user has enough in wallet to send payment
+    const canSendPayment = paymentConfig && userIcpBalance !== null &&
+        userIcpBalance >= paymentConfig.creationFeeE8s + ICP_FEE;
 
     const cardStyle = {
         background: theme.colors.cardBackground,
@@ -316,22 +473,186 @@ function CreateIcpNeuron() {
                     </div>
                 )}
 
-                {/* Create button */}
-                {isAuthenticated && (
-                    <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-                        <button 
-                            style={{ 
-                                ...buttonStyle, 
-                                opacity: creating ? 0.7 : 1,
-                                cursor: creating ? 'not-allowed' : 'pointer',
-                            }} 
-                            onClick={handleCreateManager}
-                            disabled={creating}
-                        >
-                            {creating ? '⏳ Creating...' : '➕ Create New Neuron Manager'}
-                        </button>
-                        <p style={{ color: theme.colors.mutedText, fontSize: '13px', marginTop: '10px' }}>
-                            Each manager controls one ICP neuron. You can create multiple managers.
+                {/* Create Manager Section with Payment Flow */}
+                {isAuthenticated && paymentConfig && (
+                    <div style={{ ...cardStyle, marginBottom: '30px' }}>
+                        <h3 style={{ color: theme.colors.primaryText, marginBottom: '20px', textAlign: 'center' }}>
+                            ➕ Create New Neuron Manager
+                        </h3>
+                        
+                        {/* Payment Required Info */}
+                        {paymentConfig.paymentRequired && (
+                            <div style={{ 
+                                background: `${theme.colors.accent}15`,
+                                borderRadius: '8px',
+                                padding: '16px',
+                                marginBottom: '20px'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+                                    <div>
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Creation Fee</div>
+                                        <div style={{ color: theme.colors.primaryText, fontSize: '24px', fontWeight: '700' }}>
+                                            {formatIcp(paymentConfig.creationFeeE8s)} ICP
+                                        </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Your Wallet Balance</div>
+                                        <div style={{ color: theme.colors.primaryText, fontSize: '18px', fontWeight: '600' }}>
+                                            {formatIcp(userIcpBalance)} ICP
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Conversion rate info */}
+                                {conversionRate && (
+                                    <div style={{ 
+                                        marginTop: '12px', 
+                                        paddingTop: '12px', 
+                                        borderTop: `1px solid ${theme.colors.border}`,
+                                        color: theme.colors.mutedText,
+                                        fontSize: '12px'
+                                    }}>
+                                        Current rate: 1 ICP ≈ {formatCycles(conversionRate.cyclesPerIcp)} cycles
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        
+                        {/* Payment Status Steps */}
+                        {paymentConfig.paymentRequired && (
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                gap: '10px',
+                                marginBottom: '20px',
+                                flexWrap: 'wrap'
+                            }}>
+                                {/* Step 1: Payment */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '8px',
+                                    padding: '8px 16px',
+                                    borderRadius: '20px',
+                                    background: hasEnoughPayment ? `${theme.colors.success || '#22c55e'}20` : `${theme.colors.warning || '#f59e0b'}20`,
+                                    border: `1px solid ${hasEnoughPayment ? (theme.colors.success || '#22c55e') : (theme.colors.warning || '#f59e0b')}`
+                                }}>
+                                    {hasEnoughPayment ? (
+                                        <FaCheckCircle color={theme.colors.success || '#22c55e'} />
+                                    ) : (
+                                        <FaExclamationTriangle color={theme.colors.warning || '#f59e0b'} />
+                                    )}
+                                    <span style={{ 
+                                        color: hasEnoughPayment ? (theme.colors.success || '#22c55e') : (theme.colors.warning || '#f59e0b'),
+                                        fontSize: '13px',
+                                        fontWeight: '500'
+                                    }}>
+                                        {hasEnoughPayment ? 'Payment Ready' : 'Payment Required'}
+                                    </span>
+                                </div>
+                                
+                                <FaArrowRight style={{ color: theme.colors.mutedText }} />
+                                
+                                {/* Step 2: Create */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '8px',
+                                    padding: '8px 16px',
+                                    borderRadius: '20px',
+                                    background: creationStep === 'done' ? `${theme.colors.success || '#22c55e'}20` : `${theme.colors.border}50`,
+                                    border: `1px solid ${creationStep === 'done' ? (theme.colors.success || '#22c55e') : theme.colors.border}`
+                                }}>
+                                    {creationStep === 'done' ? (
+                                        <FaCheckCircle color={theme.colors.success || '#22c55e'} />
+                                    ) : (
+                                        <span style={{ 
+                                            width: '16px', 
+                                            height: '16px', 
+                                            borderRadius: '50%', 
+                                            border: `2px solid ${theme.colors.mutedText}`,
+                                            display: 'inline-block'
+                                        }} />
+                                    )}
+                                    <span style={{ 
+                                        color: creationStep === 'done' ? (theme.colors.success || '#22c55e') : theme.colors.mutedText,
+                                        fontSize: '13px',
+                                        fontWeight: '500'
+                                    }}>
+                                        Create Manager
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Deposited Payment Balance */}
+                        {paymentConfig.paymentRequired && (
+                            <div style={{ 
+                                background: theme.colors.tertiaryBg || theme.colors.secondaryBg,
+                                borderRadius: '8px',
+                                padding: '12px 16px',
+                                marginBottom: '16px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                            }}>
+                                <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>
+                                    Your Deposited Payment:
+                                </span>
+                                <span style={{ 
+                                    color: hasEnoughPayment ? (theme.colors.success || '#22c55e') : theme.colors.primaryText,
+                                    fontWeight: '600',
+                                    fontSize: '14px'
+                                }}>
+                                    {formatIcp(paymentBalance)} ICP
+                                    {hasEnoughPayment && ' ✓'}
+                                </span>
+                            </div>
+                        )}
+                        
+                        {/* Action Buttons */}
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                            {/* Send Payment Button */}
+                            {paymentConfig.paymentRequired && !hasEnoughPayment && (
+                                <button
+                                    style={{ 
+                                        ...buttonStyle,
+                                        opacity: (!canSendPayment || sendingPayment) ? 0.6 : 1,
+                                        cursor: (!canSendPayment || sendingPayment) ? 'not-allowed' : 'pointer',
+                                    }}
+                                    onClick={handleSendPayment}
+                                    disabled={!canSendPayment || sendingPayment}
+                                >
+                                    {sendingPayment ? '⏳ Sending Payment...' : `💰 Send ${formatIcp(paymentConfig.creationFeeE8s)} ICP`}
+                                </button>
+                            )}
+                            
+                            {/* Create Manager Button */}
+                            {(!paymentConfig.paymentRequired || hasEnoughPayment) && (
+                                <button 
+                                    style={{ 
+                                        ...buttonStyle, 
+                                        opacity: creating ? 0.7 : 1,
+                                        cursor: creating ? 'not-allowed' : 'pointer',
+                                    }} 
+                                    onClick={handleCreateManager}
+                                    disabled={creating}
+                                >
+                                    {creating ? '⏳ Creating...' : '🚀 Create Neuron Manager'}
+                                </button>
+                            )}
+                        </div>
+                        
+                        {/* Help text */}
+                        <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '15px', textAlign: 'center' }}>
+                            {paymentConfig.paymentRequired ? (
+                                hasEnoughPayment 
+                                    ? 'Payment received! Click "Create Neuron Manager" to proceed.'
+                                    : `Send ${formatIcp(paymentConfig.creationFeeE8s)} ICP to deposit your payment, then create your manager.`
+                            ) : (
+                                'Creating a neuron manager is currently free!'
+                            )}
                         </p>
                     </div>
                 )}
@@ -384,12 +705,12 @@ function CreateIcpNeuron() {
                                     You haven't created any neuron managers yet.
                                 </p>
                                 <p style={{ color: theme.colors.mutedText, fontSize: '14px', marginTop: '10px' }}>
-                                    Click "Create New Neuron Manager" above to get started!
+                                    Use the form above to create your first neuron manager!
                                 </p>
                             </div>
                         ) : (
                             <div>
-                                {managers.map((manager, index) => {
+                                {managers.map((manager) => {
                                     const accountId = computeAccountId(manager.canisterId);
                                     const canisterIdText = manager.canisterId.toText();
                                     const balance = balances[canisterIdText];
@@ -424,7 +745,6 @@ function CreateIcpNeuron() {
                                                 </div>
                                             </div>
 
-                                            {/* Account ID for funding */}
                                             {accountId && (
                                                 <div style={{ marginTop: '12px' }}>
                                                     <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
@@ -491,7 +811,6 @@ function CreateIcpNeuron() {
                             </div>
                         )}
 
-                        {/* Refresh button */}
                         {managers.length > 0 && (
                             <div style={{ textAlign: 'center', marginTop: '20px' }}>
                                 <button 
@@ -510,6 +829,7 @@ function CreateIcpNeuron() {
                 <div style={{ ...cardStyle, marginTop: '40px' }}>
                     <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>How It Works</h3>
                     <ol style={{ color: theme.colors.mutedText, lineHeight: '1.8', paddingLeft: '20px' }}>
+                        <li><strong>Pay the Creation Fee:</strong> Send ICP to cover the cost of creating your dedicated canister.</li>
                         <li><strong>Create a Manager:</strong> Each manager is a dedicated canister that will control one ICP neuron.</li>
                         <li><strong>Fund the Manager:</strong> Send ICP to your manager canister's account.</li>
                         <li><strong>Stake a Neuron:</strong> Use the manager to stake ICP and create an NNS neuron.</li>
@@ -523,4 +843,3 @@ function CreateIcpNeuron() {
 }
 
 export default CreateIcpNeuron;
-

@@ -421,13 +421,6 @@ module {
         #Err: CreateManagerError;
     };
 
-    public type CreateManagerError = {
-        #InsufficientCycles;
-        #CanisterCreationFailed: Text;
-        #AlreadyExists;
-        #NotAuthorized;
-    };
-
     // Result of staking/creating a neuron
     public type StakeNeuronResult = {
         #Ok: NeuronId;
@@ -589,11 +582,69 @@ module {
     };
 
     // ============================================
+    // CMC (CYCLES MINTING CANISTER) TYPES
+    // ============================================
+
+    public type NotifyTopUpArg = {
+        block_index: Nat64;
+        canister_id: Principal;
+    };
+
+    public type NotifyError = {
+        #Refunded: { block_index: ?Nat64; reason: Text };
+        #InvalidTransaction: Text;
+        #Other: { error_message: Text; error_code: Nat64 };
+        #Processing;
+        #TransactionTooOld: Nat64;
+    };
+
+    public type NotifyTopUpResult = {
+        #Ok: Nat;  // cycles added
+        #Err: NotifyError;
+    };
+
+    public type CmcActor = actor {
+        notify_top_up: shared (NotifyTopUpArg) -> async NotifyTopUpResult;
+    };
+
+    // ============================================
+    // FACTORY PAYMENT CONFIGURATION
+    // ============================================
+
+    // Configuration for paid canister creation
+    public type PaymentConfig = {
+        // Total ICP to charge for creating a manager (in e8s)
+        creationFeeE8s: Nat64;
+        // ICP amount to use for cycles top-up (in e8s)
+        icpForCyclesE8s: Nat64;
+        // Minimum ICP for cycles (for validation)
+        minIcpForCyclesE8s: Nat64;
+        // Maximum ICP for cycles (for validation)
+        maxIcpForCyclesE8s: Nat64;
+        // Destination for remaining ICP (after cycles conversion)
+        feeDestination: Account;
+        // Whether payment is required (can be disabled for free mode)
+        paymentRequired: Bool;
+    };
+
+    // Extended error types for payment-related failures
+    public type CreateManagerError = {
+        #InsufficientCycles;
+        #CanisterCreationFailed: Text;
+        #AlreadyExists;
+        #NotAuthorized;
+        #InsufficientPayment: { required: Nat64; provided: Nat64 };
+        #TransferFailed: Text;
+        #CyclesTopUpFailed: Text;
+    };
+
+    // ============================================
     // CONSTANTS
     // ============================================
 
     public let GOVERNANCE_CANISTER_ID: Text = "rrkah-fqaaa-aaaaa-aaaaq-cai";
     public let LEDGER_CANISTER_ID: Text = "ryjl3-tyaaa-aaaaa-aaaba-cai";
+    public let CMC_CANISTER_ID: Text = "rkp4c-7iaaa-aaaaa-aaaca-cai";
     
     public let ICP_FEE: Nat64 = 10_000; // 0.0001 ICP
     public let MIN_STAKE_E8S: Nat64 = 100_000_000; // 1 ICP minimum to create neuron

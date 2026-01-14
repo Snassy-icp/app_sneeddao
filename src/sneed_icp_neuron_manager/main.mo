@@ -7,6 +7,7 @@ import Blob "mo:base/Blob";
 import Nat8 "mo:base/Nat8";
 import Nat32 "mo:base/Nat32";
 import Nat64 "mo:base/Nat64";
+import Nat "mo:base/Nat";
 import Buffer "mo:base/Buffer";
 import Error "mo:base/Error";
 import Cycles "mo:base/ExperimentalCycles";
@@ -23,6 +24,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     transient let CANISTER_CREATION_CYCLES: Nat = 1_000_000_000_000; // 1T cycles for new canister
     transient let CURRENT_VERSION: T.Version = { major = 1; minor = 0; patch = 0 };
+    
+    // CMC memo for top-up: "TPUP" in little-endian
+    transient let TOP_UP_MEMO: Blob = "\54\50\55\50\00\00\00\00";
 
     // ============================================
     // STATE
@@ -31,15 +35,32 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Admins who can manage the factory
     var admins: [Principal] = [deployer.caller];
     
+    // Sneed governance canister (can also modify settings)
+    var sneedGovernance: ?Principal = null;
+    
     // Mapping of canister ID -> manager canister info (allows multiple per user)
     var managersStable: [(Principal, T.ManagerInfo)] = [];
     transient var managers = HashMap.HashMap<Principal, T.ManagerInfo>(10, Principal.equal, Principal.hash);
     
     // Current version
     var currentVersion: T.Version = CURRENT_VERSION;
+    
+    // Payment configuration
+    var creationFeeE8s: Nat64 = 100_000_000; // 1 ICP default
+    var icpForCyclesE8s: Nat64 = 2_000_000;  // 0.02 ICP default (~2T cycles)
+    var minIcpForCyclesE8s: Nat64 = 1_000_000;  // 0.01 ICP minimum
+    var maxIcpForCyclesE8s: Nat64 = 10_000_000; // 0.1 ICP maximum
+    var feeDestination: T.Account = { owner = deployer.caller; subaccount = null }; // Default to deployer
+    var paymentRequired: Bool = true;
 
     // IC Management canister (for updating controllers after spawning)
     transient let ic: T.ManagementCanister = actor("aaaaa-aa");
+    
+    // ICP Ledger canister
+    transient let ledger: T.LedgerActor = actor(T.LEDGER_CANISTER_ID);
+    
+    // CMC canister
+    transient let cmc: T.CmcActor = actor(T.CMC_CANISTER_ID);
 
     // ============================================
     // SYSTEM FUNCTIONS
@@ -67,6 +88,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         false;
     };
 
+    func isAdminOrGovernance(principal: Principal): Bool {
+        if (isAdmin(principal)) { return true };
+        switch (sneedGovernance) {
+            case (?gov) { Principal.equal(principal, gov) };
+            case null { false };
+        };
+    };
+
     public shared ({ caller }) func addAdmin(newAdmin: Principal): async () {
         assert(isAdmin(caller));
         if (not isAdmin(newAdmin)) {
@@ -82,6 +111,60 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
 
     public query func getAdmins(): async [Principal] {
         admins;
+    };
+
+    public shared ({ caller }) func setSneedGovernance(governance: ?Principal): async () {
+        assert(isAdmin(caller));
+        sneedGovernance := governance;
+    };
+
+    public query func getSneedGovernance(): async ?Principal {
+        sneedGovernance;
+    };
+
+    // ============================================
+    // PAYMENT CONFIGURATION
+    // ============================================
+
+    public shared ({ caller }) func setPaymentConfig(config: T.PaymentConfig): async () {
+        assert(isAdminOrGovernance(caller));
+        creationFeeE8s := config.creationFeeE8s;
+        icpForCyclesE8s := config.icpForCyclesE8s;
+        minIcpForCyclesE8s := config.minIcpForCyclesE8s;
+        maxIcpForCyclesE8s := config.maxIcpForCyclesE8s;
+        feeDestination := config.feeDestination;
+        paymentRequired := config.paymentRequired;
+    };
+
+    public query func getPaymentConfig(): async T.PaymentConfig {
+        {
+            creationFeeE8s = creationFeeE8s;
+            icpForCyclesE8s = icpForCyclesE8s;
+            minIcpForCyclesE8s = minIcpForCyclesE8s;
+            maxIcpForCyclesE8s = maxIcpForCyclesE8s;
+            feeDestination = feeDestination;
+            paymentRequired = paymentRequired;
+        };
+    };
+
+    public shared ({ caller }) func setCreationFee(feeE8s: Nat64): async () {
+        assert(isAdminOrGovernance(caller));
+        creationFeeE8s := feeE8s;
+    };
+
+    public shared ({ caller }) func setIcpForCycles(amountE8s: Nat64): async () {
+        assert(isAdminOrGovernance(caller));
+        icpForCyclesE8s := amountE8s;
+    };
+
+    public shared ({ caller }) func setFeeDestination(destination: T.Account): async () {
+        assert(isAdminOrGovernance(caller));
+        feeDestination := destination;
+    };
+
+    public shared ({ caller }) func setPaymentRequired(required: Bool): async () {
+        assert(isAdminOrGovernance(caller));
+        paymentRequired := required;
     };
 
     // ============================================
@@ -101,15 +184,165 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // FACTORY OPERATIONS
     // ============================================
 
+    // Compute subaccount for a user (standard ICRC1 subaccount derivation)
+    // The subaccount is: [length_byte, principal_bytes..., 0_padding...]
+    func principalToSubaccount(principal: Principal): Blob {
+        let principalBytes = Blob.toArray(Principal.toBlob(principal));
+        let subaccount = Array.init<Nat8>(32, 0);
+        subaccount[0] := Nat8.fromNat(principalBytes.size());
+        var i = 0;
+        while (i < principalBytes.size() and i < 31) {
+            subaccount[i + 1] := principalBytes[i];
+            i += 1;
+        };
+        Blob.fromArray(Array.freeze(subaccount));
+    };
+
+    // Get the subaccount where user should send payment
+    public query func getPaymentSubaccount(user: Principal): async Blob {
+        principalToSubaccount(user);
+    };
+
+    // Get balance of user's payment subaccount on this canister
+    public func getUserPaymentBalance(user: Principal): async Nat {
+        let subaccount = principalToSubaccount(user);
+        await ledger.icrc1_balance_of({
+            owner = Principal.fromActor(this);
+            subaccount = ?subaccount;
+        });
+    };
+
+    // Transfer ICP to CMC and notify to top up this canister with cycles
+    func topUpSelfWithCycles(icpAmountE8s: Nat64): async* T.NotifyTopUpResult {
+        let selfPrincipal = Principal.fromActor(this);
+        let cmcPrincipal = Principal.fromText(T.CMC_CANISTER_ID);
+        
+        // Compute CMC subaccount for this canister
+        let cmcSubaccount = principalToSubaccount(selfPrincipal);
+        
+        // Transfer ICP to CMC
+        let transferResult = await ledger.icrc1_transfer({
+            to = { owner = cmcPrincipal; subaccount = ?cmcSubaccount };
+            fee = ?Nat64.toNat(T.ICP_FEE);
+            memo = ?TOP_UP_MEMO;
+            from_subaccount = null;
+            created_at_time = null;
+            amount = Nat64.toNat(icpAmountE8s);
+        });
+        
+                switch (transferResult) {
+            case (#Err(_)) {
+                return #Err(#InvalidTransaction("Transfer to CMC failed"));
+            };
+            case (#Ok(blockIndex)) {
+                // Notify CMC to mint cycles
+                await cmc.notify_top_up({
+                    block_index = Nat64.fromNat(blockIndex);
+                    canister_id = selfPrincipal;
+                });
+            };
+        };
+    };
+
     // Create a new neuron manager canister for the caller
     // Users can create multiple managers (one neuron per manager)
-    // Uses direct actor class spawning - no WASM upload needed
-    public shared ({ caller }) func createNeuronManager(): async T.CreateManagerResult {
+    // Payment flow:
+    // 1. User sends ICP to their subaccount on this factory
+    // 2. User calls createNeuronManager with optional suggested icpForCycles
+    // 3. Factory checks balance, processes payment, creates canister
+    public shared ({ caller }) func createNeuronManager(suggestedIcpForCyclesE8s: ?Nat64): async T.CreateManagerResult {
         // Check cycles
         if (Cycles.balance() < CANISTER_CREATION_CYCLES) {
             return #Err(#InsufficientCycles);
         };
 
+        // Process payment if required
+        if (paymentRequired) {
+            let userSubaccount = principalToSubaccount(caller);
+            
+            // Check user's balance on their subaccount
+            let userBalance = await ledger.icrc1_balance_of({
+                owner = Principal.fromActor(this);
+                subaccount = ?userSubaccount;
+            });
+            
+            if (userBalance < Nat64.toNat(creationFeeE8s)) {
+                return #Err(#InsufficientPayment({
+                    required = creationFeeE8s;
+                    provided = Nat64.fromNat(userBalance);
+                }));
+            };
+            
+            // Determine ICP amount for cycles (use suggestion if valid, otherwise default)
+            let actualIcpForCycles: Nat64 = switch (suggestedIcpForCyclesE8s) {
+                case (?suggested) {
+                    if (suggested >= minIcpForCyclesE8s and suggested <= maxIcpForCyclesE8s) {
+                        suggested;
+                    } else {
+                        icpForCyclesE8s; // Use default if suggestion out of bounds
+                    };
+                };
+                case null { icpForCyclesE8s };
+            };
+            
+            // Calculate amount for fee destination (total - cycles portion - 2 transfer fees)
+            let feeAmount: Nat64 = if (creationFeeE8s > actualIcpForCycles + T.ICP_FEE * 2) {
+                creationFeeE8s - actualIcpForCycles - T.ICP_FEE * 2;
+            } else {
+                0;
+            };
+            
+            // Step 1: Transfer ICP for cycles to factory's main account (for later CMC top-up)
+            if (actualIcpForCycles > 0) {
+                let cyclesTransfer = await ledger.icrc1_transfer({
+                    to = { owner = Principal.fromActor(this); subaccount = null };
+                    fee = ?Nat64.toNat(T.ICP_FEE);
+                    memo = null;
+                    from_subaccount = ?userSubaccount;
+                    created_at_time = null;
+                    amount = Nat64.toNat(actualIcpForCycles);
+                });
+                
+                switch (cyclesTransfer) {
+                    case (#Err(_)) {
+                        return #Err(#TransferFailed("Failed to transfer ICP for cycles"));
+                    };
+                    case (#Ok(_)) {};
+                };
+            };
+            
+            // Step 2: Transfer remaining ICP to fee destination
+            if (feeAmount > 0) {
+                let feeTransfer = await ledger.icrc1_transfer({
+                    to = feeDestination;
+                    fee = ?Nat64.toNat(T.ICP_FEE);
+                    memo = null;
+                    from_subaccount = ?userSubaccount;
+                    created_at_time = null;
+                    amount = Nat64.toNat(feeAmount);
+                });
+                
+                switch (feeTransfer) {
+                    case (#Err(_)) {
+                        // Log but don't fail - cycles portion already transferred
+                    };
+                    case (#Ok(_)) {};
+                };
+            };
+            
+            // Step 3: Top up factory with cycles from the ICP
+            if (actualIcpForCycles > 0) {
+                let topUpResult = await* topUpSelfWithCycles(actualIcpForCycles);
+                switch (topUpResult) {
+                    case (#Err(_)) {
+                        // Log but don't fail canister creation - we still have cycles from the fee
+                    };
+                    case (#Ok(_)) {};
+                };
+            };
+        };
+
+        // Now create the canister
         try {
             // Spawn a new NeuronManagerCanister with the caller as the owner
             let newManager = await (with cycles = CANISTER_CREATION_CYCLES) 
@@ -148,6 +381,12 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         } catch (e) {
             #Err(#CanisterCreationFailed(Error.message(e)));
         };
+    };
+    
+    // Admin function to manually top up factory with cycles from its ICP balance
+    public shared ({ caller }) func adminTopUpCycles(icpAmountE8s: Nat64): async T.NotifyTopUpResult {
+        assert(isAdmin(caller));
+        await* topUpSelfWithCycles(icpAmountE8s);
     };
 
     // Get all manager canisters owned by the caller
@@ -223,6 +462,27 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Get cycles balance
     public query func getCyclesBalance(): async Nat {
         Cycles.balance();
+    };
+    
+    // Get ICP balance of this canister's main account
+    public func getIcpBalance(): async Nat {
+        await ledger.icrc1_balance_of({
+            owner = Principal.fromActor(this);
+            subaccount = null;
+        });
+    };
+    
+    // Admin: Withdraw ICP from factory's main account
+    public shared ({ caller }) func adminWithdrawIcp(amount: Nat64, to: T.Account): async T.TransferResult {
+        assert(isAdmin(caller));
+        await ledger.icrc1_transfer({
+            to = to;
+            fee = ?Nat64.toNat(T.ICP_FEE);
+            memo = null;
+            from_subaccount = null;
+            created_at_time = null;
+            amount = Nat64.toNat(amount);
+        });
     };
 
     // Compute account identifier
