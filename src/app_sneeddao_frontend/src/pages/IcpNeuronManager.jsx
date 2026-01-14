@@ -93,16 +93,15 @@ function IcpNeuronManager() {
         return new HttpAgent({ identity, host });
     }, [identity]);
 
-    // Fetch known neurons from NNS governance
+    // Fetch known neurons from NNS governance (always from mainnet)
     const fetchKnownNeurons = useCallback(async () => {
         try {
-            const agent = getAgent();
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
+            // Always use mainnet for known neurons (they don't exist on local replica)
+            const mainnetAgent = new HttpAgent({ host: 'https://ic0.app' });
             
-            // Create a simple actor for the governance canister
-            const { Actor, IDL } = await import('@dfinity/candid');
+            // Dynamic import for Actor
+            const { Actor } = await import('@dfinity/agent');
+            const { IDL } = await import('@dfinity/candid');
             
             // Minimal IDL for list_known_neurons
             const idlFactory = ({ IDL }) => {
@@ -124,7 +123,7 @@ function IcpNeuronManager() {
             };
             
             const governance = Actor.createActor(idlFactory, {
-                agent,
+                agent: mainnetAgent,
                 canisterId: NNS_GOVERNANCE_CANISTER_ID,
             });
             
@@ -133,21 +132,24 @@ function IcpNeuronManager() {
             // Build lookup map
             const neuronsMap = {};
             for (const neuron of result.known_neurons) {
-                if (neuron.id?.[0] && neuron.known_neuron_data?.[0]) {
-                    const id = neuron.id[0].id.toString();
-                    const name = neuron.known_neuron_data[0].name;
-                    neuronsMap[id] = name;
+                // Handle optional fields (Candid optionals are arrays in JS)
+                const neuronId = Array.isArray(neuron.id) ? neuron.id[0] : neuron.id;
+                const neuronData = Array.isArray(neuron.known_neuron_data) ? neuron.known_neuron_data[0] : neuron.known_neuron_data;
+                
+                if (neuronId && neuronData && neuronData.name) {
+                    const id = neuronId.id.toString();
+                    neuronsMap[id] = neuronData.name;
                 }
             }
             
             // Merge with fallback
             setKnownNeurons({ ...KNOWN_NEURONS_FALLBACK, ...neuronsMap });
-            console.log(`Loaded ${Object.keys(neuronsMap).length} known neurons from governance`);
+            console.log(`Loaded ${Object.keys(neuronsMap).length} known neurons from NNS governance`);
         } catch (err) {
-            console.warn('Failed to fetch known neurons, using fallback:', err);
+            console.error('Failed to fetch known neurons, using fallback:', err);
             // Keep fallback values
         }
-    }, [getAgent]);
+    }, []);
 
     // Helper to get neuron name
     const getNeuronName = useCallback((neuronId) => {
