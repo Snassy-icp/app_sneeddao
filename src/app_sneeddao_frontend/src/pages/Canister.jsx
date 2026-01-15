@@ -8,7 +8,7 @@ import { Actor, HttpAgent } from '@dfinity/agent';
 import { getCanisterInfo, setCanisterName, setPrincipalNickname } from '../utils/BackendUtils';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import { useNaming } from '../NamingContext';
-import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt, FaGasPump } from 'react-icons/fa';
+import { FaEdit, FaSave, FaTimes, FaExternalLinkAlt, FaGasPump, FaUpload, FaExclamationTriangle } from 'react-icons/fa';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 
@@ -66,6 +66,12 @@ const managementCanisterIdlFactory = ({ IDL }) => {
         })),
         'wasm_memory_limit': IDL.Opt(IDL.Nat),
     });
+    // Install mode for install_code
+    const install_code_mode = IDL.Variant({
+        'install': IDL.Null,
+        'reinstall': IDL.Null,
+        'upgrade': IDL.Null,
+    });
     return IDL.Service({
         'canister_status': IDL.Func(
             [IDL.Record({ 'canister_id': IDL.Principal })],
@@ -76,6 +82,16 @@ const managementCanisterIdlFactory = ({ IDL }) => {
             [IDL.Record({
                 'canister_id': IDL.Principal,
                 'settings': canister_settings,
+            })],
+            [],
+            []
+        ),
+        'install_code': IDL.Func(
+            [IDL.Record({
+                'mode': install_code_mode,
+                'canister_id': IDL.Principal,
+                'wasm_module': IDL.Vec(IDL.Nat8),
+                'arg': IDL.Vec(IDL.Nat8),
             })],
             [],
             []
@@ -127,6 +143,14 @@ export default function CanisterPage() {
     const [toppingUp, setToppingUp] = useState(false);
     const [conversionRate, setConversionRate] = useState(null);
     const [showTopUpSection, setShowTopUpSection] = useState(false);
+    
+    // WASM upgrade state
+    const [showUpgradeSection, setShowUpgradeSection] = useState(false);
+    const [wasmFile, setWasmFile] = useState(null);
+    const [upgradeMode, setUpgradeMode] = useState('upgrade'); // 'upgrade' or 'reinstall'
+    const [upgrading, setUpgrading] = useState(false);
+    const [confirmUpgrade, setConfirmUpgrade] = useState(false);
+    const wasmInputRef = useRef(null);
 
     const canisterIdParam = searchParams.get('id');
     
@@ -725,6 +749,90 @@ export default function CanisterPage() {
             setError(`Top-up failed: ${err.message || 'Unknown error'}`);
         } finally {
             setToppingUp(false);
+        }
+    };
+
+    // Handle WASM file selection
+    const handleWasmFileChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            // Validate file extension
+            if (!file.name.endsWith('.wasm') && !file.name.endsWith('.wasm.gz')) {
+                setError('Please select a valid .wasm or .wasm.gz file');
+                return;
+            }
+            setWasmFile(file);
+            setConfirmUpgrade(false);
+        }
+    };
+
+    // Handle canister upgrade
+    const handleUpgradeCanister = async () => {
+        if (!identity || !canisterIdParam || !wasmFile) return;
+        
+        setUpgrading(true);
+        setError(null);
+        setSuccessMessage(null);
+        
+        try {
+            const canisterPrincipal = Principal.fromText(canisterIdParam);
+            const host = getHost();
+            const agent = HttpAgent.createSync({ host, identity });
+            
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const managementCanister = Actor.createActor(managementCanisterIdlFactory, {
+                agent,
+                canisterId: MANAGEMENT_CANISTER_ID,
+                callTransform: (methodName, args, callConfig) => {
+                    return {
+                        ...callConfig,
+                        effectiveCanisterId: canisterPrincipal,
+                    };
+                },
+            });
+            
+            // Read WASM file as Uint8Array
+            console.log(`Reading WASM file: ${wasmFile.name} (${(wasmFile.size / 1024).toFixed(2)} KB)`);
+            const wasmBuffer = await wasmFile.arrayBuffer();
+            const wasmModule = new Uint8Array(wasmBuffer);
+            
+            console.log(`Upgrading canister with mode: ${upgradeMode}`);
+            console.log(`WASM module size: ${wasmModule.length} bytes`);
+            
+            // Call install_code with the selected mode
+            const mode = upgradeMode === 'reinstall' ? { reinstall: null } : { upgrade: null };
+            
+            await managementCanister.install_code({
+                mode,
+                canister_id: canisterPrincipal,
+                wasm_module: wasmModule,
+                arg: [], // Empty initialization argument
+            });
+            
+            console.log('Canister upgrade successful!');
+            setSuccessMessage(`✅ Canister ${upgradeMode === 'reinstall' ? 'reinstalled' : 'upgraded'} successfully!`);
+            
+            // Reset state
+            setWasmFile(null);
+            setConfirmUpgrade(false);
+            setShowUpgradeSection(false);
+            if (wasmInputRef.current) {
+                wasmInputRef.current.value = '';
+            }
+            
+            // Refresh canister info to show new module hash
+            if (canisterIdParam) {
+                fetchCanisterInfo(canisterIdParam);
+            }
+            
+        } catch (err) {
+            console.error('Upgrade error:', err);
+            setError(`Upgrade failed: ${err.message || 'Unknown error'}`);
+        } finally {
+            setUpgrading(false);
         }
     };
 
@@ -1544,6 +1652,331 @@ export default function CanisterPage() {
                                 )}
                             </div>
                         </div>
+
+                        {/* WASM Upgrade Section - Only for controllers */}
+                        {fetchMethod === 'canister_status' && (
+                            <div style={{ 
+                                marginBottom: '20px',
+                                backgroundColor: theme.colors.tertiaryBg,
+                                borderRadius: '8px',
+                                padding: '16px',
+                                border: `1px solid ${theme.colors.border}`
+                            }}>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'center',
+                                    marginBottom: showUpgradeSection ? '16px' : '0'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <FaUpload style={{ color: theme.colors.accent }} />
+                                        <span style={{ 
+                                            color: theme.colors.primaryText, 
+                                            fontWeight: '500',
+                                            fontSize: '14px'
+                                        }}>
+                                            Upgrade Canister
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setShowUpgradeSection(!showUpgradeSection);
+                                            if (!showUpgradeSection) {
+                                                setWasmFile(null);
+                                                setConfirmUpgrade(false);
+                                                setUpgradeMode('upgrade');
+                                            }
+                                        }}
+                                        style={{
+                                            backgroundColor: showUpgradeSection ? 'transparent' : theme.colors.accent,
+                                            color: showUpgradeSection ? theme.colors.mutedText : '#fff',
+                                            border: showUpgradeSection ? `1px solid ${theme.colors.border}` : 'none',
+                                            borderRadius: '6px',
+                                            padding: '8px 16px',
+                                            cursor: 'pointer',
+                                            fontSize: '13px',
+                                            fontWeight: '500'
+                                        }}
+                                    >
+                                        {showUpgradeSection ? 'Cancel' : 'Upload WASM'}
+                                    </button>
+                                </div>
+                                
+                                {showUpgradeSection && (
+                                    <div>
+                                        {/* Upgrade Mode Selection */}
+                                        <div style={{ marginBottom: '16px' }}>
+                                            <label style={{ 
+                                                display: 'block',
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '12px',
+                                                marginBottom: '8px'
+                                            }}>
+                                                Upgrade Mode
+                                            </label>
+                                            <div style={{ display: 'flex', gap: '12px' }}>
+                                                <label style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '6px',
+                                                    cursor: 'pointer',
+                                                    padding: '10px 14px',
+                                                    backgroundColor: upgradeMode === 'upgrade' ? `${theme.colors.accent}20` : theme.colors.secondaryBg,
+                                                    border: `1px solid ${upgradeMode === 'upgrade' ? theme.colors.accent : theme.colors.border}`,
+                                                    borderRadius: '6px',
+                                                    transition: 'all 0.2s'
+                                                }}>
+                                                    <input
+                                                        type="radio"
+                                                        name="upgradeMode"
+                                                        value="upgrade"
+                                                        checked={upgradeMode === 'upgrade'}
+                                                        onChange={(e) => {
+                                                            setUpgradeMode(e.target.value);
+                                                            setConfirmUpgrade(false);
+                                                        }}
+                                                        style={{ accentColor: theme.colors.accent }}
+                                                    />
+                                                    <span style={{ color: theme.colors.primaryText, fontSize: '13px' }}>
+                                                        Upgrade
+                                                    </span>
+                                                </label>
+                                                <label style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '6px',
+                                                    cursor: 'pointer',
+                                                    padding: '10px 14px',
+                                                    backgroundColor: upgradeMode === 'reinstall' ? `${theme.colors.warning}20` : theme.colors.secondaryBg,
+                                                    border: `1px solid ${upgradeMode === 'reinstall' ? theme.colors.warning : theme.colors.border}`,
+                                                    borderRadius: '6px',
+                                                    transition: 'all 0.2s'
+                                                }}>
+                                                    <input
+                                                        type="radio"
+                                                        name="upgradeMode"
+                                                        value="reinstall"
+                                                        checked={upgradeMode === 'reinstall'}
+                                                        onChange={(e) => {
+                                                            setUpgradeMode(e.target.value);
+                                                            setConfirmUpgrade(false);
+                                                        }}
+                                                        style={{ accentColor: theme.colors.warning }}
+                                                    />
+                                                    <span style={{ color: theme.colors.primaryText, fontSize: '13px' }}>
+                                                        Reinstall
+                                                    </span>
+                                                </label>
+                                            </div>
+                                            <p style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '11px', 
+                                                marginTop: '8px',
+                                                marginBottom: 0
+                                            }}>
+                                                {upgradeMode === 'upgrade' 
+                                                    ? '✓ Preserves stable memory and heap data. Safe for production upgrades.'
+                                                    : '⚠️ Clears ALL canister state including stable memory. Use with caution!'}
+                                            </p>
+                                        </div>
+                                        
+                                        {/* File Upload */}
+                                        <div style={{ marginBottom: '16px' }}>
+                                            <label style={{ 
+                                                display: 'block',
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '12px',
+                                                marginBottom: '8px'
+                                            }}>
+                                                WASM File
+                                            </label>
+                                            <div style={{
+                                                border: `2px dashed ${theme.colors.border}`,
+                                                borderRadius: '8px',
+                                                padding: '20px',
+                                                textAlign: 'center',
+                                                backgroundColor: theme.colors.secondaryBg,
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onClick={() => wasmInputRef.current?.click()}
+                                            onDragOver={(e) => {
+                                                e.preventDefault();
+                                                e.currentTarget.style.borderColor = theme.colors.accent;
+                                            }}
+                                            onDragLeave={(e) => {
+                                                e.preventDefault();
+                                                e.currentTarget.style.borderColor = theme.colors.border;
+                                            }}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                e.currentTarget.style.borderColor = theme.colors.border;
+                                                const file = e.dataTransfer.files[0];
+                                                if (file && (file.name.endsWith('.wasm') || file.name.endsWith('.wasm.gz'))) {
+                                                    setWasmFile(file);
+                                                    setConfirmUpgrade(false);
+                                                } else {
+                                                    setError('Please drop a valid .wasm or .wasm.gz file');
+                                                }
+                                            }}
+                                            >
+                                                <input
+                                                    ref={wasmInputRef}
+                                                    type="file"
+                                                    accept=".wasm,.wasm.gz"
+                                                    onChange={handleWasmFileChange}
+                                                    style={{ display: 'none' }}
+                                                />
+                                                {wasmFile ? (
+                                                    <div>
+                                                        <div style={{ 
+                                                            color: theme.colors.success, 
+                                                            fontSize: '14px',
+                                                            fontWeight: '500',
+                                                            marginBottom: '4px'
+                                                        }}>
+                                                            ✓ {wasmFile.name}
+                                                        </div>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                            {(wasmFile.size / 1024).toFixed(2)} KB
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div>
+                                                        <FaUpload style={{ 
+                                                            color: theme.colors.mutedText, 
+                                                            fontSize: '24px',
+                                                            marginBottom: '8px'
+                                                        }} />
+                                                        <div style={{ color: theme.colors.primaryText, fontSize: '13px' }}>
+                                                            Click to select or drag & drop
+                                                        </div>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '4px' }}>
+                                                            .wasm or .wasm.gz files
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Reinstall Warning */}
+                                        {upgradeMode === 'reinstall' && wasmFile && (
+                                            <div style={{
+                                                backgroundColor: `${theme.colors.warning}15`,
+                                                border: `1px solid ${theme.colors.warning}`,
+                                                borderRadius: '6px',
+                                                padding: '12px',
+                                                marginBottom: '16px',
+                                                display: 'flex',
+                                                alignItems: 'flex-start',
+                                                gap: '10px'
+                                            }}>
+                                                <FaExclamationTriangle style={{ 
+                                                    color: theme.colors.warning,
+                                                    flexShrink: 0,
+                                                    marginTop: '2px'
+                                                }} />
+                                                <div>
+                                                    <div style={{ 
+                                                        color: theme.colors.warning, 
+                                                        fontWeight: '600',
+                                                        fontSize: '13px',
+                                                        marginBottom: '4px'
+                                                    }}>
+                                                        Warning: Reinstall will clear all data!
+                                                    </div>
+                                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                        All canister state, including stable memory, will be permanently deleted.
+                                                        This action cannot be undone.
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Confirmation Checkbox */}
+                                        {wasmFile && (
+                                            <div style={{ marginBottom: '16px' }}>
+                                                <label style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '8px',
+                                                    cursor: 'pointer',
+                                                    padding: '10px 12px',
+                                                    backgroundColor: confirmUpgrade ? `${theme.colors.accent}10` : theme.colors.secondaryBg,
+                                                    borderRadius: '6px',
+                                                    border: `1px solid ${confirmUpgrade ? theme.colors.accent : theme.colors.border}`
+                                                }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={confirmUpgrade}
+                                                        onChange={(e) => setConfirmUpgrade(e.target.checked)}
+                                                        style={{ 
+                                                            accentColor: theme.colors.accent,
+                                                            width: '16px',
+                                                            height: '16px'
+                                                        }}
+                                                    />
+                                                    <span style={{ color: theme.colors.primaryText, fontSize: '13px' }}>
+                                                        I understand this will {upgradeMode === 'reinstall' ? 'clear all canister data and reinstall' : 'upgrade'} the canister
+                                                    </span>
+                                                </label>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Upgrade Button */}
+                                        <button
+                                            onClick={handleUpgradeCanister}
+                                            disabled={upgrading || !wasmFile || !confirmUpgrade}
+                                            style={{
+                                                width: '100%',
+                                                backgroundColor: upgradeMode === 'reinstall' ? theme.colors.warning : theme.colors.accent,
+                                                color: '#fff',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                padding: '12px 24px',
+                                                cursor: (upgrading || !wasmFile || !confirmUpgrade) ? 'not-allowed' : 'pointer',
+                                                opacity: (upgrading || !wasmFile || !confirmUpgrade) ? 0.6 : 1,
+                                                fontSize: '14px',
+                                                fontWeight: '600',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '8px'
+                                            }}
+                                        >
+                                            {upgrading ? (
+                                                <>
+                                                    <span style={{
+                                                        width: '16px',
+                                                        height: '16px',
+                                                        border: '2px solid transparent',
+                                                        borderTopColor: '#fff',
+                                                        borderRadius: '50%',
+                                                        animation: 'spin 1s linear infinite'
+                                                    }} />
+                                                    {upgradeMode === 'reinstall' ? 'Reinstalling...' : 'Upgrading...'}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <FaUpload />
+                                                    {upgradeMode === 'reinstall' ? 'Reinstall Canister' : 'Upgrade Canister'}
+                                                </>
+                                            )}
+                                        </button>
+                                        
+                                        <p style={{ 
+                                            color: theme.colors.mutedText, 
+                                            fontSize: '11px', 
+                                            marginTop: '12px',
+                                            marginBottom: 0,
+                                            textAlign: 'center'
+                                        }}>
+                                            The WASM module will be installed on the canister via the IC management canister.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Controllers */}
                         <div>
