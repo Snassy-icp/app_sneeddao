@@ -131,9 +131,6 @@ function IcpNeuronManager() {
     const [neuronInfo, setNeuronInfo] = useState(null);
     const [fullNeuron, setFullNeuron] = useState(null);
     
-    // Registration form state
-    const [registerNeuronId, setRegisterNeuronId] = useState('');
-    const [registerMemo, setRegisterMemo] = useState('');
     
     // UI state
     const [loading, setLoading] = useState(true);
@@ -1609,85 +1606,6 @@ function IcpNeuronManager() {
         }
     };
 
-    const handleRegisterNeuron = async () => {
-        if (!registerNeuronId) {
-            setError('Please enter a neuron ID');
-            return;
-        }
-        if (!registerMemo) {
-            setError('Please enter the neuron memo');
-            return;
-        }
-        
-        setActionLoading('register');
-        setError('');
-        setSuccess('');
-        
-        try {
-            const agent = getAgent();
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            const manager = createManagerActor(canisterId, { agent });
-            
-            const neuronId = { id: BigInt(registerNeuronId) };
-            const memo = BigInt(registerMemo);
-            const result = await manager.registerNeuron(neuronId, memo);
-            
-            if ('Ok' in result) {
-                setSuccess(`✅ Neuron ${registerNeuronId} registered successfully`);
-                setRegisterNeuronId('');
-                setRegisterMemo('');
-                fetchManagerData();
-            } else {
-                handleOperationError(result.Err);
-            }
-        } catch (err) {
-            console.error('Error registering neuron:', err);
-            setError(`Error: ${err.message}`);
-        } finally {
-            setActionLoading('');
-        }
-    };
-
-    const handleDeregisterNeuron = async (neuronId) => {
-        if (!window.confirm(`Are you sure you want to deregister neuron ${neuronId.id.toString()}? This will NOT delete the neuron, just stop managing it.`)) {
-            return;
-        }
-        
-        setActionLoading('deregister');
-        setError('');
-        setSuccess('');
-        
-        try {
-            const agent = getAgent();
-            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
-                await agent.fetchRootKey();
-            }
-            const manager = createManagerActor(canisterId, { agent });
-            
-            const result = await manager.deregisterNeuron(neuronId);
-            
-            if ('Ok' in result) {
-                setSuccess(`✅ Neuron ${neuronId.id.toString()} deregistered`);
-                // If we deregistered the selected neuron, clear selection
-                if (selectedNeuronId && selectedNeuronId.id === neuronId.id) {
-                    setSelectedNeuronId(null);
-                    setNeuronInfo(null);
-                    setFullNeuron(null);
-                }
-                fetchManagerData();
-            } else {
-                handleOperationError(result.Err);
-            }
-        } catch (err) {
-            console.error('Error deregistering neuron:', err);
-            setError(`Error: ${err.message}`);
-        } finally {
-            setActionLoading('');
-        }
-    };
-
     const handleOperationError = (err) => {
         if ('GovernanceError' in err) {
             setError(`Governance error: ${err.GovernanceError.error_message}`);
@@ -2765,7 +2683,7 @@ function IcpNeuronManager() {
                                     </select>
                                 </div>
                                 
-                                {/* Neuron list with deregister buttons */}
+                                {/* Neuron list */}
                                 <div style={{ marginTop: '15px', maxHeight: '200px', overflowY: 'auto' }}>
                                     {neuronIds.map((n) => (
                                         <div 
@@ -2785,30 +2703,16 @@ function IcpNeuronManager() {
                                             <span style={{ color: theme.colors.primaryText, fontFamily: 'monospace' }}>
                                                 Neuron #{n.id.toString()}
                                             </span>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleDeregisterNeuron(n); }}
-                                                disabled={actionLoading === 'deregister'}
-                                                style={{ 
-                                                    background: 'transparent', 
-                                                    color: theme.colors.error || '#ef4444', 
-                                                    border: 'none',
-                                                    cursor: 'pointer',
-                                                    fontSize: '12px',
-                                                    padding: '4px 8px',
-                                                }}
-                                            >
-                                                ✕ Remove
-                                            </button>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         )}
 
-                        {/* Create or Register Neuron Section */}
+                        {/* Create Neuron Section */}
                         <div style={cardStyle}>
                             <h2 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>
-                                {neuronIds.length === 0 ? 'Create Your First Neuron' : 'Add Another Neuron'}
+                                {neuronIds.length === 0 ? 'Create Your First Neuron' : 'Create Another Neuron'}
                             </h2>
                             
                             {/* Create new neuron */}
@@ -2859,54 +2763,6 @@ function IcpNeuronManager() {
                                 <p style={{ color: theme.colors.mutedText, fontSize: '11px', margin: 0 }}>
                                     💡 Min 183 days to vote, max 8 years. Canister Balance: {formatIcp(icpBalance)} ICP
                                 </p>
-                            </div>
-                            
-                            <hr style={{ border: 'none', borderTop: `1px solid ${theme.colors.border}`, margin: '20px 0' }} />
-                            
-                            {/* Register existing neuron */}
-                            <div>
-                                <h4 style={{ color: theme.colors.primaryText, marginBottom: '10px', fontSize: '14px' }}>
-                                    📝 Register Existing Neuron
-                                </h4>
-                                <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
-                                    Register a neuron that this canister already controls (e.g., after upgrade or manual transfer).
-                                </p>
-                                <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                                    <div style={{ flex: 1, minWidth: '150px' }}>
-                                        <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
-                                            Neuron ID
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={registerNeuronId}
-                                            onChange={(e) => setRegisterNeuronId(e.target.value)}
-                                            style={inputStyle}
-                                            placeholder="12345678901234567890"
-                                        />
-                                    </div>
-                                    <div style={{ flex: 1, minWidth: '150px' }}>
-                                        <label style={{ color: theme.colors.mutedText, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
-                                            Memo
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={registerMemo}
-                                            onChange={(e) => setRegisterMemo(e.target.value)}
-                                            style={inputStyle}
-                                            placeholder="Memo used when creating"
-                                        />
-                                    </div>
-                                    <button
-                                        onClick={handleRegisterNeuron}
-                                        disabled={actionLoading === 'register'}
-                                        style={{ 
-                                            ...secondaryButtonStyle, 
-                                            opacity: actionLoading === 'register' ? 0.6 : 1,
-                                        }}
-                                    >
-                                        {actionLoading === 'register' ? '⏳...' : '📝 Register'}
-                                    </button>
-                                </div>
                             </div>
                         </div>
 
