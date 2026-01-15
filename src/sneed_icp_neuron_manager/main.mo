@@ -42,8 +42,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     var managersStable: [(Principal, T.ManagerInfo)] = [];
     transient var managers = HashMap.HashMap<Principal, T.ManagerInfo>(10, Principal.equal, Principal.hash);
     
-    // Current version
+    // Current version (stable - preserved across upgrades)
     var currentVersion: T.Version = CURRENT_VERSION;
+    
+    // Factory version (transient - always reflects compiled WASM version)
+    transient let factoryVersion: T.Version = CURRENT_VERSION;
     
     // Official versions registry (list of known verified WASM versions)
     var officialVersions: [T.OfficialVersion] = [];
@@ -207,12 +210,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // ============================================
 
     public query func getCurrentVersion(): async T.Version {
-        currentVersion;
+        factoryVersion;
     };
 
-    public shared ({ caller }) func setCurrentVersion(version: T.Version): async () {
-        assert(isAdmin(caller));
-        currentVersion := version;
+    public query func getStoredVersion(): async T.Version {
+        currentVersion;
     };
 
     // ============================================
@@ -488,7 +490,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 canisterId = canisterId;
                 owner = caller;
                 createdAt = Time.now();
-                version = currentVersion;
+                version = factoryVersion;
                 neuronId = null;
             };
             managers.put(canisterId, managerInfo);
