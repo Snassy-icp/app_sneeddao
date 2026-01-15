@@ -293,7 +293,11 @@ export default function CanisterPage() {
     
     // WASM upgrade state
     const [showUpgradeSection, setShowUpgradeSection] = useState(false);
+    const [wasmSourceMode, setWasmSourceMode] = useState('file'); // 'file' or 'url'
     const [wasmFile, setWasmFile] = useState(null);
+    const [wasmUrl, setWasmUrl] = useState('');
+    const [wasmFromUrl, setWasmFromUrl] = useState(null); // { data: Uint8Array, size: number, name: string }
+    const [fetchingWasm, setFetchingWasm] = useState(false);
     const [upgradeMode, setUpgradeMode] = useState('upgrade'); // 'upgrade' or 'reinstall'
     const [upgrading, setUpgrading] = useState(false);
     const [confirmUpgrade, setConfirmUpgrade] = useState(false);
@@ -917,9 +921,87 @@ export default function CanisterPage() {
         }
     };
 
+    // Fetch WASM from URL
+    const handleFetchWasmFromUrl = async () => {
+        if (!wasmUrl.trim()) {
+            setError('Please enter a WASM URL');
+            return;
+        }
+        
+        setFetchingWasm(true);
+        setError(null);
+        setWasmFromUrl(null);
+        setConfirmUpgrade(false);
+        
+        try {
+            // Extract filename from URL
+            const urlObj = new URL(wasmUrl.trim());
+            let filename = urlObj.pathname.split('/').pop() || 'module.wasm';
+            
+            // Fetch the WASM file
+            const response = await fetch(wasmUrl.trim());
+            
+            if (!response.ok) {
+                throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+            }
+            
+            const contentType = response.headers.get('content-type');
+            const arrayBuffer = await response.arrayBuffer();
+            const data = new Uint8Array(arrayBuffer);
+            
+            if (data.length === 0) {
+                throw new Error('Downloaded file is empty');
+            }
+            
+            // Basic validation: check for WASM magic bytes (0x00 0x61 0x73 0x6D = "\0asm")
+            // or gzip magic bytes (0x1f 0x8b)
+            const isWasm = data[0] === 0x00 && data[1] === 0x61 && data[2] === 0x73 && data[3] === 0x6D;
+            const isGzip = data[0] === 0x1F && data[1] === 0x8B;
+            
+            if (!isWasm && !isGzip) {
+                console.warn('File does not appear to be a valid WASM or gzipped WASM file');
+            }
+            
+            // Update filename if it doesn't have extension
+            if (!filename.endsWith('.wasm') && !filename.endsWith('.wasm.gz')) {
+                filename = isGzip ? filename + '.wasm.gz' : filename + '.wasm';
+            }
+            
+            setWasmFromUrl({
+                data,
+                size: data.length,
+                name: filename
+            });
+            
+            console.log(`WASM fetched from URL: ${filename} (${(data.length / 1024).toFixed(2)} KB)`);
+            
+        } catch (err) {
+            console.error('Error fetching WASM from URL:', err);
+            setError(`Failed to fetch WASM: ${err.message}`);
+        } finally {
+            setFetchingWasm(false);
+        }
+    };
+
+    // Get the current WASM module (from file or URL)
+    const getWasmModule = () => {
+        if (wasmSourceMode === 'url') {
+            return wasmFromUrl;
+        }
+        return wasmFile;
+    };
+
+    // Check if we have a valid WASM ready
+    const hasValidWasm = () => {
+        if (wasmSourceMode === 'url') {
+            return wasmFromUrl !== null;
+        }
+        return wasmFile !== null;
+    };
+
     // Handle canister upgrade
     const handleUpgradeCanister = async () => {
-        if (!identity || !canisterIdParam || !wasmFile) return;
+        if (!identity || !canisterIdParam || !hasValidWasm()) return;
         
         setUpgrading(true);
         setError(null);
@@ -945,10 +1027,25 @@ export default function CanisterPage() {
                 },
             });
             
-            // Read WASM file as Uint8Array
-            console.log(`Reading WASM file: ${wasmFile.name} (${(wasmFile.size / 1024).toFixed(2)} KB)`);
-            const wasmBuffer = await wasmFile.arrayBuffer();
-            const wasmModule = new Uint8Array(wasmBuffer);
+            // Get WASM module (from file or URL)
+            let wasmModule;
+            let wasmName;
+            let wasmSize;
+            
+            if (wasmSourceMode === 'url' && wasmFromUrl) {
+                wasmModule = wasmFromUrl.data;
+                wasmName = wasmFromUrl.name;
+                wasmSize = wasmFromUrl.size;
+                console.log(`Using WASM from URL: ${wasmName} (${(wasmSize / 1024).toFixed(2)} KB)`);
+            } else if (wasmFile) {
+                console.log(`Reading WASM file: ${wasmFile.name} (${(wasmFile.size / 1024).toFixed(2)} KB)`);
+                const wasmBuffer = await wasmFile.arrayBuffer();
+                wasmModule = new Uint8Array(wasmBuffer);
+                wasmName = wasmFile.name;
+                wasmSize = wasmFile.size;
+            } else {
+                throw new Error('No WASM module available');
+            }
             
             console.log(`Upgrading canister with mode: ${upgradeMode}`);
             console.log(`WASM module size: ${wasmModule.length} bytes`);
@@ -1008,6 +1105,9 @@ export default function CanisterPage() {
             
             // Reset state
             setWasmFile(null);
+            setWasmUrl('');
+            setWasmFromUrl(null);
+            setWasmSourceMode('file');
             setConfirmUpgrade(false);
             setShowUpgradeSection(false);
             setInitArgMode('none');
@@ -1878,6 +1978,9 @@ export default function CanisterPage() {
                                             setShowUpgradeSection(!showUpgradeSection);
                                             if (!showUpgradeSection) {
                                                 setWasmFile(null);
+                                                setWasmUrl('');
+                                                setWasmFromUrl(null);
+                                                setWasmSourceMode('file');
                                                 setConfirmUpgrade(false);
                                                 setUpgradeMode('upgrade');
                                                 setInitArgMode('none');
@@ -1979,7 +2082,7 @@ export default function CanisterPage() {
                                             </p>
                                         </div>
                                         
-                                        {/* File Upload */}
+                                        {/* WASM Source */}
                                         <div style={{ marginBottom: '16px' }}>
                                             <label style={{ 
                                                 display: 'block',
@@ -1987,75 +2090,218 @@ export default function CanisterPage() {
                                                 fontSize: '12px',
                                                 marginBottom: '8px'
                                             }}>
-                                                WASM File
+                                                WASM Source
                                             </label>
-                                            <div style={{
-                                                border: `2px dashed ${theme.colors.border}`,
-                                                borderRadius: '8px',
-                                                padding: '20px',
-                                                textAlign: 'center',
-                                                backgroundColor: theme.colors.secondaryBg,
-                                                cursor: 'pointer',
-                                                transition: 'all 0.2s'
-                                            }}
-                                            onClick={() => wasmInputRef.current?.click()}
-                                            onDragOver={(e) => {
-                                                e.preventDefault();
-                                                e.currentTarget.style.borderColor = theme.colors.accent;
-                                            }}
-                                            onDragLeave={(e) => {
-                                                e.preventDefault();
-                                                e.currentTarget.style.borderColor = theme.colors.border;
-                                            }}
-                                            onDrop={(e) => {
-                                                e.preventDefault();
-                                                e.currentTarget.style.borderColor = theme.colors.border;
-                                                const file = e.dataTransfer.files[0];
-                                                if (file && (file.name.endsWith('.wasm') || file.name.endsWith('.wasm.gz'))) {
-                                                    setWasmFile(file);
-                                                    setConfirmUpgrade(false);
-                                                } else {
-                                                    setError('Please drop a valid .wasm or .wasm.gz file');
-                                                }
-                                            }}
-                                            >
-                                                <input
-                                                    ref={wasmInputRef}
-                                                    type="file"
-                                                    accept=".wasm,.wasm.gz"
-                                                    onChange={handleWasmFileChange}
-                                                    style={{ display: 'none' }}
-                                                />
-                                                {wasmFile ? (
-                                                    <div>
-                                                        <div style={{ 
-                                                            color: theme.colors.success, 
-                                                            fontSize: '14px',
-                                                            fontWeight: '500',
-                                                            marginBottom: '4px'
-                                                        }}>
-                                                            ✓ {wasmFile.name}
-                                                        </div>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
-                                                            {(wasmFile.size / 1024).toFixed(2)} KB
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <div>
-                                                        <FaUpload style={{ 
-                                                            color: theme.colors.mutedText, 
-                                                            fontSize: '24px',
-                                                            marginBottom: '8px'
-                                                        }} />
-                                                        <div style={{ color: theme.colors.primaryText, fontSize: '13px' }}>
-                                                            Click to select or drag & drop
-                                                        </div>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '4px' }}>
-                                                            .wasm or .wasm.gz files
-                                                        </div>
-                                                    </div>
-                                                )}
+                                            
+                                            {/* Source Mode Tabs */}
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                gap: '0',
+                                                marginBottom: '12px',
+                                                borderRadius: '6px',
+                                                overflow: 'hidden',
+                                                border: `1px solid ${theme.colors.border}`
+                                            }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setWasmSourceMode('file');
+                                                        setConfirmUpgrade(false);
+                                                    }}
+                                                    style={{
+                                                        flex: 1,
+                                                        padding: '10px 16px',
+                                                        backgroundColor: wasmSourceMode === 'file' 
+                                                            ? theme.colors.accent 
+                                                            : theme.colors.secondaryBg,
+                                                        color: wasmSourceMode === 'file' 
+                                                            ? '#fff' 
+                                                            : theme.colors.mutedText,
+                                                        border: 'none',
+                                                        cursor: 'pointer',
+                                                        fontSize: '13px',
+                                                        fontWeight: wasmSourceMode === 'file' ? '600' : '400',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                >
+                                                    📁 Upload File
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setWasmSourceMode('url');
+                                                        setConfirmUpgrade(false);
+                                                    }}
+                                                    style={{
+                                                        flex: 1,
+                                                        padding: '10px 16px',
+                                                        backgroundColor: wasmSourceMode === 'url' 
+                                                            ? theme.colors.accent 
+                                                            : theme.colors.secondaryBg,
+                                                        color: wasmSourceMode === 'url' 
+                                                            ? '#fff' 
+                                                            : theme.colors.mutedText,
+                                                        border: 'none',
+                                                        borderLeft: `1px solid ${theme.colors.border}`,
+                                                        cursor: 'pointer',
+                                                        fontSize: '13px',
+                                                        fontWeight: wasmSourceMode === 'url' ? '600' : '400',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                >
+                                                    🔗 From URL
+                                                </button>
                                             </div>
+                                            
+                                            {/* File Upload Mode */}
+                                            {wasmSourceMode === 'file' && (
+                                                <div style={{
+                                                    border: `2px dashed ${theme.colors.border}`,
+                                                    borderRadius: '8px',
+                                                    padding: '20px',
+                                                    textAlign: 'center',
+                                                    backgroundColor: theme.colors.secondaryBg,
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.2s'
+                                                }}
+                                                onClick={() => wasmInputRef.current?.click()}
+                                                onDragOver={(e) => {
+                                                    e.preventDefault();
+                                                    e.currentTarget.style.borderColor = theme.colors.accent;
+                                                }}
+                                                onDragLeave={(e) => {
+                                                    e.preventDefault();
+                                                    e.currentTarget.style.borderColor = theme.colors.border;
+                                                }}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    e.currentTarget.style.borderColor = theme.colors.border;
+                                                    const file = e.dataTransfer.files[0];
+                                                    if (file && (file.name.endsWith('.wasm') || file.name.endsWith('.wasm.gz'))) {
+                                                        setWasmFile(file);
+                                                        setConfirmUpgrade(false);
+                                                    } else {
+                                                        setError('Please drop a valid .wasm or .wasm.gz file');
+                                                    }
+                                                }}
+                                                >
+                                                    <input
+                                                        ref={wasmInputRef}
+                                                        type="file"
+                                                        accept=".wasm,.wasm.gz"
+                                                        onChange={handleWasmFileChange}
+                                                        style={{ display: 'none' }}
+                                                    />
+                                                    {wasmFile ? (
+                                                        <div>
+                                                            <div style={{ 
+                                                                color: theme.colors.success, 
+                                                                fontSize: '14px',
+                                                                fontWeight: '500',
+                                                                marginBottom: '4px'
+                                                            }}>
+                                                                ✓ {wasmFile.name}
+                                                            </div>
+                                                            <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                                {(wasmFile.size / 1024).toFixed(2)} KB
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div>
+                                                            <FaUpload style={{ 
+                                                                color: theme.colors.mutedText, 
+                                                                fontSize: '24px',
+                                                                marginBottom: '8px'
+                                                            }} />
+                                                            <div style={{ color: theme.colors.primaryText, fontSize: '13px' }}>
+                                                                Click to select or drag & drop
+                                                            </div>
+                                                            <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '4px' }}>
+                                                                .wasm or .wasm.gz files
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            
+                                            {/* URL Mode */}
+                                            {wasmSourceMode === 'url' && (
+                                                <div>
+                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                        <input
+                                                            type="text"
+                                                            value={wasmUrl}
+                                                            onChange={(e) => {
+                                                                setWasmUrl(e.target.value);
+                                                                setWasmFromUrl(null);
+                                                                setConfirmUpgrade(false);
+                                                            }}
+                                                            placeholder="https://github.com/org/repo/releases/download/v1.0/module.wasm"
+                                                            style={{
+                                                                flex: 1,
+                                                                padding: '10px 12px',
+                                                                border: `1px solid ${theme.colors.border}`,
+                                                                borderRadius: '6px',
+                                                                backgroundColor: theme.colors.secondaryBg,
+                                                                color: theme.colors.primaryText,
+                                                                fontSize: '13px',
+                                                                outline: 'none'
+                                                            }}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleFetchWasmFromUrl}
+                                                            disabled={fetchingWasm || !wasmUrl.trim()}
+                                                            style={{
+                                                                padding: '10px 16px',
+                                                                backgroundColor: theme.colors.accent,
+                                                                color: '#fff',
+                                                                border: 'none',
+                                                                borderRadius: '6px',
+                                                                cursor: (fetchingWasm || !wasmUrl.trim()) ? 'not-allowed' : 'pointer',
+                                                                opacity: (fetchingWasm || !wasmUrl.trim()) ? 0.6 : 1,
+                                                                fontSize: '13px',
+                                                                fontWeight: '500',
+                                                                whiteSpace: 'nowrap'
+                                                            }}
+                                                        >
+                                                            {fetchingWasm ? 'Fetching...' : 'Fetch WASM'}
+                                                        </button>
+                                                    </div>
+                                                    
+                                                    {/* Fetched WASM Info */}
+                                                    {wasmFromUrl && (
+                                                        <div style={{
+                                                            marginTop: '12px',
+                                                            padding: '12px',
+                                                            backgroundColor: `${theme.colors.success}15`,
+                                                            border: `1px solid ${theme.colors.success}30`,
+                                                            borderRadius: '6px'
+                                                        }}>
+                                                            <div style={{ 
+                                                                color: theme.colors.success, 
+                                                                fontSize: '14px',
+                                                                fontWeight: '500',
+                                                                marginBottom: '4px'
+                                                            }}>
+                                                                ✓ {wasmFromUrl.name}
+                                                            </div>
+                                                            <div style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                                                {(wasmFromUrl.size / 1024).toFixed(2)} KB downloaded
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    <p style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        fontSize: '11px', 
+                                                        marginTop: '8px',
+                                                        marginBottom: 0
+                                                    }}>
+                                                        Enter a direct URL to a .wasm or .wasm.gz file. The file will be fetched and used for the upgrade.
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                         
                                         {/* Init Arguments */}
@@ -2265,7 +2511,7 @@ export default function CanisterPage() {
                                         </div>
                                         
                                         {/* Reinstall Warning */}
-                                        {upgradeMode === 'reinstall' && wasmFile && (
+                                        {upgradeMode === 'reinstall' && hasValidWasm() && (
                                             <div style={{
                                                 backgroundColor: `${theme.colors.warning}15`,
                                                 border: `1px solid ${theme.colors.warning}`,
@@ -2299,7 +2545,7 @@ export default function CanisterPage() {
                                         )}
                                         
                                         {/* Confirmation Checkbox */}
-                                        {wasmFile && (
+                                        {hasValidWasm() && (
                                             <div style={{ marginBottom: '16px' }}>
                                                 <label style={{ 
                                                     display: 'flex', 
@@ -2331,7 +2577,7 @@ export default function CanisterPage() {
                                         {/* Upgrade Button */}
                                         <button
                                             onClick={handleUpgradeCanister}
-                                            disabled={upgrading || !wasmFile || !confirmUpgrade}
+                                            disabled={upgrading || !hasValidWasm() || !confirmUpgrade}
                                             style={{
                                                 width: '100%',
                                                 backgroundColor: upgradeMode === 'reinstall' ? theme.colors.warning : theme.colors.accent,
@@ -2339,8 +2585,8 @@ export default function CanisterPage() {
                                                 border: 'none',
                                                 borderRadius: '6px',
                                                 padding: '12px 24px',
-                                                cursor: (upgrading || !wasmFile || !confirmUpgrade) ? 'not-allowed' : 'pointer',
-                                                opacity: (upgrading || !wasmFile || !confirmUpgrade) ? 0.6 : 1,
+                                                cursor: (upgrading || !hasValidWasm() || !confirmUpgrade) ? 'not-allowed' : 'pointer',
+                                                opacity: (upgrading || !hasValidWasm() || !confirmUpgrade) ? 0.6 : 1,
                                                 fontSize: '14px',
                                                 fontWeight: '600',
                                                 display: 'flex',
