@@ -611,7 +611,7 @@ module {
 
     public type IcpXdrConversionRateResponse = {
         data: IcpXdrConversionRate;
-        hash: [Nat8];
+        hash_tree: [Nat8];
         certificate: [Nat8];
     };
 
