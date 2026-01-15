@@ -2236,7 +2236,7 @@ export default function CanisterPage() {
                                                                 setWasmFromUrl(null);
                                                                 setConfirmUpgrade(false);
                                                             }}
-                                                            placeholder="https://github.com/org/repo/releases/download/v1.0/module.wasm"
+                                                            placeholder="https://raw.githubusercontent.com/org/repo/main/path/module.wasm"
                                                             style={{
                                                                 flex: 1,
                                                                 padding: '10px 12px',
@@ -2298,7 +2298,12 @@ export default function CanisterPage() {
                                                         marginTop: '8px',
                                                         marginBottom: 0
                                                     }}>
-                                                        Enter a direct URL to a .wasm or .wasm.gz file. The file will be fetched and used for the upgrade.
+                                                        Enter a direct URL to a .wasm or .wasm.gz file. For GitHub repos, use <code style={{ 
+                                                            backgroundColor: theme.colors.tertiaryBg, 
+                                                            padding: '1px 4px', 
+                                                            borderRadius: '3px',
+                                                            fontSize: '10px'
+                                                        }}>raw.githubusercontent.com</code> (not github.com/tree/).
                                                     </p>
                                                 </div>
                                             )}
