@@ -193,6 +193,10 @@ function IcpNeuronManager() {
     
     // Known neurons (fetched from governance)
     const [knownNeurons, setKnownNeurons] = useState(KNOWN_NEURONS_FALLBACK);
+    
+    // Collapsible section states
+    const [canisterSectionExpanded, setCanisterSectionExpanded] = useState(true);
+    const [neuronSectionExpanded, setNeuronSectionExpanded] = useState(true);
 
     const getAgent = useCallback(() => {
         const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
@@ -1863,6 +1867,59 @@ function IcpNeuronManager() {
                     </div>
                 ) : managerInfo && (
                     <>
+                        {/* ============================================ */}
+                        {/* CANISTER SECTION */}
+                        {/* ============================================ */}
+                        <div style={{ marginBottom: '20px' }}>
+                            {/* Section Header */}
+                            <button
+                                onClick={() => setCanisterSectionExpanded(!canisterSectionExpanded)}
+                                style={{
+                                    width: '100%',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '16px 20px',
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: canisterSectionExpanded ? '12px 12px 0 0' : '12px',
+                                    cursor: 'pointer',
+                                    color: theme.colors.primaryText,
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <span style={{ fontSize: '20px' }}>🏛️</span>
+                                    <span style={{ fontSize: '18px', fontWeight: '600' }}>Canister</span>
+                                    <span style={{ 
+                                        fontSize: '12px', 
+                                        color: theme.colors.mutedText,
+                                        backgroundColor: theme.colors.tertiaryBg || theme.colors.primaryBg,
+                                        padding: '4px 10px',
+                                        borderRadius: '12px',
+                                    }}>
+                                        {formatIcp(icpBalance)} ICP {canisterStatus ? `• ${formatCycles(canisterStatus.cycles)}` : ''}
+                                    </span>
+                                </div>
+                                <span style={{ 
+                                    fontSize: '18px',
+                                    transform: canisterSectionExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                    transition: 'transform 0.2s ease',
+                                    color: theme.colors.mutedText,
+                                }}>
+                                    ▼
+                                </span>
+                            </button>
+                            
+                            {/* Section Content */}
+                            {canisterSectionExpanded && (
+                                <div style={{ 
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderTop: 'none',
+                                    borderRadius: '0 0 12px 12px',
+                                    overflow: 'hidden',
+                                    padding: '20px',
+                                }}>
+                        
                         {/* Manager Info Card */}
                         <div style={cardStyle}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
@@ -2601,6 +2658,62 @@ function IcpNeuronManager() {
                                 Fee: {(withdrawTokenFee / Math.pow(10, withdrawTokenDecimals)).toFixed(withdrawTokenDecimals > 4 ? 4 : withdrawTokenDecimals)} {withdrawTokenSymbol}
                             </p>
                         </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* ============================================ */}
+                        {/* NEURONS SECTION */}
+                        {/* ============================================ */}
+                        <div style={{ marginBottom: '20px' }}>
+                            {/* Section Header */}
+                            <button
+                                onClick={() => setNeuronSectionExpanded(!neuronSectionExpanded)}
+                                style={{
+                                    width: '100%',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '16px 20px',
+                                    backgroundColor: theme.colors.secondaryBg,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: neuronSectionExpanded ? '12px 12px 0 0' : '12px',
+                                    cursor: 'pointer',
+                                    color: theme.colors.primaryText,
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <span style={{ fontSize: '20px' }}>🧠</span>
+                                    <span style={{ fontSize: '18px', fontWeight: '600' }}>Neurons</span>
+                                    <span style={{ 
+                                        fontSize: '12px', 
+                                        color: theme.colors.mutedText,
+                                        backgroundColor: theme.colors.tertiaryBg || theme.colors.primaryBg,
+                                        padding: '4px 10px',
+                                        borderRadius: '12px',
+                                    }}>
+                                        {neuronIds.length} neuron{neuronIds.length !== 1 ? 's' : ''}
+                                    </span>
+                                </div>
+                                <span style={{ 
+                                    fontSize: '18px',
+                                    transform: neuronSectionExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                                    transition: 'transform 0.2s ease',
+                                    color: theme.colors.mutedText,
+                                }}>
+                                    ▼
+                                </span>
+                            </button>
+                            
+                            {/* Section Content */}
+                            {neuronSectionExpanded && (
+                                <div style={{ 
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderTop: 'none',
+                                    borderRadius: '0 0 12px 12px',
+                                    overflow: 'hidden',
+                                    padding: '20px',
+                                }}>
 
                         {/* Success/Error Messages */}
                         {success && (
@@ -3796,6 +3909,9 @@ function IcpNeuronManager() {
                                 )}
                             </>
                         )}
+                                </div>
+                            )}
+                        </div>
                     </>
                 )}
             </main>
