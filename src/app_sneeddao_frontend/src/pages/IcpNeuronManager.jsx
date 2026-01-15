@@ -1998,6 +1998,65 @@ function IcpNeuronManager() {
                             </p>
                         </div>
 
+                        {/* Withdraw ICP from Canister */}
+                        <div style={cardStyle}>
+                            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 5px 0' }}>💸 Withdraw ICP</h3>
+                            <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
+                                Withdraw ICP from this canister's balance. Useful for recovering ICP that was sent but not staked, or for moving funds elsewhere.
+                            </p>
+                            <div style={{ 
+                                background: `${theme.colors.accent}10`, 
+                                padding: '10px', 
+                                borderRadius: '6px', 
+                                marginBottom: '12px',
+                                fontSize: '12px',
+                                color: theme.colors.mutedText,
+                            }}>
+                                Available: <strong style={{ color: theme.colors.primaryText }}>{formatIcp(icpBalance)} ICP</strong>
+                            </div>
+                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                <div style={{ flex: 1, minWidth: '120px' }}>
+                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                                        Amount (ICP)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={withdrawAmount}
+                                        onChange={(e) => setWithdrawAmount(e.target.value)}
+                                        style={inputStyle}
+                                        placeholder="Amount to withdraw"
+                                    />
+                                </div>
+                                <div style={{ flex: 2, minWidth: '200px' }}>
+                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
+                                        Destination Principal
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={withdrawDestination}
+                                        onChange={(e) => setWithdrawDestination(e.target.value)}
+                                        style={inputStyle}
+                                        placeholder="Principal ID"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleWithdrawIcp}
+                                    disabled={actionLoading === 'withdraw' || !icpBalance || icpBalance === 0}
+                                    style={{ 
+                                        ...buttonStyle, 
+                                        opacity: (actionLoading === 'withdraw' || !icpBalance || icpBalance === 0) ? 0.6 : 1,
+                                    }}
+                                >
+                                    {actionLoading === 'withdraw' ? '⏳...' : '💸 Withdraw'}
+                                </button>
+                            </div>
+                            <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px', marginBottom: 0 }}>
+                                Fee: 0.0001 ICP
+                            </p>
+                        </div>
+
                         {/* Success/Error Messages */}
                         {success && (
                             <div style={{ 
@@ -3030,62 +3089,6 @@ function IcpNeuronManager() {
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Advanced Operations</h3>
                                         
-                                        {/* Withdraw ICP from Canister */}
-                                        <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px', marginBottom: '20px' }}>
-                                            <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>💰 Withdraw ICP from Canister</h4>
-                                            <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
-                                                Withdraw excess ICP from this canister's balance (not from the neuron). Useful for recovering ICP that was sent but not staked.
-                                            </p>
-                                            <div style={{ 
-                                                background: `${theme.colors.accent}10`, 
-                                                padding: '10px', 
-                                                borderRadius: '6px', 
-                                                marginBottom: '15px' 
-                                            }}>
-                                                <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Available: </span>
-                                                <span style={{ color: theme.colors.primaryText, fontWeight: '600' }}>{formatIcp(icpBalance)} ICP</span>
-                                            </div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                                <div>
-                                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                                                        Amount (ICP)
-                                                    </label>
-                                                    <input
-                                                        type="number"
-                                                        min="0"
-                                                        step="0.01"
-                                                        value={withdrawAmount}
-                                                        onChange={(e) => setWithdrawAmount(e.target.value)}
-                                                        style={inputStyle}
-                                                        placeholder="Amount to withdraw"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                                                        Destination Principal
-                                                    </label>
-                                                    <input
-                                                        type="text"
-                                                        value={withdrawDestination}
-                                                        onChange={(e) => setWithdrawDestination(e.target.value)}
-                                                        style={inputStyle}
-                                                        placeholder="Principal ID"
-                                                    />
-                                                </div>
-                                                <button
-                                                    onClick={handleWithdrawIcp}
-                                                    disabled={actionLoading === 'withdraw' || !icpBalance || icpBalance === 0}
-                                                    style={{ 
-                                                        ...buttonStyle, 
-                                                        alignSelf: 'flex-start',
-                                                        opacity: (actionLoading === 'withdraw' || !icpBalance || icpBalance === 0) ? 0.6 : 1,
-                                                    }}
-                                                >
-                                                    {actionLoading === 'withdraw' ? '⏳...' : '💸 Withdraw'}
-                                                </button>
-                                            </div>
-                                        </div>
-
                                         {/* Split Neuron */}
                                         <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px', marginBottom: '20px' }}>
                                             <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>✂️ Split Neuron</h4>
