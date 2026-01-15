@@ -45,6 +45,18 @@ export default function IcpNeuronManagerFactoryAdmin() {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawToOwner, setWithdrawToOwner] = useState('');
   const [withdrawToSubaccount, setWithdrawToSubaccount] = useState('');
+  
+  // Official versions management
+  const [officialVersions, setOfficialVersions] = useState([]);
+  const [newVersion, setNewVersion] = useState({
+    major: '',
+    minor: '',
+    patch: '',
+    wasmHash: '',
+    wasmUrl: '',
+    sourceUrl: ''
+  });
+  const [editingVersionHash, setEditingVersionHash] = useState(null);
 
   // Use admin check hook
   useAdminCheck({ identity, isAuthenticated });
@@ -73,14 +85,15 @@ export default function IcpNeuronManagerFactoryAdmin() {
       const actor = getFactoryActor();
       if (!actor) return;
 
-      const [config, admins, governance, cycles, icp, count, rate] = await Promise.all([
+      const [config, admins, governance, cycles, icp, count, rate, versions] = await Promise.all([
         actor.getPaymentConfig(),
         actor.getAdmins(),
         actor.getSneedGovernance(),
         actor.getCyclesBalance(),
         actor.getIcpBalance(),
         actor.getManagerCount(),
-        actor.getConversionRate().catch(() => null)
+        actor.getConversionRate().catch(() => null),
+        actor.getOfficialVersions().catch(() => [])
       ]);
 
       setPaymentConfig(config);
@@ -100,6 +113,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
       setCyclesBalance(cycles);
       setIcpBalance(icp);
       setManagerCount(Number(count));
+      setOfficialVersions(versions);
     } catch (err) {
       console.error('Error fetching initial data:', err);
       setError('Failed to load initial data: ' + err.message);
@@ -379,6 +393,90 @@ export default function IcpNeuronManagerFactoryAdmin() {
     const text = principal.toString();
     if (text.length <= 20) return text;
     return `${text.slice(0, 10)}...${text.slice(-6)}`;
+  };
+
+  // Version management handlers
+  const handleAddVersion = async (e) => {
+    e.preventDefault();
+    if (!newVersion.wasmHash || !newVersion.major || !newVersion.minor || !newVersion.patch) {
+      setError('Major, minor, patch, and WASM hash are required');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getFactoryActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      const version = {
+        major: BigInt(newVersion.major),
+        minor: BigInt(newVersion.minor),
+        patch: BigInt(newVersion.patch),
+        wasmHash: newVersion.wasmHash.toLowerCase(),
+        wasmUrl: newVersion.wasmUrl,
+        sourceUrl: newVersion.sourceUrl
+      };
+
+      await actor.addOfficialVersion(version);
+      setSuccess(`Version ${newVersion.major}.${newVersion.minor}.${newVersion.patch} added successfully`);
+      setNewVersion({ major: '', minor: '', patch: '', wasmHash: '', wasmUrl: '', sourceUrl: '' });
+      setEditingVersionHash(null);
+      
+      const versions = await actor.getOfficialVersions();
+      setOfficialVersions(versions);
+    } catch (err) {
+      console.error('Error adding version:', err);
+      setError('Failed to add version: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditVersion = (version) => {
+    setNewVersion({
+      major: Number(version.major).toString(),
+      minor: Number(version.minor).toString(),
+      patch: Number(version.patch).toString(),
+      wasmHash: version.wasmHash,
+      wasmUrl: version.wasmUrl,
+      sourceUrl: version.sourceUrl
+    });
+    setEditingVersionHash(version.wasmHash);
+  };
+
+  const handleCancelEdit = () => {
+    setNewVersion({ major: '', minor: '', patch: '', wasmHash: '', wasmUrl: '', sourceUrl: '' });
+    setEditingVersionHash(null);
+  };
+
+  const handleRemoveVersion = async (wasmHash) => {
+    if (!window.confirm('Are you sure you want to remove this version?')) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      const actor = getFactoryActor();
+      if (!actor) throw new Error('Failed to create actor');
+
+      const result = await actor.removeOfficialVersion(wasmHash);
+      if (result) {
+        setSuccess('Version removed successfully');
+        const versions = await actor.getOfficialVersions();
+        setOfficialVersions(versions);
+      } else {
+        setError('Version not found');
+      }
+    } catch (err) {
+      console.error('Error removing version:', err);
+      setError('Failed to remove version: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Render functions
@@ -1041,6 +1139,316 @@ export default function IcpNeuronManagerFactoryAdmin() {
     </div>
   );
 
+  const renderVersions = () => (
+    <div>
+      <h2 style={{ color: '#ffffff', fontSize: '24px', marginBottom: '20px' }}>Official Versions</h2>
+      <p style={{ color: '#888', fontSize: '14px', marginBottom: '20px' }}>
+        Manage the list of known official WASM versions. Users can verify their canister's WASM hash against this registry.
+      </p>
+      
+      {/* Add/Edit Version Form */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        marginBottom: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>
+          {editingVersionHash ? 'Edit Version' : 'Add New Version'}
+        </h3>
+        <form onSubmit={handleAddVersion}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '15px' }}>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Major *
+              </label>
+              <input
+                type="number"
+                min="0"
+                placeholder="1"
+                value={newVersion.major}
+                onChange={(e) => setNewVersion({...newVersion, major: e.target.value})}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Minor *
+              </label>
+              <input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={newVersion.minor}
+                onChange={(e) => setNewVersion({...newVersion, minor: e.target.value})}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Patch *
+              </label>
+              <input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={newVersion.patch}
+                onChange={(e) => setNewVersion({...newVersion, patch: e.target.value})}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff'
+                }}
+              />
+            </div>
+          </div>
+          
+          <div style={{ marginBottom: '15px' }}>
+            <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+              WASM Hash * (SHA256 hex)
+            </label>
+            <input
+              type="text"
+              placeholder="e.g., a1b2c3d4e5f6..."
+              value={newVersion.wasmHash}
+              onChange={(e) => setNewVersion({...newVersion, wasmHash: e.target.value})}
+              disabled={!!editingVersionHash}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '4px',
+                border: '1px solid #3a3a3a',
+                backgroundColor: editingVersionHash ? '#333' : '#1a1a1a',
+                color: '#ffffff',
+                fontFamily: 'monospace',
+                fontSize: '13px'
+              }}
+            />
+            <p style={{ color: '#666', fontSize: '11px', marginTop: '4px' }}>
+              Get this from: dfx canister info &lt;canister_id&gt; --network ic
+            </p>
+          </div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                WASM URL (optional)
+              </label>
+              <input
+                type="text"
+                placeholder="https://github.com/org/repo/releases/download/v1.0.0/canister.wasm"
+                value={newVersion.wasmUrl}
+                onChange={(e) => setNewVersion({...newVersion, wasmUrl: e.target.value})}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff',
+                  fontSize: '13px'
+                }}
+              />
+            </div>
+            <div>
+              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
+                Source URL (optional)
+              </label>
+              <input
+                type="text"
+                placeholder="https://github.com/org/repo/releases/tag/v1.0.0"
+                value={newVersion.sourceUrl}
+                onChange={(e) => setNewVersion({...newVersion, sourceUrl: e.target.value})}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #3a3a3a',
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff',
+                  fontSize: '13px'
+                }}
+              />
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                backgroundColor: editingVersionHash ? '#f39c12' : '#2ecc71',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '10px 20px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.6 : 1
+              }}
+            >
+              {editingVersionHash ? 'Update Version' : 'Add Version'}
+            </button>
+            {editingVersionHash && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                style={{
+                  backgroundColor: 'transparent',
+                  color: '#888',
+                  border: '1px solid #3a3a3a',
+                  borderRadius: '4px',
+                  padding: '10px 20px',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+      
+      {/* Version List */}
+      <div style={{
+        backgroundColor: '#2a2a2a',
+        borderRadius: '8px',
+        padding: '20px',
+        border: '1px solid #3a3a3a'
+      }}>
+        <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>
+          Registered Versions ({officialVersions.length})
+        </h3>
+        
+        {officialVersions.length === 0 ? (
+          <div style={{ color: '#888', textAlign: 'center', padding: '30px' }}>
+            No official versions registered yet. Add one above.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            {officialVersions.map((version, idx) => (
+              <div
+                key={idx}
+                style={{
+                  backgroundColor: '#1a1a1a',
+                  borderRadius: '6px',
+                  padding: '15px',
+                  border: '1px solid #3a3a3a'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                  <div>
+                    <span style={{ 
+                      color: '#2ecc71', 
+                      fontSize: '20px', 
+                      fontWeight: 'bold',
+                      marginRight: '10px'
+                    }}>
+                      v{Number(version.major)}.{Number(version.minor)}.{Number(version.patch)}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => handleEditVersion(version)}
+                      style={{
+                        backgroundColor: 'transparent',
+                        color: '#3498db',
+                        border: '1px solid #3498db',
+                        borderRadius: '4px',
+                        padding: '4px 12px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleRemoveVersion(version.wasmHash)}
+                      style={{
+                        backgroundColor: 'transparent',
+                        color: '#e74c3c',
+                        border: '1px solid #e74c3c',
+                        borderRadius: '4px',
+                        padding: '4px 12px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ color: '#888', fontSize: '11px', marginBottom: '2px' }}>WASM Hash</div>
+                  <div style={{ 
+                    color: '#9b59b6', 
+                    fontFamily: 'monospace', 
+                    fontSize: '12px',
+                    wordBreak: 'break-all',
+                    backgroundColor: '#2a2a2a',
+                    padding: '6px 8px',
+                    borderRadius: '4px'
+                  }}>
+                    {version.wasmHash}
+                  </div>
+                </div>
+                
+                {(version.wasmUrl || version.sourceUrl) && (
+                  <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                    {version.wasmUrl && (
+                      <div>
+                        <div style={{ color: '#888', fontSize: '11px', marginBottom: '2px' }}>WASM URL</div>
+                        <a 
+                          href={version.wasmUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          style={{ color: '#3498db', fontSize: '12px', wordBreak: 'break-all' }}
+                        >
+                          {version.wasmUrl.length > 60 ? version.wasmUrl.slice(0, 60) + '...' : version.wasmUrl}
+                        </a>
+                      </div>
+                    )}
+                    {version.sourceUrl && (
+                      <div>
+                        <div style={{ color: '#888', fontSize: '11px', marginBottom: '2px' }}>Source URL</div>
+                        <a 
+                          href={version.sourceUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          style={{ color: '#3498db', fontSize: '12px', wordBreak: 'break-all' }}
+                        >
+                          {version.sourceUrl.length > 60 ? version.sourceUrl.slice(0, 60) + '...' : version.sourceUrl}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   if (!isAuthenticated) {
     return (
       <div className='page-container'>
@@ -1112,7 +1520,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
           paddingBottom: '10px',
           flexWrap: 'wrap'
         }}>
-          {['config', 'admins', 'operations', 'managers'].map(tab => (
+          {['config', 'admins', 'operations', 'managers', 'versions'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1132,6 +1540,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
               {tab === 'admins' && 'Admins'}
               {tab === 'operations' && 'Operations'}
               {tab === 'managers' && 'Managers'}
+              {tab === 'versions' && 'Versions'}
             </button>
           ))}
         </div>
@@ -1147,6 +1556,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
             {activeTab === 'admins' && renderAdmins()}
             {activeTab === 'operations' && renderOperations()}
             {activeTab === 'managers' && renderManagers()}
+            {activeTab === 'versions' && renderVersions()}
           </>
         )}
       </main>

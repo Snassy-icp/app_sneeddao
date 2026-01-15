@@ -15,6 +15,16 @@ module {
         patch: Nat;
     };
 
+    // Official version info for tracking known canister WASM versions
+    public type OfficialVersion = {
+        major: Nat;
+        minor: Nat;
+        patch: Nat;
+        wasmHash: Text;      // Hex-encoded SHA256 hash of the WASM module
+        wasmUrl: Text;       // URL to download the WASM file
+        sourceUrl: Text;     // URL to the source code (e.g., GitHub release)
+    };
+
     // ============================================
     // NNS GOVERNANCE TYPES
     // ============================================

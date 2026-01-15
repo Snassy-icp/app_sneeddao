@@ -4,6 +4,7 @@ import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
 import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import Header from '../components/Header';
@@ -170,6 +171,10 @@ function IcpNeuronManager() {
     // Canister status state
     const [canisterStatus, setCanisterStatus] = useState(null);
     const [controllers, setControllers] = useState([]);
+    
+    // Official version verification
+    const [officialVersions, setOfficialVersions] = useState([]);
+    const [matchedOfficialVersion, setMatchedOfficialVersion] = useState(null);
     
     // Controller management state
     const [newControllerInput, setNewControllerInput] = useState('');
@@ -391,6 +396,41 @@ function IcpNeuronManager() {
             setControllers([]);
         }
     }, [canisterId, identity]);
+
+    // Fetch official versions from factory
+    const fetchOfficialVersions = useCallback(async () => {
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://icp0.io' 
+                : 'http://localhost:4943';
+            const agent = HttpAgent.createSync({ host });
+            
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            const versions = await factory.getOfficialVersions();
+            setOfficialVersions(versions);
+        } catch (err) {
+            console.error('Error fetching official versions:', err);
+            setOfficialVersions([]);
+        }
+    }, []);
+
+    // Match canister's module hash against official versions
+    useEffect(() => {
+        if (!canisterStatus?.moduleHash || officialVersions.length === 0) {
+            setMatchedOfficialVersion(null);
+            return;
+        }
+        
+        const moduleHashLower = canisterStatus.moduleHash.toLowerCase();
+        const matched = officialVersions.find(v => 
+            v.wasmHash.toLowerCase() === moduleHashLower
+        );
+        setMatchedOfficialVersion(matched || null);
+    }, [canisterStatus?.moduleHash, officialVersions]);
 
     // Fetch ICP to cycles conversion rate from CMC
     const fetchConversionRate = useCallback(async () => {
@@ -706,7 +746,9 @@ function IcpNeuronManager() {
             fetchCanisterStatus(); // Fetch cycles and controllers
             fetchConversionRate(); // Fetch ICP to cycles conversion rate
         }
-    }, [isAuthenticated, identity, canisterId, fetchManagerData, fetchKnownNeurons, fetchCanisterStatus, fetchConversionRate]);
+        // Fetch official versions regardless of auth (public data)
+        fetchOfficialVersions();
+    }, [isAuthenticated, identity, canisterId, fetchManagerData, fetchKnownNeurons, fetchCanisterStatus, fetchConversionRate, fetchOfficialVersions]);
 
     // Action handlers
     const handleStakeNeuron = async () => {
@@ -1891,11 +1933,20 @@ function IcpNeuronManager() {
                             </div>
 
                             <div style={{ marginTop: '15px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                                <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Version: </span>
                                     <span style={{ color: theme.colors.primaryText, fontSize: '12px' }}>
                                         {managerInfo.version}
                                     </span>
+                                    {matchedOfficialVersion && 
+                                     `${Number(matchedOfficialVersion.major)}.${Number(matchedOfficialVersion.minor)}.${Number(matchedOfficialVersion.patch)}` === managerInfo.version && (
+                                        <span title="Version verified against official registry" style={{ 
+                                            color: theme.colors.success || '#22c55e',
+                                            fontSize: '14px'
+                                        }}>
+                                            ✓
+                                        </span>
+                                    )}
                                 </div>
                                 {canisterStatus && (
                                     <div>
@@ -1922,17 +1973,48 @@ function IcpNeuronManager() {
                             {/* Module Hash */}
                             {canisterStatus && (
                                 <div style={{ marginTop: '15px' }}>
-                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
-                                        Module Hash
+                                    <div style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'space-between',
+                                        marginBottom: '4px'
+                                    }}>
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>
+                                            Module Hash
+                                        </span>
+                                        {matchedOfficialVersion && (
+                                            <span style={{ 
+                                                color: theme.colors.success || '#22c55e',
+                                                fontSize: '11px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px'
+                                            }}>
+                                                ✓ Official v{Number(matchedOfficialVersion.major)}.{Number(matchedOfficialVersion.minor)}.{Number(matchedOfficialVersion.patch)}
+                                            </span>
+                                        )}
+                                        {canisterStatus.moduleHash && !matchedOfficialVersion && officialVersions.length > 0 && (
+                                            <span style={{ 
+                                                color: theme.colors.warning || '#f59e0b',
+                                                fontSize: '11px'
+                                            }}>
+                                                ⚠ Unverified
+                                            </span>
+                                        )}
                                     </div>
                                     <div style={{ 
-                                        color: theme.colors.primaryText, 
+                                        color: matchedOfficialVersion 
+                                            ? (theme.colors.success || '#22c55e') 
+                                            : theme.colors.primaryText, 
                                         fontFamily: 'monospace',
                                         fontSize: '11px',
                                         background: theme.colors.tertiaryBg || theme.colors.secondaryBg,
                                         padding: '8px 10px',
                                         borderRadius: '4px',
-                                        wordBreak: 'break-all'
+                                        wordBreak: 'break-all',
+                                        border: matchedOfficialVersion 
+                                            ? `1px solid ${theme.colors.success || '#22c55e'}30` 
+                                            : 'none'
                                     }}>
                                         {canisterStatus.moduleHash || (
                                             <span style={{ color: theme.colors.mutedText, fontStyle: 'italic' }}>
@@ -1940,6 +2022,36 @@ function IcpNeuronManager() {
                                             </span>
                                         )}
                                     </div>
+                                    {/* Show links if matched official version has them */}
+                                    {matchedOfficialVersion && (matchedOfficialVersion.wasmUrl || matchedOfficialVersion.sourceUrl) && (
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            gap: '15px', 
+                                            marginTop: '8px',
+                                            fontSize: '11px'
+                                        }}>
+                                            {matchedOfficialVersion.sourceUrl && (
+                                                <a 
+                                                    href={matchedOfficialVersion.sourceUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{ color: theme.colors.accent }}
+                                                >
+                                                    View Source →
+                                                </a>
+                                            )}
+                                            {matchedOfficialVersion.wasmUrl && (
+                                                <a 
+                                                    href={matchedOfficialVersion.wasmUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    style={{ color: theme.colors.accent }}
+                                                >
+                                                    Download WASM →
+                                                </a>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

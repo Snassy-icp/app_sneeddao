@@ -45,6 +45,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Current version
     var currentVersion: T.Version = CURRENT_VERSION;
     
+    // Official versions registry (list of known verified WASM versions)
+    var officialVersions: [T.OfficialVersion] = [];
+    
     // Payment configuration
     var creationFeeE8s: Nat64 = 100_000_000; // 1 ICP default
     var icpForCyclesE8s: Nat64 = 2_000_000;  // 0.02 ICP default (~2T cycles) DEPRECATED
@@ -210,6 +213,92 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public shared ({ caller }) func setCurrentVersion(version: T.Version): async () {
         assert(isAdmin(caller));
         currentVersion := version;
+    };
+
+    // ============================================
+    // OFFICIAL VERSIONS REGISTRY
+    // ============================================
+
+    // Get all official versions (public)
+    public query func getOfficialVersions(): async [T.OfficialVersion] {
+        officialVersions;
+    };
+
+    // Get official version by WASM hash (public)
+    public query func getOfficialVersionByHash(wasmHash: Text): async ?T.OfficialVersion {
+        let lowerHash = Text.toLowercase(wasmHash);
+        for (v in officialVersions.vals()) {
+            if (Text.toLowercase(v.wasmHash) == lowerHash) {
+                return ?v;
+            };
+        };
+        null;
+    };
+
+    // Add a new official version (admin only)
+    public shared ({ caller }) func addOfficialVersion(version: T.OfficialVersion): async () {
+        assert(isAdmin(caller));
+        
+        // Check if version with same hash already exists
+        let lowerHash = Text.toLowercase(version.wasmHash);
+        for (v in officialVersions.vals()) {
+            if (Text.toLowercase(v.wasmHash) == lowerHash) {
+                // Update existing version
+                officialVersions := Array.map<T.OfficialVersion, T.OfficialVersion>(
+                    officialVersions,
+                    func(ov) {
+                        if (Text.toLowercase(ov.wasmHash) == lowerHash) {
+                            version;
+                        } else {
+                            ov;
+                        };
+                    }
+                );
+                return;
+            };
+        };
+        
+        // Add new version
+        officialVersions := Array.append(officialVersions, [version]);
+    };
+
+    // Update an official version (admin only)
+    public shared ({ caller }) func updateOfficialVersion(wasmHash: Text, version: T.OfficialVersion): async Bool {
+        assert(isAdmin(caller));
+        
+        let lowerHash = Text.toLowercase(wasmHash);
+        var found = false;
+        officialVersions := Array.map<T.OfficialVersion, T.OfficialVersion>(
+            officialVersions,
+            func(ov) {
+                if (Text.toLowercase(ov.wasmHash) == lowerHash) {
+                    found := true;
+                    version;
+                } else {
+                    ov;
+                };
+            }
+        );
+        found;
+    };
+
+    // Remove an official version (admin only)
+    public shared ({ caller }) func removeOfficialVersion(wasmHash: Text): async Bool {
+        assert(isAdmin(caller));
+        
+        let lowerHash = Text.toLowercase(wasmHash);
+        let originalSize = officialVersions.size();
+        officialVersions := Array.filter<T.OfficialVersion>(
+            officialVersions,
+            func(ov) { Text.toLowercase(ov.wasmHash) != lowerHash }
+        );
+        officialVersions.size() < originalSize;
+    };
+
+    // Set all official versions at once (admin only, for bulk updates)
+    public shared ({ caller }) func setOfficialVersions(versions: [T.OfficialVersion]): async () {
+        assert(isAdmin(caller));
+        officialVersions := versions;
     };
 
     // ============================================
