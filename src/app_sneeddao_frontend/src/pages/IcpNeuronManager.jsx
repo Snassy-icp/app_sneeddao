@@ -1652,6 +1652,41 @@ function IcpNeuronManager() {
         }
     };
 
+    const handleSetVisibility = async (makePublic) => {
+        if (!selectedNeuronId) {
+            setError('No neuron selected');
+            return;
+        }
+        
+        setActionLoading('visibility');
+        setError('');
+        setSuccess('');
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            // 0 = private, 1 = public
+            const visibility = makePublic ? 1 : 0;
+            const result = await manager.setVisibility(selectedNeuronId, visibility);
+            
+            if ('Ok' in result) {
+                setSuccess(`✅ Neuron visibility set to ${makePublic ? 'public' : 'private'}.`);
+                fetchManagerData();
+            } else {
+                handleOperationError(result.Err);
+            }
+        } catch (err) {
+            console.error('Error setting visibility:', err);
+            setError(`Error: ${err.message}`);
+        } finally {
+            setActionLoading('');
+        }
+    };
+
     // Fetch token balance directly from the ledger (balances are public)
     const fetchWithdrawTokenBalance = useCallback(async (ledgerId) => {
         if (!ledgerId || !canisterId) return;
@@ -3185,6 +3220,20 @@ function IcpNeuronManager() {
                                         <div style={{ display: 'grid', gap: '8px' }}>
                                             {fullNeuron && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                    <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Visibility</span>
+                                                    <span style={{ 
+                                                        color: fullNeuron.visibility?.[0] === 1 ? (theme.colors.success || '#22c55e') : theme.colors.primaryText, 
+                                                        fontSize: '13px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}>
+                                                        {fullNeuron.visibility?.[0] === 1 ? '🌐 Public' : '🔒 Private'}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {fullNeuron && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.border}` }}>
                                                     <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Controller</span>
                                                     <span style={{ color: theme.colors.primaryText, fontFamily: 'monospace', fontSize: '12px' }}>
                                                         {fullNeuron.controller?.[0]?.toText() 
@@ -3989,7 +4038,7 @@ function IcpNeuronManager() {
                                         </div>
 
                                         {/* Merge Neurons */}
-                                        <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px' }}>
+                                        <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px', marginBottom: '20px' }}>
                                             <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>🔗 Merge Neurons</h4>
                                             <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
                                                 Merge another neuron into this one. Both neurons must:
@@ -4025,6 +4074,79 @@ function IcpNeuronManager() {
                                                     {actionLoading === 'merge' ? '⏳...' : '🔗 Merge'}
                                                 </button>
                                             </div>
+                                        </div>
+
+                                        {/* Neuron Visibility */}
+                                        <div style={{ padding: '15px', border: `1px solid ${theme.colors.border}`, borderRadius: '8px' }}>
+                                            <h4 style={{ color: theme.colors.primaryText, fontSize: '14px', marginBottom: '8px' }}>
+                                                {fullNeuron?.visibility?.[0] === 1 ? '🌐' : '🔒'} Neuron Visibility
+                                            </h4>
+                                            <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
+                                                Control whether your neuron's voting history and details are publicly visible.
+                                            </p>
+                                            
+                                            {fullNeuron && (
+                                                <div style={{ 
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    background: fullNeuron.visibility?.[0] === 1 
+                                                        ? `${theme.colors.success || '#22c55e'}15` 
+                                                        : theme.colors.tertiaryBg || theme.colors.secondaryBg,
+                                                    padding: '12px 15px',
+                                                    borderRadius: '8px',
+                                                    marginBottom: '15px'
+                                                }}>
+                                                    <div>
+                                                        <div style={{ 
+                                                            color: fullNeuron.visibility?.[0] === 1 
+                                                                ? (theme.colors.success || '#22c55e') 
+                                                                : theme.colors.primaryText,
+                                                            fontWeight: '600',
+                                                            fontSize: '14px'
+                                                        }}>
+                                                            {fullNeuron.visibility?.[0] === 1 ? '🌐 Public' : '🔒 Private'}
+                                                        </div>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginTop: '2px' }}>
+                                                            {fullNeuron.visibility?.[0] === 1 
+                                                                ? 'Your neuron\'s voting history is visible to everyone'
+                                                                : 'Your neuron\'s voting history is hidden'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                                {fullNeuron?.visibility?.[0] !== 1 ? (
+                                                    <button
+                                                        onClick={() => handleSetVisibility(true)}
+                                                        disabled={actionLoading === 'visibility'}
+                                                        style={{ 
+                                                            ...buttonStyle,
+                                                            background: theme.colors.success || '#22c55e',
+                                                            opacity: actionLoading === 'visibility' ? 0.6 : 1,
+                                                        }}
+                                                    >
+                                                        {actionLoading === 'visibility' ? '⏳...' : '🌐 Make Public'}
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => handleSetVisibility(false)}
+                                                        disabled={actionLoading === 'visibility'}
+                                                        style={{ 
+                                                            ...buttonStyle,
+                                                            background: theme.colors.mutedText,
+                                                            opacity: actionLoading === 'visibility' ? 0.6 : 1,
+                                                        }}
+                                                    >
+                                                        {actionLoading === 'visibility' ? '⏳...' : '🔒 Make Private'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                            
+                                            <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '10px', marginBottom: 0 }}>
+                                                ⚠️ Note: Making your neuron public means anyone can see its voting history and other details on the NNS.
+                                            </p>
                                         </div>
                                     </div>
                                 )}

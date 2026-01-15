@@ -837,6 +837,17 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         await configureNeuron(neuronId, #RemoveHotKey({ hot_key_to_remove = ?hotkey }));
     };
 
+    // Set neuron visibility (0 = private, 1 = public)
+    public shared ({ caller }) func setVisibility(neuronId: T.NeuronId, visibility: Int32): async T.OperationResult {
+        assertController(caller);
+        
+        let hasControl = await hasNeuron(neuronId);
+        if (not hasControl) {
+            return #Err(#NoNeuron);
+        };
+        await configureNeuron(neuronId, #SetVisibility({ visibility = ?visibility }));
+    };
+
     // ============================================
     // NEURON SPLITTING / MERGING
     // ============================================
