@@ -103,6 +103,16 @@ function Help() {
                                 Understanding Sneedlock
                             </Link>
                         </li>
+                        <li style={styles.linkItem}>
+                            <Link 
+                                to="/help/icp-neuron-manager" 
+                                style={styles.link}
+                                onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                            >
+                                ICP Neuron Manager Canisters
+                            </Link>
+                        </li>
                     </ul>
                 </div>
             </main>

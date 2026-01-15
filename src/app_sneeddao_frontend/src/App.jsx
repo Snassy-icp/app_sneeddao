@@ -67,6 +67,7 @@ import Topic from './pages/Topic';
 import HelpNeurons from './pages/HelpNeurons';
 import HelpWallet from './pages/HelpWallet';
 import HelpSneedlock from './pages/HelpSneedlock';
+import HelpIcpNeuronManager from './pages/HelpIcpNeuronManager';
 import Canister from './pages/Canister';
 import Canisters from './pages/Canisters';
 import CreateIcpNeuron from './pages/CreateIcpNeuron';
@@ -105,6 +106,7 @@ function App() {
                     <Route path="/help/neurons" element={<HelpNeurons />} />
                     <Route path="/help/wallet" element={<HelpWallet />} />
                     <Route path="/help/sneedlock" element={<HelpSneedlock />} />
+                    <Route path="/help/icp-neuron-manager" element={<HelpIcpNeuronManager />} />
                     <Route path="/rll" element={<RLL />} />
                     <Route path="/rll_info" element={<RLLInfo />} />
                     <Route path="/scan_wallet" element={<ScanWallet />} />
