@@ -35,8 +35,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         const path = location.pathname;
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) return 'Me';
-        if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/canister', '/canisters', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
-        if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet'].includes(path)) return 'Me';
+        if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || location.pathname.startsWith('/topic/')) return 'Hub';
+        if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters'].includes(path)) return 'Me';
         if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) return 'DAO';
         if (['/sneedlock', '/sneedlock_info', '/tokenlock', '/positionlock'].includes(path) || path.startsWith('/lock/')) return 'Locks';
         if (['/tools/main', '/tools/escrow', '/tools/escrow/swap'].includes(path) || location.pathname.startsWith('/tools/')) return 'Tools';
@@ -51,9 +51,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) {
             setActiveSection('Me');
-        } else if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/canister', '/canisters', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
+        } else if (['/', '/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
             setActiveSection('Hub');
-        } else if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet'].includes(path)) {
+        } else if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters'].includes(path)) {
             setActiveSection('Me');
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
@@ -96,9 +96,9 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
         // Check /msg paths first to avoid conflicts
         if (path.startsWith('/msg')) {
             setActiveSection('Me');
-        } else if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/canister', '/canisters', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
+        } else if (['/hub', '/proposals', '/neurons', '/transactions', '/neuron', '/proposal', '/transaction', '/principal', '/forum', '/feed', '/thread', '/post'].includes(path) || path.startsWith('/topic/')) {
             setActiveSection('Hub');
-        } else if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet'].includes(path)) {
+        } else if (['/me', '/rewards', '/tips', '/posts', '/sms', '/wallet', '/canister', '/canisters'].includes(path)) {
             setActiveSection('Me');
         } else if (['/dao', '/dao_info', '/rll_info', '/rll', '/products', '/partners', '/projects', '/disclaimer'].includes(path)) {
             setActiveSection('DAO');
@@ -158,8 +158,7 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Proposals', path: '/proposals' },
                 { name: 'Neurons', path: '/neurons' },
                 { name: 'Transactions', path: '/transactions' },
-                { name: 'Users', path: '/principal' },
-                { name: 'Canisters', path: '/canisters' }
+                { name: 'Users', path: '/principal' }
             ]
         },
         'Me': {
@@ -172,7 +171,8 @@ function Header({ showTotalValue, showSnsDropdown, onSnsChange, customLogo }) {
                 { name: 'Posts', path: '/posts' },
                 { name: 'Tips', path: '/tips' },
                 { name: 'Rewards', path: '/rewards' },
-                { name: 'Wallet', path: '/wallet' }
+                { name: 'Wallet', path: '/wallet' },
+                { name: 'Canisters', path: '/canisters' }
             ]
         },
 
