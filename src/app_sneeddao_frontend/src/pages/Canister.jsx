@@ -110,6 +110,25 @@ const uint8ArrayToHex = (arr) => {
         .join('');
 };
 
+// Helper function to convert hex string to Uint8Array
+const hexToUint8Array = (hex) => {
+    if (!hex || hex.length === 0) return null;
+    // Remove any whitespace and 0x prefix
+    const cleanHex = hex.replace(/\s/g, '').replace(/^0x/i, '');
+    if (cleanHex.length % 2 !== 0) {
+        throw new Error('Invalid hex string: odd length');
+    }
+    const bytes = new Uint8Array(cleanHex.length / 2);
+    for (let i = 0; i < cleanHex.length; i += 2) {
+        const byte = parseInt(cleanHex.substr(i, 2), 16);
+        if (isNaN(byte)) {
+            throw new Error(`Invalid hex character at position ${i}`);
+        }
+        bytes[i / 2] = byte;
+    }
+    return bytes;
+};
+
 export default function CanisterPage() {
     const { theme } = useTheme();
     const { identity, isAuthenticated } = useAuth();
@@ -150,6 +169,7 @@ export default function CanisterPage() {
     const [upgradeMode, setUpgradeMode] = useState('upgrade'); // 'upgrade' or 'reinstall'
     const [upgrading, setUpgrading] = useState(false);
     const [confirmUpgrade, setConfirmUpgrade] = useState(false);
+    const [initArgHex, setInitArgHex] = useState(''); // Hex-encoded Candid init arguments
     const wasmInputRef = useRef(null);
 
     const canisterIdParam = searchParams.get('id');
@@ -805,14 +825,26 @@ export default function CanisterPage() {
             // Call install_code with the selected mode
             const mode = upgradeMode === 'reinstall' ? { reinstall: null } : { upgrade: null };
             
-            // Candid encoding for empty arguments: "DIDL" magic bytes + 0 types + 0 args
-            const emptyArg = new Uint8Array([0x44, 0x49, 0x44, 0x4C, 0x00, 0x00]);
+            // Determine init arguments
+            let initArg;
+            if (initArgHex.trim()) {
+                try {
+                    initArg = hexToUint8Array(initArgHex.trim());
+                    console.log(`Using provided init args: ${initArg.length} bytes`);
+                } catch (e) {
+                    throw new Error(`Invalid hex in init arguments: ${e.message}`);
+                }
+            } else {
+                // Candid encoding for empty arguments: "DIDL" magic bytes + 0 types + 0 args
+                initArg = new Uint8Array([0x44, 0x49, 0x44, 0x4C, 0x00, 0x00]);
+                console.log('Using empty init args (DIDL encoding)');
+            }
             
             await managementCanister.install_code({
                 mode,
                 canister_id: canisterPrincipal,
                 wasm_module: wasmModule,
-                arg: emptyArg,
+                arg: initArg,
             });
             
             console.log('Canister upgrade successful!');
@@ -822,6 +854,7 @@ export default function CanisterPage() {
             setWasmFile(null);
             setConfirmUpgrade(false);
             setShowUpgradeSection(false);
+            setInitArgHex('');
             if (wasmInputRef.current) {
                 wasmInputRef.current.value = '';
             }
@@ -1688,6 +1721,7 @@ export default function CanisterPage() {
                                                 setWasmFile(null);
                                                 setConfirmUpgrade(false);
                                                 setUpgradeMode('upgrade');
+                                                setInitArgHex('');
                                             }
                                         }}
                                         style={{
@@ -1860,6 +1894,51 @@ export default function CanisterPage() {
                                                     </div>
                                                 )}
                                             </div>
+                                        </div>
+                                        
+                                        {/* Init Arguments (optional) */}
+                                        <div style={{ marginBottom: '16px' }}>
+                                            <label style={{ 
+                                                display: 'block',
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '12px',
+                                                marginBottom: '8px'
+                                            }}>
+                                                Init Arguments <span style={{ opacity: 0.7 }}>(optional, hex-encoded Candid)</span>
+                                            </label>
+                                            <textarea
+                                                value={initArgHex}
+                                                onChange={(e) => setInitArgHex(e.target.value)}
+                                                placeholder="e.g., 4449444c0001710568656c6c6f (leave empty for no args)"
+                                                style={{
+                                                    width: '100%',
+                                                    minHeight: '60px',
+                                                    padding: '10px 12px',
+                                                    border: `1px solid ${theme.colors.border}`,
+                                                    borderRadius: '6px',
+                                                    backgroundColor: theme.colors.secondaryBg,
+                                                    color: theme.colors.primaryText,
+                                                    fontSize: '13px',
+                                                    fontFamily: 'monospace',
+                                                    outline: 'none',
+                                                    resize: 'vertical',
+                                                    boxSizing: 'border-box'
+                                                }}
+                                            />
+                                            <p style={{ 
+                                                color: theme.colors.mutedText, 
+                                                fontSize: '11px', 
+                                                marginTop: '6px',
+                                                marginBottom: 0
+                                            }}>
+                                                Some canisters require initialization arguments during upgrade. 
+                                                You can get the hex-encoded Candid from <code style={{ 
+                                                    backgroundColor: theme.colors.tertiaryBg, 
+                                                    padding: '2px 4px', 
+                                                    borderRadius: '3px',
+                                                    fontSize: '10px'
+                                                }}>didc encode</code> or check the canister's documentation.
+                                            </p>
                                         </div>
                                         
                                         {/* Reinstall Warning */}
