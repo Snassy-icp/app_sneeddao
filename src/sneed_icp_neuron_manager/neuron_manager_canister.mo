@@ -546,6 +546,56 @@ shared (deployer) persistent actor class NeuronManagerCanister(initOwner: Princi
         };
     };
 
+    // Withdraw any ICRC1 token from the canister
+    public shared ({ caller }) func withdrawToken(
+        ledger_canister_id: Principal,
+        amount: Nat,
+        to_account: T.Account
+    ): async T.DisburseResult {
+        assertController(caller);
+        
+        // Create actor for the specified ledger
+        let tokenLedger: T.LedgerActor = actor(Principal.toText(ledger_canister_id));
+        
+        // Get the fee for this token
+        let fee = await tokenLedger.icrc1_fee();
+        
+        // Check balance
+        let balance = await tokenLedger.icrc1_balance_of({
+            owner = Principal.fromActor(this);
+            subaccount = null;
+        });
+        
+        if (balance < amount + fee) {
+            return #Err(#TransferFailed("Insufficient token balance"));
+        };
+
+        let transferArg: T.TransferArg = {
+            to = to_account;
+            fee = ?fee;
+            memo = null;
+            from_subaccount = null;
+            created_at_time = null;
+            amount = amount;
+        };
+
+        let result = await tokenLedger.icrc1_transfer(transferArg);
+        
+        switch (result) {
+            case (#Err(e)) { #Err(#TransferFailed(transferErrorToText(e))) };
+            case (#Ok(blockIndex)) { #Ok({ transfer_block_height = Nat64.fromNat(blockIndex) }) };
+        };
+    };
+    
+    // Get balance of any ICRC1 token held by this canister
+    public func getTokenBalance(ledger_canister_id: Principal): async Nat {
+        let tokenLedger: T.LedgerActor = actor(Principal.toText(ledger_canister_id));
+        await tokenLedger.icrc1_balance_of({
+            owner = Principal.fromActor(this);
+            subaccount = null;
+        });
+    };
+
     // ============================================
     // MATURITY MANAGEMENT
     // ============================================

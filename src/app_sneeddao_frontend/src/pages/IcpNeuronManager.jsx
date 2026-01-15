@@ -7,6 +7,7 @@ import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
 import { createActor as createCmcActor, CMC_CANISTER_ID } from 'external/cmc';
 import Header from '../components/Header';
+import TokenSelector from '../components/TokenSelector';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { FaGasPump } from 'react-icons/fa';
@@ -134,6 +135,13 @@ function IcpNeuronManager() {
     const [mergeSourceNeuronId, setMergeSourceNeuronId] = useState('');
     const [withdrawAmount, setWithdrawAmount] = useState('');
     const [withdrawDestination, setWithdrawDestination] = useState('');
+    const [withdrawTokenLedger, setWithdrawTokenLedger] = useState(ICP_LEDGER_CANISTER_ID);
+    const [withdrawTokenBalance, setWithdrawTokenBalance] = useState(null);
+    const [withdrawTokenSymbol, setWithdrawTokenSymbol] = useState('ICP');
+    const [withdrawTokenDecimals, setWithdrawTokenDecimals] = useState(8);
+    const [withdrawTokenFee, setWithdrawTokenFee] = useState(10000);
+    const [customLedgerInput, setCustomLedgerInput] = useState('');
+    const [useCustomLedger, setUseCustomLedger] = useState(false);
     const [fundAmount, setFundAmount] = useState('');
     const [userIcpBalance, setUserIcpBalance] = useState(null);
     
@@ -1322,7 +1330,48 @@ function IcpNeuronManager() {
         }
     };
 
-    const handleWithdrawIcp = async () => {
+    // Fetch token balance from the manager canister
+    const fetchWithdrawTokenBalance = useCallback(async (ledgerId) => {
+        if (!ledgerId || !canisterId) return;
+        
+        try {
+            const agent = getAgent();
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            const manager = createManagerActor(canisterId, { agent });
+            
+            const balance = await manager.getTokenBalance(Principal.fromText(ledgerId));
+            setWithdrawTokenBalance(balance);
+            
+            // Fetch token metadata
+            const ledgerActor = createLedgerActor(ledgerId, { agentOptions: { identity } });
+            const [symbol, decimals, fee] = await Promise.all([
+                ledgerActor.icrc1_symbol(),
+                ledgerActor.icrc1_decimals(),
+                ledgerActor.icrc1_fee(),
+            ]);
+            setWithdrawTokenSymbol(symbol);
+            setWithdrawTokenDecimals(decimals);
+            setWithdrawTokenFee(Number(fee));
+        } catch (err) {
+            console.error('Error fetching token balance:', err);
+            setWithdrawTokenBalance(null);
+            setWithdrawTokenSymbol('Unknown');
+            setWithdrawTokenDecimals(8);
+            setWithdrawTokenFee(0);
+        }
+    }, [canisterId, identity]);
+    
+    // Fetch token balance when selected token changes
+    useEffect(() => {
+        const ledgerId = useCustomLedger ? customLedgerInput : withdrawTokenLedger;
+        if (ledgerId) {
+            fetchWithdrawTokenBalance(ledgerId);
+        }
+    }, [withdrawTokenLedger, customLedgerInput, useCustomLedger, fetchWithdrawTokenBalance]);
+
+    const handleWithdrawToken = async () => {
         if (!withdrawAmount || parseFloat(withdrawAmount) <= 0) {
             setError('Please enter a valid amount');
             return;
@@ -1330,6 +1379,22 @@ function IcpNeuronManager() {
         if (!withdrawDestination) {
             setError('Please enter a destination principal');
             return;
+        }
+        
+        const ledgerId = useCustomLedger ? customLedgerInput : withdrawTokenLedger;
+        if (!ledgerId) {
+            setError('Please select a token or enter a ledger principal');
+            return;
+        }
+        
+        // Validate custom ledger principal if used
+        if (useCustomLedger) {
+            try {
+                Principal.fromText(customLedgerInput);
+            } catch {
+                setError('Invalid ledger principal');
+                return;
+            }
         }
         
         setActionLoading('withdraw');
@@ -1343,24 +1408,31 @@ function IcpNeuronManager() {
             }
             const manager = createManagerActor(canisterId, { agent });
             
-            const amountE8s = BigInt(Math.floor(parseFloat(withdrawAmount) * E8S));
+            const amount = BigInt(Math.floor(parseFloat(withdrawAmount) * Math.pow(10, withdrawTokenDecimals)));
             const destination = {
                 owner: Principal.fromText(withdrawDestination),
                 subaccount: [],
             };
             
-            const result = await manager.withdrawIcp(amountE8s, destination);
+            let result;
+            if (ledgerId === ICP_LEDGER_CANISTER_ID) {
+                // Use withdrawIcp for ICP
+                result = await manager.withdrawIcp(amount, destination);
+            } else {
+                // Use withdrawToken for other tokens
+                result = await manager.withdrawToken(Principal.fromText(ledgerId), amount, destination);
+            }
             
             if ('Ok' in result) {
-                setSuccess(`✅ Withdrew ${withdrawAmount} ICP! Block height: ${result.Ok.transfer_block_height.toString()}`);
+                setSuccess(`✅ Withdrew ${withdrawAmount} ${withdrawTokenSymbol}! Block height: ${result.Ok.transfer_block_height.toString()}`);
                 setWithdrawAmount('');
-                setWithdrawDestination('');
                 fetchManagerData();
+                fetchWithdrawTokenBalance(ledgerId);
             } else {
                 handleOperationError(result.Err);
             }
         } catch (err) {
-            console.error('Error withdrawing ICP:', err);
+            console.error('Error withdrawing token:', err);
             setError(`Error: ${err.message}`);
         } finally {
             setActionLoading('');
@@ -1998,12 +2070,74 @@ function IcpNeuronManager() {
                             </p>
                         </div>
 
-                        {/* Withdraw ICP from Canister */}
+                        {/* Withdraw Tokens from Canister */}
                         <div style={cardStyle}>
-                            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 5px 0' }}>💸 Withdraw ICP</h3>
+                            <h3 style={{ color: theme.colors.primaryText, margin: '0 0 5px 0' }}>💸 Withdraw Tokens</h3>
                             <p style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '15px' }}>
-                                Withdraw ICP from this canister's balance. Useful for recovering ICP that was sent but not staked, or for moving funds elsewhere.
+                                Withdraw ICP or any ICRC1 token from this canister's balance. Useful for recovering tokens that were sent accidentally, or for moving funds elsewhere.
                             </p>
+                            
+                            {/* Token Selection */}
+                            <div style={{ marginBottom: '15px' }}>
+                                <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '6px' }}>
+                                    Select Token
+                                </label>
+                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                                    <label style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '6px',
+                                        color: theme.colors.primaryText,
+                                        fontSize: '13px',
+                                        cursor: 'pointer',
+                                    }}>
+                                        <input 
+                                            type="radio" 
+                                            checked={!useCustomLedger} 
+                                            onChange={() => {
+                                                setUseCustomLedger(false);
+                                                setWithdrawTokenLedger(ICP_LEDGER_CANISTER_ID);
+                                            }}
+                                            style={{ margin: 0 }}
+                                        />
+                                        From list
+                                    </label>
+                                    <label style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '6px',
+                                        color: theme.colors.primaryText,
+                                        fontSize: '13px',
+                                        cursor: 'pointer',
+                                    }}>
+                                        <input 
+                                            type="radio" 
+                                            checked={useCustomLedger} 
+                                            onChange={() => setUseCustomLedger(true)}
+                                            style={{ margin: 0 }}
+                                        />
+                                        Custom ledger
+                                    </label>
+                                </div>
+                                
+                                {!useCustomLedger ? (
+                                    <TokenSelector
+                                        value={withdrawTokenLedger}
+                                        onChange={(ledgerId) => setWithdrawTokenLedger(ledgerId)}
+                                        placeholder="Select a token..."
+                                    />
+                                ) : (
+                                    <input
+                                        type="text"
+                                        value={customLedgerInput}
+                                        onChange={(e) => setCustomLedgerInput(e.target.value)}
+                                        style={inputStyle}
+                                        placeholder="Enter ledger canister principal"
+                                    />
+                                )}
+                            </div>
+                            
+                            {/* Token Balance */}
                             <div style={{ 
                                 background: `${theme.colors.accent}10`, 
                                 padding: '10px', 
@@ -2012,17 +2146,24 @@ function IcpNeuronManager() {
                                 fontSize: '12px',
                                 color: theme.colors.mutedText,
                             }}>
-                                Available: <strong style={{ color: theme.colors.primaryText }}>{formatIcp(icpBalance)} ICP</strong>
+                                Available: <strong style={{ color: theme.colors.primaryText }}>
+                                    {withdrawTokenBalance !== null 
+                                        ? `${(Number(withdrawTokenBalance) / Math.pow(10, withdrawTokenDecimals)).toFixed(withdrawTokenDecimals > 4 ? 4 : withdrawTokenDecimals)} ${withdrawTokenSymbol}`
+                                        : 'Loading...'
+                                    }
+                                </strong>
                             </div>
+                            
+                            {/* Amount and Destination */}
                             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
                                 <div style={{ flex: 1, minWidth: '120px' }}>
                                     <label style={{ color: theme.colors.mutedText, fontSize: '11px', display: 'block', marginBottom: '4px' }}>
-                                        Amount (ICP)
+                                        Amount ({withdrawTokenSymbol})
                                     </label>
                                     <input
                                         type="number"
                                         min="0"
-                                        step="0.01"
+                                        step="any"
                                         value={withdrawAmount}
                                         onChange={(e) => setWithdrawAmount(e.target.value)}
                                         style={inputStyle}
@@ -2042,18 +2183,18 @@ function IcpNeuronManager() {
                                     />
                                 </div>
                                 <button
-                                    onClick={handleWithdrawIcp}
-                                    disabled={actionLoading === 'withdraw' || !icpBalance || icpBalance === 0}
+                                    onClick={handleWithdrawToken}
+                                    disabled={actionLoading === 'withdraw' || withdrawTokenBalance === null || withdrawTokenBalance === BigInt(0)}
                                     style={{ 
                                         ...buttonStyle, 
-                                        opacity: (actionLoading === 'withdraw' || !icpBalance || icpBalance === 0) ? 0.6 : 1,
+                                        opacity: (actionLoading === 'withdraw' || withdrawTokenBalance === null || withdrawTokenBalance === BigInt(0)) ? 0.6 : 1,
                                     }}
                                 >
                                     {actionLoading === 'withdraw' ? '⏳...' : '💸 Withdraw'}
                                 </button>
                             </div>
                             <p style={{ color: theme.colors.mutedText, fontSize: '11px', marginTop: '8px', marginBottom: 0 }}>
-                                Fee: 0.0001 ICP
+                                Fee: {(withdrawTokenFee / Math.pow(10, withdrawTokenDecimals)).toFixed(withdrawTokenDecimals > 4 ? 4 : withdrawTokenDecimals)} {withdrawTokenSymbol}
                             </p>
                         </div>
 
