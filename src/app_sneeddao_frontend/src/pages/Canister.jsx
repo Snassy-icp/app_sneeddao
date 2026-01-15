@@ -129,6 +129,63 @@ const hexToUint8Array = (hex) => {
     return bytes;
 };
 
+// Parse DIDC blob format (output from `didc encode`)
+// Accepts formats like:
+//   blob "DIDL\00\01h..."
+//   "DIDL\00\01h..."
+//   DIDL\00\01h...
+//   \00\01h... (prepends DIDL automatically)
+const parseDidcBlob = (input) => {
+    if (!input || input.trim().length === 0) {
+        throw new Error('DIDC input is empty');
+    }
+    
+    let str = input.trim();
+    
+    // Strip 'blob ' prefix if present
+    if (str.toLowerCase().startsWith('blob ')) {
+        str = str.slice(5).trim();
+    }
+    
+    // Strip surrounding quotes if present
+    if ((str.startsWith('"') && str.endsWith('"')) || 
+        (str.startsWith("'") && str.endsWith("'"))) {
+        str = str.slice(1, -1);
+    }
+    
+    // Check if it starts with DIDL (as escaped or literal)
+    const startsWithDidl = str.startsWith('DIDL') || 
+                           str.startsWith('\\44\\49\\44\\4c') || 
+                           str.startsWith('\\44\\49\\44\\4C');
+    
+    // Parse the escape sequences
+    const bytes = [];
+    let i = 0;
+    while (i < str.length) {
+        if (str[i] === '\\' && i + 2 < str.length) {
+            // Escape sequence: \xx
+            const hexPart = str.slice(i + 1, i + 3);
+            const byte = parseInt(hexPart, 16);
+            if (!isNaN(byte)) {
+                bytes.push(byte);
+                i += 3;
+                continue;
+            }
+        }
+        // Literal character
+        bytes.push(str.charCodeAt(i));
+        i++;
+    }
+    
+    // Prepend DIDL magic bytes if not present
+    if (!startsWithDidl && bytes.length > 0) {
+        const withDidl = [0x44, 0x49, 0x44, 0x4C, ...bytes];
+        return new Uint8Array(withDidl);
+    }
+    
+    return new Uint8Array(bytes);
+};
+
 // Encode a Principal to Candid bytes: (principal "...")
 const encodePrincipalArg = (principalText) => {
     const principal = Principal.fromText(principalText);
@@ -241,8 +298,9 @@ export default function CanisterPage() {
     const [upgrading, setUpgrading] = useState(false);
     const [confirmUpgrade, setConfirmUpgrade] = useState(false);
     const [initArgHex, setInitArgHex] = useState(''); // Hex-encoded Candid init arguments
-    const [initArgMode, setInitArgMode] = useState('none'); // 'none', 'hex', 'principal', 'optPrincipal'
+    const [initArgMode, setInitArgMode] = useState('none'); // 'none', 'hex', 'principal', 'optPrincipal', 'didc'
     const [initArgPrincipal, setInitArgPrincipal] = useState(''); // Principal text input
+    const [initArgDidc, setInitArgDidc] = useState(''); // DIDC blob format input
     const wasmInputRef = useRef(null);
 
     const canisterIdParam = searchParams.get('id');
@@ -920,6 +978,13 @@ export default function CanisterPage() {
                         initArg = hexToUint8Array(initArgHex.trim());
                         console.log(`Using hex init args: ${initArg.length} bytes`);
                         break;
+                    case 'didc':
+                        if (!initArgDidc.trim()) {
+                            throw new Error('DIDC blob input is required');
+                        }
+                        initArg = parseDidcBlob(initArgDidc.trim());
+                        console.log(`Using DIDC blob init args: ${initArg.length} bytes`);
+                        break;
                     case 'none':
                     default:
                         // Candid encoding for empty arguments: "DIDL" magic bytes + 0 types + 0 args
@@ -948,6 +1013,7 @@ export default function CanisterPage() {
             setInitArgMode('none');
             setInitArgHex('');
             setInitArgPrincipal('');
+            setInitArgDidc('');
             if (wasmInputRef.current) {
                 wasmInputRef.current.value = '';
             }
@@ -1817,6 +1883,7 @@ export default function CanisterPage() {
                                                 setInitArgMode('none');
                                                 setInitArgHex('');
                                                 setInitArgPrincipal('');
+                                                setInitArgDidc('');
                                             }
                                         }}
                                         style={{
@@ -2013,6 +2080,7 @@ export default function CanisterPage() {
                                                     { value: 'none', label: 'None (empty)' },
                                                     { value: 'principal', label: 'Principal' },
                                                     { value: 'optPrincipal', label: 'Optional Principal' },
+                                                    { value: 'didc', label: 'DIDC Blob' },
                                                     { value: 'hex', label: 'Raw Hex' },
                                                 ].map(option => (
                                                     <label 
@@ -2090,6 +2158,62 @@ export default function CanisterPage() {
                                                 </div>
                                             )}
                                             
+                                            {/* DIDC Blob input */}
+                                            {initArgMode === 'didc' && (
+                                                <div>
+                                                    <textarea
+                                                        value={initArgDidc}
+                                                        onChange={(e) => setInitArgDidc(e.target.value)}
+                                                        placeholder={'blob "DIDL\\00\\01h\\02\\03..."'}
+                                                        style={{
+                                                            width: '100%',
+                                                            minHeight: '60px',
+                                                            padding: '10px 12px',
+                                                            border: `1px solid ${theme.colors.border}`,
+                                                            borderRadius: '6px',
+                                                            backgroundColor: theme.colors.secondaryBg,
+                                                            color: theme.colors.primaryText,
+                                                            fontSize: '13px',
+                                                            fontFamily: 'monospace',
+                                                            outline: 'none',
+                                                            resize: 'vertical',
+                                                            boxSizing: 'border-box'
+                                                        }}
+                                                    />
+                                                    <p style={{ 
+                                                        color: theme.colors.mutedText, 
+                                                        fontSize: '11px', 
+                                                        marginTop: '6px',
+                                                        marginBottom: 0
+                                                    }}>
+                                                        Paste the output from <code style={{ 
+                                                            backgroundColor: theme.colors.tertiaryBg, 
+                                                            padding: '2px 4px', 
+                                                            borderRadius: '3px',
+                                                            fontSize: '10px'
+                                                        }}>didc encode '(args)'</code> directly. Accepts formats like:{' '}
+                                                        <code style={{ 
+                                                            backgroundColor: theme.colors.tertiaryBg, 
+                                                            padding: '2px 4px', 
+                                                            borderRadius: '3px',
+                                                            fontSize: '10px'
+                                                        }}>blob "DIDL\00..."</code>,{' '}
+                                                        <code style={{ 
+                                                            backgroundColor: theme.colors.tertiaryBg, 
+                                                            padding: '2px 4px', 
+                                                            borderRadius: '3px',
+                                                            fontSize: '10px'
+                                                        }}>DIDL\00...</code>, or just{' '}
+                                                        <code style={{ 
+                                                            backgroundColor: theme.colors.tertiaryBg, 
+                                                            padding: '2px 4px', 
+                                                            borderRadius: '3px',
+                                                            fontSize: '10px'
+                                                        }}>\00\01...</code> (DIDL added automatically).
+                                                    </p>
+                                                </div>
+                                            )}
+                                            
                                             {/* Hex input */}
                                             {initArgMode === 'hex' && (
                                                 <div>
@@ -2118,12 +2242,12 @@ export default function CanisterPage() {
                                                         marginTop: '6px',
                                                         marginBottom: 0
                                                     }}>
-                                                        Use <code style={{ 
+                                                        Raw hex bytes. Use <code style={{ 
                                                             backgroundColor: theme.colors.tertiaryBg, 
                                                             padding: '2px 4px', 
                                                             borderRadius: '3px',
                                                             fontSize: '10px'
-                                                        }}>didc encode '(args)' --format blob</code> to generate hex.
+                                                        }}>didc encode '(args)' | xxd -p</code> to generate.
                                                     </p>
                                                 </div>
                                             )}
