@@ -51,39 +51,6 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         createdAt;
     };
 
-    // Legacy compatibility: registerNeuron just verifies control (memo is ignored)
-    // Neurons are now auto-discovered via listNeurons()
-    public shared ({ caller }) func registerNeuron(neuronId: T.NeuronId, _memo: Nat64): async T.OperationResult {
-        assertController(caller);
-        
-        // Verify this canister controls the neuron
-        let result = await governance.get_full_neuron(neuronId.id);
-        switch (result) {
-            case (#Err(e)) {
-                return #Err(#GovernanceError(e));
-            };
-            case (#Ok(neuron)) {
-                let selfPrincipal = Principal.fromActor(this);
-                switch (neuron.controller) {
-                    case null {
-                        return #Err(#InvalidOperation("Neuron has no controller"));
-                    };
-                    case (?ctrl) {
-                        if (Principal.equal(ctrl, selfPrincipal)) {
-                            #Ok
-                        } else {
-                            #Err(#InvalidOperation("This canister is not the neuron's controller"))
-                        }
-                    };
-                };
-            };
-        };
-    };
-
-    // Legacy compatibility: getNeuronMemo returns null (we no longer track memos)
-    public query func getNeuronMemo(_neuronId: T.NeuronId): async ?Nat64 {
-        null
-    };
 
     // Get all neurons controlled by this canister from NNS governance
     public shared func listNeurons(): async [T.Neuron] {
@@ -174,45 +141,6 @@ shared (deployer) persistent actor class NeuronManagerCanister() = this {
         }
     };
 
-    // ============================================
-    // NEURON VERIFICATION (replaces registration)
-    // ============================================
-
-    // Verify this canister controls a neuron (replaces registerNeuron)
-    public shared ({ caller }) func verifyNeuronControl(neuronId: T.NeuronId): async T.OperationResult {
-        assertController(caller);
-        
-        let result = await governance.get_full_neuron(neuronId.id);
-        switch (result) {
-            case (#Err(e)) {
-                return #Err(#GovernanceError(e));
-            };
-            case (#Ok(neuron)) {
-                let selfPrincipal = Principal.fromActor(this);
-                switch (neuron.controller) {
-                    case null {
-                        return #Err(#InvalidOperation("Neuron has no controller"));
-                    };
-                    case (?ctrl) {
-                        if (Principal.equal(ctrl, selfPrincipal)) {
-                            #Ok
-                        } else {
-                            #Err(#InvalidOperation("This canister is not the neuron's controller"))
-                        }
-                    };
-                };
-            };
-        };
-    };
-
-    // Legacy compatibility: deregisterNeuron is now a no-op since we don't store neurons locally
-    public shared ({ caller }) func deregisterNeuron(neuronId: T.NeuronId): async T.OperationResult {
-        assertController(caller);
-        // No-op - we no longer track neurons locally
-        // The neuron still exists on NNS, use transferNeuronController to actually give up control
-        ignore neuronId;
-        #Ok
-    };
 
     // ============================================
     // NEURON CREATION
