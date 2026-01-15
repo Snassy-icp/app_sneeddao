@@ -4063,6 +4063,16 @@ function Wallet() {
                     onAdd={() => navigate('/create_icp_neuron')}
                     theme={theme}
                 />
+                <div style={{ marginBottom: '10px', marginTop: '-5px' }}>
+                    <Link 
+                        to="/help/icp-neuron-manager" 
+                        style={{ color: theme.colors.accent, fontSize: '13px', textDecoration: 'none' }}
+                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                    >
+                        Learn how it works →
+                    </Link>
+                </div>
                 {neuronManagersExpanded && (
                     <div style={{ marginBottom: '20px' }}>
                         {neuronManagersLoading ? (

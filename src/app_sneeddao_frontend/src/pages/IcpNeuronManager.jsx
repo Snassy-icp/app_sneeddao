@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
@@ -1913,6 +1913,16 @@ function IcpNeuronManager() {
                 <h1 style={{ color: theme.colors.primaryText, marginBottom: '10px' }}>
                     ICP Neuron Manager
                 </h1>
+                <div style={{ marginBottom: '20px' }}>
+                    <Link 
+                        to="/help/icp-neuron-manager" 
+                        style={{ color: theme.colors.accent, fontSize: '14px', textDecoration: 'none' }}
+                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                    >
+                        Learn how it works →
+                    </Link>
+                </div>
                 
                 {loading ? (
                     <div style={{ textAlign: 'center', padding: '40px', color: theme.colors.primaryText }}>

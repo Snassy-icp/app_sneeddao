@@ -436,9 +436,19 @@ function CreateIcpNeuron() {
                 <h1 style={{ color: theme.colors.primaryText, marginBottom: '10px', textAlign: 'center' }}>
                     ICP Neuron Manager
                 </h1>
-                <p style={{ color: theme.colors.mutedText, textAlign: 'center', marginBottom: '30px' }}>
+                <p style={{ color: theme.colors.mutedText, textAlign: 'center', marginBottom: '10px' }}>
                     Create dedicated canisters to manage your ICP NNS neurons
                 </p>
+                <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+                    <Link 
+                        to="/help/icp-neuron-manager" 
+                        style={{ color: theme.colors.accent, fontSize: '14px', textDecoration: 'none' }}
+                        onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                        onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                    >
+                        Learn how it works →
+                    </Link>
+                </div>
 
                 {/* Factory Info */}
                 {factoryInfo && (
