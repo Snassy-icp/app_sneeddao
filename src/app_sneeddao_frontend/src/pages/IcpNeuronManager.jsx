@@ -11,6 +11,7 @@ import TokenSelector from '../components/TokenSelector';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../AuthContext';
 import { FaGasPump } from 'react-icons/fa';
+import { uint8ArrayToHex } from '../utils/NeuronUtils';
 
 const ICP_LEDGER_CANISTER_ID = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
 const NNS_GOVERNANCE_CANISTER_ID = 'rrkah-fqaaa-aaaaa-aaaaq-cai';
@@ -379,6 +380,7 @@ function IcpNeuronManager() {
                 cycles: Number(status.cycles),
                 memorySize: Number(status.memory_size),
                 status: Object.keys(status.status)[0],
+                moduleHash: status.module_hash[0] ? uint8ArrayToHex(status.module_hash[0]) : null,
             });
             setControllers(status.settings.controllers);
             
@@ -1907,7 +1909,39 @@ function IcpNeuronManager() {
                                         </span>
                                     </div>
                                 )}
+                                {canisterStatus && canisterStatus.memorySize !== undefined && (
+                                    <div>
+                                        <span style={{ color: theme.colors.mutedText, fontSize: '12px' }}>Memory: </span>
+                                        <span style={{ color: theme.colors.primaryText, fontSize: '12px' }}>
+                                            {(canisterStatus.memorySize / (1024 * 1024)).toFixed(2)} MB
+                                        </span>
+                                    </div>
+                                )}
                             </div>
+
+                            {/* Module Hash */}
+                            {canisterStatus && (
+                                <div style={{ marginTop: '15px' }}>
+                                    <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
+                                        Module Hash
+                                    </div>
+                                    <div style={{ 
+                                        color: theme.colors.primaryText, 
+                                        fontFamily: 'monospace',
+                                        fontSize: '11px',
+                                        background: theme.colors.tertiaryBg || theme.colors.secondaryBg,
+                                        padding: '8px 10px',
+                                        borderRadius: '4px',
+                                        wordBreak: 'break-all'
+                                    }}>
+                                        {canisterStatus.moduleHash || (
+                                            <span style={{ color: theme.colors.mutedText, fontStyle: 'italic' }}>
+                                                No module installed
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Controllers Section */}
                             {controllers.length > 0 && (
