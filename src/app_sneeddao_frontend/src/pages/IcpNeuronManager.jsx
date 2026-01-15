@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { HttpAgent, Actor } from '@dfinity/agent';
 import { Principal } from '@dfinity/principal';
 import { sha224 } from '@dfinity/principal/lib/esm/utils/sha224';
@@ -1839,14 +1839,6 @@ function IcpNeuronManager() {
         <div className='page-container' style={{ background: theme.colors.primaryGradient, minHeight: '100vh' }}>
             <Header />
             <main className="wallet-container">
-                {/* Back link */}
-                <Link 
-                    to="/create_icp_neuron" 
-                    style={{ color: theme.colors.accent, textDecoration: 'none', display: 'inline-block', marginBottom: '20px' }}
-                >
-                    ← Back to Managers
-                </Link>
-
                 <h1 style={{ color: theme.colors.primaryText, marginBottom: '10px' }}>
                     ICP Neuron Manager
                 </h1>
