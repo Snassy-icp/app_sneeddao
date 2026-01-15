@@ -1,6 +1,7 @@
 // Wallet.jsx
 import { principalToSubAccount } from "@dfinity/utils";
 import { Principal } from "@dfinity/principal";
+import { HttpAgent } from "@dfinity/agent";
 import React, { useState, useEffect, useRef } from 'react';
 import { app_sneeddao_backend, createActor as createBackendActor, canisterId as backendCanisterId } from 'declarations/app_sneeddao_backend';
 import { createActor as createLedgerActor } from 'external/icrc1_ledger';
@@ -39,6 +40,8 @@ import { fetchUserNeurons, fetchUserNeuronsForSns } from './utils/NeuronUtils';
 import { getTipTokensReceivedByUser } from './utils/BackendUtils';
 import priceService from './services/PriceService';
 import ConsolidateModal from './ConsolidateModal';
+import { createActor as createFactoryActor, canisterId as factoryCanisterId } from 'declarations/sneed_icp_neuron_manager_factory';
+import { createActor as createManagerActor } from 'declarations/sneed_icp_neuron_manager';
 
 // Component for empty position cards (when no positions exist for a swap pair)
 const EmptyPositionCard = ({ position, onRemove, handleRefreshPosition, isRefreshing, theme }) => {
@@ -341,6 +344,27 @@ function Wallet() {
             return true; // Default to expanded
         }
     });
+    
+    // ICP Neuron Manager state
+    const [neuronManagers, setNeuronManagers] = useState([]);
+    const [neuronManagerBalances, setNeuronManagerBalances] = useState({}); // canisterId -> balance
+    const [neuronManagerCounts, setNeuronManagerCounts] = useState({}); // canisterId -> neuron count
+    const [neuronManagersExpanded, setNeuronManagersExpanded] = useState(() => {
+        try {
+            const saved = localStorage.getItem('neuronManagersExpanded');
+            return saved !== null ? JSON.parse(saved) : true;
+        } catch (error) {
+            return true;
+        }
+    });
+    const [neuronManagersLoading, setNeuronManagersLoading] = useState(false);
+    const [refreshingNeuronManagers, setRefreshingNeuronManagers] = useState(false);
+    const [transferModalOpen, setTransferModalOpen] = useState(false);
+    const [transferTargetManager, setTransferTargetManager] = useState(null);
+    const [transferRecipient, setTransferRecipient] = useState('');
+    const [transferring, setTransferring] = useState(false);
+    const [transferError, setTransferError] = useState('');
+    const [transferSuccess, setTransferSuccess] = useState('');
 
     const dex_icpswap = 1;
  
@@ -361,6 +385,15 @@ function Wallet() {
             console.warn('Could not save consolidation expanded state to localStorage:', error);
         }
     }, [consolidationExpanded]);
+
+    // Save neuronManagersExpanded state to localStorage
+    useEffect(() => {
+        try {
+            localStorage.setItem('neuronManagersExpanded', JSON.stringify(neuronManagersExpanded));
+        } catch (error) {
+            console.warn('Could not save neuron managers expanded state to localStorage:', error);
+        }
+    }, [neuronManagersExpanded]);
 
     // Load SNS data progressively (non-blocking)
     useEffect(() => {
@@ -422,6 +455,7 @@ function Wallet() {
         fetchBalancesAndLocks();
         fetchLiquidityPositions();
         fetchIcpPrice();
+        fetchNeuronManagers();
     }, [isAuthenticated, location.search, refreshTrigger]);
 
     // Fetch ICP price
@@ -980,6 +1014,154 @@ function Wallet() {
             console.error('Error fetching liquidity positions: ', error);
         } finally { 
             setShowPositionsSpinner(false);
+        }
+    }
+
+    // Fetch ICP Neuron Managers
+    async function fetchNeuronManagers() {
+        if (!identity) return;
+        
+        setNeuronManagersLoading(true);
+        try {
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            const factory = createFactoryActor(factoryCanisterId, { agent });
+            const managers = await factory.getMyManagers();
+            setNeuronManagers(managers);
+            
+            // Fetch balances and neuron counts for all managers
+            if (managers.length > 0) {
+                const ICP_LEDGER = 'ryjl3-tyaaa-aaaaa-aaaba-cai';
+                const ledger = createLedgerActor(ICP_LEDGER, { agentOptions: { identity, host } });
+                
+                const balances = {};
+                const counts = {};
+                
+                await Promise.all(managers.map(async (manager) => {
+                    const canisterId = manager.canisterId.toText();
+                    try {
+                        const balance = await ledger.icrc1_balance_of({
+                            owner: manager.canisterId,
+                            subaccount: [],
+                        });
+                        balances[canisterId] = Number(balance);
+                    } catch (err) {
+                        console.error(`Error fetching balance for ${canisterId}:`, err);
+                        balances[canisterId] = null;
+                    }
+                    
+                    try {
+                        const managerActor = createManagerActor(manager.canisterId, { agent });
+                        const count = await managerActor.getNeuronCount();
+                        counts[canisterId] = Number(count);
+                    } catch (err) {
+                        console.error(`Error fetching neuron count for ${canisterId}:`, err);
+                        counts[canisterId] = null;
+                    }
+                }));
+                
+                setNeuronManagerBalances(balances);
+                setNeuronManagerCounts(counts);
+            }
+        } catch (err) {
+            console.error('Error fetching neuron managers:', err);
+        } finally {
+            setNeuronManagersLoading(false);
+        }
+    }
+
+    // Handle transfer of neuron manager control
+    async function handleTransferManager() {
+        if (!transferTargetManager || !transferRecipient.trim()) return;
+        
+        setTransferring(true);
+        setTransferError('');
+        setTransferSuccess('');
+        
+        try {
+            // Validate recipient principal
+            let newController;
+            try {
+                newController = Principal.fromText(transferRecipient.trim());
+            } catch (e) {
+                throw new Error('Invalid principal ID format');
+            }
+            
+            const host = process.env.DFX_NETWORK === 'ic' || process.env.DFX_NETWORK === 'staging' 
+                ? 'https://ic0.app' 
+                : 'http://localhost:4943';
+            const agent = new HttpAgent({ identity, host });
+            if (process.env.DFX_NETWORK !== 'ic' && process.env.DFX_NETWORK !== 'staging') {
+                await agent.fetchRootKey();
+            }
+            
+            // Management canister IDL for update_settings
+            const { IDL } = await import('@dfinity/candid');
+            
+            const canister_settings = IDL.Record({
+                'controllers': IDL.Opt(IDL.Vec(IDL.Principal)),
+                'compute_allocation': IDL.Opt(IDL.Nat),
+                'memory_allocation': IDL.Opt(IDL.Nat),
+                'freezing_threshold': IDL.Opt(IDL.Nat),
+                'reserved_cycles_limit': IDL.Opt(IDL.Nat),
+                'log_visibility': IDL.Opt(IDL.Variant({
+                    'controllers': IDL.Null,
+                    'public': IDL.Null,
+                })),
+                'wasm_memory_limit': IDL.Opt(IDL.Nat),
+            });
+            
+            const managementIdl = IDL.Service({
+                update_settings: IDL.Func([IDL.Record({
+                    canister_id: IDL.Principal,
+                    settings: canister_settings,
+                })], [], []),
+            });
+            
+            const { Actor } = await import('@dfinity/agent');
+            const managementCanister = Actor.createActor(
+                () => managementIdl, 
+                { agent, canisterId: Principal.fromText('aaaaa-aa') }
+            );
+            
+            // Transfer: set only the new controller (removes all existing)
+            await managementCanister.update_settings({
+                canister_id: transferTargetManager.canisterId,
+                settings: {
+                    controllers: [[newController]],
+                    compute_allocation: [],
+                    memory_allocation: [],
+                    freezing_threshold: [],
+                    reserved_cycles_limit: [],
+                    log_visibility: [],
+                    wasm_memory_limit: [],
+                },
+            });
+            
+            setTransferSuccess(`✅ Successfully transferred control to ${newController.toText()}`);
+            
+            // Refresh the list (the transferred manager will no longer appear)
+            await fetchNeuronManagers();
+            
+            // Close modal after a brief delay to show success
+            setTimeout(() => {
+                setTransferModalOpen(false);
+                setTransferTargetManager(null);
+                setTransferRecipient('');
+                setTransferSuccess('');
+            }, 2000);
+            
+        } catch (err) {
+            console.error('Error transferring manager:', err);
+            setTransferError(`Transfer failed: ${err.message || 'Unknown error'}`);
+        } finally {
+            setTransferring(false);
         }
     }
 
@@ -2757,6 +2939,24 @@ function Wallet() {
         }
     };
 
+    const handleRefreshNeuronManagers = async () => {
+        setRefreshingNeuronManagers(true);
+        try {
+            await fetchNeuronManagers();
+        } catch (error) {
+            console.error('Error refreshing neuron managers:', error);
+        } finally {
+            setRefreshingNeuronManagers(false);
+        }
+    };
+
+    // Format ICP amount
+    const formatIcpAmount = (e8s) => {
+        if (e8s === null || e8s === undefined) return '...';
+        const icp = e8s / 100_000_000;
+        return icp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    };
+
     // Consolidation Functions
     const getFeesItems = () => {
         const items = [];
@@ -3850,6 +4050,341 @@ function Wallet() {
                 </div>
                 </>
                 )}
+
+                {/* ICP Neuron Managers Section */}
+                <SectionHeader 
+                    title="ICP Neuron Managers"
+                    subtitle={neuronManagers.length > 0 ? `${neuronManagers.length}` : null}
+                    isExpanded={neuronManagersExpanded}
+                    onToggle={() => setNeuronManagersExpanded(!neuronManagersExpanded)}
+                    onRefresh={handleRefreshNeuronManagers}
+                    isRefreshing={refreshingNeuronManagers}
+                    addButtonText="+ Create"
+                    onAdd={() => navigate('/create_icp_neuron')}
+                    theme={theme}
+                />
+                {neuronManagersExpanded && (
+                    <div style={{ marginBottom: '20px' }}>
+                        {neuronManagersLoading ? (
+                            <div className="card">
+                                <div className="spinner"></div>
+                            </div>
+                        ) : neuronManagers.length === 0 ? (
+                            <div style={{ 
+                                backgroundColor: theme.colors.secondaryBg, 
+                                borderRadius: '8px', 
+                                padding: '24px',
+                                textAlign: 'center'
+                            }}>
+                                <p style={{ color: theme.colors.mutedText, marginBottom: '16px' }}>
+                                    No ICP Neuron Managers found.
+                                </p>
+                                <Link 
+                                    to="/create_icp_neuron"
+                                    style={{
+                                        background: theme.colors.accent,
+                                        color: '#fff',
+                                        padding: '10px 20px',
+                                        borderRadius: '8px',
+                                        textDecoration: 'none',
+                                        fontSize: '14px',
+                                        fontWeight: '600',
+                                    }}
+                                >
+                                    Create Your First Manager →
+                                </Link>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                {neuronManagers.map((manager) => {
+                                    const canisterId = manager.canisterId.toText();
+                                    const balance = neuronManagerBalances[canisterId];
+                                    const neuronCount = neuronManagerCounts[canisterId];
+                                    
+                                    return (
+                                        <div 
+                                            key={canisterId}
+                                            className="card"
+                                            style={{
+                                                padding: '16px 20px',
+                                            }}
+                                        >
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                justifyContent: 'space-between', 
+                                                alignItems: 'center',
+                                                flexWrap: 'wrap',
+                                                gap: '12px'
+                                            }}>
+                                                <div style={{ flex: 1, minWidth: '200px' }}>
+                                                    <div style={{ 
+                                                        display: 'flex', 
+                                                        alignItems: 'center', 
+                                                        gap: '8px',
+                                                        marginBottom: '8px'
+                                                    }}>
+                                                        <span style={{ fontSize: '18px' }}>🧠</span>
+                                                        <span style={{ 
+                                                            color: theme.colors.primaryText, 
+                                                            fontWeight: '600',
+                                                            fontSize: '15px'
+                                                        }}>
+                                                            Neuron Manager
+                                                        </span>
+                                                        <span style={{ 
+                                                            color: theme.colors.mutedText, 
+                                                            fontSize: '12px',
+                                                            backgroundColor: theme.colors.tertiaryBg || theme.colors.primaryBg,
+                                                            padding: '2px 8px',
+                                                            borderRadius: '10px'
+                                                        }}>
+                                                            v{Number(manager.version.major)}.{Number(manager.version.minor)}.{Number(manager.version.patch)}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ 
+                                                        color: theme.colors.secondaryText, 
+                                                        fontFamily: 'monospace', 
+                                                        fontSize: '12px',
+                                                        wordBreak: 'break-all'
+                                                    }}>
+                                                        {canisterId}
+                                                    </div>
+                                                </div>
+                                                
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    gap: '24px', 
+                                                    alignItems: 'center',
+                                                    flexWrap: 'wrap'
+                                                }}>
+                                                    <div style={{ textAlign: 'center', minWidth: '80px' }}>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Balance</div>
+                                                        <div style={{ 
+                                                            color: balance > 0 ? (theme.colors.success || '#22c55e') : theme.colors.primaryText,
+                                                            fontWeight: '600',
+                                                            fontSize: '14px'
+                                                        }}>
+                                                            {formatIcpAmount(balance)} ICP
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ textAlign: 'center', minWidth: '60px' }}>
+                                                        <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Neurons</div>
+                                                        <div style={{ 
+                                                            color: neuronCount > 0 ? (theme.colors.success || '#22c55e') : theme.colors.warning || '#f59e0b',
+                                                            fontWeight: '600',
+                                                            fontSize: '14px'
+                                                        }}>
+                                                            {neuronCount !== null && neuronCount !== undefined ? neuronCount : '...'}
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                        <Link 
+                                                            to={`/icp_neuron_manager/${canisterId}`}
+                                                            style={{
+                                                                background: theme.colors.accent,
+                                                                color: '#fff',
+                                                                padding: '8px 16px',
+                                                                borderRadius: '6px',
+                                                                textDecoration: 'none',
+                                                                fontSize: '13px',
+                                                                fontWeight: '600',
+                                                                whiteSpace: 'nowrap'
+                                                            }}
+                                                        >
+                                                            Manage
+                                                        </Link>
+                                                        <button
+                                                            onClick={() => {
+                                                                setTransferTargetManager(manager);
+                                                                setTransferRecipient('');
+                                                                setTransferError('');
+                                                                setTransferSuccess('');
+                                                                setTransferModalOpen(true);
+                                                            }}
+                                                            style={{
+                                                                background: 'transparent',
+                                                                color: theme.colors.accent,
+                                                                border: `1px solid ${theme.colors.accent}`,
+                                                                padding: '8px 16px',
+                                                                borderRadius: '6px',
+                                                                cursor: 'pointer',
+                                                                fontSize: '13px',
+                                                                fontWeight: '600',
+                                                                whiteSpace: 'nowrap'
+                                                            }}
+                                                        >
+                                                            Transfer
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Transfer Neuron Manager Modal */}
+                {transferModalOpen && transferTargetManager && (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000,
+                        padding: '20px'
+                    }}>
+                        <div style={{
+                            backgroundColor: theme.colors.secondaryBg,
+                            borderRadius: '12px',
+                            padding: '24px',
+                            maxWidth: '500px',
+                            width: '100%',
+                            border: `1px solid ${theme.colors.border}`
+                        }}>
+                            <h3 style={{ 
+                                color: theme.colors.primaryText, 
+                                marginBottom: '8px',
+                                fontSize: '18px'
+                            }}>
+                                Transfer Neuron Manager
+                            </h3>
+                            <p style={{ 
+                                color: theme.colors.mutedText, 
+                                fontSize: '13px',
+                                marginBottom: '20px'
+                            }}>
+                                This will transfer full control of the canister to another principal. 
+                                <strong style={{ color: theme.colors.warning || '#f59e0b' }}> You will lose all access.</strong>
+                            </p>
+                            
+                            <div style={{ marginBottom: '16px' }}>
+                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '4px' }}>
+                                    Canister to Transfer
+                                </div>
+                                <div style={{ 
+                                    color: theme.colors.primaryText, 
+                                    fontFamily: 'monospace', 
+                                    fontSize: '13px',
+                                    backgroundColor: theme.colors.tertiaryBg || theme.colors.primaryBg,
+                                    padding: '10px',
+                                    borderRadius: '6px',
+                                    wordBreak: 'break-all'
+                                }}>
+                                    {transferTargetManager.canisterId.toText()}
+                                </div>
+                            </div>
+                            
+                            <div style={{ marginBottom: '20px' }}>
+                                <label style={{ 
+                                    color: theme.colors.mutedText, 
+                                    fontSize: '12px', 
+                                    display: 'block', 
+                                    marginBottom: '6px' 
+                                }}>
+                                    Recipient Principal ID
+                                </label>
+                                <input
+                                    type="text"
+                                    value={transferRecipient}
+                                    onChange={(e) => setTransferRecipient(e.target.value)}
+                                    placeholder="e.g., aaaaa-aa"
+                                    disabled={transferring}
+                                    style={{
+                                        width: '100%',
+                                        padding: '12px',
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        backgroundColor: theme.colors.primaryBg,
+                                        color: theme.colors.primaryText,
+                                        fontSize: '14px',
+                                        fontFamily: 'monospace',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
+                            
+                            {transferError && (
+                                <div style={{ 
+                                    backgroundColor: `${theme.colors.error}20`,
+                                    border: `1px solid ${theme.colors.error}`,
+                                    color: theme.colors.error,
+                                    padding: '12px',
+                                    borderRadius: '6px',
+                                    fontSize: '13px',
+                                    marginBottom: '16px'
+                                }}>
+                                    {transferError}
+                                </div>
+                            )}
+                            
+                            {transferSuccess && (
+                                <div style={{ 
+                                    backgroundColor: `${theme.colors.success || '#22c55e'}20`,
+                                    border: `1px solid ${theme.colors.success || '#22c55e'}`,
+                                    color: theme.colors.success || '#22c55e',
+                                    padding: '12px',
+                                    borderRadius: '6px',
+                                    fontSize: '13px',
+                                    marginBottom: '16px'
+                                }}>
+                                    {transferSuccess}
+                                </div>
+                            )}
+                            
+                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                                <button
+                                    onClick={() => {
+                                        setTransferModalOpen(false);
+                                        setTransferTargetManager(null);
+                                        setTransferRecipient('');
+                                        setTransferError('');
+                                        setTransferSuccess('');
+                                    }}
+                                    disabled={transferring}
+                                    style={{
+                                        padding: '10px 20px',
+                                        borderRadius: '8px',
+                                        border: `1px solid ${theme.colors.border}`,
+                                        backgroundColor: 'transparent',
+                                        color: theme.colors.primaryText,
+                                        cursor: transferring ? 'not-allowed' : 'pointer',
+                                        fontSize: '14px',
+                                        fontWeight: '500'
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleTransferManager}
+                                    disabled={transferring || !transferRecipient.trim()}
+                                    style={{
+                                        padding: '10px 20px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        backgroundColor: theme.colors.error || '#ef4444',
+                                        color: '#fff',
+                                        cursor: (transferring || !transferRecipient.trim()) ? 'not-allowed' : 'pointer',
+                                        fontSize: '14px',
+                                        fontWeight: '600',
+                                        opacity: (transferring || !transferRecipient.trim()) ? 0.6 : 1
+                                    }}
+                                >
+                                    {transferring ? '⏳ Transferring...' : '⚠️ Transfer Control'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <SectionHeader 
                     title="What is Sneed Lock?"
                     isExpanded={isSneedLockExpanded}
