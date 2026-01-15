@@ -3123,94 +3123,35 @@ function IcpNeuronManager() {
                                     <div style={cardStyle}>
                                         <h3 style={{ color: theme.colors.primaryText, marginBottom: '15px' }}>Neuron Overview</h3>
                                         
-                                        {/* Stake & Status Section */}
-                                        {neuronInfo && (
+                                        {/* Dissolving Status Alert */}
+                                        {neuronInfo && neuronInfo.state === 2 && (
                                             <div style={{ 
-                                                display: 'grid', 
-                                                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
-                                                gap: '12px',
-                                                marginBottom: '20px'
-                                            }}>
-                                                <div style={{ 
-                                                    background: `${theme.colors.accent}15`, 
-                                                    padding: '12px', 
-                                                    borderRadius: '8px',
-                                                    textAlign: 'center'
-                                                }}>
-                                                    <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginBottom: '4px' }}>Stake</div>
-                                                    <div style={{ color: theme.colors.primaryText, fontSize: '16px', fontWeight: '600' }}>
-                                                        {formatIcp(Number(neuronInfo.stake_e8s))} ICP
-                                                    </div>
-                                                </div>
-                                                <div style={{ 
-                                                    background: `${getNeuronState(neuronInfo.state).color}20`, 
-                                                    padding: '12px', 
-                                                    borderRadius: '8px',
-                                                    textAlign: 'center'
-                                                }}>
-                                                    <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginBottom: '4px' }}>Status</div>
-                                                    <div style={{ color: getNeuronState(neuronInfo.state).color, fontSize: '14px', fontWeight: '600' }}>
-                                                        {getNeuronState(neuronInfo.state).label}
-                                                    </div>
-                                                </div>
-                                                <div style={{ 
-                                                    background: theme.colors.tertiaryBg || `${theme.colors.secondaryBg}`, 
-                                                    padding: '12px', 
-                                                    borderRadius: '8px',
-                                                    textAlign: 'center'
-                                                }}>
-                                                    <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginBottom: '4px' }}>Dissolve Delay</div>
-                                                    <div style={{ color: theme.colors.primaryText, fontSize: '14px', fontWeight: '600' }}>
-                                                        {formatDuration(Number(neuronInfo.dissolve_delay_seconds))}
-                                                    </div>
-                                                </div>
-                                                <div style={{ 
-                                                    background: theme.colors.tertiaryBg || `${theme.colors.secondaryBg}`, 
-                                                    padding: '12px', 
-                                                    borderRadius: '8px',
-                                                    textAlign: 'center'
-                                                }}>
-                                                    <div style={{ color: theme.colors.mutedText, fontSize: '11px', marginBottom: '4px' }}>Age</div>
-                                                    <div style={{ color: theme.colors.primaryText, fontSize: '14px', fontWeight: '600' }}>
-                                                        {formatDuration(Number(neuronInfo.age_seconds))}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Maturity Section */}
-                                        {fullNeuron && (
-                                            <div style={{ 
-                                                background: theme.colors.tertiaryBg || theme.colors.secondaryBg, 
-                                                padding: '15px', 
+                                                background: `${theme.colors.warning || '#f59e0b'}15`, 
+                                                border: `1px solid ${theme.colors.warning || '#f59e0b'}40`,
+                                                padding: '12px 15px', 
                                                 borderRadius: '8px',
                                                 marginBottom: '15px'
                                             }}>
-                                                <div style={{ color: theme.colors.mutedText, fontSize: '12px', marginBottom: '10px', fontWeight: '500' }}>
-                                                    Maturity
+                                                <div style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '8px',
+                                                    color: theme.colors.warning || '#f59e0b',
+                                                    fontWeight: '600',
+                                                    fontSize: '14px',
+                                                    marginBottom: '4px'
+                                                }}>
+                                                    ⏳ Dissolving
                                                 </div>
-                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                                                    <div>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Available</div>
-                                                        <div style={{ color: theme.colors.primaryText, fontSize: '15px', fontWeight: '600' }}>
-                                                            {formatIcp(Number(fullNeuron.maturity_e8s_equivalent))} ICP
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <div style={{ color: theme.colors.mutedText, fontSize: '11px' }}>Staked</div>
-                                                        <div style={{ color: theme.colors.primaryText, fontSize: '15px', fontWeight: '600' }}>
-                                                            {fullNeuron.staked_maturity_e8s_equivalent?.[0] 
-                                                                ? formatIcp(Number(fullNeuron.staked_maturity_e8s_equivalent[0])) + ' ICP' 
-                                                                : '0 ICP'}
-                                                        </div>
-                                                    </div>
+                                                <div style={{ color: theme.colors.primaryText, fontSize: '13px' }}>
+                                                    <strong>{formatDuration(Number(neuronInfo.dissolve_delay_seconds))}</strong> remaining until dissolved
                                                 </div>
                                             </div>
                                         )}
 
                                         {/* Details Grid */}
-                                        {fullNeuron && (
-                                            <div style={{ display: 'grid', gap: '8px' }}>
+                                        <div style={{ display: 'grid', gap: '8px' }}>
+                                            {fullNeuron && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.border}` }}>
                                                     <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Controller</span>
                                                     <span style={{ color: theme.colors.primaryText, fontFamily: 'monospace', fontSize: '12px' }}>
@@ -3219,28 +3160,38 @@ function IcpNeuronManager() {
                                                             : 'N/A'}
                                                     </span>
                                                 </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.border}` }}>
-                                                    <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Hotkeys</span>
-                                                    <span style={{ color: theme.colors.primaryText, fontSize: '13px' }}>
-                                                        {fullNeuron.hot_keys?.length || 0}
-                                                    </span>
-                                                </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.border}` }}>
-                                                    <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Following Topics</span>
-                                                    <span style={{ color: theme.colors.primaryText, fontSize: '13px' }}>
-                                                        {fullNeuron.followees?.length || 0}
-                                                    </span>
-                                                </div>
-                                                {neuronInfo && (
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-                                                        <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Voting Power</span>
-                                                        <span style={{ color: theme.colors.primaryText, fontSize: '13px', fontWeight: '500' }}>
-                                                            {formatIcp(Number(neuronInfo.voting_power))}
+                                            )}
+                                            {fullNeuron && (
+                                                <>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Available Maturity</span>
+                                                        <span style={{ color: theme.colors.primaryText, fontSize: '13px' }}>
+                                                            {formatIcp(Number(fullNeuron.maturity_e8s_equivalent))} ICP
                                                         </span>
                                                     </div>
-                                                )}
-                                            </div>
-                                        )}
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Staked Maturity</span>
+                                                        <span style={{ color: theme.colors.primaryText, fontSize: '13px' }}>
+                                                            {fullNeuron.staked_maturity_e8s_equivalent?.[0] 
+                                                                ? formatIcp(Number(fullNeuron.staked_maturity_e8s_equivalent[0])) + ' ICP' 
+                                                                : '0 ICP'}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${theme.colors.border}` }}>
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Hotkeys</span>
+                                                        <span style={{ color: theme.colors.primaryText, fontSize: '13px' }}>
+                                                            {fullNeuron.hot_keys?.length || 0}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
+                                                        <span style={{ color: theme.colors.mutedText, fontSize: '13px' }}>Following Topics</span>
+                                                        <span style={{ color: theme.colors.primaryText, fontSize: '13px' }}>
+                                                            {fullNeuron.followees?.length || 0}
+                                                        </span>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
                                         
                                         <div style={{ marginTop: '20px' }}>
                                             <button 

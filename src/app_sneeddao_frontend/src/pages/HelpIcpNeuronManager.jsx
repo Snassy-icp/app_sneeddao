@@ -446,6 +446,20 @@ function HelpIcpNeuronManager() {
                                 <strong style={styles.strong}>Remove Hotkeys:</strong> Revoke access from principals
                             </li>
                         </ul>
+                        <div style={{
+                            marginTop: '12px',
+                            padding: '10px 12px',
+                            background: 'rgba(99, 102, 241, 0.1)',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            lineHeight: '1.5'
+                        }}>
+                            <strong>💡 Tip:</strong> Add your NNS principal ID as a hotkey to your neurons, and you'll be able 
+                            to vote with them directly from the{' '}
+                            <a href="https://nns.ic0.app" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit' }}>
+                                NNS dApp
+                            </a>!
+                        </div>
                     </div>
 
                     <div style={styles.featureCard}>
