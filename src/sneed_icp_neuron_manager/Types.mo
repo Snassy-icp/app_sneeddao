@@ -603,8 +603,21 @@ module {
         #Err: NotifyError;
     };
 
+    // ICP to XDR conversion rate response from CMC
+    public type IcpXdrConversionRate = {
+        xdr_permyriad_per_icp: Nat64;  // XDR per ICP * 10000
+        timestamp_seconds: Nat64;
+    };
+
+    public type IcpXdrConversionRateResponse = {
+        data: IcpXdrConversionRate;
+        hash: [Nat8];
+        certificate: [Nat8];
+    };
+
     public type CmcActor = actor {
         notify_top_up: shared (NotifyTopUpArg) -> async NotifyTopUpResult;
+        get_icp_xdr_conversion_rate: shared query () -> async IcpXdrConversionRateResponse;
     };
 
     // ============================================
@@ -615,12 +628,8 @@ module {
     public type PaymentConfig = {
         // Total ICP to charge for creating a manager (in e8s)
         creationFeeE8s: Nat64;
-        // ICP amount to use for cycles top-up (in e8s)
-        icpForCyclesE8s: Nat64;
-        // Minimum ICP for cycles (for validation)
-        minIcpForCyclesE8s: Nat64;
-        // Maximum ICP for cycles (for validation)
-        maxIcpForCyclesE8s: Nat64;
+        // Target cycles to acquire via ICP conversion (calculated dynamically from CMC rate)
+        targetCyclesAmount: Nat;
         // Destination for remaining ICP (after cycles conversion)
         feeDestination: Account;
         // Whether payment is required (can be disabled for free mode)

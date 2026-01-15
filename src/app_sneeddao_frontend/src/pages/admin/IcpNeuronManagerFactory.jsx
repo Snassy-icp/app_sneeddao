@@ -17,12 +17,11 @@ export default function IcpNeuronManagerFactoryAdmin() {
   // Payment config state
   const [paymentConfig, setPaymentConfig] = useState(null);
   const [creationFee, setCreationFee] = useState('');
-  const [icpForCycles, setIcpForCycles] = useState('');
-  const [minIcpForCycles, setMinIcpForCycles] = useState('');
-  const [maxIcpForCycles, setMaxIcpForCycles] = useState('');
+  const [targetCycles, setTargetCycles] = useState('');
   const [feeDestinationOwner, setFeeDestinationOwner] = useState('');
   const [feeDestinationSubaccount, setFeeDestinationSubaccount] = useState('');
   const [paymentRequired, setPaymentRequired] = useState(true);
+  const [conversionRate, setConversionRate] = useState(null);
   
   // Balances
   const [cyclesBalance, setCyclesBalance] = useState(null);
@@ -74,25 +73,27 @@ export default function IcpNeuronManagerFactoryAdmin() {
       const actor = getFactoryActor();
       if (!actor) return;
 
-      const [config, admins, governance, cycles, icp, count] = await Promise.all([
+      const [config, admins, governance, cycles, icp, count, rate] = await Promise.all([
         actor.getPaymentConfig(),
         actor.getAdmins(),
         actor.getSneedGovernance(),
         actor.getCyclesBalance(),
         actor.getIcpBalance(),
-        actor.getManagerCount()
+        actor.getManagerCount(),
+        actor.getConversionRate().catch(() => null)
       ]);
 
       setPaymentConfig(config);
       setCreationFee((Number(config.creationFeeE8s) / E8S).toString());
-      setIcpForCycles((Number(config.icpForCyclesE8s) / E8S).toString());
-      setMinIcpForCycles((Number(config.minIcpForCyclesE8s) / E8S).toString());
-      setMaxIcpForCycles((Number(config.maxIcpForCyclesE8s) / E8S).toString());
+      setTargetCycles((Number(config.targetCyclesAmount) / 1_000_000_000_000).toString());
       setFeeDestinationOwner(config.feeDestination.owner.toText());
       if (config.feeDestination.subaccount && config.feeDestination.subaccount.length > 0) {
         setFeeDestinationSubaccount(bytesToHex(config.feeDestination.subaccount[0]));
       }
       setPaymentRequired(config.paymentRequired);
+      if (rate) {
+        setConversionRate(rate);
+      }
       
       setAdminList(admins);
       setSneedGovernance(governance.length > 0 ? governance[0] : null);
@@ -147,9 +148,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
 
       const config = {
         creationFeeE8s: BigInt(Math.round(parseFloat(creationFee) * E8S)),
-        icpForCyclesE8s: BigInt(Math.round(parseFloat(icpForCycles) * E8S)),
-        minIcpForCyclesE8s: BigInt(Math.round(parseFloat(minIcpForCycles) * E8S)),
-        maxIcpForCyclesE8s: BigInt(Math.round(parseFloat(maxIcpForCycles) * E8S)),
+        targetCyclesAmount: BigInt(Math.round(parseFloat(targetCycles) * 1_000_000_000_000)),
         feeDestination: {
           owner: Principal.fromText(feeDestinationOwner),
           subaccount: feeDestinationSubaccount ? [hexToBytes(feeDestinationSubaccount)] : []
@@ -454,6 +453,40 @@ export default function IcpNeuronManagerFactoryAdmin() {
         </div>
       </div>
 
+      {/* Conversion Rate Info */}
+      {conversionRate && (
+        <div style={{
+          backgroundColor: '#2a2a2a',
+          borderRadius: '8px',
+          padding: '20px',
+          marginBottom: '20px',
+          border: '1px solid #3a3a3a'
+        }}>
+          <h3 style={{ color: '#ffffff', fontSize: '18px', marginBottom: '15px' }}>Current CMC Conversion Rate</h3>
+          <p style={{ color: '#888', fontSize: '14px', marginBottom: '10px' }}>
+            The factory automatically calculates ICP needed for cycles based on the live CMC rate.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+            <div>
+              <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Cycles per ICP</div>
+              <div style={{ color: '#2ecc71', fontSize: '20px', fontWeight: 'bold' }}>
+                {formatCycles(Number(conversionRate.cyclesPerIcp))}
+              </div>
+            </div>
+            <div>
+              <div style={{ color: '#888', fontSize: '12px', marginBottom: '5px' }}>Estimated ICP for 2T Cycles</div>
+              <div style={{ color: '#f39c12', fontSize: '20px', fontWeight: 'bold' }}>
+                {conversionRate.cyclesPerIcp > 0 
+                  ? ((2_000_000_000_000 / Number(conversionRate.cyclesPerIcp)) * 1.05).toFixed(4) + ' ICP'
+                  : '...'
+                }
+              </div>
+              <div style={{ color: '#666', fontSize: '11px' }}>(includes 5% buffer)</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Fee Configuration Form */}
       <div style={{
         backgroundColor: '#2a2a2a',
@@ -491,15 +524,15 @@ export default function IcpNeuronManagerFactoryAdmin() {
             </div>
             <div>
               <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
-                ICP for Cycles (ICP)
+                Target Cycles (Trillion)
               </label>
               <input
                 type="number"
-                step="0.0001"
+                step="0.1"
                 min="0"
-                placeholder="0.02"
-                value={icpForCycles}
-                onChange={(e) => setIcpForCycles(e.target.value)}
+                placeholder="2"
+                value={targetCycles}
+                onChange={(e) => setTargetCycles(e.target.value)}
                 style={{
                   width: '100%',
                   padding: '10px',
@@ -510,55 +543,7 @@ export default function IcpNeuronManagerFactoryAdmin() {
                 }}
               />
               <p style={{ color: '#666', fontSize: '11px', marginTop: '4px' }}>
-                Default ICP converted to cycles for factory
-              </p>
-            </div>
-            <div>
-              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
-                Min ICP for Cycles (ICP)
-              </label>
-              <input
-                type="number"
-                step="0.0001"
-                min="0"
-                placeholder="0.01"
-                value={minIcpForCycles}
-                onChange={(e) => setMinIcpForCycles(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '4px',
-                  border: '1px solid #3a3a3a',
-                  backgroundColor: '#1a1a1a',
-                  color: '#ffffff'
-                }}
-              />
-              <p style={{ color: '#666', fontSize: '11px', marginTop: '4px' }}>
-                Minimum ICP user can suggest for cycles
-              </p>
-            </div>
-            <div>
-              <label style={{ color: '#888', fontSize: '12px', display: 'block', marginBottom: '5px' }}>
-                Max ICP for Cycles (ICP)
-              </label>
-              <input
-                type="number"
-                step="0.0001"
-                min="0"
-                placeholder="0.1"
-                value={maxIcpForCycles}
-                onChange={(e) => setMaxIcpForCycles(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '4px',
-                  border: '1px solid #3a3a3a',
-                  backgroundColor: '#1a1a1a',
-                  color: '#ffffff'
-                }}
-              />
-              <p style={{ color: '#666', fontSize: '11px', marginTop: '4px' }}>
-                Maximum ICP user can suggest for cycles
+                Target cycles to acquire per creation (ICP calculated dynamically)
               </p>
             </div>
           </div>

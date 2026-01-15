@@ -47,9 +47,11 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     
     // Payment configuration
     var creationFeeE8s: Nat64 = 100_000_000; // 1 ICP default
-    var icpForCyclesE8s: Nat64 = 2_000_000;  // 0.02 ICP default (~2T cycles)
-    var minIcpForCyclesE8s: Nat64 = 1_000_000;  // 0.01 ICP minimum
-    var maxIcpForCyclesE8s: Nat64 = 10_000_000; // 0.1 ICP maximum
+    var icpForCyclesE8s: Nat64 = 2_000_000;  // 0.02 ICP default (~2T cycles) DEPRECATED
+    var minIcpForCyclesE8s: Nat64 = 1_000_000;  // 0.01 ICP minimum DEPRECATED
+    var maxIcpForCyclesE8s: Nat64 = 10_000_000; // 0.1 ICP maximum DEPRECATED
+    var targetCyclesAmount: Nat = 2_000_000_000_000; // 2T cycles target (to cover ~1T creation cost + margin)
+    
     var feeDestination: T.Account = { owner = deployer.caller; subaccount = null }; // Default to deployer
     var paymentRequired: Bool = true;
 
@@ -129,9 +131,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public shared ({ caller }) func setPaymentConfig(config: T.PaymentConfig): async () {
         assert(isAdminOrGovernance(caller));
         creationFeeE8s := config.creationFeeE8s;
-        icpForCyclesE8s := config.icpForCyclesE8s;
-        minIcpForCyclesE8s := config.minIcpForCyclesE8s;
-        maxIcpForCyclesE8s := config.maxIcpForCyclesE8s;
+        targetCyclesAmount := config.targetCyclesAmount;
         feeDestination := config.feeDestination;
         paymentRequired := config.paymentRequired;
     };
@@ -139,9 +139,7 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     public query func getPaymentConfig(): async T.PaymentConfig {
         {
             creationFeeE8s = creationFeeE8s;
-            icpForCyclesE8s = icpForCyclesE8s;
-            minIcpForCyclesE8s = minIcpForCyclesE8s;
-            maxIcpForCyclesE8s = maxIcpForCyclesE8s;
+            targetCyclesAmount = targetCyclesAmount;
             feeDestination = feeDestination;
             paymentRequired = paymentRequired;
         };
@@ -152,14 +150,48 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
         creationFeeE8s := feeE8s;
     };
 
-    public shared ({ caller }) func setIcpForCycles(amountE8s: Nat64): async () {
+    public shared ({ caller }) func setTargetCycles(cycles: Nat): async () {
         assert(isAdminOrGovernance(caller));
-        icpForCyclesE8s := amountE8s;
+        targetCyclesAmount := cycles;
     };
 
     public shared ({ caller }) func setFeeDestination(destination: T.Account): async () {
         assert(isAdminOrGovernance(caller));
         feeDestination := destination;
+    };
+    
+    // Calculate ICP needed to acquire target cycles based on current CMC rate
+    // Returns amount in e8s, or 0 if rate unavailable
+    public func calculateIcpForCycles(targetCycles: Nat): async Nat64 {
+        try {
+            let rateResponse = await cmc.get_icp_xdr_conversion_rate();
+            let xdrPerIcp = rateResponse.data.xdr_permyriad_per_icp; // XDR per ICP * 10000
+            
+            // 1 XDR = 1 Trillion cycles (1T)
+            // Cycles per ICP = (xdrPerIcp / 10000) * 1_000_000_000_000
+            // = xdrPerIcp * 100_000_000 (cycles per ICP)
+            let cyclesPerIcp: Nat = Nat64.toNat(xdrPerIcp) * 100_000_000;
+            
+            if (cyclesPerIcp == 0) {
+                return 0;
+            };
+            
+            // ICP needed (in e8s) = targetCycles * 100_000_000 / cyclesPerIcp
+            // We add 5% buffer to account for rate fluctuations
+            let icpE8sNeeded = (targetCycles * 100_000_000 * 105) / (cyclesPerIcp * 100);
+            
+            Nat64.fromNat(icpE8sNeeded);
+        } catch (_) {
+            0; // Return 0 if we can't get the rate
+        };
+    };
+    
+    // Query the current conversion rate info
+    public func getConversionRate(): async { cyclesPerIcp: Nat; xdrPermyriadPerIcp: Nat64 } {
+        let rateResponse = await cmc.get_icp_xdr_conversion_rate();
+        let xdrPerIcp = rateResponse.data.xdr_permyriad_per_icp;
+        let cyclesPerIcp = Nat64.toNat(xdrPerIcp) * 100_000_000;
+        { cyclesPerIcp = cyclesPerIcp; xdrPermyriadPerIcp = xdrPerIcp };
     };
 
     public shared ({ caller }) func setPaymentRequired(required: Bool): async () {
@@ -248,9 +280,9 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
     // Users can create multiple managers (one neuron per manager)
     // Payment flow:
     // 1. User sends ICP to their subaccount on this factory
-    // 2. User calls createNeuronManager with optional suggested icpForCycles
-    // 3. Factory checks balance, processes payment, creates canister
-    public shared ({ caller }) func createNeuronManager(suggestedIcpForCyclesE8s: ?Nat64): async T.CreateManagerResult {
+    // 2. User calls createNeuronManager
+    // 3. Factory checks balance, calculates ICP for cycles dynamically, processes payment, creates canister
+    public shared ({ caller }) func createNeuronManager(): async T.CreateManagerResult {
         // Check cycles
         if (Cycles.balance() < CANISTER_CREATION_CYCLES) {
             return #Err(#InsufficientCycles);
@@ -273,16 +305,14 @@ shared (deployer) persistent actor class IcpNeuronManagerFactory() = this {
                 }));
             };
             
-            // Determine ICP amount for cycles (use suggestion if valid, otherwise default)
-            let actualIcpForCycles: Nat64 = switch (suggestedIcpForCyclesE8s) {
-                case (?suggested) {
-                    if (suggested >= minIcpForCyclesE8s and suggested <= maxIcpForCyclesE8s) {
-                        suggested;
-                    } else {
-                        icpForCyclesE8s; // Use default if suggestion out of bounds
-                    };
-                };
-                case null { icpForCyclesE8s };
+            // Calculate ICP needed for target cycles based on current CMC rate
+            let icpForCyclesE8s = await calculateIcpForCycles(targetCyclesAmount);
+            
+            // If we couldn't get a rate, use a fallback (0.02 ICP ~ 2T at typical rates)
+            let actualIcpForCycles: Nat64 = if (icpForCyclesE8s > 0) {
+                icpForCyclesE8s;
+            } else {
+                2_000_000; // 0.02 ICP fallback
             };
             
             // Calculate amount for fee destination (total - cycles portion - 2 transfer fees)

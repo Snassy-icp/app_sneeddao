@@ -67,9 +67,7 @@ function CreateIcpNeuron() {
             
             setPaymentConfig({
                 creationFeeE8s: Number(config.creationFeeE8s),
-                icpForCyclesE8s: Number(config.icpForCyclesE8s),
-                minIcpForCyclesE8s: Number(config.minIcpForCyclesE8s),
-                maxIcpForCyclesE8s: Number(config.maxIcpForCyclesE8s),
+                targetCyclesAmount: Number(config.targetCyclesAmount),
                 feeDestination: config.feeDestination,
                 paymentRequired: config.paymentRequired,
             });
@@ -193,24 +191,6 @@ function CreateIcpNeuron() {
         }
     };
 
-    // Calculate suggested ICP for cycles based on current rate
-    const calculateSuggestedIcpForCycles = () => {
-        if (!conversionRate || !paymentConfig) return null;
-        
-        // Target: ~2T cycles
-        const targetCycles = 2_000_000_000_000;
-        const suggestedIcp = targetCycles / conversionRate.cyclesPerIcp;
-        const suggestedE8s = Math.ceil(suggestedIcp * E8S);
-        
-        // Clamp to min/max bounds
-        const clamped = Math.max(
-            paymentConfig.minIcpForCyclesE8s,
-            Math.min(paymentConfig.maxIcpForCyclesE8s, suggestedE8s)
-        );
-        
-        return clamped;
-    };
-
     // Send payment to factory
     const handleSendPayment = async () => {
         if (!identity || !paymentConfig || !paymentSubaccount) return;
@@ -277,12 +257,8 @@ function CreateIcpNeuron() {
             }
             const factory = createFactoryActor(factoryCanisterId, { agent });
             
-            // Calculate suggested ICP for cycles
-            const suggestedIcpForCycles = calculateSuggestedIcpForCycles();
-            
-            const result = await factory.createNeuronManager(
-                suggestedIcpForCycles ? [BigInt(suggestedIcpForCycles)] : []
-            );
+            // Backend now calculates ICP for cycles dynamically based on CMC rate
+            const result = await factory.createNeuronManager();
             
             if ('Ok' in result) {
                 const { canisterId, accountId } = result.Ok;
