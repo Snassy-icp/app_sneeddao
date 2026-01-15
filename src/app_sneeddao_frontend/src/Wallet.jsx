@@ -200,32 +200,6 @@ const SectionHeader = ({ title, subtitle, isExpanded, onToggle, onAdd, addButton
                 )}
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
-                {onRefresh && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onRefresh();
-                        }}
-                        disabled={isRefreshing}
-                        style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: isRefreshing ? 'default' : 'pointer',
-                            padding: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            color: theme.colors.mutedText,
-                            fontSize: '1.2rem',
-                            transition: 'color 0.2s ease',
-                            opacity: isRefreshing ? 0.6 : 1
-                        }}
-                        onMouseEnter={(e) => !isRefreshing && (e.target.style.color = theme.colors.primaryText)}
-                        onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
-                        title="Refresh section"
-                    >
-                        {isRefreshing ? '⏳' : '🔄'}
-                    </button>
-                )}
                 {addButtonText && (
                     <button
                         onClick={(e) => {
@@ -251,6 +225,32 @@ const SectionHeader = ({ title, subtitle, isExpanded, onToggle, onAdd, addButton
                         }}
                     >
                         {addButtonText}
+                    </button>
+                )}
+                {onRefresh && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onRefresh();
+                        }}
+                        disabled={isRefreshing}
+                        style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: isRefreshing ? 'default' : 'pointer',
+                            padding: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            color: theme.colors.mutedText,
+                            fontSize: '1.2rem',
+                            transition: 'color 0.2s ease',
+                            opacity: isRefreshing ? 0.6 : 1
+                        }}
+                        onMouseEnter={(e) => !isRefreshing && (e.target.style.color = theme.colors.primaryText)}
+                        onMouseLeave={(e) => !isRefreshing && (e.target.style.color = theme.colors.mutedText)}
+                        title="Refresh section"
+                    >
+                        {isRefreshing ? '⏳' : '🔄'}
                     </button>
                 )}
             </div>

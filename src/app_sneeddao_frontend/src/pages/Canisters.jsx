@@ -577,10 +577,18 @@ export default function CanistersPage() {
                                 to="/create_icp_neuron"
                                 onClick={(e) => e.stopPropagation()}
                                 style={{
-                                    ...styles.addButton,
                                     padding: '6px 12px',
-                                    fontSize: '12px',
+                                    borderRadius: '8px',
+                                    border: 'none',
                                     backgroundColor: '#8b5cf6',
+                                    color: '#fff',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    textDecoration: 'none',
                                 }}
                             >
                                 <FaPlus size={10} /> Create
